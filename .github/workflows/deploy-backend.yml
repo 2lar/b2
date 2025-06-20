@@ -1,0 +1,79 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'infra/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Build Lambda function
+      working-directory: ./backend
+      run: |
+        GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bootstrap main.go node_operations.go graph_operations.go
+        mkdir -p build
+        zip build/function.zip bootstrap
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Install CDK dependencies
+      working-directory: ./infra
+      run: npm ci
+    
+    # NEW: Build frontend before CDK deploy
+    - name: Build Frontend
+      working-directory: ./frontend
+      run: |
+        npm ci
+        npm run build
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        aws-region: ${{ secrets.AWS_REGION }}
+        
+    - name: Extract outputs
+      working-directory: ./infra
+      run: |
+        echo "API_URL=$(jq -r '.MemorybookStack.ApiUrl' outputs.json)" >> $GITHUB_ENV
+        echo "CLOUDFRONT_URL=$(jq -r '.MemorybookStack.CloudFrontUrl' outputs.json)" >> $GITHUB_ENV
+    
+    - name: Display deployment info
+      run: |
+        echo "🚀 Backend deployed successfully!"
+        echo "API URL: ${{ env.API_URL }}"
+        echo "CloudFront URL: https://${{ env.CLOUDFRONT_URL }}"
+
+    - name: Deploy with CDK
+      working-directory: ./infra
+      env:
+        VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
+        # Add any other required secrets for the CDK here
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }} 
+      run: |
+        npm run build
+        npx cdk deploy --require-approval never --outputs-file outputs.json

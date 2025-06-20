@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain2 - Your Second Brain</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+</head>
+<body>
+    <!-- Auth Section -->
+    <div id="auth-section" class="auth-container">
+        <div class="auth-box">
+            <h1>Brain2</h1>
+            <p class="tagline">Your Second Brain - Building Connections Between Memories</p>
+            
+            <div id="auth-form">
+                <h2 id="auth-title">Sign In</h2>
+                <form id="auth-submit-form">
+                    <input type="email" id="email" placeholder="Email" required>
+                    <input type="password" id="password" placeholder="Password" required>
+                    <button type="submit" id="auth-button">Sign In</button>
+                </form>
+                <p class="auth-switch">
+                    <span id="auth-switch-text">Don't have an account?</span>
+                    <a href="#" id="auth-switch-link">Sign Up</a>
+                </p>
+                <div id="auth-error" class="error-message"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Section -->
+    <div id="app-section" class="app-container" style="display: none;">
+        <header>
+            <h1>Memory Book</h1>
+            <div class="header-actions">
+                <span id="user-email"></span>
+                <button id="sign-out-btn" class="secondary-btn">Sign Out</button>
+            </div>
+        </header>
+
+        <main>
+            <!-- Memory Input Section -->
+            <div class="memory-input-section">
+                <h2>Create a Memory</h2>
+                <form id="memory-form">
+                    <textarea 
+                        id="memory-content" 
+                        placeholder="Write your memory, thought, or idea here... The system will automatically connect it to related memories."
+                        rows="4"
+                        required
+                    ></textarea>
+                    <button type="submit" class="primary-btn">Save Memory</button>
+                </form>
+                <div id="memory-status" class="status-message"></div>
+            </div>
+
+            <!-- Graph Visualization Section -->
+            <div class="graph-section">
+                <div class="graph-header">
+                    <h2>Your Memory Graph</h2>
+                    <div class="graph-controls">
+                        <button id="refresh-graph" class="secondary-btn">Refresh</button>
+                        <button id="fit-graph" class="secondary-btn">Fit to View</button>
+                    </div>
+                </div>
+                <div id="cy" class="graph-container"></div>
+                <div id="node-details" class="node-details" style="display: none;">
+                    <h3>Memory Details</h3>
+                    <div id="node-content"></div>
+                    <div id="node-connections"></div>
+                    <button id="close-details" class="secondary-btn">Close</button>
+                </div>
+            </div>
+
+            <!-- Memory List Section -->
+            <div class="memory-list-section">
+                <h2>All Memories</h2>
+                <div id="memory-list" class="memory-list"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="/ts/app.ts"></script>
+</body>
+</html>

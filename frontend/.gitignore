@@ -1,0 +1,9 @@
+# Ignore Node.js modules
+node_modules
+
+# Ignore distribution folder (build output)
+dist
+
+# Ignore environment variables file
+.env
+.env.*

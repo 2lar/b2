@@ -1,0 +1,16 @@
+{
+  "name": "supabase-jwt-authorizer",
+  "version": "1.0.0",
+  "description": "Lambda authorizer for Supabase JWT validation",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc index.ts --outDir ./ --target es2020 --module commonjs --esModuleInterop --allowSyntheticDefaultImports"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.50.0",
+    "@types/aws-lambda": "^8.10.145"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

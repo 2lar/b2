@@ -1,0 +1,94 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        aws-region: ${{ secrets.AWS_REGION }}
+    
+    - name: Get deployment info from CDK
+      run: |
+        # Get the stack outputs
+        aws cloudformation describe-stacks \
+          --stack-name b2Stack \
+          --query "Stacks[0].Outputs" \
+          --output json > stack-outputs.json
+        
+        # Extract values
+        API_URL=$(jq -r '.[] | select(.OutputKey=="ApiUrl") | .OutputValue' stack-outputs.json)
+        BUCKET_NAME=$(aws cloudformation describe-stack-resource \
+          --stack-name b2Stack \
+          --logical-resource-id FrontendBucket \
+          --query 'StackResourceDetail.PhysicalResourceId' \
+          --output text)
+        DISTRIBUTION_ID=$(aws cloudformation describe-stack-resource \
+          --stack-name b2Stack \
+          --logical-resource-id FrontendDistribution \
+          --query 'StackResourceDetail.PhysicalResourceId' \
+          --output text)
+        
+        echo "API_URL=$API_URL" >> $GITHUB_ENV
+        echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV
+        echo "DISTRIBUTION_ID=$DISTRIBUTION_ID" >> $GITHUB_ENV
+    
+    - name: Install Frontend Dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Build Frontend with Environment Variables
+      working-directory: ./frontend
+      env:
+        VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        VITE_API_BASE_URL: ${{ env.API_URL }}
+      run: |
+        # Create .env file for build
+        echo "VITE_SUPABASE_URL=$VITE_SUPABASE_URL" > .env
+        echo "VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY" >> .env
+        echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" >> .env
+        
+        # Build with Vite
+        npm run build
+    
+    - name: Deploy to S3
+      run: |
+        aws s3 sync frontend/dist/ s3://${{ env.BUCKET_NAME }}/ \
+          --delete \
+          --exclude ".git/*" \
+          --exclude "node_modules/*" \
+          --exclude ".env*"
+    
+    - name: Invalidate CloudFront
+      run: |
+        aws cloudfront create-invalidation \
+          --distribution-id ${{ env.DISTRIBUTION_ID }} \
+          --paths "/*"
+    
+    - name: Display deployment info
+      run: |
+        echo "🚀 Frontend deployed successfully!"
+        echo "CloudFront URL: https://d${{ env.DISTRIBUTION_ID }}.cloudfront.net"
