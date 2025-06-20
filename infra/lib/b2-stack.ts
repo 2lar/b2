@@ -19,13 +19,8 @@ export class b2Stack extends Stack {
     super(scope, id, props);
 
     // Validate required environment variables
-    const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (!SUPABASE_JWT_SECRET) {
-      throw new Error('FATAL: SUPABASE_JWT_SECRET is not defined in your environment. Get it from Supabase dashboard > Settings > API > JWT Secret');
-    }
     
     if (!SUPABASE_URL) {
       throw new Error('FATAL: SUPABASE_URL is not defined in your environment. Get it from Supabase dashboard > Settings > API > URL');
@@ -35,6 +30,8 @@ export class b2Stack extends Stack {
       throw new Error('FATAL: SUPABASE_SERVICE_ROLE_KEY is not defined in your environment. Get it from Supabase dashboard > Settings > API > service_role key');
     }
 
+    // ========================================================================
+    
     // DynamoDB Table with Single-Table Design
     const memoryTable = new dynamodb.Table(this, 'MemoryTable', {
       tableName: 'brain2',
@@ -52,6 +49,8 @@ export class b2Stack extends Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // ========================================================================
+
     // Lambda Authorizer Function
     const authorizerLambda = new lambda.Function(this, 'JWTAuthorizerLambda', {
       functionName: `${this.stackName}-jwt-authorizer`,
@@ -59,7 +58,6 @@ export class b2Stack extends Stack {
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/authorizer')),
       environment: {
-        SUPABASE_JWT_SECRET: SUPABASE_JWT_SECRET,
         SUPABASE_URL: SUPABASE_URL,
         SUPABASE_SERVICE_ROLE_KEY: SUPABASE_SERVICE_ROLE_KEY,
         NODE_ENV: 'production'
@@ -74,6 +72,8 @@ export class b2Stack extends Stack {
       actions: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
       resources: ['*'],
     }));
+
+    // ========================================================================
 
     // Lambda Function for Backend API
     const backendLambda = new lambda.Function(this, 'BackendLambda', {
@@ -91,6 +91,8 @@ export class b2Stack extends Stack {
     // Grant Lambda permissions to access DynamoDB
     memoryTable.grantReadWriteData(backendLambda);
 
+    // ========================================================================
+    
     // HTTP API Gateway
     const httpApi = new apigatewayv2.HttpApi(this, 'b2Api', {
       apiName: 'b2-api',

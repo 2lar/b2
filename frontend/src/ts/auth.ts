@@ -31,7 +31,7 @@ let isSignUp: boolean = false;
 // Initialize the auth module
 function initAuth(): void {
     authForm.addEventListener('submit', handleAuthSubmit);
-    
+
     authSwitchLink.addEventListener('click', (e: Event) => {
         e.preventDefault();
         toggleAuthMode();
@@ -47,30 +47,30 @@ function initAuth(): void {
 // Toggle between sign in and sign up modes
 function toggleAuthMode(): void {
     isSignUp = !isSignUp;
-    
+
     authTitle.textContent = isSignUp ? 'Sign Up' : 'Sign In';
     authButton.textContent = isSignUp ? 'Sign Up' : 'Sign In';
     authSwitchText.textContent = isSignUp ? 'Already have an account?' : "Don't have an account?";
     authSwitchLink.textContent = isSignUp ? 'Sign In' : 'Sign Up';
-    
+
     authErrorEl.textContent = '';
 }
 
 // Handle auth form submission
 async function handleAuthSubmit(e: Event): Promise<void> {
     e.preventDefault();
-    
+
     const email = emailInput.value.trim();
     const password = passwordInput.value;
-    
+
     if (!email || !password) {
         showAuthError('Please fill in all fields');
         return;
     }
-    
+
     authButton.disabled = true;
     authErrorEl.textContent = '';
-    
+
     try {
         if (isSignUp) {
             const { data, error } = await supabase.auth.signUp({ email, password });
@@ -82,7 +82,7 @@ async function handleAuthSubmit(e: Event): Promise<void> {
         } else {
             const { data, error } = await supabase.auth.signInWithPassword({ email, password });
             if (error) throw error;
-            
+
             // Handle successful sign in immediately
             if (data.session?.user?.email) {
                 window.showApp(data.session.user.email);
@@ -110,7 +110,7 @@ export const auth = {
         const { data } = await supabase.auth.getSession();
         return data.session;
     },
-    
+
     async getJwtToken(): Promise<string | null> {
         const session = await this.getSession();
         return session ? session.access_token : null;
