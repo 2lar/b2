@@ -2,13 +2,15 @@
 package memory
 
 import (
-	"brain2-backend/internal/domain"
-	"brain2-backend/internal/repository/ddb" // CORRECTED IMPORT PATH
 	"context"
-	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"time"
+
+	"brain2-backend/internal/domain"
+	"brain2-backend/internal/repository/ddb"
+	appErrors "brain2-backend/pkg/errors" // ALIAS for our custom errors
 
 	"github.com/google/uuid"
 )
@@ -38,7 +40,7 @@ func NewService(repo ddb.Repository) Service {
 // CreateNode orchestrates the creation of a new node and its connections.
 func (s *service) CreateNode(ctx context.Context, userID, content string) (*domain.Node, error) {
 	if content == "" {
-		return nil, fmt.Errorf("content cannot be empty")
+		return nil, appErrors.NewValidation("content cannot be empty")
 	}
 
 	keywords := extractKeywords(content)
@@ -53,8 +55,7 @@ func (s *service) CreateNode(ctx context.Context, userID, content string) (*doma
 
 	relatedNodes, err := s.repo.FindNodesByKeywords(ctx, userID, keywords)
 	if err != nil {
-		// Log but don't fail, as finding connections is non-critical on create
-		fmt.Printf("could not find related nodes for new node: %v", err)
+		log.Printf("Non-critical error finding related nodes for new node: %v", err)
 	}
 
 	var relatedNodeIDs []string
@@ -63,7 +64,7 @@ func (s *service) CreateNode(ctx context.Context, userID, content string) (*doma
 	}
 
 	if err := s.repo.CreateNodeWithEdges(ctx, node, relatedNodeIDs); err != nil {
-		return nil, fmt.Errorf("failed to create node in repository: %w", err)
+		return nil, appErrors.Wrap(err, "failed to create node in repository")
 	}
 
 	return &node, nil
@@ -72,16 +73,15 @@ func (s *service) CreateNode(ctx context.Context, userID, content string) (*doma
 // UpdateNode orchestrates updating a node's content and reconnecting it.
 func (s *service) UpdateNode(ctx context.Context, userID, nodeID, content string) (*domain.Node, error) {
 	if content == "" {
-		return nil, fmt.Errorf("content cannot be empty")
+		return nil, appErrors.NewValidation("content cannot be empty")
 	}
 
-	// Ensure the node exists first
 	existingNode, err := s.repo.FindNodeByID(ctx, userID, nodeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check for existing node: %w", err)
+		return nil, appErrors.Wrap(err, "failed to check for existing node")
 	}
 	if existingNode == nil {
-		return nil, fmt.Errorf("node not found")
+		return nil, appErrors.NewNotFound("node not found")
 	}
 
 	keywords := extractKeywords(content)
@@ -90,24 +90,24 @@ func (s *service) UpdateNode(ctx context.Context, userID, nodeID, content string
 		UserID:    userID,
 		Content:   content,
 		Keywords:  keywords,
-		CreatedAt: time.Now(), // Update timestamp
+		CreatedAt: time.Now(),
 		Version:   existingNode.Version + 1,
 	}
 
 	relatedNodes, err := s.repo.FindNodesByKeywords(ctx, userID, keywords)
 	if err != nil {
-		fmt.Printf("could not find related nodes for updated node %s: %v", nodeID, err)
+		log.Printf("Non-critical error finding related nodes for updated node %s: %v", nodeID, err)
 	}
 
 	var relatedNodeIDs []string
 	for _, rn := range relatedNodes {
-		if rn.ID != nodeID { // Don't connect a node to itself
+		if rn.ID != nodeID {
 			relatedNodeIDs = append(relatedNodeIDs, rn.ID)
 		}
 	}
 
 	if err := s.repo.UpdateNodeAndEdges(ctx, updatedNode, relatedNodeIDs); err != nil {
-		return nil, fmt.Errorf("failed to update node in repository: %w", err)
+		return nil, appErrors.Wrap(err, "failed to update node in repository")
 	}
 
 	return &updatedNode, nil
@@ -115,8 +115,14 @@ func (s *service) UpdateNode(ctx context.Context, userID, nodeID, content string
 
 // DeleteNode orchestrates deleting a node.
 func (s *service) DeleteNode(ctx context.Context, userID, nodeID string) error {
-	// Business logic could be added here, e.g., checking for permissions,
-	// or if the node is locked. For now, it's a direct pass-through.
+	// First ensure node exists to return a clear NotFound error.
+	existingNode, err := s.repo.FindNodeByID(ctx, userID, nodeID)
+	if err != nil {
+		return appErrors.Wrap(err, "failed to check for existing node before delete")
+	}
+	if existingNode == nil {
+		return appErrors.NewNotFound("node not found")
+	}
 	return s.repo.DeleteNode(ctx, userID, nodeID)
 }
 
@@ -124,15 +130,15 @@ func (s *service) DeleteNode(ctx context.Context, userID, nodeID string) error {
 func (s *service) GetNodeDetails(ctx context.Context, userID, nodeID string) (*domain.Node, []domain.Edge, error) {
 	node, err := s.repo.FindNodeByID(ctx, userID, nodeID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, appErrors.Wrap(err, "failed to get node from repository")
 	}
 	if node == nil {
-		return nil, nil, fmt.Errorf("node not found")
+		return nil, nil, appErrors.NewNotFound("node not found")
 	}
 
 	edges, err := s.repo.FindEdgesByNode(ctx, userID, nodeID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, appErrors.Wrap(err, "failed to get edges from repository")
 	}
 
 	return node, edges, nil
@@ -140,10 +146,13 @@ func (s *service) GetNodeDetails(ctx context.Context, userID, nodeID string) (*d
 
 // GetGraphData retrieves all nodes and edges for a user.
 func (s *service) GetGraphData(ctx context.Context, userID string) (*domain.Graph, error) {
-	return s.repo.GetAllGraphData(ctx, userID)
+	graph, err := s.repo.GetAllGraphData(ctx, userID)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to get all graph data from repository")
+	}
+	return graph, nil
 }
 
-// extractKeywords is a pure business logic function.
 func extractKeywords(content string) []string {
 	content = strings.ToLower(content)
 	reg := regexp.MustCompile(`[^a-zA-Z0-9 ]+`)

@@ -89,6 +89,31 @@ cd b2
    cdk bootstrap
    ```
 
+---
+
+# 1. Build Backend
+echo "Building backend..."
+cd backend
+go mod tidy (it's like the npm install for go)
+./build.sh
+cd ..
+
+# 2. Build Frontend
+echo "Building frontend..."
+cd frontend
+-- you can run npm run clean but build already does it, as well as install --
+npm run build
+cd ..
+
+# 3. Build Authorizer & Deploy Infrastructure
+echo "Building authorizer and deploying infrastructure..."
+cd infra
+npm install
+(cd lambda/authorizer && npm run build)
+cdk deploy
+
+---
+
 ### 4. Deploy the Backend
 
 ```bash
