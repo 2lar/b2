@@ -124,6 +124,8 @@ async function loadMemories(): Promise<void> {
 
 // Render the list of memories to the DOM
 function displayMemories(nodes: MemoryNode[]): void {
+    const memoryList = document.getElementById('memory-list') as HTMLElement;
+
     if (nodes.length === 0) {
         memoryList.innerHTML = '<p class="empty-state">No memories yet. Create your first memory above!</p>';
         return;
@@ -144,96 +146,105 @@ function displayMemories(nodes: MemoryNode[]): void {
         </div>
     `).join('');
 
-    // Add event listeners for the new buttons
-    memoryList.querySelectorAll('.memory-item').forEach(item => {
-        const nodeId = (item as HTMLElement).dataset.nodeId;
+    // === START: EVENT LISTENER SETUP ===
+
+    // 1. Remove all old event listeners from the memoryList element to prevent memory leaks
+    const newMemoryList = memoryList.cloneNode(true);
+    memoryList.parentNode?.replaceChild(newMemoryList, memoryList);
+    
+    // 2. Get a fresh reference to the new element that is now in the DOM
+    const memoryListEl = document.getElementById('memory-list') as HTMLElement;
+
+    // 3. Add a SINGLE event listener to the parent container (Event Delegation)
+    memoryListEl.addEventListener('click', async (e) => {
+        const target = e.target as HTMLElement;
+
+        const deleteButton = target.closest('.delete-btn');
+        const editButton = target.closest('.edit-btn');
+        const saveButton = target.closest('.save-btn');
+        const cancelButton = target.closest('.cancel-btn');
+        const memoryItem = target.closest('.memory-item') as HTMLElement;
+
+        if (!memoryItem) return;
+
+        const nodeId = memoryItem.dataset.nodeId;
         if (!nodeId) return;
 
-        // Graph interaction for clicking the item
-        item.addEventListener('click', (e) => {
-            // Prevent event from bubbling up from buttons
-            if ((e.target as HTMLElement).tagName === 'BUTTON') return;
-            
-            if (ENABLE_GRAPH_VISUALIZATION && window.cy) {
-                const node = window.cy.getElementById(nodeId);
-                if (node?.length) { // Check if node exists
-                    node.trigger('tap');
-                }
-            }
-        });
-
-        // Delete button listener
-        item.querySelector('.delete-btn')?.addEventListener('click', async () => {
+        // --- Handle DELETE action ---
+        if (deleteButton) {
             if (confirm('Are you sure you want to delete this memory? This cannot be undone.')) {
                 try {
                     await api.deleteNode(nodeId);
                     showStatus('Memory deleted.', 'success');
-                    await loadMemories(); // Reload the list
-                    if (ENABLE_GRAPH_VISUALIZATION) {
-                        await refreshGraph(); // Refresh the graph
-                    }
+                    await loadMemories();
+                    if (ENABLE_GRAPH_VISUALIZATION) await refreshGraph();
                 } catch (error) {
                     console.error('Failed to delete memory:', error);
                     showStatus('Failed to delete memory.', 'error');
                 }
             }
-        });
+            return;
+        }
 
-        item.querySelector('.edit-btn')?.addEventListener('click', () => {
-            const contentDiv = item.querySelector('.memory-item-content') as HTMLElement;
-            const actionsDiv = item.querySelector('.memory-item-actions') as HTMLElement;
+        // --- Handle EDIT action ---
+        if (editButton) {
+            const contentDiv = memoryItem.querySelector('.memory-item-content') as HTMLElement;
+            const actionsDiv = memoryItem.querySelector('.memory-item-actions') as HTMLElement;
             const originalContent = contentDiv.textContent || '';
             
-            // Replace content with a textarea for editing
             contentDiv.innerHTML = `<textarea class="edit-textarea">${originalContent}</textarea>`;
             const textarea = contentDiv.querySelector('.edit-textarea') as HTMLTextAreaElement;
             textarea.style.width = '100%';
             textarea.style.minHeight = '80px';
             textarea.focus();
 
-            // Replace actions with Save/Cancel
             actionsDiv.innerHTML = `
                 <button class="primary-btn save-btn">Save</button>
                 <button class="secondary-btn cancel-btn">Cancel</button>
             `;
+            return;
+        }
 
-            // Save button listener
-            actionsDiv.querySelector('.save-btn')?.addEventListener('click', async () => {
-                const newContent = textarea.value.trim();
-                if (newContent && newContent !== originalContent) {
-                    try {
-                        await api.updateNode(nodeId, newContent);
-                        showStatus('Memory updated!', 'success');
-                        await loadMemories(); // Reload to show updated state
-                        if (ENABLE_GRAPH_VISUALIZATION) {
-                            await refreshGraph();
-                        }
-                    } catch (error) {
-                        console.error('Failed to update memory:', error);
-                        showStatus('Failed to update memory.', 'error');
-                        // On error, revert UI
-                        contentDiv.textContent = originalContent;
-                        actionsDiv.innerHTML = `
-                            <button class="secondary-btn edit-btn">Edit</button>
-                            <button class="danger-btn delete-btn">Delete</button>
-                        `;
-                    }
-                } else {
-                    // If no change, just cancel
-                    contentDiv.textContent = originalContent;
-                    actionsDiv.innerHTML = `
-                        <button class="secondary-btn edit-btn">Edit</button>
-                        <button class="danger-btn delete-btn">Delete</button>
-                    `;
+        // --- Handle SAVE action (after editing) ---
+        if (saveButton) {
+            const textarea = memoryItem.querySelector('.edit-textarea') as HTMLTextAreaElement;
+            const newContent = textarea.value.trim();
+
+            if (newContent) {
+                try {
+                    await api.updateNode(nodeId, newContent);
+                    showStatus('Memory updated!', 'success');
+                    await loadMemories();
+                    if (ENABLE_GRAPH_VISUALIZATION) await refreshGraph();
+                } catch (error) {
+                    console.error('Failed to update memory:', error);
+                    showStatus('Failed to update memory.', 'error');
+                    loadMemories();
                 }
-            });
-
-            // Cancel button listener
-            actionsDiv.querySelector('.cancel-btn')?.addEventListener('click', () => {
-                // Simply reload the memories to revert all editing states
+            } else {
                 loadMemories();
-            });
-        });
+            }
+            return;
+        }
+
+        // --- Handle CANCEL action (after editing) ---
+        if (cancelButton) {
+            loadMemories();
+            return;
+        }
+        
+        // --- Handle clicking the memory item itself for graph interaction ---
+        if (ENABLE_GRAPH_VISUALIZATION && window.cy) {
+            const node = window.cy.getElementById(nodeId);
+            if (node?.length) {
+                node.trigger('tap');
+                window.cy.animate({
+                    center: { eles: node },
+                    zoom: 1.2,
+                    duration: 400
+                });
+            }
+        }
     });
 }
 
