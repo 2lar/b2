@@ -236,19 +236,15 @@ header h1 {
 
 /* Node Details */
 .node-details {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    /* position: static; is the default, no need to declare */
     background: var(--surface);
     padding: 2rem;
     border-radius: 12px;
-    box-shadow: var(--shadow-lg);
-    max-width: 500px;
-    width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
-    z-index: 1000;
+    box-shadow: var(--shadow);
+    margin-top: 2rem; /* Add space between the graph and the details */
+    margin-bottom: 2rem; /* Add space between the details and all memories*/
+    max-width: 100%; /* Ensure it fits the container */
+    border: 1px solid var(--border); /* Optional: adds a nice border */
 }
 
 .node-details h3 {

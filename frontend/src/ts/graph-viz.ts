@@ -19,7 +19,7 @@ export function initGraph(): void {
         zoom: 0.8,
         minZoom: 0.1,
         maxZoom: 3.0,
-        wheelSensitivity: 0.5,
+        wheelSensitivity: 5,
         
         // Performance optimizations
         hideEdgesOnViewport: true,

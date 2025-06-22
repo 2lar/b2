@@ -30,6 +30,23 @@ async function init(): Promise<void> {
     // Event listeners
     signOutBtn.addEventListener('click', handleSignOut);
     memoryForm.addEventListener('submit', handleMemorySubmit);
+
+    memoryContent.addEventListener('keydown', (e: KeyboardEvent) => {
+        // Check if the Enter key is pressed without the Shift key
+        if (e.key === 'Enter' && !e.shiftKey) {
+            // Prevent the default action (which is to add a new line)
+            e.preventDefault();
+
+            // Programmatically find the submit button and click it
+            // This reuses your existing handleMemorySubmit logic
+            const submitButton = memoryForm.querySelector('button[type="submit"]') as HTMLButtonElement;
+            if (submitButton) {
+                submitButton.click();
+            }
+        }
+        // If Shift + Enter is pressed, we do nothing and let the browser
+        // perform its default action of adding a new line.
+    });
     
     if (ENABLE_GRAPH_VISUALIZATION) {
         refreshGraphBtn.addEventListener('click', () => refreshGraph());
