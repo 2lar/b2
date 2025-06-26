@@ -356,19 +356,19 @@ func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuer
 	}
 
 	nodes := graph.Nodes
-	
+
 	// Apply pagination if specified
 	if query.HasPagination() {
 		start := query.Offset
 		if start >= len(nodes) {
 			return []domain.Node{}, nil
 		}
-		
+
 		end := len(nodes)
 		if query.Limit > 0 && start+query.Limit < len(nodes) {
 			end = start + query.Limit
 		}
-		
+
 		nodes = nodes[start:end]
 	}
 
@@ -407,7 +407,7 @@ func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuer
 		if err != nil {
 			return nil, err
 		}
-		
+
 		for _, edge := range graph.Edges {
 			if edge.TargetID == query.TargetID {
 				edges = append(edges, edge)
@@ -430,12 +430,12 @@ func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuer
 		if start >= len(edges) {
 			return []domain.Edge{}, nil
 		}
-		
+
 		end := len(edges)
 		if query.Limit > 0 && start+query.Limit < len(edges) {
 			end = start + query.Limit
 		}
-		
+
 		edges = edges[start:end]
 	}
 
@@ -450,7 +450,7 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 
 	// For now, we'll implement a basic version that filters by node IDs if specified
 	// More complex depth-limiting would require additional graph traversal logic
-	
+
 	if query.HasNodeFilter() {
 		var nodes []domain.Node
 		var edges []domain.Edge
@@ -463,7 +463,7 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 			}
 			if node != nil {
 				nodes = append(nodes, *node)
-				
+
 				// Include edges if requested
 				if query.IncludeEdges {
 					nodeEdges, err := r.FindEdgesByNode(ctx, query.UserID, nodeID)

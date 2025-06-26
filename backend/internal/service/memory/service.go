@@ -21,11 +21,17 @@ var stopWords = map[string]bool{
 
 // Service defines the contract for memory-related business logic.
 type Service interface {
+	// Core operations
 	CreateNode(ctx context.Context, userID, content string) (*domain.Node, error)
 	UpdateNode(ctx context.Context, userID, nodeID, content string) (*domain.Node, error)
 	DeleteNode(ctx context.Context, userID, nodeID string) error
 	GetNodeDetails(ctx context.Context, userID, nodeID string) (*domain.Node, []domain.Edge, error)
 	GetGraphData(ctx context.Context, userID string) (*domain.Graph, error)
+
+	// Enhanced operations using new query capabilities
+	SearchNodes(ctx context.Context, userID string, keywords []string, limit int) ([]domain.Node, error)
+	GetNodeConnections(ctx context.Context, userID, nodeID string) ([]domain.Edge, error)
+	GetSubgraph(ctx context.Context, userID string, nodeIDs []string) (*domain.Graph, error)
 }
 
 type service struct {
@@ -53,7 +59,12 @@ func (s *service) CreateNode(ctx context.Context, userID, content string) (*doma
 		Version:   0,
 	}
 
-	relatedNodes, err := s.repo.FindNodesByKeywords(ctx, userID, keywords)
+	// Use enhanced query for finding related nodes
+	query := repository.NodeQuery{
+		UserID:   userID,
+		Keywords: keywords,
+	}
+	relatedNodes, err := s.repo.FindNodes(ctx, query)
 	if err != nil {
 		log.Printf("Non-critical error finding related nodes for new node: %v", err)
 	}
@@ -94,7 +105,12 @@ func (s *service) UpdateNode(ctx context.Context, userID, nodeID, content string
 		Version:   existingNode.Version + 1,
 	}
 
-	relatedNodes, err := s.repo.FindNodesByKeywords(ctx, userID, keywords)
+	// Use enhanced query for finding related nodes
+	query := repository.NodeQuery{
+		UserID:   userID,
+		Keywords: keywords,
+	}
+	relatedNodes, err := s.repo.FindNodes(ctx, query)
 	if err != nil {
 		log.Printf("Non-critical error finding related nodes for updated node %s: %v", nodeID, err)
 	}
@@ -136,7 +152,12 @@ func (s *service) GetNodeDetails(ctx context.Context, userID, nodeID string) (*d
 		return nil, nil, appErrors.NewNotFound("node not found")
 	}
 
-	edges, err := s.repo.FindEdgesByNode(ctx, userID, nodeID)
+	// Use enhanced query for finding edges
+	edgeQuery := repository.EdgeQuery{
+		UserID:   userID,
+		SourceID: nodeID,
+	}
+	edges, err := s.repo.FindEdges(ctx, edgeQuery)
 	if err != nil {
 		return nil, nil, appErrors.Wrap(err, "failed to get edges from repository")
 	}
@@ -146,12 +167,85 @@ func (s *service) GetNodeDetails(ctx context.Context, userID, nodeID string) (*d
 
 // GetGraphData retrieves all nodes and edges for a user.
 func (s *service) GetGraphData(ctx context.Context, userID string) (*domain.Graph, error) {
-	graph, err := s.repo.GetAllGraphData(ctx, userID)
+	// Use enhanced query for getting graph data
+	graphQuery := repository.GraphQuery{
+		UserID:       userID,
+		IncludeEdges: true,
+	}
+	graph, err := s.repo.GetGraphData(ctx, graphQuery)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get all graph data from repository")
 	}
 	return graph, nil
 }
+
+// IMEPLEMENTATION BELOW IS NOT USED ANYWHERE
+// START OF NON USED METHODS
+
+// Enhanced service methods using new query capabilities
+
+// SearchNodes allows searching for nodes with keywords and pagination support.
+func (s *service) SearchNodes(ctx context.Context, userID string, keywords []string, limit int) ([]domain.Node, error) {
+	if len(keywords) == 0 {
+		return nil, appErrors.NewValidation("at least one keyword is required")
+	}
+
+	query := repository.NodeQuery{
+		UserID:   userID,
+		Keywords: keywords,
+		Limit:    limit,
+	}
+
+	nodes, err := s.repo.FindNodes(ctx, query)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to search nodes with keywords")
+	}
+	return nodes, nil
+}
+
+// GetNodeConnections retrieves all connections (outgoing edges) for a specific node.
+func (s *service) GetNodeConnections(ctx context.Context, userID, nodeID string) ([]domain.Edge, error) {
+	// First verify the node exists
+	node, err := s.repo.FindNodeByID(ctx, userID, nodeID)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to verify node exists")
+	}
+	if node == nil {
+		return nil, appErrors.NewNotFound("node not found")
+	}
+
+	query := repository.EdgeQuery{
+		UserID:   userID,
+		SourceID: nodeID,
+	}
+
+	edges, err := s.repo.FindEdges(ctx, query)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to get node connections")
+	}
+	return edges, nil
+}
+
+// GetSubgraph retrieves a subgraph containing only the specified nodes and their connections.
+func (s *service) GetSubgraph(ctx context.Context, userID string, nodeIDs []string) (*domain.Graph, error) {
+	if len(nodeIDs) == 0 {
+		return nil, appErrors.NewValidation("at least one node ID is required")
+	}
+
+	query := repository.GraphQuery{
+		UserID:       userID,
+		NodeIDs:      nodeIDs,
+		IncludeEdges: true,
+	}
+
+	graph, err := s.repo.GetGraphData(ctx, query)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to get subgraph data")
+	}
+	return graph, nil
+}
+
+// END OF NON USED METHODS
 
 func extractKeywords(content string) []string {
 	content = strings.ToLower(content)
