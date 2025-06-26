@@ -1,5 +1,5 @@
-import { auth } from './auth';
-import { api } from './api';
+import { auth } from './authClient';
+import { api } from './apiClient';
 import { initGraph, refreshGraph } from './graph-viz';
 import { MemoryNode } from './types'; // Import our shared type
 import { Session } from '@supabase/supabase-js';

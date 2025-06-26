@@ -1,5 +1,5 @@
 import cytoscape, { Core, LayoutOptions } from 'cytoscape';
-import { api } from './api';
+import { api } from './apiClient';
 import { NodeDetails } from './types';
 
 let cy: Core | null = null;
@@ -12,6 +12,7 @@ const nodeConnectionsEl = document.getElementById('node-connections') as HTMLEle
 const closeDetailsBtn = document.getElementById('close-details') as HTMLButtonElement;
 
 export function initGraph(): void {
+    // graph instance initialization
     cy = cytoscape({
         container: document.getElementById('cy'),
         

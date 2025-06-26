@@ -1,4 +1,4 @@
-import { auth } from './auth';
+import { auth } from './authClient';
 import { MemoryNode, NodeDetails, GraphData } from './types';
 
 // const API_BASE_URL = 'YOUR_API_GATEWAY_URL'; // Replace with your actual API Gateway URL
