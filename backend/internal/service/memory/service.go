@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"brain2-backend/internal/domain"
-	"brain2-backend/internal/repository/ddb"
+	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors" // ALIAS for our custom errors
 
 	"github.com/google/uuid"
@@ -29,11 +29,11 @@ type Service interface {
 }
 
 type service struct {
-	repo ddb.Repository
+	repo repository.Repository
 }
 
 // NewService creates a new memory service.
-func NewService(repo ddb.Repository) Service {
+func NewService(repo repository.Repository) Service {
 	return &service{repo: repo}
 }
 

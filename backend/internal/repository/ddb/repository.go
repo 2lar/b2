@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"brain2-backend/internal/domain"
+	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors" // ALIAS for our custom errors
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -46,17 +47,6 @@ type ddbEdge struct {
 	TargetID string `dynamodbav:"TargetID"`
 }
 
-// Repository defines the contract for database operations.
-type Repository interface {
-	CreateNodeWithEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error
-	UpdateNodeAndEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error
-	DeleteNode(ctx context.Context, userID, nodeID string) error
-	FindNodeByID(ctx context.Context, userID, nodeID string) (*domain.Node, error)
-	FindEdgesByNode(ctx context.Context, userID, nodeID string) ([]domain.Edge, error)
-	FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]domain.Node, error)
-	GetAllGraphData(ctx context.Context, userID string) (*domain.Graph, error)
-}
-
 // ddbRepository is the concrete implementation for DynamoDB.
 type ddbRepository struct {
 	dbClient  *dynamodb.Client
@@ -65,7 +55,7 @@ type ddbRepository struct {
 }
 
 // NewRepository creates a new instance of the DynamoDB repository.
-func NewRepository(dbClient *dynamodb.Client, tableName, indexName string) Repository {
+func NewRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.Repository {
 	return &ddbRepository{
 		dbClient:  dbClient,
 		tableName: tableName,
