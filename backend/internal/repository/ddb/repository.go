@@ -49,17 +49,24 @@ type ddbEdge struct {
 
 // ddbRepository is the concrete implementation for DynamoDB.
 type ddbRepository struct {
-	dbClient  *dynamodb.Client
-	tableName string
-	indexName string
+	dbClient *dynamodb.Client
+	config   repository.Config
 }
 
 // NewRepository creates a new instance of the DynamoDB repository.
 func NewRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.Repository {
+	config := repository.NewConfig(tableName, indexName)
 	return &ddbRepository{
-		dbClient:  dbClient,
-		tableName: tableName,
-		indexName: indexName,
+		dbClient: dbClient,
+		config:   config,
+	}
+}
+
+// NewRepositoryWithConfig creates a new instance of the DynamoDB repository with custom config.
+func NewRepositoryWithConfig(dbClient *dynamodb.Client, config repository.Config) repository.Repository {
+	return &ddbRepository{
+		dbClient: dbClient,
+		config:   config.WithDefaults(),
 	}
 }
 
@@ -75,7 +82,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
 	}
-	transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.tableName), Item: nodeItem}})
+	transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: nodeItem}})
 
 	for _, keyword := range node.Keywords {
 		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{
@@ -84,7 +91,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal keyword item")
 		}
-		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.tableName), Item: keywordItem}})
+		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: keywordItem}})
 	}
 
 	for _, relatedNodeID := range relatedNodeIDs {
@@ -92,13 +99,13 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal outgoing edge item")
 		}
-		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.tableName), Item: edge1Item}})
+		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edge1Item}})
 
 		edge2Item, err := attributevalue.MarshalMap(ddbEdge{PK: fmt.Sprintf("USER#%s#NODE#%s", node.UserID, relatedNodeID), SK: fmt.Sprintf("EDGE#RELATES_TO#%s", node.ID), TargetID: node.ID})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal incoming edge item")
 		}
-		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.tableName), Item: edge2Item}})
+		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edge2Item}})
 	}
 
 	_, err = r.dbClient.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: transactItems})
@@ -118,7 +125,7 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 	transactItems := []types.TransactWriteItem{}
 
 	_, err := r.dbClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName:        aws.String(r.tableName),
+		TableName:        aws.String(r.config.TableName),
 		Key:              map[string]types.AttributeValue{"PK": &types.AttributeValueMemberS{Value: pk}, "SK": &types.AttributeValueMemberS{Value: "METADATA#v0"}},
 		UpdateExpression: aws.String("SET Content = :c, Keywords = :k, Timestamp = :t, Version = :v"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
@@ -137,7 +144,7 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal keyword item for update")
 		}
-		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.tableName), Item: keywordItem}})
+		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: keywordItem}})
 	}
 
 	for _, relatedNodeID := range relatedNodeIDs {
@@ -145,12 +152,12 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal outgoing edge item for update")
 		}
-		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.tableName), Item: edge1Item}})
+		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edge1Item}})
 		edge2Item, err := attributevalue.MarshalMap(ddbEdge{PK: fmt.Sprintf("USER#%s#NODE#%s", node.UserID, relatedNodeID), SK: fmt.Sprintf("EDGE#RELATES_TO#%s", node.ID), TargetID: node.ID})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal incoming edge item for update")
 		}
-		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.tableName), Item: edge2Item}})
+		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edge2Item}})
 	}
 
 	if len(transactItems) > 0 {
@@ -169,7 +176,7 @@ func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, 
 	for _, keyword := range keywords {
 		gsiPK := fmt.Sprintf("USER#%s#KEYWORD#%s", userID, keyword)
 		result, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
-			TableName: aws.String(r.tableName), IndexName: aws.String(r.indexName), KeyConditionExpression: aws.String("GSI1PK = :gsiPK"),
+			TableName: aws.String(r.config.TableName), IndexName: aws.String(r.config.IndexName), KeyConditionExpression: aws.String("GSI1PK = :gsiPK"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{":gsiPK": &types.AttributeValueMemberS{Value: gsiPK}},
 		})
 		if err != nil {
@@ -200,7 +207,7 @@ func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string)
 	pk := fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID)
 	sk := "METADATA#v0"
 	result, err := r.dbClient.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(r.tableName),
+		TableName: aws.String(r.config.TableName),
 		Key:       map[string]types.AttributeValue{"PK": &types.AttributeValueMemberS{Value: pk}, "SK": &types.AttributeValueMemberS{Value: sk}},
 	})
 	if err != nil {
@@ -224,7 +231,7 @@ func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string)
 func (r *ddbRepository) FindEdgesByNode(ctx context.Context, userID, nodeID string) ([]domain.Edge, error) {
 	pk := fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID)
 	result, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
-		TableName: aws.String(r.tableName), KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
+		TableName: aws.String(r.config.TableName), KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":pk": &types.AttributeValueMemberS{Value: pk}, ":skPrefix": &types.AttributeValueMemberS{Value: "EDGE#RELATES_TO#"},
 		},
@@ -250,7 +257,7 @@ func (r *ddbRepository) DeleteNode(ctx context.Context, userID, nodeID string) e
 // GetAllGraphData scans the entire table for a user's data to build the graph.
 func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*domain.Graph, error) {
 	scanInput := &dynamodb.ScanInput{
-		TableName: aws.String(r.tableName), FilterExpression: aws.String("begins_with(PK, :pkPrefix)"),
+		TableName: aws.String(r.config.TableName), FilterExpression: aws.String("begins_with(PK, :pkPrefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{":pkPrefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#", userID)}},
 	}
 	paginator := dynamodb.NewScanPaginator(r.dbClient, scanInput)
@@ -292,7 +299,7 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 func (r *ddbRepository) clearNodeConnections(ctx context.Context, userID, nodeID string) error {
 	pk := fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID)
 	queryResult, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
-		TableName: aws.String(r.tableName), KeyConditionExpression: aws.String("PK = :pk"),
+		TableName: aws.String(r.config.TableName), KeyConditionExpression: aws.String("PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: pk}},
 	})
 	if err != nil {
@@ -306,12 +313,173 @@ func (r *ddbRepository) clearNodeConnections(ctx context.Context, userID, nodeID
 		writeRequests = append(writeRequests, types.WriteRequest{DeleteRequest: &types.DeleteRequest{Key: map[string]types.AttributeValue{"PK": item["PK"], "SK": item["SK"]}}})
 	}
 	if len(writeRequests) > 0 {
-		_, err = r.dbClient.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{RequestItems: map[string][]types.WriteRequest{r.tableName: writeRequests}})
+		_, err = r.dbClient.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{RequestItems: map[string][]types.WriteRequest{r.config.TableName: writeRequests}})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to batch delete node items")
 		}
 	}
 	return nil
+}
+
+// Enhanced query methods using new query types
+
+// FindNodes implements the enhanced node querying with NodeQuery.
+func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]domain.Node, error) {
+	if err := query.Validate(); err != nil {
+		return nil, err
+	}
+
+	// If specific node IDs are requested, fetch them directly
+	if query.HasNodeIDs() {
+		var nodes []domain.Node
+		for _, nodeID := range query.NodeIDs {
+			node, err := r.FindNodeByID(ctx, query.UserID, nodeID)
+			if err != nil {
+				return nil, err
+			}
+			if node != nil {
+				nodes = append(nodes, *node)
+			}
+		}
+		return nodes, nil
+	}
+
+	// If keywords are specified, use keyword search
+	if query.HasKeywords() {
+		return r.FindNodesByKeywords(ctx, query.UserID, query.Keywords)
+	}
+
+	// Otherwise, get all nodes for the user (this could be expensive for large datasets)
+	graph, err := r.GetAllGraphData(ctx, query.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes := graph.Nodes
+	
+	// Apply pagination if specified
+	if query.HasPagination() {
+		start := query.Offset
+		if start >= len(nodes) {
+			return []domain.Node{}, nil
+		}
+		
+		end := len(nodes)
+		if query.Limit > 0 && start+query.Limit < len(nodes) {
+			end = start + query.Limit
+		}
+		
+		nodes = nodes[start:end]
+	}
+
+	return nodes, nil
+}
+
+// FindEdges implements the enhanced edge querying with EdgeQuery.
+func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]domain.Edge, error) {
+	if err := query.Validate(); err != nil {
+		return nil, err
+	}
+
+	var edges []domain.Edge
+
+	// If specific node IDs are requested, find edges for each
+	if query.HasNodeIDs() {
+		for _, nodeID := range query.NodeIDs {
+			nodeEdges, err := r.FindEdgesByNode(ctx, query.UserID, nodeID)
+			if err != nil {
+				return nil, err
+			}
+			edges = append(edges, nodeEdges...)
+		}
+		return edges, nil
+	}
+
+	// If source node is specified, find outgoing edges
+	if query.HasSourceFilter() {
+		return r.FindEdgesByNode(ctx, query.UserID, query.SourceID)
+	}
+
+	// If target node is specified, we need to scan for incoming edges
+	if query.HasTargetFilter() {
+		// This is less efficient but necessary for target-based queries
+		graph, err := r.GetAllGraphData(ctx, query.UserID)
+		if err != nil {
+			return nil, err
+		}
+		
+		for _, edge := range graph.Edges {
+			if edge.TargetID == query.TargetID {
+				edges = append(edges, edge)
+			}
+		}
+		return edges, nil
+	}
+
+	// Otherwise, get all edges for the user
+	graph, err := r.GetAllGraphData(ctx, query.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	edges = graph.Edges
+
+	// Apply pagination if specified
+	if query.HasPagination() {
+		start := query.Offset
+		if start >= len(edges) {
+			return []domain.Edge{}, nil
+		}
+		
+		end := len(edges)
+		if query.Limit > 0 && start+query.Limit < len(edges) {
+			end = start + query.Limit
+		}
+		
+		edges = edges[start:end]
+	}
+
+	return edges, nil
+}
+
+// GetGraphData implements the enhanced graph querying with GraphQuery.
+func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.GraphQuery) (*domain.Graph, error) {
+	if err := query.Validate(); err != nil {
+		return nil, err
+	}
+
+	// For now, we'll implement a basic version that filters by node IDs if specified
+	// More complex depth-limiting would require additional graph traversal logic
+	
+	if query.HasNodeFilter() {
+		var nodes []domain.Node
+		var edges []domain.Edge
+
+		// Get specific nodes
+		for _, nodeID := range query.NodeIDs {
+			node, err := r.FindNodeByID(ctx, query.UserID, nodeID)
+			if err != nil {
+				return nil, err
+			}
+			if node != nil {
+				nodes = append(nodes, *node)
+				
+				// Include edges if requested
+				if query.IncludeEdges {
+					nodeEdges, err := r.FindEdgesByNode(ctx, query.UserID, nodeID)
+					if err != nil {
+						return nil, err
+					}
+					edges = append(edges, nodeEdges...)
+				}
+			}
+		}
+
+		return &domain.Graph{Nodes: nodes, Edges: edges}, nil
+	}
+
+	// Otherwise, return all graph data
+	return r.GetAllGraphData(ctx, query.UserID)
 }
 
 func toAttributeValueList(ss []string) []types.AttributeValue {
