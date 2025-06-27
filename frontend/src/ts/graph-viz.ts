@@ -1,6 +1,9 @@
 import cytoscape, { Core, LayoutOptions } from 'cytoscape';
 import { api } from './apiClient';
-import { NodeDetails } from './types';
+import { components } from './types';
+
+// Type alias for easier usage
+type NodeDetails = components['schemas']['NodeDetails'];
 
 let cy: Core | null = null;
 let currentLayout: cytoscape.Layouts | null = null;
@@ -290,7 +293,7 @@ async function showNodeDetails(nodeId: string): Promise<void> {
     try {
         const nodeData: NodeDetails = await api.getNode(nodeId);
         
-        nodeContentEl.textContent = nodeData.content;
+        nodeContentEl.textContent = nodeData.content || '';
         
         if (nodeData.edges && nodeData.edges.length > 0) {
             const connectedNodesInfo = await Promise.all(

@@ -1,5 +1,5 @@
 import { auth } from './authClient';
-import { MemoryNode, NodeDetails, GraphData } from './types';
+import { components, operations } from './types';
 
 // const API_BASE_URL = 'YOUR_API_GATEWAY_URL'; // Replace with your actual API Gateway URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -10,10 +10,15 @@ if (!API_BASE_URL || API_BASE_URL === 'undefined') {
     // Don't throw here since we might want to show the auth page at least
 }
 
-// Interfaces for API responses
-interface ListNodesResponse {
-    nodes: MemoryNode[];
-}
+// Type aliases for easier usage
+type Node = components['schemas']['Node'];
+type NodeDetails = components['schemas']['NodeDetails'];
+type GraphDataResponse = components['schemas']['GraphDataResponse'];
+// type CreateNodeRequest = components['schemas']['CreateNodeRequest'];
+// type UpdateNodeRequest = components['schemas']['UpdateNodeRequest'];
+
+// Response types from operations
+type ListNodesResponse = operations['listNodes']['responses']['200']['content']['application/json'];
 
 // API client class
 class ApiClient {
@@ -51,8 +56,8 @@ class ApiClient {
     }
 
     // Node operations with strong typing
-    public createNode(content: string): Promise<MemoryNode> {
-        return this.request<MemoryNode>('POST', '/api/nodes', { content });
+    public createNode(content: string): Promise<Node> {
+        return this.request<Node>('POST', '/api/nodes', { content });
     }
 
     public listNodes(): Promise<ListNodesResponse> {
@@ -67,8 +72,8 @@ class ApiClient {
         return this.request<{ message: string }>('DELETE', `/api/nodes/${nodeId}`);
     }
 
-    public getGraphData(): Promise<GraphData> {
-        return this.request<GraphData>('GET', '/api/graph-data');
+    public getGraphData(): Promise<GraphDataResponse> {
+        return this.request<GraphDataResponse>('GET', '/api/graph-data');
     }
 
     public updateNode(nodeId: string, content: string): Promise<{ message: string }> {

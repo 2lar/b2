@@ -86,7 +86,7 @@ func createNodeHandler(ctx context.Context, userID, body string) (events.APIGate
 	}
 	return api.Success(201, api.NodeResponse{
 		NodeID: node.ID, Content: node.Content, Timestamp: node.CreatedAt.Format(time.RFC3339), Version: node.Version,
-	})
+	}), nil
 }
 
 func listNodesHandler(ctx context.Context, userID string) (events.APIGatewayProxyResponse, error) {
@@ -100,7 +100,7 @@ func listNodesHandler(ctx context.Context, userID string) (events.APIGatewayProx
 			NodeID: node.ID, Content: node.Content, Timestamp: node.CreatedAt.Format(time.RFC3339), Version: node.Version,
 		})
 	}
-	return api.Success(200, map[string][]api.NodeResponse{"nodes": nodesResponse})
+	return api.Success(200, map[string][]api.NodeResponse{"nodes": nodesResponse}), nil
 }
 
 func getNodeHandler(ctx context.Context, userID, nodeID string) (events.APIGatewayProxyResponse, error) {
@@ -114,7 +114,7 @@ func getNodeHandler(ctx context.Context, userID, nodeID string) (events.APIGatew
 	}
 	return api.Success(200, api.NodeDetailsResponse{
 		NodeID: node.ID, Content: node.Content, Timestamp: node.CreatedAt.Format(time.RFC3339), Version: node.Version, Edges: edgeIDs,
-	})
+	}), nil
 }
 
 func updateNodeHandler(ctx context.Context, userID, nodeID, body string) (events.APIGatewayProxyResponse, error) {
@@ -126,14 +126,14 @@ func updateNodeHandler(ctx context.Context, userID, nodeID, body string) (events
 	if err != nil {
 		return handleServiceError(err)
 	}
-	return api.Success(200, map[string]string{"message": "Node updated successfully"})
+	return api.Success(200, map[string]string{"message": "Node updated successfully"}), nil
 }
 
 func deleteNodeHandler(ctx context.Context, userID, nodeID string) (events.APIGatewayProxyResponse, error) {
 	if err := memoryService.DeleteNode(ctx, userID, nodeID); err != nil {
 		return handleServiceError(err)
 	}
-	return api.Success(204, nil) // 204 No Content is appropriate for a successful DELETE
+	return api.Success(204, nil), nil // 204 No Content is appropriate for a successful DELETE
 }
 
 func getGraphDataHandler(ctx context.Context, userID string) (events.APIGatewayProxyResponse, error) {
@@ -141,18 +141,51 @@ func getGraphDataHandler(ctx context.Context, userID string) (events.APIGatewayP
 	if err != nil {
 		return handleServiceError(err)
 	}
-	elements := []interface{}{}
+
+	var elements []api.GraphDataResponse_Elements_Item
+
+	// Add nodes
 	for _, node := range graph.Nodes {
 		label := node.Content
 		if len(label) > 50 {
 			label = label[:47] + "..."
 		}
-		elements = append(elements, api.GraphNode{Data: api.NodeData{ID: node.ID, Label: label}})
+
+		graphNode := api.GraphNode{
+			Data: &api.NodeData{
+				Id:    &node.ID,
+				Label: &label,
+			},
+		}
+
+		var element api.GraphDataResponse_Elements_Item
+		if err := element.FromGraphNode(graphNode); err != nil {
+			log.Printf("Error converting graph node: %v", err)
+			continue
+		}
+		elements = append(elements, element)
 	}
+
+	// Add edges
 	for _, edge := range graph.Edges {
-		elements = append(elements, api.GraphEdge{Data: api.EdgeData{ID: fmt.Sprintf("%s-%s", edge.SourceID, edge.TargetID), Source: edge.SourceID, Target: edge.TargetID}})
+		edgeID := fmt.Sprintf("%s-%s", edge.SourceID, edge.TargetID)
+		graphEdge := api.GraphEdge{
+			Data: &api.EdgeData{
+				Id:     &edgeID,
+				Source: &edge.SourceID,
+				Target: &edge.TargetID,
+			},
+		}
+
+		var element api.GraphDataResponse_Elements_Item
+		if err := element.FromGraphEdge(graphEdge); err != nil {
+			log.Printf("Error converting graph edge: %v", err)
+			continue
+		}
+		elements = append(elements, element)
 	}
-	return api.Success(200, api.GraphDataResponse{Elements: elements})
+
+	return api.Success(200, api.GraphDataResponse{Elements: &elements}), nil
 }
 
 // handleServiceError translates our custom errors into specific HTTP responses.

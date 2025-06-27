@@ -1,8 +1,11 @@
 import { auth } from './authClient';
 import { api } from './apiClient';
 import { initGraph, refreshGraph } from './graph-viz';
-import { MemoryNode } from './types'; // Import our shared type
+import { components } from './types'; // Import OpenAPI types
 import { Session } from '@supabase/supabase-js';
+
+// Type alias for easier usage
+type Node = components['schemas']['Node'];
 
 // Feature flags
 // Set to true to enable graph visualization (requires complete Cytoscape.js setup)
@@ -229,19 +232,19 @@ async function loadMemories(): Promise<void> {
 
 // Render the list of memories to the DOM.
 // This function is now ONLY responsible for rendering HTML. It does not handle events.
-function displayMemories(nodes: MemoryNode[]): void {
+function displayMemories(nodes: Node[]): void {
     if (nodes.length === 0) {
         memoryList.innerHTML = '<p class="empty-state">No memories yet. Create your first memory above!</p>';
         return;
     }
 
-    nodes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    nodes.sort((a, b) => new Date(b.timestamp || '').getTime() - new Date(a.timestamp || '').getTime());
 
     memoryList.innerHTML = nodes.map(node => `
-        <div class="memory-item" data-node-id="${node.nodeId}">
-            <div class="memory-item-content">${escapeHtml(node.content)}</div>
+        <div class="memory-item" data-node-id="${node.nodeId || ''}">
+            <div class="memory-item-content">${escapeHtml(node.content || '')}</div>
             <div class="memory-item-meta">
-                ${formatDate(node.timestamp)}
+                ${formatDate(node.timestamp || '')}
             </div>
             <div class="memory-item-actions">
                 <button class="secondary-btn edit-btn">Edit</button>

@@ -91,7 +91,8 @@ cd b2
 
 ---
 
-oapi-codegen -generate types -package api -o backend/pkg/api/generated.go openapi.yaml
+Backend : oapi-codegen -generate types -package api -o backend/pkg/api/api.go openapi.yaml
+frontend : npm run generate-api-types
 
 # 1. Build Backend
 echo "Building backend..."
