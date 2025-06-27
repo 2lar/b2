@@ -27,25 +27,24 @@ async function init(): Promise<void> {
         showApp(session.user.email);
     }
 
-    // Event listeners
+    // --- EVENT LISTENERS ---
+    // All event listeners are attached only once during initialization.
+
     signOutBtn.addEventListener('click', handleSignOut);
     memoryForm.addEventListener('submit', handleMemorySubmit);
 
-    memoryContent.addEventListener('keydown', (e: KeyboardEvent) => {
-        // Check if the Enter key is pressed without the Shift key
-        if (e.key === 'Enter' && !e.shiftKey) {
-            // Prevent the default action (which is to add a new line)
-            e.preventDefault();
+    // Add a single listener to the memory list container to handle all clicks within it.
+    // This is the core of the event delegation pattern.
+    memoryList.addEventListener('click', handleMemoryListClick);
 
-            // Programmatically find the submit button and click it
-            // This reuses your existing handleMemorySubmit logic
+    memoryContent.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
             const submitButton = memoryForm.querySelector('button[type="submit"]') as HTMLButtonElement;
             if (submitButton) {
                 submitButton.click();
             }
         }
-        // If Shift + Enter is pressed, we do nothing and let the browser
-        // perform its default action of adding a new line.
     });
     
     if (ENABLE_GRAPH_VISUALIZATION) {
@@ -56,21 +55,11 @@ async function init(): Promise<void> {
             }
         });
     } else {
-        // Hide graph controls when disabled
-        refreshGraphBtn.style.display = 'none';
-        fitGraphBtn.style.display = 'none';
-        
-        // Hide the graph container as well
-        const graphContainer = document.getElementById('cy');
-        if (graphContainer) {
-            graphContainer.style.display = 'none';
-        }
-        
-        // Hide node details panel
+        // Hide graph-related UI elements if the feature is disabled
+        const graphSection = document.querySelector('.graph-section') as HTMLElement | null;
+        if (graphSection) graphSection.style.display = 'none';
         const nodeDetailsPanel = document.getElementById('node-details');
-        if (nodeDetailsPanel) {
-            nodeDetailsPanel.style.display = 'none';
-        }
+        if (nodeDetailsPanel) nodeDetailsPanel.style.display = 'none';
     }
 }
 
@@ -97,6 +86,7 @@ async function handleSignOut(): Promise<void> {
     authSection.style.display = 'flex';
     appSection.style.display = 'none';
     userEmail.textContent = '';
+    memoryList.innerHTML = ''; // Clear memories on sign out
 }
 
 // Handle the memory form submission
@@ -128,6 +118,104 @@ async function handleMemorySubmit(e: Event): Promise<void> {
     }
 }
 
+/**
+ * Handles all click events inside the #memory-list container.
+ * This single function uses event delegation to manage actions for potentially hundreds
+ * of memory items without attaching a listener to each one.
+ * @param e The mouse click event.
+ */
+async function handleMemoryListClick(e: MouseEvent): Promise<void> {
+    const target = e.target as HTMLElement;
+
+    // Find the closest ancestor which is a button or the memory item itself
+    const deleteButton = target.closest('.delete-btn');
+    const editButton = target.closest('.edit-btn');
+    const saveButton = target.closest('.save-btn');
+    const cancelButton = target.closest('.cancel-btn');
+    const memoryItem = target.closest('.memory-item') as HTMLElement | null;
+
+    if (!memoryItem) return;
+
+    const nodeId = memoryItem.dataset.nodeId;
+    if (!nodeId) return;
+
+    // --- Handle DELETE action ---
+    if (deleteButton) {
+        if (confirm('Are you sure you want to delete this memory? This cannot be undone.')) {
+            try {
+                await api.deleteNode(nodeId);
+                showStatus('Memory deleted.', 'success');
+                await loadMemories();
+                if (ENABLE_GRAPH_VISUALIZATION) await refreshGraph();
+            } catch (error) {
+                console.error('Failed to delete memory:', error);
+                showStatus('Failed to delete memory.', 'error');
+            }
+        }
+        return;
+    }
+
+    // --- Handle EDIT action ---
+    if (editButton) {
+        const contentDiv = memoryItem.querySelector('.memory-item-content') as HTMLElement;
+        const actionsDiv = memoryItem.querySelector('.memory-item-actions') as HTMLElement;
+        const originalContent = contentDiv.textContent || '';
+        
+        contentDiv.innerHTML = `<textarea class="edit-textarea">${originalContent}</textarea>`;
+        const textarea = contentDiv.querySelector('.edit-textarea') as HTMLTextAreaElement;
+        textarea.style.width = '100%';
+        textarea.style.minHeight = '80px';
+        textarea.focus();
+
+        actionsDiv.innerHTML = `
+            <button class="primary-btn save-btn">Save</button>
+            <button class="secondary-btn cancel-btn">Cancel</button>
+        `;
+        return;
+    }
+
+    // --- Handle SAVE action (after editing) ---
+    if (saveButton) {
+        const textarea = memoryItem.querySelector('.edit-textarea') as HTMLTextAreaElement;
+        const newContent = textarea.value.trim();
+
+        if (newContent) {
+            try {
+                await api.updateNode(nodeId, newContent);
+                showStatus('Memory updated!', 'success');
+                // No need to call loadMemories() here, it will be handled by the cancel logic
+            } catch (error) {
+                console.error('Failed to update memory:', error);
+                showStatus('Failed to update memory.', 'error');
+            }
+        }
+        // Whether successful or not, restore the original view
+        await loadMemories();
+        if (ENABLE_GRAPH_VISUALIZATION) await refreshGraph();
+        return;
+    }
+
+    // --- Handle CANCEL action (after editing) ---
+    if (cancelButton) {
+        await loadMemories(); // Simply reload to discard changes
+        return;
+    }
+    
+    // --- Handle clicking the memory item itself for graph interaction ---
+    if (ENABLE_GRAPH_VISUALIZATION && window.cy) {
+        const node = window.cy.getElementById(nodeId);
+        if (node?.length) {
+            node.trigger('tap');
+            window.cy.animate({
+                center: { eles: node },
+                zoom: 1.2,
+                duration: 400
+            });
+        }
+    }
+}
+
+
 // Load and display all memories
 async function loadMemories(): Promise<void> {
     try {
@@ -139,10 +227,9 @@ async function loadMemories(): Promise<void> {
     }
 }
 
-// Render the list of memories to the DOM
+// Render the list of memories to the DOM.
+// This function is now ONLY responsible for rendering HTML. It does not handle events.
 function displayMemories(nodes: MemoryNode[]): void {
-    const memoryList = document.getElementById('memory-list') as HTMLElement;
-
     if (nodes.length === 0) {
         memoryList.innerHTML = '<p class="empty-state">No memories yet. Create your first memory above!</p>';
         return;
@@ -162,107 +249,6 @@ function displayMemories(nodes: MemoryNode[]): void {
             </div>
         </div>
     `).join('');
-
-    // === START: EVENT LISTENER SETUP ===
-
-    // 1. Remove all old event listeners from the memoryList element to prevent memory leaks
-    const newMemoryList = memoryList.cloneNode(true);
-    memoryList.parentNode?.replaceChild(newMemoryList, memoryList);
-    
-    // 2. Get a fresh reference to the new element that is now in the DOM
-    const memoryListEl = document.getElementById('memory-list') as HTMLElement;
-
-    // 3. Add a SINGLE event listener to the parent container (Event Delegation)
-    memoryListEl.addEventListener('click', async (e) => {
-        const target = e.target as HTMLElement;
-
-        const deleteButton = target.closest('.delete-btn');
-        const editButton = target.closest('.edit-btn');
-        const saveButton = target.closest('.save-btn');
-        const cancelButton = target.closest('.cancel-btn');
-        const memoryItem = target.closest('.memory-item') as HTMLElement;
-
-        if (!memoryItem) return;
-
-        const nodeId = memoryItem.dataset.nodeId;
-        if (!nodeId) return;
-
-        // --- Handle DELETE action ---
-        if (deleteButton) {
-            if (confirm('Are you sure you want to delete this memory? This cannot be undone.')) {
-                try {
-                    await api.deleteNode(nodeId);
-                    showStatus('Memory deleted.', 'success');
-                    await loadMemories();
-                    if (ENABLE_GRAPH_VISUALIZATION) await refreshGraph();
-                } catch (error) {
-                    console.error('Failed to delete memory:', error);
-                    showStatus('Failed to delete memory.', 'error');
-                }
-            }
-            return;
-        }
-
-        // --- Handle EDIT action ---
-        if (editButton) {
-            const contentDiv = memoryItem.querySelector('.memory-item-content') as HTMLElement;
-            const actionsDiv = memoryItem.querySelector('.memory-item-actions') as HTMLElement;
-            const originalContent = contentDiv.textContent || '';
-            
-            contentDiv.innerHTML = `<textarea class="edit-textarea">${originalContent}</textarea>`;
-            const textarea = contentDiv.querySelector('.edit-textarea') as HTMLTextAreaElement;
-            textarea.style.width = '100%';
-            textarea.style.minHeight = '80px';
-            textarea.focus();
-
-            actionsDiv.innerHTML = `
-                <button class="primary-btn save-btn">Save</button>
-                <button class="secondary-btn cancel-btn">Cancel</button>
-            `;
-            return;
-        }
-
-        // --- Handle SAVE action (after editing) ---
-        if (saveButton) {
-            const textarea = memoryItem.querySelector('.edit-textarea') as HTMLTextAreaElement;
-            const newContent = textarea.value.trim();
-
-            if (newContent) {
-                try {
-                    await api.updateNode(nodeId, newContent);
-                    showStatus('Memory updated!', 'success');
-                    await loadMemories();
-                    if (ENABLE_GRAPH_VISUALIZATION) await refreshGraph();
-                } catch (error) {
-                    console.error('Failed to update memory:', error);
-                    showStatus('Failed to update memory.', 'error');
-                    loadMemories();
-                }
-            } else {
-                loadMemories();
-            }
-            return;
-        }
-
-        // --- Handle CANCEL action (after editing) ---
-        if (cancelButton) {
-            loadMemories();
-            return;
-        }
-        
-        // --- Handle clicking the memory item itself for graph interaction ---
-        if (ENABLE_GRAPH_VISUALIZATION && window.cy) {
-            const node = window.cy.getElementById(nodeId);
-            if (node?.length) {
-                node.trigger('tap');
-                window.cy.animate({
-                    center: { eles: node },
-                    zoom: 1.2,
-                    duration: 400
-                });
-            }
-        }
-    });
 }
 
 // Show a temporary status message
@@ -304,4 +290,3 @@ window.showApp = showApp;
 
 // Initialize on load
 document.addEventListener('DOMContentLoaded', init);
-

@@ -277,7 +277,14 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 				var ddbItem ddbNode
 				if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
 					createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
-					nodes = append(nodes, domain.Node{ID: ddbItem.NodeID, UserID: ddbItem.UserID, Content: ddbItem.Content, CreatedAt: createdAt, Version: ddbItem.Version})
+					nodes = append(nodes, domain.Node{
+						ID:        ddbItem.NodeID,
+						UserID:    ddbItem.UserID,
+						Content:   ddbItem.Content,
+						Keywords:  ddbItem.Keywords,
+						CreatedAt: createdAt,
+						Version:   ddbItem.Version,
+					})
 				}
 			} else if strings.HasPrefix(skValue, "EDGE#RELATES_TO#") {
 				var ddbItem ddbEdge
