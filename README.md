@@ -91,6 +91,8 @@ cd b2
 
 ---
 
+oapi-codegen -generate types -package api -o backend/pkg/api/generated.go openapi.yaml
+
 # 1. Build Backend
 echo "Building backend..."
 cd backend

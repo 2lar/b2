@@ -1,0 +1,186 @@
+openapi: 3.0.3
+info:
+  title: Brain2 API
+  version: 1.0.0
+  description: API for the Brain2 knowledge graph application.
+paths:
+  /api/nodes:
+    get:
+      summary: List all memory nodes
+      operationId: listNodes
+      responses:
+        '200':
+          description: A list of nodes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+    post:
+      summary: Create a new memory node
+      operationId: createNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNodeRequest'
+      responses:
+        '201':
+          description: The created node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+
+  /api/nodes/{nodeId}:
+    get:
+      summary: Get details for a single node
+      operationId: getNode
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Detailed information about the node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeDetails'
+    put:
+      summary: Update a node
+      operationId: updateNode
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNodeRequest'
+      responses:
+        '200':
+          description: Success message
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+    delete:
+      summary: Delete a node
+      operationId: deleteNode
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Node deleted successfully
+
+  /api/graph-data:
+    get:
+      summary: Get data for graph visualization
+      operationId: getGraphData
+      responses:
+        '200':
+          description: A list of graph elements (nodes and edges)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphDataResponse'
+
+components:
+  schemas:
+    Node:
+      type: object
+      properties:
+        nodeId:
+          type: string
+        content:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: integer
+
+    NodeDetails:
+      allOf:
+        - $ref: '#/components/schemas/Node'
+        - type: object
+          properties:
+            edges:
+              type: array
+              items:
+                type: string
+
+    CreateNodeRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+
+    UpdateNodeRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          
+    GraphDataResponse:
+      type: object
+      properties:
+        elements:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/GraphNode'
+              - $ref: '#/components/schemas/GraphEdge'
+
+    GraphNode:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/NodeData'
+
+    NodeData:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+
+    GraphEdge:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/EdgeData'
+
+    EdgeData:
+      type: object
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        target:
+          type: string

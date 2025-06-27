@@ -1,25 +1,27 @@
 {
-  "devDependencies": {
-    "@types/cytoscape": "^3.21.9",
-    "typescript": "^5.8.3",
-    "vite": "^6.3.5"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.50.0",
-    "cytoscape": "^3.32.0"
-  },
   "name": "frontend",
   "version": "1.0.0",
+  "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "vite",
     "clean": "rm -rf node_modules dist",
-    "build": "npm run clean && npm install && vite build",
-    "preview": "vite preview"
+    "build": "npm run clean && npm install && npm run generate-api-types && vite build",
+    "preview": "vite preview",
+    "generate-api-types": "openapi-typescript ../openapi.yaml --output src/ts/generated-types.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "devDependencies": {
+    "@types/cytoscape": "^3.21.9",
+    "openapi-typescript": "^6.7.6",
+    "typescript": "^5.8.3",
+    "vite": "^5.2.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.50.0",
+    "cytoscape": "^3.32.0"
+  }
 }
