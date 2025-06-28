@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.14.9
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.34.3
 	github.com/google/uuid v1.6.0
+	github.com/oapi-codegen/runtime v1.1.1
 )
 
 require (
@@ -27,5 +28,4 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.30.3 // indirect
 	github.com/aws/smithy-go v1.20.3 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
-	github.com/oapi-codegen/runtime v1.1.1 // indirect
 )
