@@ -5,10 +5,10 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
-	"github.com/aws/aws-lambda-go/events"
 )
 
 // CreateNodeRequest defines model for CreateNodeRequest.
@@ -156,30 +156,16 @@ type NodeDetailsResponse struct {
 }
 
 // Helper functions for AWS Lambda API Gateway responses
-func Success(statusCode int, data interface{}) events.APIGatewayProxyResponse {
-	body, _ := json.Marshal(data)
-	return events.APIGatewayProxyResponse{
-		StatusCode: statusCode,
-		Headers: map[string]string{
-			"Content-Type":                 "application/json",
-			"Access-Control-Allow-Origin":  "*",
-			"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-			"Access-Control-Allow-Headers": "Content-Type, Authorization",
-		},
-		Body: string(body),
+func Success(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	if data != nil {
+		json.NewEncoder(w).Encode(data)
 	}
 }
 
-func Error(statusCode int, message string) events.APIGatewayProxyResponse {
-	body, _ := json.Marshal(map[string]string{"error": message})
-	return events.APIGatewayProxyResponse{
-		StatusCode: statusCode,
-		Headers: map[string]string{
-			"Content-Type":                 "application/json",
-			"Access-Control-Allow-Origin":  "*",
-			"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-			"Access-Control-Allow-Headers": "Content-Type, Authorization",
-		},
-		Body: string(body),
-	}
+func Error(w http.ResponseWriter, statusCode int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
