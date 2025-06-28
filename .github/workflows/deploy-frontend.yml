@@ -40,6 +40,7 @@ jobs:
         
         # Extract values
         API_URL=$(jq -r '.[] | select(.OutputKey=="ApiUrl") | .OutputValue' stack-outputs.json)
+        WEBSOCKET_URL=$(jq -r '.[] | select(.OutputKey=="WebSocketUrl") | .OutputValue' stack-outputs.json)
         BUCKET_NAME=$(aws cloudformation describe-stack-resource \
           --stack-name b2Stack \
           --logical-resource-id FrontendBucket \
@@ -52,6 +53,7 @@ jobs:
           --output text)
         
         echo "API_URL=$API_URL" >> $GITHUB_ENV
+        echo "WEBSOCKET_URL=$WEBSOCKET_URL" >> $GITHUB_ENV
         echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV
         echo "DISTRIBUTION_ID=$DISTRIBUTION_ID" >> $GITHUB_ENV
     
@@ -65,11 +67,13 @@ jobs:
         VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         VITE_API_BASE_URL: ${{ env.API_URL }}
+        VITE_WEBSOCKET_URL: ${{ env.WEBSOCKET_URL }}
       run: |
         # Create .env file for build
         echo "VITE_SUPABASE_URL=$VITE_SUPABASE_URL" > .env
         echo "VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY" >> .env
         echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" >> .env
+        echo "VITE_WEBSOCKET_URL=$VITE_WEBSOCKET_URL" >> .env
         
         # Build with Vite
         npm run build

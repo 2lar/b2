@@ -25,12 +25,9 @@ jobs:
       with:
         go-version: '1.21'
     
-    - name: Build Lambda function
+    - name: Build Go Lambdas
       working-directory: ./backend
-      run: |
-        GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bootstrap main.go node_operations.go graph_operations.go
-        mkdir -p build
-        zip build/function.zip bootstrap
+      run: ./build.sh
     
     - name: Set up Node.js
       uses: actions/setup-node@v4
@@ -41,7 +38,6 @@ jobs:
       working-directory: ./infra
       run: npm ci
     
-    # NEW: Build frontend before CDK deploy
     - name: Build Frontend
       working-directory: ./frontend
       run: |
@@ -53,27 +49,33 @@ jobs:
       with:
         role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
         aws-region: ${{ secrets.AWS_REGION }}
-        
-    - name: Extract outputs
+    
+    - name: Deploy with CDK
+      working-directory: ./infra
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      run: |
+        npm run build
+        npx cdk deploy --require-approval never --outputs-file outputs.json
+
+    - name: Extract and Display Outputs
+      id: extract_outputs
       working-directory: ./infra
       run: |
-        echo "API_URL=$(jq -r '.MemorybookStack.ApiUrl' outputs.json)" >> $GITHUB_ENV
-        echo "CLOUDFRONT_URL=$(jq -r '.MemorybookStack.CloudFrontUrl' outputs.json)" >> $GITHUB_ENV
-    
+        API_URL=$(jq -r '.b2Stack.ApiUrl' outputs.json)
+        CLOUDFRONT_URL=$(jq -r '.b2Stack.CloudFrontUrl' outputs.json)
+        WEBSOCKET_URL=$(jq -r '.b2Stack.WebSocketUrl' outputs.json)
+        echo "API_URL=$API_URL" >> $GITHUB_ENV
+        echo "CLOUDFRONT_URL=$CLOUDFRONT_URL" >> $GITHUB_ENV
+        echo "WEBSOCKET_URL=$WEBSOCKET_URL" >> $GITHUB_ENV
+        echo "::set-output name=api_url::$API_URL"
+        echo "::set-output name=cloudfront_url::$CLOUDFRONT_URL"
+        echo "::set-output name=websocket_url::$WEBSOCKET_URL"
+        
     - name: Display deployment info
       run: |
         echo "🚀 Backend deployed successfully!"
         echo "API URL: ${{ env.API_URL }}"
-        echo "CloudFront URL: https://${{ env.CLOUDFRONT_URL }}"
-
-    - name: Deploy with CDK
-      working-directory: ./infra
-      env:
-        VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
-        # Add any other required secrets for the CDK here
-        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }} 
-      run: |
-        npm run build
-        npx cdk deploy --require-approval never --outputs-file outputs.json
+        echo "CloudFront URL: ${{ env.CLOUDFRONT_URL }}"
+        echo "WebSocket URL: ${{ env.WEBSOCKET_URL }}"

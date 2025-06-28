@@ -1,10 +1,11 @@
+// backend/cmd/ws-connect/main.go
 package main
 
 import (
 	"context"
 	"fmt"
 	"log"
-	"net/url"
+	"os"
 
 	"brain2-backend/pkg/config"
 
@@ -14,6 +15,7 @@ import (
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/supabase-community/gotrue-go"
 )
 
 type connectionRecord struct {
@@ -24,41 +26,52 @@ type connectionRecord struct {
 }
 
 var dbClient *dynamodb.Client
+var supabaseClient gotrue.Client
 var cfg *config.Config
 
 func init() {
 	cfg = config.New()
 
+	supabaseURL := os.Getenv("SUPABASE_URL")
+	supabaseKey := os.Getenv("SUPABASE_SERVICE_ROLE_KEY")
+	if supabaseURL == "" || supabaseKey == "" {
+		log.Fatal("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
+	}
+
+	supabaseClient = gotrue.New(supabaseURL, supabaseKey)
+
 	awsCfg, err := awsConfig.LoadDefaultConfig(context.TODO(), awsConfig.WithRegion(cfg.Region))
 	if err != nil {
 		log.Fatalf("unable to load SDK config: %v", err)
 	}
-
 	dbClient = dynamodb.NewFromConfig(awsCfg)
 	log.Println("WebSocket Connect service initialized successfully")
 }
 
 func Handler(ctx context.Context, request events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
 	connectionID := request.RequestContext.ConnectionID
-	log.Printf("WebSocket connection attempt: %s", connectionID)
+	token := request.QueryStringParameters["token"]
 
-	// Extract user ID from query parameter (JWT token)
-	userID, err := extractUserIDFromToken(request.QueryStringParameters)
-	if err != nil {
-		log.Printf("Failed to extract user ID: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode: 401,
-			Body:       "Unauthorized",
-		}, nil
+	if token == "" {
+		log.Println("Connect request missing token")
+		return events.APIGatewayProxyResponse{StatusCode: 401, Body: "Unauthorized"}, nil
 	}
 
-	// Store connection in DynamoDB
+	authedClient := supabaseClient.WithToken(token)
+
+	// FINAL FIX: The GetUser method on the authedClient takes no arguments.
+	user, err := authedClient.GetUser()
+	if err != nil {
+		log.Printf("Token validation failed: %v", err)
+		return events.APIGatewayProxyResponse{StatusCode: 401, Body: "Unauthorized"}, nil
+	}
+
+	userID := user.ID.String()
+	log.Printf("Successfully authenticated user %s for connection %s", userID, connectionID)
+
 	if err := storeConnection(ctx, userID, connectionID); err != nil {
 		log.Printf("Failed to store connection: %v", err)
-		return events.APIGatewayProxyResponse{
-			StatusCode: 500,
-			Body:       "Internal Server Error",
-		}, nil
+		return events.APIGatewayProxyResponse{StatusCode: 500, Body: "Internal Server Error"}, nil
 	}
 
 	log.Printf("WebSocket connected: user %s, connection %s", userID, connectionID)
@@ -69,41 +82,9 @@ func Handler(ctx context.Context, request events.APIGatewayWebsocketProxyRequest
 	}, nil
 }
 
-func extractUserIDFromToken(queryParams map[string]string) (string, error) {
-	token := queryParams["token"]
-	if token == "" {
-		return "", fmt.Errorf("missing token parameter")
-	}
-
-	// Decode the token
-	decodedToken, err := url.QueryUnescape(token)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode token: %v", err)
-	}
-
-	// For now, we'll do a simple validation by checking if it's a valid JWT format
-	// In a real implementation, you'd use the Supabase library to validate the JWT
-	// and extract the user ID from the 'sub' claim
-	
-	// Simple validation: JWT should have 3 parts separated by dots
-	parts := len([]byte(decodedToken))
-	if parts < 10 { // Very basic length check
-		return "", fmt.Errorf("invalid token format")
-	}
-
-	// For demo purposes, we'll extract a mock user ID
-	// In reality, you'd decode the JWT payload and extract the 'sub' claim
-	// This is a placeholder - in production you'd use proper JWT validation
-	// Generate a simple user ID based on token hash for demo
-	mockUserID := fmt.Sprintf("user_%d", len(decodedToken)%1000)
-	
-	log.Printf("Extracted user ID: %s (mock implementation)", mockUserID)
-	return mockUserID, nil
-}
-
 func storeConnection(ctx context.Context, userID, connectionID string) error {
-	tableName := cfg.TableName + "-Connections" // We'll use a separate table for connections
-	
+	tableName := os.Getenv("TABLE_NAME")
+
 	record := connectionRecord{
 		PK:           fmt.Sprintf("USER#%s", userID),
 		SK:           fmt.Sprintf("CONN#%s", connectionID),
@@ -121,11 +102,7 @@ func storeConnection(ctx context.Context, userID, connectionID string) error {
 		Item:      item,
 	})
 
-	if err != nil {
-		return fmt.Errorf("failed to put connection item: %v", err)
-	}
-
-	return nil
+	return err
 }
 
 func main() {

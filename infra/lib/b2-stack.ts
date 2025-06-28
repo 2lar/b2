@@ -193,7 +193,11 @@ export class b2Stack extends Stack {
       memorySize: 128,
       timeout: Duration.seconds(30),
       environment: {
-        TABLE_NAME: memoryTable.tableName,
+        // OLD: TABLE_NAME: memoryTable.tableName,
+        // NEW: Add all required env vars for validation
+        TABLE_NAME: connectionsTable.tableName, // Use the dedicated connections table name
+        SUPABASE_URL: SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY: SUPABASE_SERVICE_ROLE_KEY,
       },
     });
 
@@ -228,6 +232,8 @@ export class b2Stack extends Stack {
           'ConnectIntegration',
           wsConnectLambda
         ),
+        // REMOVE the authorizer from here
+        // authorizer: new apigatewayv2Authorizers.WebSocketLambdaAuthorizer(...)
       },
       disconnectRouteOptions: {
         integration: new apigatewayv2Integrations.WebSocketLambdaIntegration(
