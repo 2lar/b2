@@ -49,7 +49,9 @@ func init() {
 }
 
 func Handler(ctx context.Context, event events.EventBridgeEvent) error {
-	log.Printf("Received EventBridge event: %s", event.DetailType)
+	log.Printf("🔥 ConnectNode Lambda triggered!")
+	log.Printf("Received EventBridge event: %s from source: %s", event.DetailType, event.Source)
+	log.Printf("Event detail: %s", string(event.Detail))
 
 	if event.DetailType != "NodeCreated" {
 		log.Printf("Ignoring event with detail type: %s", event.DetailType)
@@ -104,9 +106,12 @@ func Handler(ctx context.Context, event events.EventBridgeEvent) error {
 	log.Printf("Successfully created %d edges for node %s", len(relatedNodeIDs), nodeEvent.NodeID)
 
 	// Publish EdgesCreated event
+	log.Printf("Publishing EdgesCreated event for user %s, node %s", nodeEvent.UserID, nodeEvent.NodeID)
 	if err := publishEdgesCreatedEvent(ctx, nodeEvent.UserID, nodeEvent.NodeID); err != nil {
-		log.Printf("Failed to publish EdgesCreated event: %v", err)
+		log.Printf("FAILED to publish EdgesCreated event: %v", err)
 		return err
+	} else {
+		log.Printf("✅ Successfully published EdgesCreated event for node %s", nodeEvent.NodeID)
 	}
 
 	return nil

@@ -88,19 +88,21 @@ class WebSocketClient {
      * Handle incoming WebSocket messages
      */
     private handleMessage(event: MessageEvent): void {
+        console.log('Raw WebSocket message received:', event.data);
         try {
             const message: WebSocketMessage = JSON.parse(event.data);
-            console.log('Received WebSocket message:', message);
+            console.log('Parsed WebSocket message:', message);
 
             switch (message.action) {
                 case 'graphUpdated':
+                    console.log('Processing graphUpdated message for node:', message.nodeId);
                     this.handleGraphUpdated(message.nodeId);
                     break;
                 default:
                     console.log('Unknown WebSocket message action:', message.action);
             }
         } catch (error) {
-            console.error('Failed to parse WebSocket message:', error);
+            console.error('Failed to parse WebSocket message:', error, 'Raw data:', event.data);
         }
     }
 
@@ -109,12 +111,14 @@ class WebSocketClient {
      */
     private handleGraphUpdated(nodeId?: string): void {
         console.log('Graph updated for node:', nodeId);
+        console.log('Dispatching graph-update-event to window...');
         
         // Dispatch custom DOM event that the main app can listen to
         const updateEvent = new CustomEvent('graph-update-event', {
             detail: { nodeId }
         });
         window.dispatchEvent(updateEvent);
+        console.log('graph-update-event dispatched successfully');
     }
 
     /**

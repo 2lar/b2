@@ -7,6 +7,12 @@ import { webSocketClient } from './webSocketClient';
 // Type alias for easier usage
 type Node = components['schemas']['Node'];
 
+const VITE_WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL;
+
+if (!VITE_WEBSOCKET_URL || VITE_WEBSOCKET_URL === 'undefined') {
+    console.error('VITE_WEBSOCKET_URL is not defined. Please check your .env file.');
+}
+
 // Feature flags
 // Set to true to enable graph visualization (requires complete Cytoscape.js setup)
 const ENABLE_GRAPH_VISUALIZATION = true;
@@ -119,6 +125,7 @@ async function handleMemorySubmit(e: Event): Promise<void> {
 
     try {
         await api.createNode(content);
+        console.log('Node created successfully, waiting for WebSocket edge update...');
         showStatus('Memory saved successfully!', 'success');
         memoryContent.value = '';
         await loadMemories();
@@ -336,9 +343,9 @@ async function initializeWebSocket(): Promise<void> {
  * In production, this would be injected during build or loaded from API
  */
 function getWebSocketUrl(): string | null {
-    // This should be replaced with the actual WebSocket URL from your CDK outputs
-    // For development, you might want to use environment variables or a config file
-    return process.env.VITE_WEBSOCKET_URL || null;
+    // Use the WebSocket URL from environment variables
+    console.log('getWebSocketUrl() called, VITE_WEBSOCKET_URL:', VITE_WEBSOCKET_URL);
+    return VITE_WEBSOCKET_URL || null;
 }
 
 /**
@@ -346,11 +353,18 @@ function getWebSocketUrl(): string | null {
  */
 async function handleGraphUpdate(event: Event): Promise<void> {
     const customEvent = event as CustomEvent;
-    console.log('Handling graph update event:', customEvent.detail);
+    console.log('🔥 handleGraphUpdate called!');
+    console.log('Event details:', customEvent.detail);
+    console.log('ENABLE_GRAPH_VISUALIZATION:', ENABLE_GRAPH_VISUALIZATION);
+    console.log('graphViz available:', !!graphViz);
     
     if (ENABLE_GRAPH_VISUALIZATION && graphViz) {
+        console.log('Calling graphViz.refreshGraph()...');
         await graphViz.refreshGraph();
+        console.log('Graph refreshed successfully!');
         showStatus('Graph updated with new connections!', 'success');
+    } else {
+        console.warn('Graph visualization disabled or graphViz not available');
     }
 }
 

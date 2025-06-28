@@ -254,7 +254,7 @@ export class b2Stack extends Stack {
       timeout: Duration.seconds(30),
       environment: {
         TABLE_NAME: memoryTable.tableName,
-        WEBSOCKET_API_ENDPOINT: webSocketStage.url,
+        WEBSOCKET_API_ENDPOINT: `https://${webSocketApi.apiId}.execute-api.${this.region}.amazonaws.com/${webSocketStage.stageName}`,
       },
     });
 

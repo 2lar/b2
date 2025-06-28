@@ -134,9 +134,12 @@ func createNodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Publish NodeCreated event to EventBridge
+	log.Printf("Publishing NodeCreated event for user %s, node %s", userID, node.ID)
 	if err := publishNodeCreatedEvent(r.Context(), userID, node.ID); err != nil {
-		log.Printf("Failed to publish NodeCreated event: %v", err)
+		log.Printf("FAILED to publish NodeCreated event: %v", err)
 		// Don't fail the request if event publishing fails
+	} else {
+		log.Printf("Successfully published NodeCreated event for node %s", node.ID)
 	}
 
 	api.Success(w, http.StatusCreated, api.NodeResponse{

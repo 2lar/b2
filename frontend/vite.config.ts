@@ -17,6 +17,10 @@ export default defineConfig(({ mode }) => {
     'VITE_SUPABASE_ANON_KEY:',
     'found: ' + env.VITE_SUPABASE_ANON_KEY ? env.VITE_SUPABASE_ANON_KEY.slice(0, 5) : 'Not found'
   )
+    console.log(
+    'VITE_WEBSOCKET_URL:',
+    'found: ' + env.VITE_WEBSOCKET_URL ? env.VITE_WEBSOCKET_URL.slice(0, 5) : 'Not found'
+  )
   
   return {
     // This ensures that your `index.html` is the entry point

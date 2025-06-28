@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 
 	"brain2-backend/pkg/config"
 
@@ -41,15 +42,39 @@ func init() {
 
 	dbClient = dynamodb.NewFromConfig(awsCfg)
 	
-	// Note: The API Gateway Management API endpoint will be set dynamically 
-	// based on the WebSocket API endpoint URL environment variable
-	apiGWClient = apigatewaymanagementapi.NewFromConfig(awsCfg)
+	// Configure API Gateway Management API client with WebSocket endpoint
+	websocketEndpoint := os.Getenv("WEBSOCKET_API_ENDPOINT")
+	if websocketEndpoint == "" {
+		log.Fatalf("WEBSOCKET_API_ENDPOINT environment variable is required")
+	}
+	
+	// Create custom endpoint resolver for API Gateway Management API
+	customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+		if service == apigatewaymanagementapi.ServiceID {
+			return aws.Endpoint{
+				URL: websocketEndpoint,
+			}, nil
+		}
+		return aws.Endpoint{}, fmt.Errorf("unknown service %s", service)
+	})
+	
+	awsCfgWithEndpoint, err := awsConfig.LoadDefaultConfig(context.TODO(),
+		awsConfig.WithRegion(cfg.Region),
+		awsConfig.WithEndpointResolverWithOptions(customResolver),
+	)
+	if err != nil {
+		log.Fatalf("unable to load SDK config with custom endpoint: %v", err)
+	}
+	
+	apiGWClient = apigatewaymanagementapi.NewFromConfig(awsCfgWithEndpoint)
 	
 	log.Println("WebSocket SendMessage service initialized successfully")
 }
 
 func Handler(ctx context.Context, event events.EventBridgeEvent) error {
-	log.Printf("Received EventBridge event: %s", event.DetailType)
+	log.Printf("🚀 WebSocket SendMessage Lambda triggered!")
+	log.Printf("Received EventBridge event: %s from source: %s", event.DetailType, event.Source)
+	log.Printf("Event detail: %s", string(event.Detail))
 
 	if event.DetailType != "EdgesCreated" {
 		log.Printf("Ignoring event with detail type: %s", event.DetailType)
@@ -65,12 +90,14 @@ func Handler(ctx context.Context, event events.EventBridgeEvent) error {
 	log.Printf("Sending WebSocket message for user %s about node %s", edgeEvent.UserID, edgeEvent.NodeID)
 
 	// Find all active connections for the user
+	log.Printf("Looking for active WebSocket connections for user %s", edgeEvent.UserID)
 	connectionIDs, err := getActiveConnections(ctx, edgeEvent.UserID)
 	if err != nil {
 		log.Printf("Failed to get active connections: %v", err)
 		return err
 	}
 
+	log.Printf("Found %d active connections for user %s: %v", len(connectionIDs), edgeEvent.UserID, connectionIDs)
 	if len(connectionIDs) == 0 {
 		log.Printf("No active connections found for user %s", edgeEvent.UserID)
 		return nil
@@ -143,9 +170,7 @@ func getActiveConnections(ctx context.Context, userID string) ([]string, error) 
 }
 
 func sendMessage(ctx context.Context, connectionID string, messageData []byte) error {
-	// Note: In a real implementation, you'd need to configure the API Gateway endpoint
-	// The endpoint format is: https://{api-id}.execute-api.{region}.amazonaws.com/{stage}
-	// For now, we'll use a placeholder that should be set via environment variable
+	log.Printf("Sending WebSocket message to connection %s: %s", connectionID, string(messageData))
 	
 	_, err := apiGWClient.PostToConnection(ctx, &apigatewaymanagementapi.PostToConnectionInput{
 		ConnectionId: aws.String(connectionID),
@@ -153,9 +178,11 @@ func sendMessage(ctx context.Context, connectionID string, messageData []byte) e
 	})
 
 	if err != nil {
+		log.Printf("Failed to send message to connection %s: %v", connectionID, err)
 		return fmt.Errorf("failed to post to connection %s: %v", connectionID, err)
 	}
 
+	log.Printf("✅ Successfully sent message to connection %s", connectionID)
 	return nil
 }
 
