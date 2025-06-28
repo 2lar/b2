@@ -1,6 +1,6 @@
 import cytoscape, { Core, LayoutOptions } from 'cytoscape';
 import { api } from './apiClient';
-import { components } from './types';
+import { components } from './generated-types';
 
 // Type alias for easier usage
 type NodeDetails = components['schemas']['NodeDetails'];
@@ -173,7 +173,7 @@ export async function refreshGraph(): Promise<void> {
         const graphData = await api.getGraphData();
         
         // Pre-process the data to add initial positions
-        const processedElements = preprocessGraphData(graphData.elements);
+        const processedElements = preprocessGraphData(graphData.elements ?? []);
         
         // Stop any running layout
         if (currentLayout) {

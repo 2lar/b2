@@ -1,5 +1,5 @@
 import { auth } from './authClient';
-import { components, operations } from './types';
+import { components, operations } from './generated-types';
 
 // const API_BASE_URL = 'YOUR_API_GATEWAY_URL'; // Replace with your actual API Gateway URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;

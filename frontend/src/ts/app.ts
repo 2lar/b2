@@ -1,7 +1,7 @@
 import { auth } from './authClient';
 import { api } from './apiClient';
 import { initGraph, refreshGraph } from './graph-viz';
-import { components } from './types'; // Import OpenAPI types
+import { components } from './generated-types'; // Import OpenAPI types
 import { Session } from '@supabase/supabase-js';
 
 // Type alias for easier usage

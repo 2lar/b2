@@ -9,7 +9,7 @@
     "clean": "rm -rf node_modules dist",
     "build": "npm run clean && npm install && npm run generate-api-types && vite build",
     "preview": "vite preview",
-    "generate-api-types": "openapi-typescript ../openapi.yaml --output src/ts/types.ts"
+    "generate-api-types": "openapi-typescript ../openapi.yaml --output src/ts/generated-types.ts"
   },
   "keywords": [],
   "author": "",
