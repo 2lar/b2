@@ -16,8 +16,11 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	eventbridge_types "github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
 	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
 	"github.com/awslabs/aws-lambda-go-api-proxy/core"
 	"github.com/go-chi/chi/v5"
@@ -36,9 +39,11 @@ var userIDKey = contextKey{"userID"}
 
 var chiLambda *chiadapter.ChiLambdaV2
 var memoryService memory.Service
+var eventBridgeClient *eventbridge.Client
+var cfg *config.Config
 
 func init() {
-	cfg := config.New()
+	cfg = config.New()
 
 	awsCfg, err := awsConfig.LoadDefaultConfig(context.TODO(), awsConfig.WithRegion(cfg.Region))
 	if err != nil {
@@ -46,6 +51,7 @@ func init() {
 	}
 
 	dbClient := dynamodb.NewFromConfig(awsCfg)
+	eventBridgeClient = eventbridge.NewFromConfig(awsCfg)
 	repo := ddb.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName)
 	memoryService = memory.NewService(repo)
 
@@ -121,10 +127,16 @@ func createNodeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	node, err := memoryService.CreateNode(r.Context(), userID, req.Content)
+	node, err := memoryService.CreateNodeOnly(r.Context(), userID, req.Content)
 	if err != nil {
 		handleServiceError(w, err)
 		return
+	}
+
+	// Publish NodeCreated event to EventBridge
+	if err := publishNodeCreatedEvent(r.Context(), userID, node.ID); err != nil {
+		log.Printf("Failed to publish NodeCreated event: %v", err)
+		// Don't fail the request if event publishing fails
 	}
 
 	api.Success(w, http.StatusCreated, api.NodeResponse{
@@ -274,4 +286,21 @@ func handleServiceError(w http.ResponseWriter, err error) {
 	}
 	log.Printf("INTERNAL ERROR: %v", err)
 	api.Error(w, http.StatusInternalServerError, "An internal error occurred")
+}
+
+func publishNodeCreatedEvent(ctx context.Context, userID, nodeID string) error {
+	eventDetail := fmt.Sprintf(`{"userId": "%s", "nodeId": "%s"}`, userID, nodeID)
+	
+	_, err := eventBridgeClient.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: []eventbridge_types.PutEventsRequestEntry{
+			{
+				Source:       aws.String("brain2.nodes"),
+				DetailType:   aws.String("NodeCreated"),
+				Detail:       aws.String(eventDetail),
+				EventBusName: aws.String(cfg.EventBusName),
+			},
+		},
+	})
+	
+	return err
 }

@@ -9,7 +9,9 @@ import (
 // Any concrete implementation (like DynamoDB or an in-memory mock) must satisfy this interface.
 type Repository interface {
 	// Node operations
+	CreateNode(ctx context.Context, node domain.Node) error
 	CreateNodeWithEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error
+	CreateEdgesOnly(ctx context.Context, userID, nodeID string, relatedNodeIDs []string) error
 	UpdateNodeAndEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error
 	DeleteNode(ctx context.Context, userID, nodeID string) error
 	FindNodeByID(ctx context.Context, userID, nodeID string) (*domain.Node, error)

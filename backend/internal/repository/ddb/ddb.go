@@ -70,6 +70,67 @@ func NewRepositoryWithConfig(dbClient *dynamodb.Client, config repository.Config
 	}
 }
 
+// CreateNode saves just a node and its keywords without any connections.
+func (r *ddbRepository) CreateNode(ctx context.Context, node domain.Node) error {
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
+	transactItems := []types.TransactWriteItem{}
+
+	nodeItem, err := attributevalue.MarshalMap(ddbNode{
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
+		Keywords: node.Keywords, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to marshal node item")
+	}
+	transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: nodeItem}})
+
+	for _, keyword := range node.Keywords {
+		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{
+			PK: pk, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID, keyword), GSI1SK: fmt.Sprintf("NODE#%s", node.ID),
+		})
+		if err != nil {
+			return appErrors.Wrap(err, "failed to marshal keyword item")
+		}
+		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: keywordItem}})
+	}
+
+	_, err = r.dbClient.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: transactItems})
+	if err != nil {
+		return appErrors.Wrap(err, "transaction to create node failed")
+	}
+	return nil
+}
+
+// CreateEdgesOnly creates edges between a node and related nodes.
+func (r *ddbRepository) CreateEdgesOnly(ctx context.Context, userID, nodeID string, relatedNodeIDs []string) error {
+	if len(relatedNodeIDs) == 0 {
+		return nil // Nothing to create
+	}
+
+	pk := fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID)
+	transactItems := []types.TransactWriteItem{}
+
+	for _, relatedNodeID := range relatedNodeIDs {
+		edge1Item, err := attributevalue.MarshalMap(ddbEdge{PK: pk, SK: fmt.Sprintf("EDGE#RELATES_TO#%s", relatedNodeID), TargetID: relatedNodeID})
+		if err != nil {
+			return appErrors.Wrap(err, "failed to marshal outgoing edge item")
+		}
+		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edge1Item}})
+
+		edge2Item, err := attributevalue.MarshalMap(ddbEdge{PK: fmt.Sprintf("USER#%s#NODE#%s", userID, relatedNodeID), SK: fmt.Sprintf("EDGE#RELATES_TO#%s", nodeID), TargetID: nodeID})
+		if err != nil {
+			return appErrors.Wrap(err, "failed to marshal incoming edge item")
+		}
+		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edge2Item}})
+	}
+
+	_, err := r.dbClient.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: transactItems})
+	if err != nil {
+		return appErrors.Wrap(err, "transaction to create edges failed")
+	}
+	return nil
+}
+
 // CreateNodeWithEdges saves a node, its keywords, and its connections in a single transaction.
 func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error {
 	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)

@@ -23,6 +23,7 @@ var stopWords = map[string]bool{
 type Service interface {
 	// Core operations
 	CreateNode(ctx context.Context, userID, content string) (*domain.Node, error)
+	CreateNodeOnly(ctx context.Context, userID, content string) (*domain.Node, error)
 	UpdateNode(ctx context.Context, userID, nodeID, content string) (*domain.Node, error)
 	DeleteNode(ctx context.Context, userID, nodeID string) error
 	GetNodeDetails(ctx context.Context, userID, nodeID string) (*domain.Node, []domain.Edge, error)
@@ -75,6 +76,29 @@ func (s *service) CreateNode(ctx context.Context, userID, content string) (*doma
 	}
 
 	if err := s.repo.CreateNodeWithEdges(ctx, node, relatedNodeIDs); err != nil {
+		return nil, appErrors.Wrap(err, "failed to create node in repository")
+	}
+
+	return &node, nil
+}
+
+// CreateNodeOnly creates a new node without finding connections (for event-driven architecture).
+func (s *service) CreateNodeOnly(ctx context.Context, userID, content string) (*domain.Node, error) {
+	if content == "" {
+		return nil, appErrors.NewValidation("content cannot be empty")
+	}
+
+	keywords := extractKeywords(content)
+	node := domain.Node{
+		ID:        uuid.New().String(),
+		UserID:    userID,
+		Content:   content,
+		Keywords:  keywords,
+		CreatedAt: time.Now(),
+		Version:   0,
+	}
+
+	if err := s.repo.CreateNode(ctx, node); err != nil {
 		return nil, appErrors.Wrap(err, "failed to create node in repository")
 	}
 

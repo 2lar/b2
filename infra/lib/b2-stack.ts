@@ -7,6 +7,8 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigatewayv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as apigatewayv2Authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as eventsTargets from 'aws-cdk-lib/aws-events-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as cloudfrontOrigins from 'aws-cdk-lib/aws-cloudfront-origins';
@@ -65,6 +67,24 @@ export class b2Stack extends Stack {
       // ALL projection = copy all item attributes to GSI (uses more storage but faster queries)
       // Alternative: KEYS_ONLY (just keys) or INCLUDE (specific attributes)
       projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Connections Table for WebSocket Connection Management
+    const connectionsTable = new dynamodb.Table(this, 'ConnectionsTable', {
+      tableName: `${memoryTable.tableName}-Connections`,
+      partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING }, // USER#userID
+      sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING }, // CONN#connectionID
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    // ========================================================================
+    // EVENT-DRIVEN ARCHITECTURE - EventBridge for Decoupled Communication
+    // ========================================================================
+
+    // Custom EventBridge Bus for Real-Time Updates
+    const eventBus = new events.EventBus(this, 'b2EventBus', {
+      eventBusName: 'b2-event-bus',
     });
 
     // ========================================================================
@@ -129,6 +149,7 @@ export class b2Stack extends Stack {
         // Pass DynamoDB table info to the Lambda at runtime
         TABLE_NAME: memoryTable.tableName,
         KEYWORD_INDEX_NAME: 'KeywordIndex',
+        EVENT_BUS_NAME: eventBus.eventBusName,
       },
     });
 
@@ -136,6 +157,141 @@ export class b2Stack extends Stack {
     // This CDK helper automatically creates IAM policies for DynamoDB operations
     // Includes: GetItem, PutItem, UpdateItem, DeleteItem, Query, Scan on table and indexes
     memoryTable.grantReadWriteData(backendLambda);
+
+    // Grant Backend Lambda permissions to publish events to EventBridge
+    eventBus.grantPutEventsTo(backendLambda);
+
+    // ========================================================================
+    // EVENT-DRIVEN LAMBDA FUNCTIONS - Asynchronous Processing
+    // ========================================================================
+
+    // Connect Node Lambda - Processes connection creation asynchronously
+    const connectNodeLambda = new lambda.Function(this, 'ConnectNodeLambda', {
+      functionName: `${this.stackName}-connect-node`,
+      runtime: lambda.Runtime.PROVIDED_AL2,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/build/connect-node')),
+      handler: 'bootstrap',
+      memorySize: 256, // More memory for processing connections
+      timeout: Duration.seconds(60), // Longer timeout for connection processing
+      environment: {
+        TABLE_NAME: memoryTable.tableName,
+        KEYWORD_INDEX_NAME: 'KeywordIndex',
+        EVENT_BUS_NAME: eventBus.eventBusName,
+      },
+    });
+
+    // Grant Connect Node Lambda permissions
+    memoryTable.grantReadWriteData(connectNodeLambda);
+    eventBus.grantPutEventsTo(connectNodeLambda);
+
+    // WebSocket Connect Lambda - Handles new WebSocket connections
+    const wsConnectLambda = new lambda.Function(this, 'WsConnectLambda', {
+      functionName: `${this.stackName}-ws-connect`,
+      runtime: lambda.Runtime.PROVIDED_AL2,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/build/ws-connect')),
+      handler: 'bootstrap',
+      memorySize: 128,
+      timeout: Duration.seconds(30),
+      environment: {
+        TABLE_NAME: memoryTable.tableName,
+      },
+    });
+
+    // Grant WebSocket Connect Lambda permissions
+    connectionsTable.grantReadWriteData(wsConnectLambda);
+
+    // WebSocket Disconnect Lambda - Handles WebSocket disconnections
+    const wsDisconnectLambda = new lambda.Function(this, 'WsDisconnectLambda', {
+      functionName: `${this.stackName}-ws-disconnect`,
+      runtime: lambda.Runtime.PROVIDED_AL2,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/build/ws-disconnect')),
+      handler: 'bootstrap',
+      memorySize: 128,
+      timeout: Duration.seconds(30),
+      environment: {
+        TABLE_NAME: memoryTable.tableName,
+      },
+    });
+
+    // Grant WebSocket Disconnect Lambda permissions
+    connectionsTable.grantReadWriteData(wsDisconnectLambda);
+
+    // ========================================================================
+    // WEBSOCKET API - Real-Time Communication
+    // ========================================================================
+
+    // WebSocket API Gateway for real-time updates
+    const webSocketApi = new apigatewayv2.WebSocketApi(this, 'WebSocketApi', {
+      apiName: 'b2-websocket-api',
+      connectRouteOptions: {
+        integration: new apigatewayv2Integrations.WebSocketLambdaIntegration(
+          'ConnectIntegration',
+          wsConnectLambda
+        ),
+      },
+      disconnectRouteOptions: {
+        integration: new apigatewayv2Integrations.WebSocketLambdaIntegration(
+          'DisconnectIntegration',
+          wsDisconnectLambda
+        ),
+      },
+    });
+
+    // WebSocket API Stage
+    const webSocketStage = new apigatewayv2.WebSocketStage(this, 'WebSocketStage', {
+      webSocketApi,
+      stageName: 'prod',
+      autoDeploy: true,
+    });
+
+    // WebSocket Send Message Lambda - Sends messages to connected clients
+    const wsSendMessageLambda = new lambda.Function(this, 'WsSendMessageLambda', {
+      functionName: `${this.stackName}-ws-send-message`,
+      runtime: lambda.Runtime.PROVIDED_AL2,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/build/ws-send-message')),
+      handler: 'bootstrap',
+      memorySize: 128,
+      timeout: Duration.seconds(30),
+      environment: {
+        TABLE_NAME: memoryTable.tableName,
+        WEBSOCKET_API_ENDPOINT: webSocketStage.url,
+      },
+    });
+
+    // Grant WebSocket Send Message Lambda permissions
+    connectionsTable.grantReadData(wsSendMessageLambda);
+    
+    // Grant permission to post messages to WebSocket connections
+    wsSendMessageLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['execute-api:ManageConnections'],
+      resources: [
+        `arn:aws:execute-api:${this.region}:${this.account}:${webSocketApi.apiId}/*/*`
+      ],
+    }));
+
+    // ========================================================================
+    // EVENTBRIDGE RULES - Event Routing
+    // ========================================================================
+
+    // Rule to trigger Connect Node Lambda when NodeCreated event occurs
+    new events.Rule(this, 'NodeCreatedRule', {
+      eventBus,
+      eventPattern: {
+        source: ['brain2.nodes'],
+        detailType: ['NodeCreated'],
+      },
+      targets: [new eventsTargets.LambdaFunction(connectNodeLambda)],
+    });
+
+    // Rule to trigger WebSocket Send Message Lambda when EdgesCreated event occurs
+    new events.Rule(this, 'EdgesCreatedRule', {
+      eventBus,
+      eventPattern: {
+        source: ['brain2.edges'],
+        detailType: ['EdgesCreated'],
+      },
+      targets: [new eventsTargets.LambdaFunction(wsSendMessageLambda)],
+    });
 
     // ========================================================================
     // API GATEWAY LAYER - HTTP API for client-server communication
@@ -329,6 +485,8 @@ export class b2Stack extends Stack {
     
     // Export API Gateway URL - other stacks or CI/CD can reference this
     this.exportValue(httpApi.url!, { name: 'ApiUrl' });
+    // Export WebSocket API URL - frontend will connect to this for real-time updates
+    this.exportValue(webSocketStage.url, { name: 'WebSocketUrl' });
     // Export CloudFront domain - this is what users will visit in their browser
     this.exportValue(distribution.distributionDomainName, { name: 'CloudFrontUrl' });
   }

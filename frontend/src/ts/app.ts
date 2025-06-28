@@ -2,6 +2,7 @@ import { auth } from './authClient';
 import { api } from './apiClient';
 import { components } from './generated-types'; // Import OpenAPI types
 import { Session } from '@supabase/supabase-js';
+import { webSocketClient } from './webSocketClient';
 
 // Type alias for easier usage
 type Node = components['schemas']['Node'];
@@ -66,6 +67,15 @@ async function init(): Promise<void> {
         const nodeDetailsPanel = document.getElementById('node-details');
         if (nodeDetailsPanel) nodeDetailsPanel.style.display = 'none';
     }
+
+    // --- WEBSOCKET EVENT LISTENERS ---
+    // Listen for graph update events from WebSocket
+    window.addEventListener('graph-update-event', handleGraphUpdate as EventListener);
+    
+    // Listen for WebSocket connection events
+    window.addEventListener('websocket-connected', handleWebSocketConnected as EventListener);
+    window.addEventListener('websocket-disconnected', handleWebSocketDisconnected as EventListener);
+    window.addEventListener('websocket-reconnect-needed', handleWebSocketReconnectNeeded as EventListener);
 }
 
 // Show the main application interface
@@ -83,11 +93,14 @@ async function showApp(email: string): Promise<void> {
         await graphViz.refreshGraph();
     }
 
+    // Initialize WebSocket connection for real-time updates
+    await initializeWebSocket();
 }
 
 // Handle user sign-out
 async function handleSignOut(): Promise<void> {
     await auth.signOut();
+    webSocketClient.disconnect(); // Close WebSocket connection
     authSection.style.display = 'flex';
     appSection.style.display = 'none';
     userEmail.textContent = '';
@@ -110,9 +123,7 @@ async function handleMemorySubmit(e: Event): Promise<void> {
         memoryContent.value = '';
         await loadMemories();
         
-        if (ENABLE_GRAPH_VISUALIZATION && graphViz) {
-            await graphViz.refreshGraph();
-        }
+        // Note: Graph refresh will be triggered automatically via WebSocket when edges are created
     } catch (error) {
         showStatus('Failed to save memory. Please try again.', 'error');
         console.error('Error creating memory:', error);
@@ -288,6 +299,84 @@ function formatDate(dateString: string): string {
     if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
     
     return date.toLocaleDateString();
+}
+
+// ========================================================================
+// WEBSOCKET EVENT HANDLERS - Real-time Update Handling
+// ========================================================================
+
+/**
+ * Initialize WebSocket connection with current user's token
+ */
+async function initializeWebSocket(): Promise<void> {
+    try {
+        const session = await auth.getSession();
+        if (!session?.access_token) {
+            console.warn('No access token available for WebSocket connection');
+            return;
+        }
+
+        // Get WebSocket URL from environment or configuration
+        // In a real deployment, this would come from CDK outputs or environment variables
+        const wsUrl = getWebSocketUrl();
+        if (!wsUrl) {
+            console.warn('WebSocket URL not configured');
+            return;
+        }
+
+        await webSocketClient.init(wsUrl, session.access_token);
+        console.log('WebSocket initialized successfully');
+    } catch (error) {
+        console.error('Failed to initialize WebSocket:', error);
+    }
+}
+
+/**
+ * Get WebSocket URL from configuration
+ * In production, this would be injected during build or loaded from API
+ */
+function getWebSocketUrl(): string | null {
+    // This should be replaced with the actual WebSocket URL from your CDK outputs
+    // For development, you might want to use environment variables or a config file
+    return process.env.VITE_WEBSOCKET_URL || null;
+}
+
+/**
+ * Handle graph update events from WebSocket
+ */
+async function handleGraphUpdate(event: Event): Promise<void> {
+    const customEvent = event as CustomEvent;
+    console.log('Handling graph update event:', customEvent.detail);
+    
+    if (ENABLE_GRAPH_VISUALIZATION && graphViz) {
+        await graphViz.refreshGraph();
+        showStatus('Graph updated with new connections!', 'success');
+    }
+}
+
+/**
+ * Handle WebSocket connection established
+ */
+function handleWebSocketConnected(): void {
+    console.log('WebSocket connected');
+    // Optionally show a status indicator
+}
+
+/**
+ * Handle WebSocket disconnection
+ */
+function handleWebSocketDisconnected(): void {
+    console.log('WebSocket disconnected');
+    // Optionally show a status indicator
+}
+
+/**
+ * Handle WebSocket reconnection needed
+ */
+async function handleWebSocketReconnectNeeded(): Promise<void> {
+    console.log('WebSocket reconnection needed');
+    // Attempt to reconnect
+    await initializeWebSocket();
 }
 
 // Expose showApp to the global scope for auth.ts to call

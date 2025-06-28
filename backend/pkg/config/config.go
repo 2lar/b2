@@ -8,6 +8,7 @@ import (
 type Config struct {
 	TableName        string
 	KeywordIndexName string
+	EventBusName     string
 	Region           string
 	LogLevel         string
 }
@@ -17,6 +18,7 @@ func New() *Config {
 	return &Config{
 		TableName:        getEnv("TABLE_NAME", "brain2"),
 		KeywordIndexName: getEnv("KEYWORD_INDEX_NAME", "KeywordIndex"),
+		EventBusName:     getEnv("EVENT_BUS_NAME", "default"),
 		Region:           getEnv("AWS_REGION", "us-east-1"),
 		LogLevel:         getEnv("LOG_LEVEL", "INFO"),
 	}
