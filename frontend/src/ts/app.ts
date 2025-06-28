@@ -1,6 +1,5 @@
 import { auth } from './authClient';
 import { api } from './apiClient';
-import { initGraph, refreshGraph } from './graph-viz';
 import { components } from './generated-types'; // Import OpenAPI types
 import { Session } from '@supabase/supabase-js';
 
@@ -22,6 +21,9 @@ const memoryStatus = document.getElementById('memory-status') as HTMLElement;
 const memoryList = document.getElementById('memory-list') as HTMLElement;
 const refreshGraphBtn = document.getElementById('refresh-graph') as HTMLButtonElement;
 const fitGraphBtn = document.getElementById('fit-graph') as HTMLButtonElement;
+
+// A variable to hold the dynamically imported module
+let graphViz: { initGraph: () => void; refreshGraph: () => Promise<void> } | null = null;
 
 // App initialization
 async function init(): Promise<void> {
@@ -51,7 +53,7 @@ async function init(): Promise<void> {
     });
     
     if (ENABLE_GRAPH_VISUALIZATION) {
-        refreshGraphBtn.addEventListener('click', () => refreshGraph());
+        refreshGraphBtn.addEventListener('click', () => graphViz?.refreshGraph())
         fitGraphBtn.addEventListener('click', () => {
             if (window.cy) {
                 window.cy.fit();
@@ -72,15 +74,15 @@ async function showApp(email: string): Promise<void> {
     appSection.style.display = 'block';
     userEmail.textContent = email;
 
-    if (ENABLE_GRAPH_VISUALIZATION) {
-        initGraph();
-    }
-
     await loadMemories();
     
     if (ENABLE_GRAPH_VISUALIZATION) {
-        await refreshGraph();
+        // Dynamically import the graph-viz module here
+        graphViz = await import('./graph-viz');
+        graphViz.initGraph();
+        await graphViz.refreshGraph();
     }
+
 }
 
 // Handle user sign-out
@@ -108,8 +110,8 @@ async function handleMemorySubmit(e: Event): Promise<void> {
         memoryContent.value = '';
         await loadMemories();
         
-        if (ENABLE_GRAPH_VISUALIZATION) {
-            await refreshGraph();
+        if (ENABLE_GRAPH_VISUALIZATION && graphViz) {
+            await graphViz.refreshGraph();
         }
     } catch (error) {
         showStatus('Failed to save memory. Please try again.', 'error');
@@ -149,7 +151,7 @@ async function handleMemoryListClick(e: MouseEvent): Promise<void> {
                 await api.deleteNode(nodeId);
                 showStatus('Memory deleted.', 'success');
                 await loadMemories();
-                if (ENABLE_GRAPH_VISUALIZATION) await refreshGraph();
+                if (ENABLE_GRAPH_VISUALIZATION && graphViz) await graphViz.refreshGraph();
             } catch (error) {
                 console.error('Failed to delete memory:', error);
                 showStatus('Failed to delete memory.', 'error');
@@ -194,7 +196,7 @@ async function handleMemoryListClick(e: MouseEvent): Promise<void> {
         }
         // Whether successful or not, restore the original view
         await loadMemories();
-        if (ENABLE_GRAPH_VISUALIZATION) await refreshGraph();
+        if (ENABLE_GRAPH_VISUALIZATION && graphViz) await graphViz.refreshGraph();
         return;
     }
 
