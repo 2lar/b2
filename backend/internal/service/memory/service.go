@@ -10,7 +10,7 @@ import (
 
 	"brain2-backend/internal/domain"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors" // ALIAS for our custom errors
+	appErrors "brain2-backend/pkg/errors"
 
 	"github.com/google/uuid"
 )
@@ -21,10 +21,7 @@ var stopWords = map[string]bool{
 
 // Service defines the contract for memory-related business logic.
 type Service interface {
-	// Operations for the new event-driven flow
-	CreateNodeOnly(ctx context.Context, node domain.Node) error
-
-	// Original synchronous operations (still used by some handlers)
+	CreateNodeAndKeywords(ctx context.Context, node domain.Node) error
 	CreateNodeWithEdges(ctx context.Context, userID, content string) (*domain.Node, error)
 	UpdateNode(ctx context.Context, userID, nodeID, content string) (*domain.Node, error)
 	DeleteNode(ctx context.Context, userID, nodeID string) error
@@ -41,13 +38,13 @@ func NewService(repo repository.Repository) Service {
 	return &service{repo: repo}
 }
 
-// CreateNodeOnly saves the node metadata without creating edges.
-// This is used in the fast API response flow.
-func (s *service) CreateNodeOnly(ctx context.Context, node domain.Node) error {
+// CreateNodeAndKeywords saves the node metadata and keywords.
+func (s *service) CreateNodeAndKeywords(ctx context.Context, node domain.Node) error {
 	if node.Content == "" {
 		return appErrors.NewValidation("content cannot be empty")
 	}
-	return s.repo.CreateNode(ctx, node)
+	// This now calls the correct method defined in the repository interface.
+	return s.repo.CreateNodeAndKeywords(ctx, node)
 }
 
 // CreateNodeWithEdges orchestrates the creation of a new node and its connections (legacy synchronous flow).

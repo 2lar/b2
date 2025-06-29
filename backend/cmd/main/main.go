@@ -117,8 +117,8 @@ func createNodeHandler(w http.ResponseWriter, r *http.Request) {
 		Version:   0,
 	}
 
-	// Save the node to DynamoDB (metadata only)
-	if err := memoryService.CreateNodeOnly(r.Context(), node); err != nil {
+	// Save the node and its keywords to DynamoDB
+	if err := memoryService.CreateNodeAndKeywords(r.Context(), node); err != nil {
 		handleServiceError(w, err)
 		return
 	}
