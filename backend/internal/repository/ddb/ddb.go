@@ -70,6 +70,49 @@ func NewRepositoryWithConfig(dbClient *dynamodb.Client, config repository.Config
 	}
 }
 
+// CreateNodeAndKeywords transactionally saves a node and its keyword indexes.
+func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node domain.Node) error {
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
+	transactItems := []types.TransactWriteItem{}
+
+	// 1. Add the main node metadata to the transaction
+	nodeItem, err := attributevalue.MarshalMap(ddbNode{
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
+		Keywords: node.Keywords, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to marshal node item")
+	}
+	transactItems = append(transactItems, types.TransactWriteItem{
+		Put: &types.Put{TableName: aws.String(r.config.TableName), Item: nodeItem},
+	})
+
+	// 2. Add each keyword as a separate item for the GSI to index
+	for _, keyword := range node.Keywords {
+		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{
+			PK:     pk,
+			SK:     fmt.Sprintf("KEYWORD#%s", keyword),
+			GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID, keyword),
+			GSI1SK: fmt.Sprintf("NODE#%s", node.ID),
+		})
+		if err != nil {
+			return appErrors.Wrap(err, "failed to marshal keyword item")
+		}
+		transactItems = append(transactItems, types.TransactWriteItem{
+			Put: &types.Put{TableName: aws.String(r.config.TableName), Item: keywordItem},
+		})
+	}
+
+	// 3. Execute the transaction
+	_, err = r.dbClient.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: transactItems,
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "transaction to create node and keywords failed")
+	}
+	return nil
+}
+
 // CreateNodeWithEdges saves a node, its keywords, and its connections in a single transaction.
 func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error {
 	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
@@ -254,25 +297,46 @@ func (r *ddbRepository) DeleteNode(ctx context.Context, userID, nodeID string) e
 	return r.clearNodeConnections(ctx, userID, nodeID)
 }
 
-// GetAllGraphData scans the entire table for a user's data to build the graph.
+// GetAllGraphData retrieves all nodes and edges for a user.
 func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*domain.Graph, error) {
+	log.Printf("Starting GetAllGraphData for userID: %s", userID)
+
 	scanInput := &dynamodb.ScanInput{
-		TableName: aws.String(r.config.TableName), FilterExpression: aws.String("begins_with(PK, :pkPrefix)"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{":pkPrefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#", userID)}},
+		TableName:        aws.String(r.config.TableName),
+		FilterExpression: aws.String("begins_with(PK, :pkPrefix)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pkPrefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#", userID)},
+		},
 	}
-	paginator := dynamodb.NewScanPaginator(r.dbClient, scanInput)
+
 	var nodes []domain.Node
 	var edges []domain.Edge
 	edgeMap := make(map[string]bool)
+	totalItemsScanned := 0
 
+	paginator := dynamodb.NewScanPaginator(r.dbClient, scanInput)
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
+			log.Printf("ERROR: failed to scan graph data page for user %s: %v", userID, err)
 			return nil, appErrors.Wrap(err, "failed to scan graph data page")
 		}
+
+		totalItemsScanned += len(page.Items)
+
 		for _, item := range page.Items {
-			skValue := item["SK"].(*types.AttributeValueMemberS).Value
-			pkValue := item["PK"].(*types.AttributeValueMemberS).Value
+			skValueAttr, ok := item["SK"].(*types.AttributeValueMemberS)
+			if !ok {
+				continue
+			}
+			skValue := skValueAttr.Value
+
+			pkValueAttr, ok := item["PK"].(*types.AttributeValueMemberS)
+			if !ok {
+				continue
+			}
+			pkValue := pkValueAttr.Value
+
 			if strings.HasPrefix(skValue, "METADATA#") {
 				var ddbItem ddbNode
 				if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
@@ -289,17 +353,23 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 			} else if strings.HasPrefix(skValue, "EDGE#RELATES_TO#") {
 				var ddbItem ddbEdge
 				if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
-					sourceID := strings.Split(pkValue, "#")[3]
-					edgeKey := fmt.Sprintf("%s-%s", sourceID, ddbItem.TargetID)
-					reverseKey := fmt.Sprintf("%s-%s", ddbItem.TargetID, sourceID)
-					if !edgeMap[edgeKey] && !edgeMap[reverseKey] {
-						edgeMap[edgeKey] = true
-						edges = append(edges, domain.Edge{SourceID: sourceID, TargetID: ddbItem.TargetID})
+					pkParts := strings.Split(pkValue, "#")
+					if len(pkParts) == 4 {
+						sourceID := pkParts[3]
+						edgeKey := fmt.Sprintf("%s-%s", sourceID, ddbItem.TargetID)
+						reverseKey := fmt.Sprintf("%s-%s", ddbItem.TargetID, sourceID)
+						if !edgeMap[edgeKey] && !edgeMap[reverseKey] {
+							edgeMap[edgeKey] = true
+							edges = append(edges, domain.Edge{SourceID: sourceID, TargetID: ddbItem.TargetID})
+						}
 					}
 				}
 			}
 		}
 	}
+
+	log.Printf("Finished GetAllGraphData for userID: %s. Scanned %d total items, found %d nodes and %d unique edges.", userID, totalItemsScanned, len(nodes), len(edges))
+
 	return &domain.Graph{Nodes: nodes, Edges: edges}, nil
 }
 
@@ -487,6 +557,75 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 
 	// Otherwise, return all graph data
 	return r.GetAllGraphData(ctx, query.UserID)
+}
+
+// Add these new methods to ddb.go
+
+// CreateNode saves only the metadata for a node.
+func (r *ddbRepository) CreateNode(ctx context.Context, node domain.Node) error {
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
+	nodeItem, err := attributevalue.MarshalMap(ddbNode{
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
+		Keywords: node.Keywords, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to marshal node item")
+	}
+
+	_, err = r.dbClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(r.config.TableName),
+		Item:      nodeItem,
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "put item failed for node metadata")
+	}
+	return nil
+}
+
+// CreateEdges creates bidirectional edges between a source node and multiple related nodes.
+func (r *ddbRepository) CreateEdges(ctx context.Context, userID, sourceNodeID string, relatedNodeIDs []string) error {
+	if len(relatedNodeIDs) == 0 {
+		return nil
+	}
+
+	var writeRequests []types.WriteRequest
+	pkSource := fmt.Sprintf("USER#%s#NODE#%s", userID, sourceNodeID)
+
+	for _, relatedNodeID := range relatedNodeIDs {
+		// Edge: Source -> Related
+		edge1Item, err := attributevalue.MarshalMap(ddbEdge{
+			PK:       pkSource,
+			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", relatedNodeID),
+			TargetID: relatedNodeID,
+		})
+		if err != nil {
+			return appErrors.Wrap(err, "failed to marshal outgoing edge")
+		}
+		writeRequests = append(writeRequests, types.WriteRequest{PutRequest: &types.PutRequest{Item: edge1Item}})
+
+		// Edge: Related -> Source
+		pkRelated := fmt.Sprintf("USER#%s#NODE#%s", userID, relatedNodeID)
+		edge2Item, err := attributevalue.MarshalMap(ddbEdge{
+			PK:       pkRelated,
+			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", sourceNodeID),
+			TargetID: sourceNodeID,
+		})
+		if err != nil {
+			return appErrors.Wrap(err, "failed to marshal incoming edge")
+		}
+		writeRequests = append(writeRequests, types.WriteRequest{PutRequest: &types.PutRequest{Item: edge2Item}})
+	}
+
+	// Batch write the edges
+	_, err := r.dbClient.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+		RequestItems: map[string][]types.WriteRequest{
+			r.config.TableName: writeRequests,
+		},
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "batch write for edges failed")
+	}
+	return nil
 }
 
 func toAttributeValueList(ss []string) []types.AttributeValue {

@@ -1,6 +1,7 @@
 import { auth } from './authClient';
 import { api } from './apiClient';
 import { components } from './generated-types'; // Import OpenAPI types
+import { webSocketClient } from './webSocketClient';
 import { Session } from '@supabase/supabase-js';
 
 // Type alias for easier usage
@@ -42,6 +43,15 @@ async function init(): Promise<void> {
     // This is the core of the event delegation pattern.
     memoryList.addEventListener('click', handleMemoryListClick);
 
+    // Listen for the custom event dispatched by the WebSocket client
+    document.addEventListener('graph-update-event', async () => {
+        console.log("Graph update event received in app.ts");
+        if (graphViz) {
+            showStatus('New connections found! Refreshing graph...', 'success');
+            await graphViz.refreshGraph();
+        }
+    });
+
     memoryContent.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -74,6 +84,9 @@ async function showApp(email: string): Promise<void> {
     appSection.style.display = 'block';
     userEmail.textContent = email;
 
+    // Connect the WebSocket client
+    webSocketClient.connect();
+
     await loadMemories();
     
     if (ENABLE_GRAPH_VISUALIZATION) {
@@ -82,11 +95,13 @@ async function showApp(email: string): Promise<void> {
         graphViz.initGraph();
         await graphViz.refreshGraph();
     }
-
 }
 
 // Handle user sign-out
 async function handleSignOut(): Promise<void> {
+    // Disconnect the WebSocket client
+    webSocketClient.disconnect();
+
     await auth.signOut();
     authSection.style.display = 'flex';
     appSection.style.display = 'none';
@@ -97,7 +112,6 @@ async function handleSignOut(): Promise<void> {
 // Handle the memory form submission
 async function handleMemorySubmit(e: Event): Promise<void> {
     e.preventDefault();
-
     const content = memoryContent.value.trim();
     if (!content) return;
 
@@ -109,10 +123,11 @@ async function handleMemorySubmit(e: Event): Promise<void> {
         showStatus('Memory saved successfully!', 'success');
         memoryContent.value = '';
         await loadMemories();
-        
-        if (ENABLE_GRAPH_VISUALIZATION && graphViz) {
-            await graphViz.refreshGraph();
-        }
+
+        // The graph refresh is now handled by the WebSocket even
+        // if (ENABLE_GRAPH_VISUALIZATION && graphViz) {
+        //     await graphViz.refreshGraph();
+        // }
     } catch (error) {
         showStatus('Failed to save memory. Please try again.', 'error');
         console.error('Error creating memory:', error);

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"brain2-backend/internal/domain"
 	"brain2-backend/internal/repository/ddb"
 	"brain2-backend/internal/service/memory"
 	"brain2-backend/pkg/api"
@@ -16,56 +17,53 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
 	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
 	"github.com/awslabs/aws-lambda-go-api-proxy/core"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/google/uuid"
 )
 
 // Define a custom type for our context key.
-// The empty struct `struct{}` is used because it allocates no memory.
 type contextKey struct {
 	name string
 }
 
-// Create a package-level variable for our user ID key.
 var userIDKey = contextKey{"userID"}
-
 var chiLambda *chiadapter.ChiLambdaV2
 var memoryService memory.Service
+var eventbridgeClient *eventbridge.Client
 
 func init() {
 	cfg := config.New()
-
 	awsCfg, err := awsConfig.LoadDefaultConfig(context.TODO(), awsConfig.WithRegion(cfg.Region))
 	if err != nil {
 		log.Fatalf("unable to load SDK config: %v", err)
 	}
 
 	dbClient := dynamodb.NewFromConfig(awsCfg)
+	eventbridgeClient = eventbridge.NewFromConfig(awsCfg)
 	repo := ddb.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName)
 	memoryService = memory.NewService(repo)
 
 	r := chi.NewRouter()
-
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
-		MaxAge:           300,
 	}))
-
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Use(Authenticator)
-
 		r.Get("/nodes", listNodesHandler)
 		r.Post("/nodes", createNodeHandler)
 		r.Get("/nodes/{nodeId}", getNodeHandler)
@@ -75,7 +73,6 @@ func init() {
 	})
 
 	chiLambda = chiadapter.NewV2(r)
-
 	log.Println("Service initialized successfully")
 }
 
@@ -87,46 +84,73 @@ func Authenticator(next http.Handler) http.Handler {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-
 		userID, ok := proxyCtx.Authorizer.Lambda["sub"].(string)
 		if !ok || userID == "" {
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
 		}
-
-		// Use our custom key instead of a raw string.
 		ctx := context.WithValue(r.Context(), userIDKey, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
-	// Use the correct V2 proxy method
-	return chiLambda.ProxyWithContextV2(ctx, req)
-}
-
-func main() {
-	lambda.Start(Handler)
-}
-
-// --- Handler Functions ---
-
 func createNodeHandler(w http.ResponseWriter, r *http.Request) {
-	// Retrieve the user ID using our custom key.
 	userID := r.Context().Value(userIDKey).(string)
-
 	var req api.CreateNodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		api.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	node, err := memoryService.CreateNode(r.Context(), userID, req.Content)
+	if req.Content == "" {
+		api.Error(w, http.StatusBadRequest, "Content cannot be empty")
+		return
+	}
+
+	// Create the node object
+	node := domain.Node{
+		ID:        uuid.New().String(),
+		UserID:    userID,
+		Content:   req.Content,
+		Keywords:  memory.ExtractKeywords(req.Content),
+		CreatedAt: time.Now(),
+		Version:   0,
+	}
+
+	// Save the node and its keywords to DynamoDB
+	if err := memoryService.CreateNodeAndKeywords(r.Context(), node); err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	// Publish "NodeCreated" event to EventBridge
+	eventDetail, err := json.Marshal(map[string]interface{}{
+		"userId":   node.UserID,
+		"nodeId":   node.ID,
+		"content":  node.Content,
+		"keywords": node.Keywords,
+	})
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
 
+	_, err = eventbridgeClient.PutEvents(r.Context(), &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{
+				Source:       aws.String("brain2.api"),
+				DetailType:   aws.String("NodeCreated"),
+				Detail:       aws.String(string(eventDetail)),
+				EventBusName: aws.String("B2EventBus"),
+			},
+		},
+	})
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	// Return immediate success to the client
 	api.Success(w, http.StatusCreated, api.NodeResponse{
 		NodeID:    node.ID,
 		Content:   node.Content,
@@ -137,13 +161,11 @@ func createNodeHandler(w http.ResponseWriter, r *http.Request) {
 
 func listNodesHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(string)
-
 	graph, err := memoryService.GetGraphData(r.Context(), userID)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-
 	var nodesResponse []api.NodeResponse
 	for _, node := range graph.Nodes {
 		nodesResponse = append(nodesResponse, api.NodeResponse{
@@ -266,12 +288,16 @@ func getGraphDataHandler(w http.ResponseWriter, r *http.Request) {
 func handleServiceError(w http.ResponseWriter, err error) {
 	if appErrors.IsValidation(err) {
 		api.Error(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if appErrors.IsNotFound(err) {
+	} else if appErrors.IsNotFound(err) {
 		api.Error(w, http.StatusNotFound, err.Error())
-		return
+	} else {
+		log.Printf("INTERNAL ERROR: %v", err)
+		api.Error(w, http.StatusInternalServerError, "An internal error occurred")
 	}
-	log.Printf("INTERNAL ERROR: %v", err)
-	api.Error(w, http.StatusInternalServerError, "An internal error occurred")
+}
+
+func main() {
+	lambda.Start(func(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+		return chiLambda.ProxyWithContextV2(ctx, req)
+	})
 }
