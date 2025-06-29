@@ -489,6 +489,75 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 	return r.GetAllGraphData(ctx, query.UserID)
 }
 
+// Add these new methods to ddb.go
+
+// CreateNode saves only the metadata for a node.
+func (r *ddbRepository) CreateNode(ctx context.Context, node domain.Node) error {
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
+	nodeItem, err := attributevalue.MarshalMap(ddbNode{
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
+		Keywords: node.Keywords, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to marshal node item")
+	}
+
+	_, err = r.dbClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(r.config.TableName),
+		Item:      nodeItem,
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "put item failed for node metadata")
+	}
+	return nil
+}
+
+// CreateEdges creates bidirectional edges between a source node and multiple related nodes.
+func (r *ddbRepository) CreateEdges(ctx context.Context, userID, sourceNodeID string, relatedNodeIDs []string) error {
+	if len(relatedNodeIDs) == 0 {
+		return nil
+	}
+
+	var writeRequests []types.WriteRequest
+	pkSource := fmt.Sprintf("USER#%s#NODE#%s", userID, sourceNodeID)
+
+	for _, relatedNodeID := range relatedNodeIDs {
+		// Edge: Source -> Related
+		edge1Item, err := attributevalue.MarshalMap(ddbEdge{
+			PK:       pkSource,
+			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", relatedNodeID),
+			TargetID: relatedNodeID,
+		})
+		if err != nil {
+			return appErrors.Wrap(err, "failed to marshal outgoing edge")
+		}
+		writeRequests = append(writeRequests, types.WriteRequest{PutRequest: &types.PutRequest{Item: edge1Item}})
+
+		// Edge: Related -> Source
+		pkRelated := fmt.Sprintf("USER#%s#NODE#%s", userID, relatedNodeID)
+		edge2Item, err := attributevalue.MarshalMap(ddbEdge{
+			PK:       pkRelated,
+			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", sourceNodeID),
+			TargetID: sourceNodeID,
+		})
+		if err != nil {
+			return appErrors.Wrap(err, "failed to marshal incoming edge")
+		}
+		writeRequests = append(writeRequests, types.WriteRequest{PutRequest: &types.PutRequest{Item: edge2Item}})
+	}
+
+	// Batch write the edges
+	_, err := r.dbClient.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+		RequestItems: map[string][]types.WriteRequest{
+			r.config.TableName: writeRequests,
+		},
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "batch write for edges failed")
+	}
+	return nil
+}
+
 func toAttributeValueList(ss []string) []types.AttributeValue {
 	var avs []types.AttributeValue
 	for _, s := range ss {
