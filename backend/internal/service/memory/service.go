@@ -25,6 +25,7 @@ type Service interface {
 	CreateNodeWithEdges(ctx context.Context, userID, content string) (*domain.Node, error)
 	UpdateNode(ctx context.Context, userID, nodeID, content string) (*domain.Node, error)
 	DeleteNode(ctx context.Context, userID, nodeID string) error
+	BulkDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (int, []string, error)
 	GetNodeDetails(ctx context.Context, userID, nodeID string) (*domain.Node, []domain.Edge, error)
 	GetGraphData(ctx context.Context, userID string) (*domain.Graph, error)
 }
@@ -141,6 +142,46 @@ func (s *service) DeleteNode(ctx context.Context, userID, nodeID string) error {
 		return appErrors.NewNotFound("node not found")
 	}
 	return s.repo.DeleteNode(ctx, userID, nodeID)
+}
+
+// BulkDeleteNodes orchestrates deleting multiple nodes.
+func (s *service) BulkDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (int, []string, error) {
+	if len(nodeIDs) == 0 {
+		return 0, nil, appErrors.NewValidation("nodeIds cannot be empty")
+	}
+	
+	if len(nodeIDs) > 100 {
+		return 0, nil, appErrors.NewValidation("cannot delete more than 100 nodes at once")
+	}
+
+	var failedNodeIDs []string
+	deletedCount := 0
+
+	for _, nodeID := range nodeIDs {
+		// Check if node exists and belongs to user
+		existingNode, err := s.repo.FindNodeByID(ctx, userID, nodeID)
+		if err != nil {
+			log.Printf("Error checking node %s for user %s: %v", nodeID, userID, err)
+			failedNodeIDs = append(failedNodeIDs, nodeID)
+			continue
+		}
+		if existingNode == nil {
+			log.Printf("Node %s not found for user %s", nodeID, userID)
+			failedNodeIDs = append(failedNodeIDs, nodeID)
+			continue
+		}
+
+		// Delete the node
+		if err := s.repo.DeleteNode(ctx, userID, nodeID); err != nil {
+			log.Printf("Error deleting node %s for user %s: %v", nodeID, userID, err)
+			failedNodeIDs = append(failedNodeIDs, nodeID)
+			continue
+		}
+
+		deletedCount++
+	}
+
+	return deletedCount, failedNodeIDs, nil
 }
 
 // GetNodeDetails retrieves a node and its direct connections.

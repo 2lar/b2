@@ -92,6 +92,24 @@ paths:
         '204':
           description: Node deleted successfully
 
+  /api/nodes/bulk-delete:
+    post:
+      summary: Delete multiple memory nodes
+      operationId: bulkDeleteNodes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkDeleteRequest'
+      responses:
+        '200':
+          description: Bulk delete completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkDeleteResponse'
+
   /api/graph-data:
     get:
       summary: Get data for graph visualization
@@ -143,6 +161,30 @@ components:
         - content
       properties:
         content:
+          type: string
+
+    BulkDeleteRequest:
+      type: object
+      required:
+        - nodeIds
+      properties:
+        nodeIds:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 100
+
+    BulkDeleteResponse:
+      type: object
+      properties:
+        deletedCount:
+          type: integer
+        failedNodeIds:
+          type: array
+          items:
+            type: string
+        message:
           type: string
           
     GraphDataResponse:

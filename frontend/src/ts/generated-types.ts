@@ -19,6 +19,10 @@ export interface paths {
     /** Delete a node */
     delete: operations["deleteNode"];
   };
+  "/api/nodes/bulk-delete": {
+    /** Delete multiple memory nodes */
+    post: operations["bulkDeleteNodes"];
+  };
   "/api/graph-data": {
     /** Get data for graph visualization */
     get: operations["getGraphData"];
@@ -44,6 +48,14 @@ export interface components {
     };
     UpdateNodeRequest: {
       content: string;
+    };
+    BulkDeleteRequest: {
+      nodeIds: string[];
+    };
+    BulkDeleteResponse: {
+      deletedCount?: number;
+      failedNodeIds?: string[];
+      message?: string;
     };
     GraphDataResponse: {
       elements?: (components["schemas"]["GraphNode"] | components["schemas"]["GraphEdge"])[];
@@ -156,6 +168,22 @@ export interface operations {
       /** @description Node deleted successfully */
       204: {
         content: never;
+      };
+    };
+  };
+  /** Delete multiple memory nodes */
+  bulkDeleteNodes: {
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BulkDeleteRequest"];
+      };
+    };
+    responses: {
+      /** @description Bulk delete completed */
+      200: {
+        content: {
+          "application/json": components["schemas"]["BulkDeleteResponse"];
+        };
       };
     };
   };

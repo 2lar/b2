@@ -13,6 +13,8 @@ if (!API_BASE_URL || API_BASE_URL === 'undefined') {
 // Type aliases for easier usage
 type Node = components['schemas']['Node'];
 type NodeDetails = components['schemas']['NodeDetails'];
+type BulkDeleteRequest = components['schemas']['BulkDeleteRequest'];
+type BulkDeleteResponse = components['schemas']['BulkDeleteResponse'];
 type GraphDataResponse = components['schemas']['GraphDataResponse'];
 // type CreateNodeRequest = components['schemas']['CreateNodeRequest'];
 // type UpdateNodeRequest = components['schemas']['UpdateNodeRequest'];
@@ -78,6 +80,10 @@ class ApiClient {
 
     public updateNode(nodeId: string, content: string): Promise<{ message: string }> {
         return this.request<{ message: string }>('PUT', `/api/nodes/${nodeId}`, { content });
+    }
+
+    public bulkDeleteNodes(nodeIds: string[]): Promise<BulkDeleteResponse> {
+        return this.request<BulkDeleteResponse>('POST', '/api/nodes/bulk-delete', { nodeIds });
     }
 }
 

@@ -66,6 +66,7 @@ func init() {
 		r.Use(Authenticator)
 		r.Get("/nodes", listNodesHandler)
 		r.Post("/nodes", createNodeHandler)
+		r.Post("/nodes/bulk-delete", bulkDeleteNodesHandler)
 		r.Get("/nodes/{nodeId}", getNodeHandler)
 		r.Put("/nodes/{nodeId}", updateNodeHandler)
 		r.Delete("/nodes/{nodeId}", deleteNodeHandler)
@@ -231,6 +232,43 @@ func deleteNodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func bulkDeleteNodesHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	
+	var req api.BulkDeleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.NodeIds) == 0 {
+		api.Error(w, http.StatusBadRequest, "NodeIds cannot be empty")
+		return
+	}
+
+	if len(req.NodeIds) > 100 {
+		api.Error(w, http.StatusBadRequest, "Cannot delete more than 100 nodes at once")
+		return
+	}
+
+	deletedCount, failedNodeIds, err := memoryService.BulkDeleteNodes(r.Context(), userID, req.NodeIds)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	message := fmt.Sprintf("Successfully deleted %d nodes", deletedCount)
+	if len(failedNodeIds) > 0 {
+		message += fmt.Sprintf(", failed to delete %d nodes", len(failedNodeIds))
+	}
+
+	api.Success(w, http.StatusOK, api.BulkDeleteResponse{
+		DeletedCount:   &deletedCount,
+		FailedNodeIds:  &failedNodeIds,
+		Message:        &message,
+	})
 }
 
 func getGraphDataHandler(w http.ResponseWriter, r *http.Request) {

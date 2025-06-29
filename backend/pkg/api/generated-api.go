@@ -70,11 +70,26 @@ type UpdateNodeRequest struct {
 	Content string `json:"content"`
 }
 
+// BulkDeleteRequest defines model for BulkDeleteRequest.
+type BulkDeleteRequest struct {
+	NodeIds []string `json:"nodeIds"`
+}
+
+// BulkDeleteResponse defines model for BulkDeleteResponse.
+type BulkDeleteResponse struct {
+	DeletedCount   *int      `json:"deletedCount,omitempty"`
+	FailedNodeIds  *[]string `json:"failedNodeIds,omitempty"`
+	Message        *string   `json:"message,omitempty"`
+}
+
 // CreateNodeJSONRequestBody defines body for CreateNode for application/json ContentType.
 type CreateNodeJSONRequestBody = CreateNodeRequest
 
 // UpdateNodeJSONRequestBody defines body for UpdateNode for application/json ContentType.
 type UpdateNodeJSONRequestBody = UpdateNodeRequest
+
+// BulkDeleteNodesJSONRequestBody defines body for BulkDeleteNodes for application/json ContentType.
+type BulkDeleteNodesJSONRequestBody = BulkDeleteRequest
 
 // AsGraphNode returns the union data inside the GraphDataResponse_Elements_Item as a GraphNode
 func (t GraphDataResponse_Elements_Item) AsGraphNode() (GraphNode, error) {

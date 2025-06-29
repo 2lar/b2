@@ -147,6 +147,24 @@ async function handleMemorySubmit(e: Event): Promise<void> {
 async function handleMemoryListClick(e: MouseEvent): Promise<void> {
     const target = e.target as HTMLElement;
 
+    // Handle select all checkbox
+    if (target.matches('#select-all-checkbox')) {
+        handleSelectAllToggle();
+        return;
+    }
+
+    // Handle individual memory checkboxes
+    if (target.matches('.memory-checkbox')) {
+        handleMemoryCheckboxChange();
+        return;
+    }
+
+    // Handle bulk delete button
+    if (target.matches('#bulk-delete-btn')) {
+        await handleBulkDelete();
+        return;
+    }
+
     // Find the closest ancestor which is a button or the memory item itself
     const deleteButton = target.closest('.delete-btn');
     const editButton = target.closest('.edit-btn');
@@ -222,7 +240,10 @@ async function handleMemoryListClick(e: MouseEvent): Promise<void> {
     }
     
     // --- Handle clicking the memory item itself for graph interaction ---
-    if (ENABLE_GRAPH_VISUALIZATION && window.cy) {
+    // Only trigger if not clicking on a checkbox or its container
+    if (!target.closest('.checkbox-container') && 
+        !target.matches('.memory-checkbox') && 
+        ENABLE_GRAPH_VISUALIZATION && window.cy) {
         const node = window.cy.getElementById(nodeId);
         if (node?.length) {
             node.trigger('tap');
@@ -257,9 +278,32 @@ function displayMemories(nodes: Node[]): void {
 
     nodes.sort((a, b) => new Date(b.timestamp || '').getTime() - new Date(a.timestamp || '').getTime());
 
-    memoryList.innerHTML = nodes.map(node => `
+    // Create multi-select controls header
+    const multiSelectHeader = `
+        <div class="memory-list-controls">
+            <div class="select-controls">
+                <label class="checkbox-container">
+                    <input type="checkbox" id="select-all-checkbox" class="select-all-checkbox">
+                    <span class="checkmark"></span>
+                    Select All
+                </label>
+                <span class="selected-count" id="selected-count">0 selected</span>
+            </div>
+            <div class="bulk-actions">
+                <button class="danger-btn bulk-delete-btn" id="bulk-delete-btn" disabled>Delete Selected</button>
+            </div>
+        </div>
+    `;
+
+    const memoriesHtml = nodes.map(node => `
         <div class="memory-item" data-node-id="${node.nodeId || ''}">
-            <div class="memory-item-content">${escapeHtml(node.content || '')}</div>
+            <div class="memory-item-header">
+                <label class="checkbox-container">
+                    <input type="checkbox" class="memory-checkbox" data-node-id="${node.nodeId || ''}">
+                    <span class="checkmark"></span>
+                </label>
+                <div class="memory-item-content">${escapeHtml(node.content || '')}</div>
+            </div>
             <div class="memory-item-meta">
                 ${formatDate(node.timestamp || '')}
             </div>
@@ -269,6 +313,8 @@ function displayMemories(nodes: Node[]): void {
             </div>
         </div>
     `).join('');
+
+    memoryList.innerHTML = multiSelectHeader + memoriesHtml;
 }
 
 // Show a temporary status message
@@ -303,6 +349,103 @@ function formatDate(dateString: string): string {
     if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
     
     return date.toLocaleDateString();
+}
+
+// Multi-select functionality
+function handleSelectAllToggle(): void {
+    const selectAllCheckbox = document.getElementById('select-all-checkbox') as HTMLInputElement;
+    const memoryCheckboxes = document.querySelectorAll('.memory-checkbox') as NodeListOf<HTMLInputElement>;
+    
+    const isChecked = selectAllCheckbox.checked;
+    
+    memoryCheckboxes.forEach(checkbox => {
+        checkbox.checked = isChecked;
+    });
+    
+    updateSelectedCount();
+    updateBulkDeleteButton();
+}
+
+function handleMemoryCheckboxChange(): void {
+    updateSelectedCount();
+    updateBulkDeleteButton();
+    updateSelectAllCheckbox();
+}
+
+function updateSelectedCount(): void {
+    const selectedCheckboxes = document.querySelectorAll('.memory-checkbox:checked');
+    const selectedCountElement = document.getElementById('selected-count');
+    if (selectedCountElement) {
+        selectedCountElement.textContent = `${selectedCheckboxes.length} selected`;
+    }
+}
+
+function updateBulkDeleteButton(): void {
+    const selectedCheckboxes = document.querySelectorAll('.memory-checkbox:checked');
+    const bulkDeleteButton = document.getElementById('bulk-delete-btn') as HTMLButtonElement;
+    if (bulkDeleteButton) {
+        bulkDeleteButton.disabled = selectedCheckboxes.length === 0;
+    }
+}
+
+function updateSelectAllCheckbox(): void {
+    const memoryCheckboxes = document.querySelectorAll('.memory-checkbox') as NodeListOf<HTMLInputElement>;
+    const selectedCheckboxes = document.querySelectorAll('.memory-checkbox:checked');
+    const selectAllCheckbox = document.getElementById('select-all-checkbox') as HTMLInputElement;
+    
+    if (selectAllCheckbox) {
+        if (selectedCheckboxes.length === 0) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        } else if (selectedCheckboxes.length === memoryCheckboxes.length) {
+            selectAllCheckbox.checked = true;
+            selectAllCheckbox.indeterminate = false;
+        } else {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = true;
+        }
+    }
+}
+
+async function handleBulkDelete(): Promise<void> {
+    const selectedCheckboxes = document.querySelectorAll('.memory-checkbox:checked') as NodeListOf<HTMLInputElement>;
+    const selectedNodeIds = Array.from(selectedCheckboxes).map(checkbox => checkbox.dataset.nodeId).filter(id => id) as string[];
+    
+    if (selectedNodeIds.length === 0) {
+        return;
+    }
+    
+    const message = selectedNodeIds.length === 1 
+        ? 'Are you sure you want to delete this memory? This cannot be undone.'
+        : `Are you sure you want to delete ${selectedNodeIds.length} memories? This cannot be undone.`;
+    
+    if (!confirm(message)) {
+        return;
+    }
+    
+    try {
+        const response = await api.bulkDeleteNodes(selectedNodeIds);
+        
+        if (response.deletedCount && response.deletedCount > 0) {
+            const successMessage = response.deletedCount === 1 
+                ? 'Memory deleted successfully!'
+                : `${response.deletedCount} memories deleted successfully!`;
+            showStatus(successMessage, 'success');
+        }
+        
+        if (response.failedNodeIds && response.failedNodeIds.length > 0) {
+            const failureMessage = response.failedNodeIds.length === 1
+                ? 'Failed to delete 1 memory.'
+                : `Failed to delete ${response.failedNodeIds.length} memories.`;
+            showStatus(failureMessage, 'error');
+        }
+        
+        await loadMemories();
+        if (ENABLE_GRAPH_VISUALIZATION && graphViz) await graphViz.refreshGraph();
+    } catch (error) {
+        console.error('Failed to bulk delete memories:', error);
+        showStatus('Failed to delete selected memories.', 'error');
+    }
 }
 
 // Expose showApp to the global scope for auth.ts to call
