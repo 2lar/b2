@@ -95,6 +95,27 @@ func Authenticator(next http.Handler) http.Handler {
 	})
 }
 
+func checkOwnership(ctx context.Context, nodeID string) (*domain.Node, error) {
+	userID := ctx.Value(userIDKey).(string)
+	node, _, err := memoryService.GetNodeDetails(ctx, userID, nodeID)
+	if err != nil {
+		// If the underlying error is a "not found" error, we return that.
+		if appErrors.IsNotFound(err) {
+			return nil, err
+		}
+		// Otherwise, it's an internal server error.
+		return nil, appErrors.NewInternal("failed to verify node ownership", err)
+	}
+
+	// This check is redundant if GetNodeDetails is implemented correctly,
+	// but it provides an explicit layer of defense-in-depth.
+	if node.UserID != userID {
+		return nil, appErrors.NewNotFound("node not found") // Obscure the reason for security
+	}
+
+	return node, nil
+}
+
 func createNodeHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(string)
 	var req api.CreateNodeRequest
@@ -207,13 +228,26 @@ func updateNodeHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(string)
 	nodeID := chi.URLParam(r, "nodeId")
 
+	// **SECURITY: Verify ownership before proceeding.**
+	_, err := checkOwnership(r.Context(), nodeID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
 	var req api.UpdateNodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		api.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	_, err := memoryService.UpdateNode(r.Context(), userID, nodeID, req.Content)
+	// Add server-side validation
+	if len(req.Content) == 0 || len(req.Content) > 5000 {
+		api.Error(w, http.StatusBadRequest, "Content must be between 1 and 5000 characters.")
+		return
+	}
+
+	_, err = memoryService.UpdateNode(r.Context(), userID, nodeID, req.Content)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -226,6 +260,12 @@ func deleteNodeHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(string)
 	nodeID := chi.URLParam(r, "nodeId")
 
+	_, err := checkOwnership(r.Context(), nodeID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
 	if err := memoryService.DeleteNode(r.Context(), userID, nodeID); err != nil {
 		handleServiceError(w, err)
 		return
@@ -236,7 +276,7 @@ func deleteNodeHandler(w http.ResponseWriter, r *http.Request) {
 
 func bulkDeleteNodesHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(string)
-	
+
 	var req api.BulkDeleteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		api.Error(w, http.StatusBadRequest, "Invalid request body")
@@ -265,9 +305,9 @@ func bulkDeleteNodesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.Success(w, http.StatusOK, api.BulkDeleteResponse{
-		DeletedCount:   &deletedCount,
-		FailedNodeIds:  &failedNodeIds,
-		Message:        &message,
+		DeletedCount:  &deletedCount,
+		FailedNodeIds: &failedNodeIds,
+		Message:       &message,
 	})
 }
 

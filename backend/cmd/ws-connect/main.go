@@ -51,7 +51,7 @@ func handler(ctx context.Context, req events.APIGatewayWebsocketProxyRequest) (e
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusUnauthorized}, nil
 	}
 
-	// CORRECTED: The GetUser method, when chained with WithToken, does not take a context argument.
+	// The GetUser method, when chained with WithToken, does not take a context argument.
 	// The context is implicitly used in the underlying HTTP request made by the client.
 	user, err := supabaseClient.Auth.WithToken(token).GetUser()
 	if err != nil {

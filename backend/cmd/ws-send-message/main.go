@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors" // CORRECTED
+	"errors"
 	"log"
 	"os"
 	"strings"
@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi"
-	apigwTypes "github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi/types" // CORRECTED
+	apigwTypes "github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
@@ -71,8 +71,8 @@ func handler(ctx context.Context, event events.EventBridgeEvent) error {
 		})
 
 		if err != nil {
-			var goneErr *apigwTypes.GoneException // CORRECTED
-			if errors.As(err, &goneErr) {         // CORRECTED
+			var goneErr *apigwTypes.GoneException
+			if errors.As(err, &goneErr) {
 				log.Printf("Found stale connection, deleting: %s", connectionID)
 				dbClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 					TableName: aws.String(connectionsTable),
