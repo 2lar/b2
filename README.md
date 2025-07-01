@@ -1,8 +1,150 @@
-# Brain2- Your Second Brain
+# Brain2 - Your Second Brain
 
 A graph-based personal knowledge management system that automatically connects your memories, thoughts, and ideas based on their content. Built with modern cloud technologies using AWS free tier services.
 
-## 🧠 Features
+---
+
+## 📖 **Educational Guide: Understanding the System Architecture**
+
+> **For Learning Purposes**: This codebase has been extensively documented with educational comments to help you understand modern full-stack development, serverless architecture, and real-time web applications.
+
+### 🎯 **How to Navigate This Codebase for Maximum Learning**
+
+This system demonstrates many advanced concepts in software engineering. Here's the recommended order to explore the code for educational purposes:
+
+#### **Phase 1: Understanding the Big Picture (Start Here)**
+
+1. **📋 System Overview** 
+   - Read the [Architecture](#-architecture) section below
+   - Study the system diagram to understand data flow
+   - Review the technology stack and understand why each tool was chosen
+
+2. **📁 Project Structure**
+   ```
+   /b2/
+   ├── frontend/          # TypeScript SPA with graph visualization
+   ├── backend/           # Go serverless functions  
+   ├── infra/             # AWS CDK infrastructure as code
+   ├── openapi.yaml       # API specification (single source of truth)
+   └── build.sh           # Master build orchestration
+   ```
+
+#### **Phase 2: Core Architecture Patterns (Foundational Concepts)**
+
+3. **🏗️ Infrastructure as Code** → Start with `infra/lib/b2-stack.ts`
+   - **Why start here?** Understand the cloud architecture before diving into code
+   - **Key concepts**: Serverless architecture, event-driven systems, CDN, databases
+   - **Learning focus**: How modern cloud applications are structured
+
+4. **🎯 Domain-Driven Design** → Read `backend/internal/domain/node.go`
+   - **Why important?** See how business concepts are modeled in code
+   - **Key concepts**: Domain entities, clean architecture, data modeling
+   - **Learning focus**: Separating business logic from infrastructure
+
+#### **Phase 3: Business Logic and Data Flow (How It Works)**
+
+5. **⚙️ Service Layer Patterns** → Study `backend/internal/service/memory/service.go`
+   - **Core algorithms**: Keyword extraction, connection discovery, graph building
+   - **Key concepts**: Service patterns, natural language processing, error handling
+   - **Learning focus**: How complex business workflows are orchestrated
+
+6. **🔗 API Design** → Follow the OpenAPI-first approach
+   - Start with `openapi.yaml` to understand the API contract
+   - See how types are generated for both frontend and backend
+   - **Key concepts**: API-first development, type safety, contract-driven development
+
+#### **Phase 4: Frontend Architecture (User Experience)**
+
+7. **🎮 Application Controller** → Explore `frontend/src/ts/app.ts`
+   - **Why crucial?** This orchestrates the entire user experience
+   - **Key concepts**: Event delegation, state management, real-time updates
+   - **Learning focus**: Modern JavaScript patterns and user interaction design
+
+8. **🌐 API Communication** → Review `frontend/src/ts/apiClient.ts`
+   - **Integration patterns**: How frontend talks to backend securely
+   - **Key concepts**: HTTP clients, authentication, error handling
+   - **Learning focus**: Type-safe API communication
+
+9. **🔐 Authentication Flow** → Study `frontend/src/ts/authClient.ts`
+   - **Security patterns**: JWT tokens, session management, secure storage
+   - **Key concepts**: OAuth flows, token refresh, user state management
+   - **Learning focus**: Modern web authentication
+
+#### **Phase 5: Advanced Features (Complex Interactions)**
+
+10. **📡 Real-Time Communication** → Examine `frontend/src/ts/webSocketClient.ts`
+    - **Real-time patterns**: WebSocket management, automatic reconnection
+    - **Key concepts**: Event-driven updates, connection resilience
+    - **Learning focus**: Building responsive, real-time applications
+
+11. **📊 Data Visualization** → Deep dive into `frontend/src/ts/graph-viz.ts`
+    - **Visualization algorithms**: Force-directed layouts, graph theory, performance optimization
+    - **Key concepts**: Interactive graphics, large dataset handling, user experience
+    - **Learning focus**: Advanced frontend visualization techniques
+
+#### **Phase 6: DevOps and Deployment (Production Readiness)**
+
+12. **🚀 Build Orchestration** → Study `build.sh`
+    - **Multi-language builds**: Coordinating Go, TypeScript, and infrastructure
+    - **Key concepts**: Build automation, dependency management, error handling
+    - **Learning focus**: Modern DevOps practices
+
+### 💡 **Key Learning Themes Throughout the Codebase**
+
+**🏛️ Architectural Patterns:**
+- Clean Architecture (separation of concerns)
+- Domain-Driven Design (business-focused modeling)
+- Event-Driven Architecture (loose coupling)
+- Serverless Patterns (stateless, scalable functions)
+
+**⚡ Performance Optimization:**
+- Database query optimization (single-table design)
+- Frontend performance (batching, caching, lazy loading)
+- Network optimization (CDN, compression, bundling)
+- Real-time efficiency (WebSocket management)
+
+**🔒 Security Best Practices:**
+- Authentication and authorization (JWT, user isolation)
+- Input validation and sanitization (XSS prevention)
+- Secure communication (HTTPS, WSS)
+- Infrastructure security (IAM, VPC, encryption)
+
+**🧠 Advanced Algorithms:**
+- Natural Language Processing (keyword extraction, stop words)
+- Graph Theory (force-directed layouts, connection algorithms)
+- Real-time Systems (event propagation, state synchronization)
+
+### 🎓 **Suggested Learning Path by Experience Level**
+
+**🟢 Beginner (New to Web Development):**
+1. Start with the system overview and basic concepts
+2. Focus on `frontend/src/ts/app.ts` for JavaScript patterns
+3. Study `frontend/src/ts/apiClient.ts` for HTTP communication
+4. Review the build process in `build.sh`
+
+**🟡 Intermediate (Some Full-Stack Experience):**
+1. Begin with the infrastructure (`infra/lib/b2-stack.ts`)
+2. Study the service layer (`backend/internal/service/memory/service.go`) 
+3. Explore real-time features (`frontend/src/ts/webSocketClient.ts`)
+4. Understand the data modeling (`backend/internal/domain/node.go`)
+
+**🔴 Advanced (Experienced Developer):**
+1. Analyze the complete architecture from infrastructure to frontend
+2. Focus on the advanced algorithms (NLP, graph visualization)
+3. Study the performance optimizations throughout
+4. Examine the security patterns and deployment strategies
+
+### 📚 **Additional Resources for Context**
+
+- **Clean Architecture**: Robert C. Martin's book on software architecture
+- **Domain-Driven Design**: Eric Evans' approach to complex software
+- **AWS Well-Architected Framework**: Best practices for cloud architecture
+- **Graph Theory**: Understanding network visualization and algorithms
+- **Real-Time Web Applications**: WebSocket and event-driven patterns
+
+---
+
+## 🧠 **Features**
 
 - **Automatic Memory Connections**: Write a memory, and the system automatically connects it to related memories using keyword extraction
 - **Interactive Knowledge Graph**: Visualize all your memories as an interactive graph showing connections
