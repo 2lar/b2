@@ -1,16 +1,129 @@
+# =========================================================================
+# Brain2 OpenAPI Specification - API-First Development Contract
+# =========================================================================
+#
+# 📚 EDUCATIONAL OVERVIEW:
+# This OpenAPI specification serves as the "single source of truth" for the
+# Brain2 API contract. It demonstrates API-first development principles where
+# the API design is defined before implementation, ensuring consistency
+# between frontend and backend teams.
+#
+# 🏗️ KEY ARCHITECTURAL CONCEPTS:
+#
+# 1. API-FIRST DEVELOPMENT:
+#    - Design APIs before writing code
+#    - Generate type-safe clients from specification
+#    - Enables parallel frontend/backend development
+#    - Reduces integration issues and bugs
+#
+# 2. CONTRACT-DRIVEN DEVELOPMENT:
+#    - This file defines the exact API contract
+#    - Both frontend and backend must comply with this spec
+#    - Changes require updating the contract first
+#    - Prevents API drift and versioning issues
+#
+# 3. TYPE SAFETY ACROSS STACK:
+#    - TypeScript types generated for frontend
+#    - Go structs generated for backend
+#    - Eliminates manual type definitions
+#    - Catches type mismatches at compile time
+#
+# 4. DOCUMENTATION AS CODE:
+#    - API documentation stays in sync with implementation
+#    - Interactive documentation via Swagger UI
+#    - Examples and schemas always up-to-date
+#    - Reduces documentation maintenance burden
+#
+# 🛠️ CODE GENERATION WORKFLOW:
+# Backend:  oapi-codegen -generate types -package api -o backend/pkg/api/generated-api.go openapi.yaml
+# Frontend: npm run generate-api-types (generates TypeScript definitions)
+#
+# 🔄 DEVELOPMENT PROCESS:
+# 1. Update this OpenAPI spec for new features
+# 2. Regenerate types for both frontend and backend
+# 3. Implement the API handlers using generated types
+# 4. Frontend uses generated types for API calls
+# 5. Tests verify compliance with the specification
+#
+# 📖 LEARNING OBJECTIVES:
+# - Understanding REST API design principles
+# - API versioning and evolution strategies
+# - Schema-driven development workflows
+# - Cross-platform type safety techniques
+# - Documentation automation best practices
+
 openapi: 3.0.3
 info:
   title: Brain2 API
   version: 1.0.0
-  description: API for the Brain2 knowledge graph application.
+  description: |
+    ## Brain2 Knowledge Graph API
+    
+    A RESTful API for managing personal knowledge graphs with automatic memory connections.
+    
+    ### Key Features:
+    - **Memory Management**: Create, read, update, delete personal memories
+    - **Automatic Connections**: AI-powered keyword extraction links related memories
+    - **Graph Visualization**: Retrieve graph data optimized for visualization libraries
+    - **Bulk Operations**: Efficient multi-node operations for better UX
+    
+    ### Authentication:
+    All endpoints require JWT authentication via Supabase Auth.
+    Include the JWT token in the Authorization header: `Authorization: Bearer <token>`
+    
+    ### Rate Limiting:
+    API Gateway enforces rate limiting to prevent abuse and ensure fair usage.
+    
+    ### Error Handling:
+    All endpoints return structured error responses with appropriate HTTP status codes.
+    
+    ### Real-time Updates:
+    While this API provides HTTP endpoints, the system also supports WebSocket 
+    connections for real-time graph updates. See WebSocket documentation for details.
+# =============================================================================
+# API ENDPOINTS - RESTful Resource Design
+# =============================================================================
+#
+# 🎯 REST DESIGN PRINCIPLES DEMONSTRATED:
+# - Resource-based URLs (/api/nodes, not /api/getNodes)
+# - HTTP verbs indicate actions (GET, POST, PUT, DELETE)
+# - Status codes convey semantic meaning (201 = Created, 204 = No Content)
+# - Consistent response formats across all endpoints
+# - Bulk operations for efficiency where needed
+
 paths:
+  # ==========================================================================
+  # Memory Nodes Collection Endpoint
+  # ==========================================================================
+  # This endpoint handles operations on the collection of memory nodes.
+  # Demonstrates REST collection patterns and CRUD operations.
+  
   /api/nodes:
     get:
-      summary: List all memory nodes
+      summary: List all memory nodes for the authenticated user
+      description: |
+        Retrieves all memory nodes belonging to the authenticated user.
+        
+        **Use Cases:**
+        - Initial graph data loading
+        - User's memory overview/dashboard
+        - Search and filtering interfaces
+        
+        **Performance Considerations:**
+        - Results are automatically filtered by user ID (from JWT)
+        - Could implement pagination for users with many memories
+        - Consider implementing search/filter query parameters
+        
+        **Security:**
+        - JWT authentication ensures user isolation
+        - Users can only see their own memories
+        - No sensitive data exposed in the response
       operationId: listNodes
+      tags:
+        - Memory Management
       responses:
         '200':
-          description: A list of nodes
+          description: Successfully retrieved user's memory nodes
           content:
             application/json:
               schema:
@@ -20,58 +133,192 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Node'
+                    description: Array of memory nodes owned by the authenticated user
+                example:
+                  nodes:
+                    - nodeId: "abc-123"
+                      content: "Learning about serverless architecture"
+                      timestamp: "2024-01-15T10:30:00Z"
+                      version: 1
+        '401':
+          description: Authentication required - invalid or missing JWT token
+        '500':
+          description: Internal server error - check logs for details
+          
     post:
-      summary: Create a new memory node
+      summary: Create a new memory node with automatic keyword extraction
+      description: |
+        Creates a new memory node and automatically extracts keywords for connection discovery.
+        
+        **Workflow:**
+        1. Validate request content
+        2. Extract meaningful keywords using NLP
+        3. Create new node with unique ID and metadata
+        4. Find existing memories with shared keywords
+        5. Create bidirectional connections
+        6. Return the created node
+        
+        **Business Logic:**
+        - Automatic keyword extraction for connection discovery
+        - Bidirectional relationship creation
+        - Real-time graph updates (via WebSocket if connected)
+        - Optimistic UI support (immediate response)
+        
+        **Performance:**
+        - Connection discovery runs in background for responsiveness
+        - Graceful degradation if connection discovery fails
+        - Efficient single-transaction storage
       operationId: createNode
+      tags:
+        - Memory Management
       requestBody:
         required: true
+        description: Memory content to be processed and stored
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateNodeRequest'
+            example:
+              content: "GraphQL is a query language for APIs that provides a complete description of the data in your API"
       responses:
         '201':
-          description: The created node
+          description: Memory node created successfully with automatic connections
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Node'
+              example:
+                nodeId: "def-456"
+                content: "GraphQL is a query language for APIs that provides a complete description of the data in your API"
+                timestamp: "2024-01-15T14:22:00Z"
+                version: 0
+        '400':
+          description: Validation error - content is required and cannot be empty
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "content cannot be empty"
+        '401':
+          description: Authentication required - invalid or missing JWT token
+        '500':
+          description: Internal server error - node creation failed
 
+  # ==========================================================================
+  # Individual Memory Node Resource Endpoint
+  # ==========================================================================
+  # Demonstrates REST resource patterns for individual node operations.
+  # Path parameters for resource identification, different HTTP methods for different actions.
+  
   /api/nodes/{nodeId}:
     get:
-      summary: Get details for a single node
+      summary: Get detailed information for a single memory node
+      description: |
+        Retrieves detailed information about a specific memory node, including its connections.
+        
+        **Use Cases:**
+        - Displaying node details when user clicks on graph node
+        - Showing memory content and related memories
+        - Building breadcrumb navigation in memory exploration
+        
+        **Returned Data:**
+        - Node content and metadata
+        - List of connected node IDs (edges)
+        - Version information for optimistic locking
+        
+        **Performance:**
+        - Single query retrieves node + edges efficiently
+        - Optimized for fast UI responses
+        - Uses DynamoDB single-table design benefits
       operationId: getNode
+      tags:
+        - Memory Management
       parameters:
         - name: nodeId
           in: path
           required: true
+          description: Unique identifier for the memory node
           schema:
             type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+            example: "abc-123-def-456"
       responses:
         '200':
-          description: Detailed information about the node
+          description: Successfully retrieved node details with connections
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/NodeDetails'
+              example:
+                nodeId: "abc-123-def-456"
+                content: "Machine learning models require large datasets for training"
+                timestamp: "2024-01-15T10:30:00Z"
+                version: 2
+                edges: ["def-456-ghi-789", "ghi-789-jkl-012"]
+        '404':
+          description: Node not found or user doesn't have access
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "node not found"
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+          
     put:
-      summary: Update a node
+      summary: Update a memory node's content with automatic reconnection
+      description: |
+        Updates an existing memory node's content and recalculates its connections.
+        
+        **Update Workflow:**
+        1. Validate user owns the node
+        2. Check version for optimistic locking (future feature)
+        3. Extract new keywords from updated content
+        4. Delete old connections
+        5. Create new connections based on updated keywords
+        6. Update node content and increment version
+        
+        **Connection Recalculation:**
+        - Old connections are removed to prevent stale relationships
+        - New keyword extraction finds fresh connections
+        - Maintains graph consistency and accuracy
+        - Real-time updates pushed via WebSocket
+        
+        **Optimistic Locking:**
+        - Version field prevents concurrent update conflicts
+        - Client must provide current version
+        - Prevents lost updates in collaborative scenarios
       operationId: updateNode
+      tags:
+        - Memory Management
       parameters:
         - name: nodeId
           in: path
           required: true
+          description: Unique identifier for the memory node to update
           schema:
             type: string
+            pattern: '^[a-zA-Z0-9-]+$'
       requestBody:
         required: true
+        description: Updated content for the memory node
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateNodeRequest'
+            example:
+              content: "Deep learning models require even larger datasets and more computational power than traditional ML"
       responses:
         '200':
-          description: Success message
+          description: Node updated successfully with recalculated connections
           content:
             application/json:
               schema:
@@ -79,150 +326,593 @@ paths:
                 properties:
                   message:
                     type: string
+                    example: "Node updated successfully"
+                  nodeId:
+                    type: string
+                    example: "abc-123-def-456"
+                  version:
+                    type: integer
+                    example: 3
+        '400':
+          description: Validation error - content cannot be empty
+        '404':
+          description: Node not found or user doesn't have access
+        '409':
+          description: Version conflict - node was modified by another process
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error during update
+          
     delete:
-      summary: Delete a node
+      summary: Delete a memory node and clean up all connections
+      description: |
+        Permanently deletes a memory node and removes all its connections from the graph.
+        
+        **Deletion Process:**
+        1. Verify user owns the node
+        2. Remove all edges where this node is source or target
+        3. Remove all keyword associations
+        4. Delete the node metadata
+        5. Broadcast deletion via WebSocket for real-time updates
+        
+        **Graph Integrity:**
+        - Ensures no orphaned edges remain
+        - Maintains referential integrity
+        - Updates affected nodes' connection lists
+        - Cleans up keyword indexes
+        
+        **Irreversible Operation:**
+        - Consider implementing soft delete for data recovery
+        - No undo functionality currently available
+        - Consider archiving instead of hard delete
       operationId: deleteNode
+      tags:
+        - Memory Management
       parameters:
         - name: nodeId
           in: path
           required: true
+          description: Unique identifier for the memory node to delete
           schema:
             type: string
+            pattern: '^[a-zA-Z0-9-]+$'
       responses:
         '204':
-          description: Node deleted successfully
+          description: Node deleted successfully (no content returned)
+        '404':
+          description: Node not found or user doesn't have access
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "node not found"
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error during deletion
 
+  # ==========================================================================
+  # Bulk Operations Endpoint
+  # ==========================================================================
+  # Optimized for user experience - allows efficient multi-node operations
+  # rather than forcing multiple individual API calls.
+  
   /api/nodes/bulk-delete:
     post:
-      summary: Delete multiple memory nodes
+      summary: Delete multiple memory nodes efficiently in a single operation
+      description: |
+        Deletes multiple memory nodes in a single request, optimized for better UX.
+        
+        **Use Cases:**
+        - User selects multiple nodes in graph UI for deletion
+        - Cleanup operations and batch memory management
+        - Administrative operations for large memory sets
+        
+        **Operational Behavior:**
+        - Partial success supported (some nodes deleted, others failed)
+        - Returns detailed success/failure information
+        - Maintains transaction-like behavior where possible
+        - Broadcasts deletions via WebSocket for real-time updates
+        
+        **Performance Benefits:**
+        - Single API call instead of multiple DELETE requests
+        - Reduced network overhead and latency
+        - Better user experience with single progress indicator
+        - Efficient batch processing on the backend
+        
+        **Error Handling:**
+        - Operation continues even if individual nodes fail
+        - Returns list of failed node IDs with reasons
+        - Allows users to retry failed operations
+        - Non-blocking approach prevents total operation failure
+        
+        **Limitations:**
+        - Maximum 100 nodes per request to prevent abuse
+        - No transaction guarantees across all nodes
+        - Individual node failures don't rollback successful deletions
       operationId: bulkDeleteNodes
+      tags:
+        - Memory Management
+        - Bulk Operations
       requestBody:
         required: true
+        description: List of node IDs to delete (max 100)
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/BulkDeleteRequest'
+            example:
+              nodeIds: 
+                - "abc-123-def-456"
+                - "def-456-ghi-789"
+                - "ghi-789-jkl-012"
       responses:
         '200':
-          description: Bulk delete completed
+          description: Bulk delete operation completed (may include partial failures)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/BulkDeleteResponse'
-
+              example:
+                deletedCount: 2
+                failedNodeIds: ["ghi-789-jkl-012"]
+                message: "Successfully deleted 2 out of 3 nodes"
+        '400':
+          description: Validation error - invalid request format or too many nodes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "cannot delete more than 100 nodes at once"
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error during bulk operation
+  
+  # ==========================================================================
+  # Graph Visualization Data Endpoint
+  # ==========================================================================
+  # Specialized endpoint optimized for graph visualization libraries like Cytoscape.js
+  # Returns data in format directly consumable by frontend visualization.
+  
   /api/graph-data:
     get:
-      summary: Get data for graph visualization
+      summary: Get complete graph data optimized for visualization libraries
+      description: |
+        Retrieves the user's complete knowledge graph in a format optimized for 
+        visualization libraries like Cytoscape.js, D3.js, or vis.js.
+        
+        **Data Format:**
+        - Nodes: Contains ID, label, and positioning hints
+        - Edges: Contains source, target, and relationship metadata  
+        - Optimized JSON structure for direct consumption by graph libraries
+        - No additional processing required on frontend
+        
+        **Use Cases:**
+        - Initial graph rendering on page load
+        - Full graph refresh after major changes
+        - Export functionality for data visualization
+        - Graph analysis and exploration tools
+        
+        **Performance Optimizations:**
+        - Single query retrieves all user's nodes and edges
+        - Pre-calculated positioning hints to reduce frontend computation
+        - Minimal data transfer with only visualization-relevant fields
+        - Efficient caching strategies possible due to stable format
+        
+        **Scalability Considerations:**
+        - Could become large for users with many memories
+        - Consider implementing graph pagination or windowing
+        - Could add filtering parameters (date range, keywords)
+        - Compression recommended for large graphs
+        
+        **Real-time Integration:**
+        - Used for initial load, WebSocket provides incremental updates
+        - Fallback when WebSocket connection is unavailable
+        - Synchronization point for offline/online scenarios
       operationId: getGraphData
+      tags:
+        - Graph Visualization
+        - Data Export
       responses:
         '200':
-          description: A list of graph elements (nodes and edges)
+          description: Complete graph data ready for visualization
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/GraphDataResponse'
+              example:
+                elements:
+                  - data:
+                      id: "node-abc-123"
+                      label: "Machine Learning Basics"
+                  - data:
+                      id: "node-def-456" 
+                      label: "Neural Networks"
+                  - data:
+                      id: "edge-1"
+                      source: "node-abc-123"
+                      target: "node-def-456"
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error retrieving graph data
+
+# =============================================================================
+# SCHEMA DEFINITIONS - Type-Safe Data Contracts
+# =============================================================================
+#
+# 🎯 SCHEMA DESIGN PRINCIPLES:
+# - Explicit field validation and constraints
+# - Consistent naming conventions across all schemas
+# - Rich descriptions for generated documentation
+# - Examples for better developer experience
+# - Version-aware design for API evolution
+#
+# 📦 CODE GENERATION IMPACT:
+# These schemas generate:
+# - TypeScript interfaces for frontend type safety
+# - Go structs for backend request/response handling
+# - Validation rules for request processing
+# - Interactive documentation examples
 
 components:
   schemas:
+    # =========================================================================
+    # Core Memory Node Schema
+    # =========================================================================
+    # Represents a single memory/thought in the knowledge graph
+    # Used in multiple contexts (creation, retrieval, updates)
+    
     Node:
       type: object
+      description: |
+        A memory node represents a single thought, idea, or piece of information 
+        in the user's knowledge graph. Each node contains content and metadata
+        for organization, search, and connection discovery.
+        
+        **Design Principles:**
+        - Immutable ID for stable references
+        - Version field enables optimistic locking
+        - Timestamp provides temporal awareness
+        - Content is the user's actual memory text
+        
+        **Usage Contexts:**
+        - API responses for node creation/retrieval
+        - Frontend TypeScript interfaces  
+        - Backend Go struct generation
+        - Database mapping and validation
+      required:
+        - nodeId
+        - content
+        - timestamp
+        - version
       properties:
         nodeId:
           type: string
+          description: |
+            Unique identifier for the memory node, typically a UUID.
+            Used for all node operations and relationship references.
+            Immutable once created to maintain graph integrity.
+          pattern: '^[a-zA-Z0-9-]+$'
+          example: "abc-123-def-456-ghi-789"
         content:
           type: string
+          description: |
+            The actual text content of the user's memory/thought.
+            This is what users see and edit. Keyword extraction
+            and connection discovery operate on this field.
+          minLength: 1
+          maxLength: 10000
+          example: "Machine learning requires large datasets for effective model training"
         timestamp:
           type: string
           format: date-time
+          description: |
+            ISO 8601 timestamp when the node was created.
+            Used for temporal organization and sorting.
+            Enables chronological memory exploration.
+          example: "2024-01-15T14:30:00Z"
         version:
           type: integer
+          description: |
+            Version number for optimistic locking and change tracking.
+            Incremented on each update to prevent concurrent modification conflicts.
+            Future enhancement for collaborative editing scenarios.
+          minimum: 0
+          example: 1
 
+    # =========================================================================
+    # Enhanced Node Details Schema  
+    # =========================================================================
+    # Extends Node with relationship information for detailed views
+    
     NodeDetails:
       allOf:
         - $ref: '#/components/schemas/Node'
         - type: object
+          description: |
+            Extended node information including connection details.
+            Used when displaying comprehensive node information with relationships.
+            
+            **Additional Data:**
+            - Direct connections to other nodes (edges)
+            - Enables UI to show related memories
+            - Supports graph navigation and exploration
           properties:
             edges:
               type: array
+              description: |
+                Array of node IDs that this node is connected to.
+                Represents bidirectional relationships in the knowledge graph.
+                Used for displaying "Related Memories" in the UI.
               items:
                 type: string
+                pattern: '^[a-zA-Z0-9-]+$'
+              example: 
+                - "def-456-ghi-789"
+                - "ghi-789-jkl-012"
+                - "jkl-012-mno-345"
 
+    # =========================================================================
+    # Request Schemas - API Input Validation
+    # =========================================================================
+    # Define exactly what clients must send for each operation
+    
     CreateNodeRequest:
       type: object
+      description: |
+        Request schema for creating new memory nodes.
+        Validates that required content is provided and meets constraints.
+        
+        **Validation Rules:**
+        - Content is required and cannot be empty
+        - Content length limits prevent abuse
+        - Automatic keyword extraction happens server-side
+        - Node ID and timestamp generated automatically
       required:
         - content
       properties:
         content:
           type: string
+          description: |
+            The memory content to be stored and processed.
+            Will undergo keyword extraction for automatic connection discovery.
+            Must be meaningful text - empty strings rejected.
+          minLength: 1
+          maxLength: 10000
+          example: "GraphQL provides a more efficient alternative to REST for complex data fetching requirements"
 
     UpdateNodeRequest:
       type: object
+      description: |
+        Request schema for updating existing memory nodes.
+        Similar to creation but operates on existing node.
+        
+        **Update Behavior:**
+        - Replaces entire content (not partial updates)
+        - Triggers keyword re-extraction
+        - Recalculates all connections
+        - Increments version number
       required:
         - content
       properties:
         content:
           type: string
+          description: |
+            New content to replace the existing node content.
+            Previous content is completely replaced.
+            Connections will be recalculated based on new keywords.
+          minLength: 1
+          maxLength: 10000
+          example: "GraphQL and REST both have their place, but GraphQL excels in scenarios requiring flexible data fetching"
 
+    # =========================================================================
+    # Bulk Operations Schema
+    # =========================================================================
+    # Optimized for multi-node operations with proper constraints
+    
     BulkDeleteRequest:
       type: object
+      description: |
+        Request schema for bulk node deletion operations.
+        Enables efficient multi-node deletion with safety constraints.
+        
+        **Design Rationale:**
+        - Array of node IDs for batch processing
+        - Maximum limit prevents abuse and timeouts
+        - Minimum ensures request isn't empty
+        - Individual node validation happens server-side
       required:
         - nodeIds
       properties:
         nodeIds:
           type: array
+          description: |
+            Array of node IDs to delete in a single operation.
+            Each ID will be validated for existence and user ownership.
+            Operation continues even if individual nodes fail.
           items:
             type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+            description: "Valid node ID following UUID-like pattern"
           minItems: 1
           maxItems: 100
+          example: 
+            - "abc-123-def-456"
+            - "def-456-ghi-789"
+            - "ghi-789-jkl-012"
 
     BulkDeleteResponse:
       type: object
+      description: |
+        Response schema providing detailed results of bulk delete operation.
+        Supports partial success scenarios with detailed error reporting.
+        
+        **Partial Success Handling:**
+        - Reports successful deletion count
+        - Lists failed node IDs for retry logic
+        - Provides human-readable status message
+        - Enables granular error handling in UI
       properties:
         deletedCount:
           type: integer
+          description: |
+            Number of nodes successfully deleted from the request.
+            May be less than total requested if some operations failed.
+            Used for progress feedback and success reporting.
+          minimum: 0
+          example: 2
         failedNodeIds:
           type: array
+          description: |
+            Array of node IDs that failed to delete.
+            Enables retry logic and specific error reporting.
+            May include nodes that don't exist or user lacks access.
           items:
             type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+          example: ["ghi-789-jkl-012"]
         message:
           type: string
+          description: |
+            Human-readable summary of the operation results.
+            Suitable for displaying to users as status feedback.
+            Provides context for both success and partial failure scenarios.
+          example: "Successfully deleted 2 out of 3 nodes. 1 node could not be found."
+
+    # =========================================================================
+    # Graph Visualization Schemas
+    # =========================================================================
+    # Optimized data format for graph rendering libraries
           
     GraphDataResponse:
       type: object
+      description: |
+        Complete graph data response optimized for visualization libraries.
+        Contains both nodes and edges in a unified format consumable by
+        libraries like Cytoscape.js, D3.js, and vis.js.
+        
+        **Format Design:**
+        - Single elements array contains both nodes and edges
+        - Discriminated union based on presence of source/target
+        - Direct consumption by graph libraries without transformation
+        - Minimal payload size with only visualization-relevant data
       properties:
         elements:
           type: array
+          description: |
+            Unified array of graph elements (nodes and edges).
+            Nodes contain display data, edges contain relationship data.
+            Format directly compatible with Cytoscape.js and similar libraries.
           items:
             oneOf:
               - $ref: '#/components/schemas/GraphNode'
               - $ref: '#/components/schemas/GraphEdge'
+          example:
+            - data:
+                id: "node-abc-123"
+                label: "Machine Learning"
+            - data:
+                id: "node-def-456"
+                label: "Neural Networks" 
+            - data:
+                id: "edge-1"
+                source: "node-abc-123"
+                target: "node-def-456"
 
     GraphNode:
       type: object
+      description: |
+        Graph node representation optimized for visualization.
+        Contains minimal data required for rendering and interaction.
+        
+        **Visualization Optimization:**
+        - ID for element identification and event handling
+        - Label for display text (truncated content)
+        - Could be extended with positioning hints, colors, sizes
       properties:
         data:
           $ref: '#/components/schemas/NodeData'
 
     NodeData:
       type: object
+      description: |
+        Core data structure for graph nodes in visualization context.
+        Minimal fields reduce payload size and improve rendering performance.
+      required:
+        - id
+        - label
       properties:
         id:
           type: string
+          description: |
+            Unique identifier matching the node ID in the database.
+            Used for event handling, selection, and API operations.
+            Must be unique across all elements in the graph.
+          pattern: '^node-[a-zA-Z0-9-]+$'
+          example: "node-abc-123-def-456"
         label:
           type: string
+          description: |
+            Display text for the node in the visualization.
+            Typically truncated version of node content for readability.
+            Optimized for graph display rather than full content.
+          maxLength: 100
+          example: "Machine Learning Fundamentals"
 
     GraphEdge:
       type: object
+      description: |
+        Graph edge representation for visualization libraries.
+        Defines relationships between nodes with source and target.
+        
+        **Relationship Modeling:**
+        - Source and target reference node IDs
+        - Bidirectional relationships represented as single edges
+        - Could be extended with relationship types, weights, colors
       properties:
         data:
           $ref: '#/components/schemas/EdgeData'
 
     EdgeData:
       type: object
+      description: |
+        Core data structure for graph edges in visualization context.
+        Defines the connection between two nodes with optional metadata.
+      required:
+        - id
+        - source
+        - target
       properties:
         id:
           type: string
+          description: |
+            Unique identifier for the edge element.
+            Required by visualization libraries for element management.
+            Format includes edge prefix for disambiguation.
+          pattern: '^edge-[a-zA-Z0-9-]+$'
+          example: "edge-abc-123-to-def-456"
         source:
           type: string
+          description: |
+            ID of the source node for this relationship.
+            Must reference an existing node in the same graph.
+            Used by visualization libraries for edge rendering.
+          pattern: '^node-[a-zA-Z0-9-]+$'
+          example: "node-abc-123-def-456"
         target:
           type: string
+          description: |
+            ID of the target node for this relationship.
+            Must reference an existing node in the same graph.
+            Completes the edge definition for visualization.
+          pattern: '^node-[a-zA-Z0-9-]+$'
+          example: "node-def-456-ghi-789"
