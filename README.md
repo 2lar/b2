@@ -168,20 +168,61 @@ This system demonstrates many advanced concepts in software engineering. Here's 
 ### System Design
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  CloudFront │────▶│      S3      │     │  Supabase   │
-│    (CDN)    │     │  (Frontend)  │     │    Auth     │
-└─────────────┘     └──────────────┘     └──────┬───────┘
-                                                 │ JWT
-┌─────────────┐     ┌──────────────┐     ┌──────▼──────┐
-│   Client    │────▶│ API Gateway  │────▶│   Lambda    │
-│  (Browser)  │     │ (JWT Auth)   │     │    (Go)     │
-└─────────────┘     └──────────────┘     └──────┬───────┘
-                                                 │
-                                         ┌───────▼───────┐
-                                         │   DynamoDB    │
-                                         │ (Graph Data)  │
-                                         └───────────────┘
+                           🌐 Brain2 - Event-Driven Architecture
+                                                                    
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐          
+│  CloudFront │────▶│      S3      │     │  Supabase   │          
+│    (CDN)    │     │  (Frontend)  │     │    Auth     │          
+└─────────────┘     └──────────────┘     └──────┬───────┘          
+       │                                         │ JWT              
+       │            📡 Real-time Updates         │                  
+       │                                         │                  
+┌──────▼──────┐                           ┌──────▼──────┐          
+│   Client    │◀────── WebSocket ────────▶│ API Gateway │          
+│  (Browser)  │        Connection         │ (HTTP + WS) │          
+└─────────────┘                           └──────┬───────┘          
+       │                                         │                  
+       │ HTTP API Calls                          │                  
+       │                                         │                  
+       └─────────────────────────────────────────┘                  
+                                                 │                  
+                              ┌──────────────────┼──────────────────┐
+                              │                  │                  │
+                     ┌────────▼────────┐ ┌──────▼──────┐ ┌────────▼────────┐
+                     │  Memory Lambda  │ │ Auth Lambda │ │ WebSocket Lambda│
+                     │  (CRUD + NLP)   │ │ (JWT Valid) │ │ (Real-time)     │
+                     └────────┬────────┘ └─────────────┘ └────────┬────────┘
+                              │                                   │         
+                              │          🎯 Event-Driven          │         
+                              │                                   │         
+                     ┌────────▼────────┐                 ┌────────▼────────┐
+                     │  EventBridge    │                 │ Connection Mgmt │
+                     │ (Event Router)  │                 │   (DynamoDB)    │
+                     └────────┬────────┘                 └─────────────────┘
+                              │                                             
+                              │                                             
+                     ┌────────▼────────┐                                    
+                     │   DynamoDB      │                                    
+                     │ ┌─────────────┐ │                                    
+                     │ │ Graph Nodes │ │                                    
+                     │ │ + Keywords  │ │                                    
+                     │ │ + Edges     │ │                                    
+                     │ │ + Users     │ │                                    
+                     │ └─────────────┘ │                                    
+                     └─────────────────┘                                    
+
+🔄 Data Flow:
+1. User creates memory → HTTP API → Memory Lambda → DynamoDB
+2. Lambda triggers EventBridge → Keyword extraction → Connection discovery  
+3. New connections → WebSocket Lambda → Real-time graph updates
+4. Client receives live updates → Graph visualization refreshes automatically
+
+🏗️ Key Architectural Patterns:
+• Event-Driven: Asynchronous processing via EventBridge
+• Real-time: WebSocket connections for live graph updates  
+• Serverless: Auto-scaling Lambda functions
+• Single-table: Efficient DynamoDB design with GSI
+• Clean Architecture: Domain-driven design with service layers
 ```
 
 ## 🚀 Setup Instructions
@@ -329,30 +370,85 @@ lol don't do the above !!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 ## 🎯 Key Features Implementation
 
-### Keyword Extraction Algorithm
+### Natural Language Processing & Keyword Extraction
 
-The system uses a simple but effective algorithm:
-1. Convert content to lowercase
-2. Remove punctuation and special characters
-3. Split into words
-4. Remove common stop words
-5. Create unique keyword set
-6. Find all nodes sharing keywords
-7. Create bidirectional edges
+The system implements an advanced NLP pipeline for automatic memory connections:
 
-### Graph Visualization
+**Algorithm Pipeline:**
+1. **Text Normalization**: Convert to lowercase, remove punctuation
+2. **Tokenization**: Smart word boundary detection with regex
+3. **Stop Word Filtering**: Remove 176+ common English words (articles, pronouns, etc.)
+4. **Length Filtering**: Eliminate words < 3 characters
+5. **Deduplication**: Create unique keyword sets for efficient storage
+6. **Connection Discovery**: Find memories sharing 1+ keywords
+7. **Bidirectional Edge Creation**: Maintain graph consistency
 
-- Uses Cytoscape.js with force-directed layout
-- Real-time updates when new memories are added
-- Interactive nodes with click-to-view details
-- Automatic layout optimization
+**Future Enhancements Ready:**
+- TF-IDF scoring for keyword importance
+- Word embeddings (BERT) for semantic similarity  
+- Named entity recognition
+- Domain-specific vocabulary learning
 
-### Data Model
+### Real-Time Graph Visualization
 
-Single-table DynamoDB design:
-- **PK**: `USER#{userId}#NODE#{nodeId}`
-- **SK**: `METADATA#v{version}` | `EDGE#RELATES_TO#NODE#{nodeId}` | `KEYWORD#{keyword}`
-- **GSI**: KeywordIndex for efficient keyword searches
+**Advanced Cytoscape.js Implementation:**
+- **Force-Directed Layout**: COSE algorithm with physics-based positioning
+- **Performance Optimizations**: Viewport culling, texture rendering, motion blur
+- **Smart Initial Positioning**: Connectivity-based node placement to prevent clustering
+- **Interactive Features**: Node selection, connection highlighting, smooth animations
+- **Responsive Design**: Dynamic viewport adaptation and zoom controls
+
+**Layout Algorithm:**
+```javascript
+// Connectivity-based positioning prevents visual chaos
+nodesByConnectivity.forEach((node, index) => {
+    const connectivity = adjacency.get(node.data.id)?.size || 0;
+    const radiusMultiplier = connectivity > 3 ? 0.7 : (connectivity > 1 ? 0.85 : 1);
+    // Hubs positioned closer to center for better visual hierarchy
+});
+```
+
+### Event-Driven Architecture
+
+**Asynchronous Processing Pipeline:**
+1. **Immediate Response**: User gets instant feedback via HTTP API
+2. **Background Processing**: EventBridge triggers keyword extraction
+3. **Connection Discovery**: Parallel processing finds related memories  
+4. **Real-time Updates**: WebSocket pushes graph changes to all clients
+5. **Optimistic UI**: Frontend updates immediately, syncs with backend
+
+**Benefits:**
+- **Scalability**: Handle thousands of concurrent users
+- **Responsiveness**: No blocking operations in user workflow
+- **Resilience**: Graceful degradation if background processing fails
+- **Consistency**: Eventually consistent with real-time synchronization
+
+### Single-Table DynamoDB Design
+
+**Optimized for Graph Operations:**
+
+```
+PK (Partition Key) Examples:
+- USER#123#NODE#abc-def     → Node metadata
+- USER#123#KEYWORD#machine  → Keyword index  
+- USER#123#CONNECTION#xyz   → WebSocket connections
+
+SK (Sort Key) Examples:  
+- METADATA#v1               → Node content & timestamps
+- EDGE#RELATES_TO#NODE#xyz  → Graph relationships
+- KEYWORD#learning          → Searchable terms
+- CONNECTION#session-id     → Active WebSocket sessions
+```
+
+**Global Secondary Index (GSI):**
+- **KeywordIndex**: Enables fast keyword-based memory discovery
+- **UserIndex**: Efficient user data isolation and queries
+- **EdgeIndex**: Quick relationship traversal for graph operations
+
+**Performance Benefits:**
+- **Single Query**: Retrieve node + edges + keywords in one request
+- **Hot Partitions**: Even distribution prevents throttling
+- **Cost Efficient**: On-demand billing scales with actual usage
 
 ## 🔒 Security
 
