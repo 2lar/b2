@@ -1,7 +1,6 @@
 /**
  * Brain2 Frontend Application - Main Controller
- * 
- * Main application controller that orchestrates the frontend experience.
+ * * Main application controller that orchestrates the frontend experience.
  * Connects authentication, API communication, real-time updates, and graph visualization.
  */
 
@@ -18,6 +17,7 @@ import { Session } from '@supabase/supabase-js';
 
 // Type alias for the Node schema from OpenAPI specification
 type Node = components['schemas']['Node'];
+type NodeDetails = components['schemas']['NodeDetails'];
 
 // Feature flag for graph visualization
 const ENABLE_GRAPH_VISUALIZATION = true;
@@ -35,7 +35,12 @@ const refreshGraphBtn = document.getElementById('refresh-graph') as HTMLButtonEl
 const fitGraphBtn = document.getElementById('fit-graph') as HTMLButtonElement;
 
 // Dynamic module loading for graph visualization (code splitting)
-let graphViz: { initGraph: () => void; refreshGraph: () => Promise<void> } | null = null;
+let graphViz: {
+    initGraph: () => void; 
+    refreshGraph: () => Promise<void>;
+    destroyGraph: () => void;
+    addNodeAndAnimate: (nodeDetails: NodeDetails) => Promise<void>; 
+} | null = null;
 
 /**
  * Initialize the application
@@ -58,11 +63,23 @@ async function init(): Promise<void> {
     memoryList.addEventListener('click', handleMemoryListClick);
 
     // Listen for real-time graph updates via WebSocket
-    document.addEventListener('graph-update-event', async () => {
+    document.addEventListener('graph-update-event', async (event: Event) => {
+        const customEvent = event as CustomEvent;
         console.log("Graph update event received in app.ts");
-        if (graphViz) {
-            showStatus('New connections found! Refreshing graph...', 'success');
-            await graphViz.refreshGraph();
+        if (graphViz && customEvent.detail.nodeId) {
+            showStatus('New connections found! Updating graph...', 'success');
+            
+            // Fetch node details here with retries to handle eventual consistency
+            const nodeDetails = await fetchNodeWithRetries(customEvent.detail.nodeId);
+
+            if (nodeDetails) {
+                // Pass the fetched data directly to the animation function
+                await graphViz.addNodeAndAnimate(nodeDetails);
+            } else {
+                // Fallback to a full refresh only if fetching fails completely
+                console.error(`Failed to fetch details for new node ${customEvent.detail.nodeId}. Performing full refresh.`);
+                await graphViz.refreshGraph();
+            }
         }
     });
 
@@ -96,6 +113,35 @@ async function init(): Promise<void> {
 }
 
 /**
+ * Fetches node details with a retry mechanism to handle database consistency delays.
+ * @param nodeId The ID of the node to fetch.
+ * @returns The node details or null if not found after retries.
+ */
+async function fetchNodeWithRetries(nodeId: string): Promise<NodeDetails | null> {
+    const maxRetries = 4;
+    const retryDelay = 750; // ms
+
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            console.log(`[Animation] Attempt ${i + 1} to fetch node ${nodeId}...`);
+            const details = await api.getNode(nodeId);
+            if (details && details.nodeId) {
+                console.log(`[Animation] Successfully fetched node ${nodeId}.`);
+                return details; // Success
+            }
+        } catch (error) {
+            console.warn(`[Animation] Attempt ${i + 1} failed. Retrying in ${retryDelay}ms...`);
+            if (i < maxRetries - 1) {
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+            }
+        }
+    }
+    console.error(`[Animation] Failed to fetch details for node ${nodeId} after ${maxRetries} attempts.`);
+    return null; // Failed after all retries
+}
+
+
+/**
  * Transition from authentication to main app
  * Handles UI state changes and initializes features
  */
@@ -126,6 +172,11 @@ async function showApp(email: string): Promise<void> {
 async function handleSignOut(): Promise<void> {
     // Disconnect WebSocket to prevent memory leaks
     webSocketClient.disconnect();
+
+    // Destroy the graph instance to prevent data persistence between sessions
+    if (ENABLE_GRAPH_VISUALIZATION && graphViz) {
+        graphViz.destroyGraph();
+    }
 
     // Sign out from Supabase
     await auth.signOut();

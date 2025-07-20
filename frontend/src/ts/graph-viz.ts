@@ -1,118 +1,76 @@
-import cytoscape, { Core, LayoutOptions } from 'cytoscape';
+import cytoscape, { Core, LayoutOptions, ElementDefinition, AnimationOptions } from 'cytoscape';
 import { api } from './apiClient';
 import { components } from './generated-types';
 
 // Type alias for easier usage
 type NodeDetails = components['schemas']['NodeDetails'];
 
-let cy: Core | null = null;
+let cy: Core | null | undefined = null;
 let currentLayout: cytoscape.Layouts | null = null;
 
-// DOM Elements
-const nodeDetailsPanel = document.getElementById('node-details') as HTMLElement;
-const nodeContentEl = document.getElementById('node-content') as HTMLElement;
-const nodeConnectionsEl = document.getElementById('node-connections') as HTMLElement;
-const closeDetailsBtn = document.getElementById('close-details') as HTMLButtonElement;
+// DOM Elements are now cached within initGraph, as they are destroyed and recreated on sign-out.
+let nodeDetailsPanel: HTMLElement | null;
+let nodeContentEl: HTMLElement | null;
+let nodeConnectionsEl: HTMLElement | null;
+let closeDetailsBtn: HTMLButtonElement | null;
 
 export function initGraph(): void {
-    // graph instance initialization
+    // Cache DOM elements now that the structure is guaranteed to exist
+    nodeDetailsPanel = document.getElementById('node-details') as HTMLElement;
+    nodeContentEl = document.getElementById('node-content') as HTMLElement;
+    nodeConnectionsEl = document.getElementById('node-connections') as HTMLElement;
+    closeDetailsBtn = document.getElementById('close-details') as HTMLButtonElement;
+
     cy = cytoscape({
         container: document.getElementById('cy'),
-        
-        // Initial zoom and viewport settings
         zoom: 0.8,
         minZoom: 0.1,
         maxZoom: 3.0,
-        wheelSensitivity: 1,
-        
-        // Performance optimizations
+        wheelSensitivity: 0.2,
         hideEdgesOnViewport: true,
         hideLabelsOnViewport: true,
-        // gotta learn what this thing is doing, but this is causing gray on zoomout
-        textureOnViewport: false,
-        motionBlur: true,
-        motionBlurOpacity: 0.65,
         pixelRatio: 'auto',
-
         style: [
             {
                 selector: 'node',
                 style: {
-                    'background-color': '#2563eb',
-                    'label': 'data(label)',
-                    'color': '#1e293b',
-                    'text-valign': 'center',
-                    'text-halign': 'center',
-                    'font-size': 12,
-                    'width': 50,
-                    'height': 50,
-                    'text-wrap': 'ellipsis',
-                    'text-max-width': '80px',
-                    'text-overflow-wrap': 'anywhere',
-                    'overlay-padding': 8,
-                    'z-compound-depth': 'auto',
-                    'border-width': 2,
-                    'border-color': '#e2e8f0',
-                    'transition-property': 'background-color, border-color, border-width',
+                    'background-color': '#2563eb', 'label': 'data(label)', 'color': '#1e293b',
+                    'text-valign': 'center', 'text-halign': 'center', 'font-size': 12, 'width': 50, 'height': 50,
+                    'text-wrap': 'ellipsis', 'text-max-width': '80px', 'text-overflow-wrap': 'anywhere',
+                    'overlay-padding': 8, 'z-compound-depth': 'auto', 'border-width': 2, 'border-color': '#e2e8f0',
+                    'transition-property': 'background-color, border-color, border-width, width, height, opacity',
                     'transition-duration': 200
                 }
             },
-            {
-                selector: 'node:active',
-                style: {
-                    'overlay-opacity': 0.2,
-                }
-            },
+            { selector: 'node:active', style: { 'overlay-opacity': 0.2 } },
             {
                 selector: 'edge',
                 style: {
-                    'width': 1.5,
-                    'line-color': '#cbd5e1',
-                    'target-arrow-color': '#cbd5e1',
-                    'target-arrow-shape': 'triangle',
-                    'curve-style': 'bezier',
-                    'arrow-scale': 0.8,
-                    'opacity': 0.7,
-                    'transition-property': 'line-color, width',
-                    'transition-duration': 200
+                    'width': 1.5, 'line-color': '#cbd5e1', 'target-arrow-color': '#cbd5e1',
+                    'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'arrow-scale': 0.8,
+                    'opacity': 0.7, 'transition-property': 'line-color, width, opacity', 'transition-duration': 200
                 }
             },
             {
                 selector: 'node:selected',
-                style: {
-                    'background-color': '#1d4ed8',
-                    'border-width': 3,
-                    'border-color': '#2563eb',
-                    'width': 60,
-                    'height': 60,
-                }
+                style: { 'background-color': '#1d4ed8', 'border-width': 3, 'border-color': '#2563eb', 'width': 60, 'height': 60 }
             },
             {
                 selector: 'node.highlighted',
-                style: {
-                    'background-color': '#10b981',
-                    'border-color': '#059669',
-                    'border-width': 3,
-                }
+                style: { 'background-color': '#10b981', 'border-color': '#059669', 'border-width': 3 }
+            },
+            {
+                selector: 'node.newly-added',
+                style: { 'background-color': '#10b981', 'border-color': '#059669', 'border-width': 3 }
             },
             {
                 selector: 'edge.highlighted',
-                style: {
-                    'line-color': '#10b981',
-                    'target-arrow-color': '#10b981',
-                    'width': 3,
-                    'opacity': 1,
-                }
+                style: { 'line-color': '#10b981', 'target-arrow-color': '#10b981', 'width': 3, 'opacity': 1 }
             }
         ],
-        
-        // Layout configuration to prevent initial clustering
-        layout: {
-            name: 'preset' // Start with preset positions to avoid initial jumble
-        }
+        layout: { name: 'preset' }
     });
 
-    // Event handlers
     cy.on('tap', 'node', (evt) => {
         const node = evt.target;
         highlightConnectedNodes(node);
@@ -126,39 +84,36 @@ export function initGraph(): void {
         }
     });
 
-    // Batch rendering for better performance
-    if (cy) {
-        cy.batch(() => {
-            cy!.nodes().forEach(node => {
-                node.data('initPos', { x: node.position('x'), y: node.position('y') });
-            });
+    if (closeDetailsBtn) {
+        closeDetailsBtn.addEventListener('click', () => {
+            hideNodeDetails();
+            unhighlightAll();
         });
     }
-
-    closeDetailsBtn.addEventListener('click', () => {
-        hideNodeDetails();
-        unhighlightAll();
-    });
     
     window.cy = cy;
 }
 
+/**
+ * Destroys the Cytoscape instance and cleans up state, crucial for logout.
+ */
+export function destroyGraph(): void {
+    if (cy) {
+        cy.destroy();
+        cy = null;
+        window.cy = undefined; // Use undefined to clear from global scope
+        console.log("Graph instance destroyed.");
+    }
+    // Also hide the details panel as it may contain old data
+    hideNodeDetails();
+}
+
 function highlightConnectedNodes(node: cytoscape.NodeSingular): void {
     if (!cy) return;
-    
     cy.batch(() => {
-        // Reset all highlights
         cy!.elements().removeClass('highlighted');
-        
-        // Highlight the selected node
         node.addClass('highlighted');
-        
-        // Highlight connected nodes and edges
-        const connectedEdges = node.connectedEdges();
-        const connectedNodes = node.neighborhood();
-        
-        connectedEdges.addClass('highlighted');
-        connectedNodes.addClass('highlighted');
+        node.neighborhood().addClass('highlighted');
     });
 }
 
@@ -169,84 +124,94 @@ function unhighlightAll(): void {
 
 export async function refreshGraph(): Promise<void> {
     if (!cy) return;
-
     try {
         const graphData = await api.getGraphData();
-        
-        // Pre-process the data to add initial positions
         const processedElements = preprocessGraphData(graphData.elements ?? []);
-        
-        // Stop any running layout
-        if (currentLayout) {
-            currentLayout.stop();
-        }
-        
-        // Batch all updates for performance
+        if (currentLayout) currentLayout.stop();
         cy.batch(() => {
             cy!.elements().remove();
-            cy!.add(processedElements);
+            cy!.add(processedElements as ElementDefinition[]);
         });
-        
-        // Use a more efficient layout with better initial positions
         const layoutOptions: LayoutOptions = {
-            name: 'cose',
-            animate: false, // Disable animation for immediate positioning
-            fit: true,
-            padding: 50,
-            
-            // Improved physics parameters
-            nodeRepulsion: () => 400000,
-            idealEdgeLength: () => 150,
-            nodeOverlap: 20,
-            
-            // Better distribution
-            gravity: 0.25,
-            numIter: 200, // Reduced iterations since we have good initial positions
-            
-            // Prevent edge crossings
-            edgeElasticity: () => 100,
-            nestingFactor: 0.9,
-            
-            // Initial positions from preprocessing
-            initialTemp: 200,
-            coolingFactor: 0.95,
-            minTemp: 1.0,
-            
-            // Use the entire viewport
+            name: 'cose', animate: false, fit: true, padding: 50,
+            nodeRepulsion: () => 400000, idealEdgeLength: () => 150, nodeOverlap: 20,
+            gravity: 0.25, numIter: 200, edgeElasticity: () => 100, nestingFactor: 0.9,
+            initialTemp: 200, coolingFactor: 0.95, minTemp: 1.0,
             boundingBox: { x1: 0, y1: 0, w: cy!.width(), h: cy!.height() },
-            
-            // Better convergence
-            randomize: false, // Use our preprocessed positions
-            componentSpacing: 40,
-            
-            // Called when layout stops
+            randomize: false, componentSpacing: 40,
             stop: () => {
-                // Smooth animation after initial positioning
                 cy!.animate({
-                    fit: {
-                        eles: cy!.elements(),
-                        padding: 30
-                    },
-                    duration: 300,
-                    easing: 'ease-out'
-                });
+                    fit: { eles: cy!.elements(), padding: 30 },
+                    duration: 300, easing: 'ease-out'
+                } as any);
             }
         };
-        
         currentLayout = cy.layout(layoutOptions);
         currentLayout.run();
-
     } catch (error) {
         console.error('Error refreshing graph:', error);
     }
 }
 
-// Preprocess graph data to assign better initial positions
+export async function addNodeAndAnimate(nodeDetails: NodeDetails): Promise<void> {
+    if (!cy) return;
+    if (cy.getElementById(nodeDetails.nodeId!).length > 0) return;
+
+    const existingNodes = cy.nodes();
+    try {
+        existingNodes.lock();
+        let initialPosition = { x: cy.pan().x, y: cy.pan().y };
+        const connectedNodeIds = (nodeDetails.edges || []);
+        if (connectedNodeIds.length > 0) {
+            const neighborNodes = cy.nodes().filter(node => connectedNodeIds.includes(node.id()));
+            if (neighborNodes.length > 0) {
+                const bb = neighborNodes.boundingBox();
+                initialPosition = { x: bb.x1 + bb.w / 2, y: bb.y1 + bb.h / 2 };
+            }
+        }
+        const label = nodeDetails.content ? (nodeDetails.content.length > 50 ? nodeDetails.content.substring(0, 47) + '...' : nodeDetails.content) : '';
+        const newNodeElement: ElementDefinition = {
+            group: 'nodes', data: { id: nodeDetails.nodeId, label: label },
+            style: { 'opacity': 0, 'width': 1, 'height': 1 },
+            position: initialPosition, classes: 'newly-added'
+        };
+        const newEdgeElements: ElementDefinition[] = (nodeDetails.edges || []).map(targetId => ({
+            group: 'edges', data: { id: `edge-${nodeDetails.nodeId}-${targetId}`, source: nodeDetails.nodeId!, target: targetId },
+            style: { 'opacity': 0 }
+        }));
+        const addedNode = cy.add(newNodeElement);
+        await addedNode.animation({
+            style: { 'opacity': 1, 'width': 50, 'height': 50 },
+            duration: 800, easing: 'ease-out-cubic'
+        } as any).play().promise();
+
+        for (const edgeDef of newEdgeElements) {
+            cy.add(edgeDef).animation({
+                style: { 'opacity': 0.7 },
+                duration: 600
+            } as any).play();
+            await new Promise(resolve => setTimeout(resolve, 150));
+        }
+        const layout = cy.layout({
+            name: 'cose', eles: addedNode.union(addedNode.neighborhood()),
+            fit: false, animate: true, animationDuration: 1000, padding: 80
+        } as any);
+        layout.run();
+        setTimeout(() => {
+            addedNode.removeClass('newly-added');
+            existingNodes.unlock();
+        }, 2500);
+    } catch (error) {
+        console.error('Error adding and animating node:', error);
+        existingNodes.unlock();
+        await refreshGraph();
+    }
+}
+
 function preprocessGraphData(elements: any[]): any[] {
     const nodes = elements.filter(el => el.data && !el.data.source);
     const edges = elements.filter(el => el.data && el.data.source);
     
-    // Create adjacency map
     const adjacency = new Map<string, Set<string>>();
     edges.forEach(edge => {
         if (!adjacency.has(edge.data.source)) {
@@ -259,14 +224,12 @@ function preprocessGraphData(elements: any[]): any[] {
         adjacency.get(edge.data.target)!.add(edge.data.source);
     });
     
-    // Find nodes with most connections (hubs)
     const nodesByConnectivity = nodes.sort((a, b) => {
         const aConn = adjacency.get(a.data.id)?.size || 0;
         const bConn = adjacency.get(b.data.id)?.size || 0;
         return bConn - aConn;
     });
     
-    // Position nodes in a circle with variations based on connectivity
     const centerX = window.innerWidth / 2;
     const centerY = 300;
     const baseRadius = Math.min(centerX * 0.8, 250);
@@ -275,7 +238,6 @@ function preprocessGraphData(elements: any[]): any[] {
         const angle = (index / nodes.length) * 2 * Math.PI;
         const connectivity = adjacency.get(node.data.id)?.size || 0;
         
-        // Vary radius based on connectivity - hubs closer to center
         const radiusMultiplier = connectivity > 3 ? 0.7 : (connectivity > 1 ? 0.85 : 1);
         const radius = baseRadius * radiusMultiplier + (Math.random() * 40 - 20);
         
@@ -289,38 +251,19 @@ function preprocessGraphData(elements: any[]): any[] {
 }
 
 async function showNodeDetails(nodeId: string): Promise<void> {
-    if (!cy) return;
-
+    if (!cy || !nodeDetailsPanel || !nodeContentEl || !nodeConnectionsEl) return;
     try {
         const nodeData: NodeDetails = await api.getNode(nodeId);
-        
         nodeContentEl.textContent = nodeData.content || '';
-        
         if (nodeData.edges && nodeData.edges.length > 0) {
             const connectedNodesInfo = await Promise.all(
                 nodeData.edges.map(async edgeId => {
                     const connectedNode = cy!.getElementById(edgeId);
-                    if (connectedNode?.length) {
-                        return {
-                            id: edgeId,
-                            label: connectedNode.data('label')
-                        };
-                    }
-                    return null;
+                    return connectedNode?.length ? { id: edgeId, label: connectedNode.data('label') } : null;
                 })
             );
-            
             const validNodes = connectedNodesInfo.filter(Boolean);
-            const connectedNodesHtml = validNodes
-                .map(node => `<li data-node-id="${node!.id}" class="clickable-connection">• ${node!.label}</li>`)
-                .join('');
-            
-            nodeConnectionsEl.innerHTML = `
-                <h4>Connected Memories (${validNodes.length})</h4>
-                <ul>${connectedNodesHtml}</ul>
-            `;
-            
-            // Add click handlers to connected nodes
+            nodeConnectionsEl.innerHTML = `<h4>Connected Memories (${validNodes.length})</h4><ul>${validNodes.map(node => `<li data-node-id="${node!.id}" class="clickable-connection">• ${node!.label}</li>`).join('')}</ul>`;
             nodeConnectionsEl.querySelectorAll('.clickable-connection').forEach(li => {
                 li.addEventListener('click', (e) => {
                     const targetNodeId = (e.currentTarget as HTMLElement).dataset.nodeId;
@@ -328,12 +271,7 @@ async function showNodeDetails(nodeId: string): Promise<void> {
                         const targetNode = cy.getElementById(targetNodeId);
                         if (targetNode.length) {
                             targetNode.trigger('tap');
-                            // Center on the clicked node
-                            cy.animate({
-                                center: { eles: targetNode },
-                                zoom: 1.2,
-                                duration: 300
-                            });
+                            cy.animate({ center: { eles: targetNode }, zoom: 1.2, duration: 300 } as any);
                         }
                     }
                 });
@@ -341,18 +279,16 @@ async function showNodeDetails(nodeId: string): Promise<void> {
         } else {
             nodeConnectionsEl.innerHTML = '<p>No connections yet</p>';
         }
-        
         nodeDetailsPanel.style.display = 'block';
         cy.elements().unselect();
         cy.getElementById(nodeId).select();
-
     } catch (error) {
         console.error('Error loading node details:', error);
     }
 }
 
 function hideNodeDetails(): void {
-    if (!cy) return;
+    if (!cy || !nodeDetailsPanel) return;
     nodeDetailsPanel.style.display = 'none';
     cy.elements().unselect();
 }
