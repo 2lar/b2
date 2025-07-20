@@ -232,6 +232,12 @@ header h1 {
     border: 1px solid var(--border);
     border-radius: 8px;
     position: relative;
+    /* 
+        Explicitly set a background color. This prevents
+        the browser's default gray background from flashing
+        during redraws or zooms.
+    */
+    background-color: var(--surface);
 }
 
 /* Node Details */

@@ -6,25 +6,25 @@
 
 export interface paths {
   "/api/nodes": {
-    /** List all memory nodes */
+    /** List all memory nodes for the authenticated user */
     get: operations["listNodes"];
-    /** Create a new memory node */
+    /** Create a new memory node with automatic keyword extraction */
     post: operations["createNode"];
   };
   "/api/nodes/{nodeId}": {
-    /** Get details for a single node */
+    /** Get detailed information for a single memory node */
     get: operations["getNode"];
-    /** Update a node */
+    /** Update a memory node's content with automatic reconnection */
     put: operations["updateNode"];
-    /** Delete a node */
+    /** Delete a memory node and clean up all connections */
     delete: operations["deleteNode"];
   };
   "/api/nodes/bulk-delete": {
-    /** Delete multiple memory nodes */
+    /** Delete multiple memory nodes efficiently in a single operation */
     post: operations["bulkDeleteNodes"];
   };
   "/api/graph-data": {
-    /** Get data for graph visualization */
+    /** Get complete graph data optimized for visualization libraries */
     get: operations["getGraphData"];
   };
 }
@@ -34,46 +34,103 @@ export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
     Node: {
-      nodeId?: string;
-      content?: string;
-      /** Format: date-time */
-      timestamp?: string;
-      version?: number;
+      /** @example abc-123-def-456-ghi-789 */
+      nodeId: string;
+      /** @example Machine learning requires large datasets for effective model training */
+      content: string;
+      /**
+       * Format: date-time
+       * @example 2024-01-15T14:30:00Z
+       */
+      timestamp: string;
+      /** @example 1 */
+      version: number;
     };
     NodeDetails: components["schemas"]["Node"] & {
+      /**
+       * @example [
+       *   "def-456-ghi-789",
+       *   "ghi-789-jkl-012",
+       *   "jkl-012-mno-345"
+       * ]
+       */
       edges?: string[];
     };
     CreateNodeRequest: {
+      /** @example GraphQL provides a more efficient alternative to REST for complex data fetching requirements */
       content: string;
     };
     UpdateNodeRequest: {
+      /** @example GraphQL and REST both have their place, but GraphQL excels in scenarios requiring flexible data fetching */
       content: string;
     };
     BulkDeleteRequest: {
+      /**
+       * @example [
+       *   "abc-123-def-456",
+       *   "def-456-ghi-789",
+       *   "ghi-789-jkl-012"
+       * ]
+       */
       nodeIds: string[];
     };
     BulkDeleteResponse: {
+      /** @example 2 */
       deletedCount?: number;
+      /**
+       * @example [
+       *   "ghi-789-jkl-012"
+       * ]
+       */
       failedNodeIds?: string[];
+      /** @example Successfully deleted 2 out of 3 nodes. 1 node could not be found. */
       message?: string;
     };
     GraphDataResponse: {
+      /**
+       * @example [
+       *   {
+       *     "data": {
+       *       "id": "node-abc-123",
+       *       "label": "Machine Learning"
+       *     }
+       *   },
+       *   {
+       *     "data": {
+       *       "id": "node-def-456",
+       *       "label": "Neural Networks"
+       *     }
+       *   },
+       *   {
+       *     "data": {
+       *       "id": "edge-1",
+       *       "source": "node-abc-123",
+       *       "target": "node-def-456"
+       *     }
+       *   }
+       * ]
+       */
       elements?: (components["schemas"]["GraphNode"] | components["schemas"]["GraphEdge"])[];
     };
     GraphNode: {
       data?: components["schemas"]["NodeData"];
     };
     NodeData: {
-      id?: string;
-      label?: string;
+      /** @example node-abc-123-def-456 */
+      id: string;
+      /** @example Machine Learning Fundamentals */
+      label: string;
     };
     GraphEdge: {
       data?: components["schemas"]["EdgeData"];
     };
     EdgeData: {
-      id?: string;
-      source?: string;
-      target?: string;
+      /** @example edge-abc-123-to-def-456 */
+      id: string;
+      /** @example node-abc-123-def-456 */
+      source: string;
+      /** @example node-def-456-ghi-789 */
+      target: string;
     };
   };
   responses: never;
@@ -89,112 +146,247 @@ export type external = Record<string, never>;
 
 export interface operations {
 
-  /** List all memory nodes */
+  /** List all memory nodes for the authenticated user */
   listNodes: {
     responses: {
-      /** @description A list of nodes */
+      /** @description Successfully retrieved user's memory nodes */
       200: {
         content: {
           "application/json": {
+            /** @description Array of memory nodes owned by the authenticated user */
             nodes?: components["schemas"]["Node"][];
           };
         };
       };
+      /** @description Authentication required - invalid or missing JWT token */
+      401: {
+        content: never;
+      };
+      /** @description Internal server error - check logs for details */
+      500: {
+        content: never;
+      };
     };
   };
-  /** Create a new memory node */
+  /** Create a new memory node with automatic keyword extraction */
   createNode: {
+    /** @description Memory content to be processed and stored */
     requestBody: {
       content: {
+        /**
+         * @example {
+         *   "content": "GraphQL is a query language for APIs that provides a complete description of the data in your API"
+         * }
+         */
         "application/json": components["schemas"]["CreateNodeRequest"];
       };
     };
     responses: {
-      /** @description The created node */
+      /** @description Memory node created successfully with automatic connections */
       201: {
         content: {
           "application/json": components["schemas"]["Node"];
         };
       };
+      /** @description Validation error - content is required and cannot be empty */
+      400: {
+        content: {
+          "application/json": {
+            /** @example content cannot be empty */
+            error?: string;
+          };
+        };
+      };
+      /** @description Authentication required - invalid or missing JWT token */
+      401: {
+        content: never;
+      };
+      /** @description Internal server error - node creation failed */
+      500: {
+        content: never;
+      };
     };
   };
-  /** Get details for a single node */
+  /** Get detailed information for a single memory node */
   getNode: {
     parameters: {
       path: {
+        /** @description Unique identifier for the memory node */
         nodeId: string;
       };
     };
     responses: {
-      /** @description Detailed information about the node */
+      /** @description Successfully retrieved node details with connections */
       200: {
         content: {
           "application/json": components["schemas"]["NodeDetails"];
         };
       };
-    };
-  };
-  /** Update a node */
-  updateNode: {
-    parameters: {
-      path: {
-        nodeId: string;
+      /** @description Authentication required */
+      401: {
+        content: never;
       };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UpdateNodeRequest"];
-      };
-    };
-    responses: {
-      /** @description Success message */
-      200: {
+      /** @description Node not found or user doesn't have access */
+      404: {
         content: {
           "application/json": {
-            message?: string;
+            /** @example node not found */
+            error?: string;
           };
         };
       };
-    };
-  };
-  /** Delete a node */
-  deleteNode: {
-    parameters: {
-      path: {
-        nodeId: string;
-      };
-    };
-    responses: {
-      /** @description Node deleted successfully */
-      204: {
+      /** @description Internal server error */
+      500: {
         content: never;
       };
     };
   };
-  /** Delete multiple memory nodes */
-  bulkDeleteNodes: {
+  /** Update a memory node's content with automatic reconnection */
+  updateNode: {
+    parameters: {
+      path: {
+        /** @description Unique identifier for the memory node to update */
+        nodeId: string;
+      };
+    };
+    /** @description Updated content for the memory node */
     requestBody: {
       content: {
+        /**
+         * @example {
+         *   "content": "Deep learning models require even larger datasets and more computational power than traditional ML"
+         * }
+         */
+        "application/json": components["schemas"]["UpdateNodeRequest"];
+      };
+    };
+    responses: {
+      /** @description Node updated successfully with recalculated connections */
+      200: {
+        content: {
+          "application/json": {
+            /** @example Node updated successfully */
+            message?: string;
+            /** @example abc-123-def-456 */
+            nodeId?: string;
+            /** @example 3 */
+            version?: number;
+          };
+        };
+      };
+      /** @description Validation error - content cannot be empty */
+      400: {
+        content: never;
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Node not found or user doesn't have access */
+      404: {
+        content: never;
+      };
+      /** @description Version conflict - node was modified by another process */
+      409: {
+        content: never;
+      };
+      /** @description Internal server error during update */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Delete a memory node and clean up all connections */
+  deleteNode: {
+    parameters: {
+      path: {
+        /** @description Unique identifier for the memory node to delete */
+        nodeId: string;
+      };
+    };
+    responses: {
+      /** @description Node deleted successfully (no content returned) */
+      204: {
+        content: never;
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Node not found or user doesn't have access */
+      404: {
+        content: {
+          "application/json": {
+            /** @example node not found */
+            error?: string;
+          };
+        };
+      };
+      /** @description Internal server error during deletion */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Delete multiple memory nodes efficiently in a single operation */
+  bulkDeleteNodes: {
+    /** @description List of node IDs to delete (max 100) */
+    requestBody: {
+      content: {
+        /**
+         * @example {
+         *   "nodeIds": [
+         *     "abc-123-def-456",
+         *     "def-456-ghi-789",
+         *     "ghi-789-jkl-012"
+         *   ]
+         * }
+         */
         "application/json": components["schemas"]["BulkDeleteRequest"];
       };
     };
     responses: {
-      /** @description Bulk delete completed */
+      /** @description Bulk delete operation completed (may include partial failures) */
       200: {
         content: {
           "application/json": components["schemas"]["BulkDeleteResponse"];
         };
       };
+      /** @description Validation error - invalid request format or too many nodes */
+      400: {
+        content: {
+          "application/json": {
+            /** @example cannot delete more than 100 nodes at once */
+            error?: string;
+          };
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Internal server error during bulk operation */
+      500: {
+        content: never;
+      };
     };
   };
-  /** Get data for graph visualization */
+  /** Get complete graph data optimized for visualization libraries */
   getGraphData: {
     responses: {
-      /** @description A list of graph elements (nodes and edges) */
+      /** @description Complete graph data ready for visualization */
       200: {
         content: {
           "application/json": components["schemas"]["GraphDataResponse"];
         };
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Internal server error retrieving graph data */
+      500: {
+        content: never;
       };
     };
   };
