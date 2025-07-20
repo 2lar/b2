@@ -15,7 +15,7 @@ import (
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
-	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types" // CORRECTED
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
 )
 
 var repo repository.Repository
@@ -74,7 +74,7 @@ func handler(ctx context.Context, event events.EventBridgeEvent) error {
 	// Publish EdgesCreated event
 	edgesCreatedDetail, _ := json.Marshal(map[string]string{"userId": detail.UserID, "nodeId": detail.NodeID})
 	_, err = eventbridgeClient.PutEvents(ctx, &eventbridge.PutEventsInput{
-		Entries: []types.PutEventsRequestEntry{ // CORRECTED
+		Entries: []types.PutEventsRequestEntry{
 			{
 				Source:       aws.String("brain2.connectNode"),
 				DetailType:   aws.String("EdgesCreated"),
