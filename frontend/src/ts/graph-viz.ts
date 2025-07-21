@@ -26,9 +26,13 @@ export function initGraph(): void {
         zoom: 0.8,
         minZoom: 0.1,
         maxZoom: 3.0,
-        wheelSensitivity: 0.2,
+        wheelSensitivity: 2,
         hideEdgesOnViewport: true,
         hideLabelsOnViewport: true,
+        // gotta learn what this thing is doing, but this is causing gray on zoomout
+        textureOnViewport: false,
+        motionBlur: true,
+        motionBlurOpacity: 0.2,
         pixelRatio: 'auto',
         style: [
             {
