@@ -188,6 +188,8 @@ async function handleSignOut(): Promise<void> {
     
     // Clear sensitive data from DOM
     memoryList.innerHTML = '';
+    // CRITICAL: Force reload to bypass CloudFront cache
+    window.location.reload();
 }
 
 /**
