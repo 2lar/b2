@@ -53,14 +53,22 @@ async function connect() {
     // Handle incoming messages
     socket.onmessage = (event) => {
         try {
+            console.log('[WebSocket] Raw message received:', event.data);
             const message = JSON.parse(event.data);
+            console.log('[WebSocket] Parsed message:', message);
             
             if (message.action === 'graphUpdated') {
-                console.log('Received graph-update-event');
-                document.dispatchEvent(new CustomEvent('graph-update-event'));
+                if (message.nodeId) {
+                    console.log('[WebSocket] Dispatching graph-update-event with nodeId:', message.nodeId);
+                    document.dispatchEvent(new CustomEvent('graph-update-event', {
+                        detail: { nodeId: message.nodeId }
+                    }));
+                } else {
+                    console.warn('[WebSocket] graphUpdated event missing nodeId:', message);
+                }
             }
         } catch (err) {
-            console.error('Error parsing message:', err);
+            console.error('[WebSocket] Error parsing message:', err);
         }
     };
 

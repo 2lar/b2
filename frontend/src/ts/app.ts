@@ -65,21 +65,35 @@ async function init(): Promise<void> {
     // Listen for real-time graph updates via WebSocket
     document.addEventListener('graph-update-event', async (event: Event) => {
         const customEvent = event as CustomEvent;
-        console.log("Graph update event received in app.ts");
-        if (graphViz && customEvent.detail.nodeId) {
-            showStatus('New connections found! Updating graph...', 'success');
-            
-            // Fetch node details here with retries to handle eventual consistency
-            const nodeDetails = await fetchNodeWithRetries(customEvent.detail.nodeId);
+        console.log("[Graph] Update event received in app.ts", customEvent.detail);
+        
+        if (!graphViz) {
+            console.error("[Graph] graphViz is null - visualization not initialized");
+            return;
+        }
+        
+        if (!customEvent.detail?.nodeId) {
+            console.error("[Graph] No nodeId in event detail", customEvent.detail);
+            return;
+        }
 
-            if (nodeDetails) {
-                // Pass the fetched data directly to the animation function
+        showStatus('New connections found! Updating graph...', 'success');
+        console.log("[Graph] Fetching details for node:", customEvent.detail.nodeId);
+        
+        const nodeDetails = await fetchNodeWithRetries(customEvent.detail.nodeId);
+
+        if (nodeDetails) {
+            console.log("[Graph] Node details fetched successfully:", nodeDetails);
+            try {
                 await graphViz.addNodeAndAnimate(nodeDetails);
-            } else {
-                // Fallback to a full refresh only if fetching fails completely
-                console.error(`Failed to fetch details for new node ${customEvent.detail.nodeId}. Performing full refresh.`);
+                console.log("[Graph] Animation completed for node:", nodeDetails.nodeId);
+            } catch (error) {
+                console.error("[Graph] Error during animation:", error);
                 await graphViz.refreshGraph();
             }
+        } else {
+            console.error(`[Graph] Failed to fetch details for node ${customEvent.detail.nodeId}`);
+            await graphViz.refreshGraph();
         }
     });
 

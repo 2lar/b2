@@ -158,56 +158,87 @@ export async function refreshGraph(): Promise<void> {
 }
 
 export async function addNodeAndAnimate(nodeDetails: NodeDetails): Promise<void> {
-    if (!cy) return;
-    if (cy.getElementById(nodeDetails.nodeId!).length > 0) return;
+    console.log("[Graph-Viz] Starting addNodeAndAnimate for node:", nodeDetails.nodeId);
+    
+    if (!cy) {
+        console.error("[Graph-Viz] Cytoscape instance is null");
+        return;
+    }
+    
+    if (cy.getElementById(nodeDetails.nodeId!).length > 0) {
+        console.log("[Graph-Viz] Node already exists, skipping animation:", nodeDetails.nodeId);
+        return;
+    }
 
     const existingNodes = cy.nodes();
     try {
+        console.log("[Graph-Viz] Locking existing nodes");
         existingNodes.lock();
+        
         let initialPosition = { x: cy.pan().x, y: cy.pan().y };
         const connectedNodeIds = (nodeDetails.edges || []);
+        console.log("[Graph-Viz] Connected node IDs:", connectedNodeIds);
+        
         if (connectedNodeIds.length > 0) {
             const neighborNodes = cy.nodes().filter(node => connectedNodeIds.includes(node.id()));
+            console.log("[Graph-Viz] Found neighbor nodes:", neighborNodes.length);
             if (neighborNodes.length > 0) {
                 const bb = neighborNodes.boundingBox();
                 initialPosition = { x: bb.x1 + bb.w / 2, y: bb.y1 + bb.h / 2 };
+                console.log("[Graph-Viz] Calculated initial position:", initialPosition);
             }
         }
+        
         const label = nodeDetails.content ? (nodeDetails.content.length > 50 ? nodeDetails.content.substring(0, 47) + '...' : nodeDetails.content) : '';
         const newNodeElement: ElementDefinition = {
             group: 'nodes', data: { id: nodeDetails.nodeId, label: label },
             style: { 'opacity': 0, 'width': 1, 'height': 1 },
             position: initialPosition, classes: 'newly-added'
         };
-        const newEdgeElements: ElementDefinition[] = (nodeDetails.edges || []).map(targetId => ({
-            group: 'edges', data: { id: `edge-${nodeDetails.nodeId}-${targetId}`, source: nodeDetails.nodeId!, target: targetId },
-            style: { 'opacity': 0 }
-        }));
+        
+        console.log("[Graph-Viz] Creating new node element:", newNodeElement);
         const addedNode = cy.add(newNodeElement);
+        
+        console.log("[Graph-Viz] Starting node animation");
         await addedNode.animation({
             style: { 'opacity': 1, 'width': 50, 'height': 50 },
             duration: 800, easing: 'ease-out-cubic'
         } as any).play().promise();
+        console.log("[Graph-Viz] Node animation completed");
 
+        const newEdgeElements: ElementDefinition[] = (nodeDetails.edges || []).map(targetId => ({
+            group: 'edges', data: { id: `edge-${nodeDetails.nodeId}-${targetId}`, source: nodeDetails.nodeId!, target: targetId },
+            style: { 'opacity': 0 }
+        }));
+        
+        console.log("[Graph-Viz] Adding edges:", newEdgeElements.length);
         for (const edgeDef of newEdgeElements) {
+            console.log("[Graph-Viz] Adding edge:", edgeDef.data.id);
             cy.add(edgeDef).animation({
                 style: { 'opacity': 0.7 },
                 duration: 600
             } as any).play();
             await new Promise(resolve => setTimeout(resolve, 150));
         }
+        
+        console.log("[Graph-Viz] Running layout");
         const layout = cy.layout({
             name: 'cose', eles: addedNode.union(addedNode.neighborhood()),
             fit: false, animate: true, animationDuration: 1000, padding: 80
         } as any);
         layout.run();
+        
         setTimeout(() => {
+            console.log("[Graph-Viz] Cleanup: removing newly-added class and unlocking nodes");
             addedNode.removeClass('newly-added');
             existingNodes.unlock();
         }, 2500);
+        
+        console.log("[Graph-Viz] Node addition and animation completed successfully");
     } catch (error) {
-        console.error('Error adding and animating node:', error);
+        console.error('[Graph-Viz] Error adding and animating node:', error);
         existingNodes.unlock();
+        console.log("[Graph-Viz] Falling back to full graph refresh");
         await refreshGraph();
     }
 }
