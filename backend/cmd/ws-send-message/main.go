@@ -72,7 +72,14 @@ func handler(ctx context.Context, event events.EventBridgeEvent) error {
 		return err
 	}
 
-	message := []byte(`{"action": "graphUpdated"}`)
+	message, err := json.Marshal(map[string]string{
+		"action": "graphUpdated",
+		"nodeId": detail.NodeID,
+	})
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal WebSocket message: %v", err)
+		return err
+	}
 	
 	for _, item := range result.Items {
 		connectionID := strings.TrimPrefix(item["SK"].(*types.AttributeValueMemberS).Value, "CONN#")

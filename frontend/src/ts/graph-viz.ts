@@ -1,4 +1,4 @@
-import cytoscape, { Core, LayoutOptions, ElementDefinition, AnimationOptions } from 'cytoscape';
+import cytoscape, { Core, LayoutOptions, ElementDefinition, NodeSingular, EdgeSingular } from 'cytoscape';
 import { api } from './apiClient';
 import { components } from './generated-types';
 
@@ -175,7 +175,10 @@ export async function addNodeAndAnimate(nodeDetails: NodeDetails): Promise<void>
         console.log("[Graph-Viz] Locking existing nodes");
         existingNodes.lock();
         
-        let initialPosition = { x: cy.pan().x, y: cy.pan().y };
+        // Calculate base position and radius based on viewport or neighbors
+        let basePosition = { x: cy.pan().x, y: cy.pan().y };
+        let baseRadius = Math.min(cy.width(), cy.height()) * 0.2; // 20% of viewport size
+        
         const connectedNodeIds = (nodeDetails.edges || []);
         console.log("[Graph-Viz] Connected node IDs:", connectedNodeIds);
         
@@ -184,10 +187,23 @@ export async function addNodeAndAnimate(nodeDetails: NodeDetails): Promise<void>
             console.log("[Graph-Viz] Found neighbor nodes:", neighborNodes.length);
             if (neighborNodes.length > 0) {
                 const bb = neighborNodes.boundingBox();
-                initialPosition = { x: bb.x1 + bb.w / 2, y: bb.y1 + bb.h / 2 };
-                console.log("[Graph-Viz] Calculated initial position:", initialPosition);
+                basePosition = { x: bb.x1 + bb.w / 2, y: bb.y1 + bb.h / 2 };
+                // Use smaller radius when adding to existing cluster
+                baseRadius = Math.max(bb.w, bb.h) * 0.75;
+                console.log("[Graph-Viz] Calculated base position:", basePosition);
             }
         }
+        
+        // Calculate position with random angle but consistent radius
+        const angle = Math.random() * 2 * Math.PI;
+        const jitter = baseRadius * 0.2; // 20% random variation in radius
+        const radius = baseRadius + (Math.random() * jitter - jitter/2);
+        
+        const initialPosition = {
+            x: basePosition.x + radius * Math.cos(angle),
+            y: basePosition.y + radius * Math.sin(angle)
+        };
+        console.log("[Graph-Viz] Final position with offset:", initialPosition);
         
         const label = nodeDetails.content ? (nodeDetails.content.length > 50 ? nodeDetails.content.substring(0, 47) + '...' : nodeDetails.content) : '';
         const newNodeElement: ElementDefinition = {
@@ -223,8 +239,29 @@ export async function addNodeAndAnimate(nodeDetails: NodeDetails): Promise<void>
         
         console.log("[Graph-Viz] Running layout");
         const layout = cy.layout({
-            name: 'cose', eles: addedNode.union(addedNode.neighborhood()),
-            fit: false, animate: true, animationDuration: 1000, padding: 80
+            name: 'cose',
+            eles: addedNode.union(addedNode.neighborhood()),
+            fit: false,
+            animate: true,
+            animationDuration: 1000,
+            padding: 80,
+            // Prevent overlap with adaptive spacing
+            nodeRepulsion: (node: NodeSingular) => {
+                const degree = node.degree(false); // Number of connections (undirected)
+                return 4500 + (degree * 500); // More repulsion for highly connected nodes
+            },
+            nodeOverlap: 20,
+            idealEdgeLength: (edge: EdgeSingular) => {
+                const sourceConnections = edge.source().degree(false);
+                const targetConnections = edge.target().degree(false);
+                const avgConnections = (sourceConnections + targetConnections) / 2;
+                return 100 + (avgConnections * 10); // Longer edges for highly connected nodes
+            },
+            springCoeff: 0.0008,
+            gravity: 0.25,
+            initialTemp: 200,
+            coolingFactor: 0.95,
+            minTemp: 1.0
         } as any);
         layout.run();
         

@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+// ContextKey is a custom type for context keys to avoid collisions
+type ContextKey string
+
+const (
+	// OperationIDKey is the context key for operation IDs
+	OperationIDKey ContextKey = "operation_id"
+)
+
 // ResourceManager manages repository resources and enforces limits
 type ResourceManager struct {
 	maxConnections    int
@@ -109,14 +117,14 @@ func (rm *ResourceManager) StartOperation(ctx context.Context, userID, operation
 	rm.mu.Unlock()
 	
 	// Add operation ID to context
-	operationCtx = context.WithValue(operationCtx, "operation_id", operationID)
+	operationCtx = context.WithValue(operationCtx, OperationIDKey, operationID)
 	
 	return operationCtx, nil
 }
 
 // EndOperation stops tracking an operation
 func (rm *ResourceManager) EndOperation(ctx context.Context) {
-	if operationID, ok := ctx.Value("operation_id").(string); ok {
+	if operationID, ok := ctx.Value(OperationIDKey).(string); ok {
 		rm.mu.Lock()
 		if operationContext, exists := rm.activeOperations[operationID]; exists {
 			operationContext.Cancel()
@@ -411,7 +419,6 @@ type RateLimiter struct {
 	tokens   chan struct{}
 	refill   time.Duration
 	capacity int
-	mu       sync.Mutex
 }
 
 // NewRateLimiter creates a new rate limiter

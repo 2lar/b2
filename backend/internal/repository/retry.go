@@ -169,7 +169,6 @@ type CircuitBreaker struct {
 	failures      int
 	lastFailTime  time.Time
 	successCount  int
-	nextAttempt   time.Time
 }
 
 // CircuitConfig defines circuit breaker configuration

@@ -24,25 +24,25 @@ type Config struct {
 	MaxConnections    int           // Maximum concurrent connections
 	ConnectionTimeout time.Duration // Connection acquisition timeout
 	OperationTimeout  time.Duration // Default operation timeout
-	
+
 	// Retry settings
 	RetryConfig RetryConfig // Retry configuration
-	
+
 	// Rate limiting
 	RateLimitPerSecond int // Operations per second limit
 	RateLimitBurst     int // Burst capacity for rate limiting
-	
+
 	// Validation settings
 	EnableStrictValidation bool // Whether to enable strict input validation
 	MaxContentLength       int  // Maximum content length
 	MaxKeywordCount        int  // Maximum keywords per node
-	
+
 	// Feature flags
-	EnableCaching     bool // Whether to enable caching layer
-	EnableMetrics     bool // Whether to enable metrics collection
-	EnableIdempotency bool // Whether to enable idempotency support
+	EnableCaching        bool // Whether to enable caching layer
+	EnableMetrics        bool // Whether to enable metrics collection
+	EnableIdempotency    bool // Whether to enable idempotency support
 	EnableCircuitBreaker bool // Whether to enable circuit breaker
-	
+
 	// Cleanup settings
 	EnableAutoCleanup   bool          // Whether to enable automatic cleanup
 	CleanupInterval     time.Duration // Cleanup interval
@@ -51,50 +51,50 @@ type Config struct {
 
 // ConfigDefaults holds default configuration values
 var ConfigDefaults = Config{
-	MaxRetries:        3,
-	TimeoutMs:         5000,
-	BatchSize:         25,
-	MaxConnections:    100,
-	ConnectionTimeout: 10 * time.Second,
-	OperationTimeout:  30 * time.Second,
-	RetryConfig:       DefaultRetryConfig(),
-	RateLimitPerSecond: 100,
-	RateLimitBurst:     10,
+	MaxRetries:             3,
+	TimeoutMs:              5000,
+	BatchSize:              25,
+	MaxConnections:         100,
+	ConnectionTimeout:      10 * time.Second,
+	OperationTimeout:       30 * time.Second,
+	RetryConfig:            DefaultRetryConfig(),
+	RateLimitPerSecond:     100,
+	RateLimitBurst:         10,
 	EnableStrictValidation: true,
-	MaxContentLength:      10000,
-	MaxKeywordCount:       50,
-	EnableCaching:         true,
-	EnableMetrics:         true,
-	EnableIdempotency:     true,
-	EnableCircuitBreaker:  true,
-	EnableAutoCleanup:     true,
-	CleanupInterval:       24 * time.Hour,
-	DataRetentionPeriod:   90 * 24 * time.Hour,
+	MaxContentLength:       10000,
+	MaxKeywordCount:        50,
+	EnableCaching:          true,
+	EnableMetrics:          true,
+	EnableIdempotency:      true,
+	EnableCircuitBreaker:   true,
+	EnableAutoCleanup:      true,
+	CleanupInterval:        24 * time.Hour,
+	DataRetentionPeriod:    90 * 24 * time.Hour,
 }
 
 // Environment variable names for configuration
 const (
-	EnvTableName               = "REPO_TABLE_NAME"
-	EnvIndexName               = "REPO_INDEX_NAME"
-	EnvRegion                  = "REPO_REGION"
-	EnvMaxRetries              = "REPO_MAX_RETRIES"
-	EnvTimeoutMs               = "REPO_TIMEOUT_MS"
-	EnvBatchSize               = "REPO_BATCH_SIZE"
-	EnvMaxConnections          = "REPO_MAX_CONNECTIONS"
-	EnvConnectionTimeoutMs     = "REPO_CONNECTION_TIMEOUT_MS"
-	EnvOperationTimeoutMs      = "REPO_OPERATION_TIMEOUT_MS"
-	EnvRateLimitPerSecond      = "REPO_RATE_LIMIT_PER_SECOND"
-	EnvRateLimitBurst          = "REPO_RATE_LIMIT_BURST"
-	EnvStrictValidation        = "REPO_STRICT_VALIDATION"
-	EnvMaxContentLength        = "REPO_MAX_CONTENT_LENGTH"
-	EnvMaxKeywordCount         = "REPO_MAX_KEYWORD_COUNT"
-	EnvEnableCaching           = "REPO_ENABLE_CACHING"
-	EnvEnableMetrics           = "REPO_ENABLE_METRICS"
-	EnvEnableIdempotency       = "REPO_ENABLE_IDEMPOTENCY"
-	EnvEnableCircuitBreaker    = "REPO_ENABLE_CIRCUIT_BREAKER"
-	EnvEnableAutoCleanup       = "REPO_ENABLE_AUTO_CLEANUP"
-	EnvCleanupIntervalHours    = "REPO_CLEANUP_INTERVAL_HOURS"
-	EnvDataRetentionDays       = "REPO_DATA_RETENTION_DAYS"
+	EnvTableName            = "REPO_TABLE_NAME"
+	EnvIndexName            = "REPO_INDEX_NAME"
+	EnvRegion               = "REPO_REGION"
+	EnvMaxRetries           = "REPO_MAX_RETRIES"
+	EnvTimeoutMs            = "REPO_TIMEOUT_MS"
+	EnvBatchSize            = "REPO_BATCH_SIZE"
+	EnvMaxConnections       = "REPO_MAX_CONNECTIONS"
+	EnvConnectionTimeoutMs  = "REPO_CONNECTION_TIMEOUT_MS"
+	EnvOperationTimeoutMs   = "REPO_OPERATION_TIMEOUT_MS"
+	EnvRateLimitPerSecond   = "REPO_RATE_LIMIT_PER_SECOND"
+	EnvRateLimitBurst       = "REPO_RATE_LIMIT_BURST"
+	EnvStrictValidation     = "REPO_STRICT_VALIDATION"
+	EnvMaxContentLength     = "REPO_MAX_CONTENT_LENGTH"
+	EnvMaxKeywordCount      = "REPO_MAX_KEYWORD_COUNT"
+	EnvEnableCaching        = "REPO_ENABLE_CACHING"
+	EnvEnableMetrics        = "REPO_ENABLE_METRICS"
+	EnvEnableIdempotency    = "REPO_ENABLE_IDEMPOTENCY"
+	EnvEnableCircuitBreaker = "REPO_ENABLE_CIRCUIT_BREAKER"
+	EnvEnableAutoCleanup    = "REPO_ENABLE_AUTO_CLEANUP"
+	EnvCleanupIntervalHours = "REPO_CLEANUP_INTERVAL_HOURS"
+	EnvDataRetentionDays    = "REPO_DATA_RETENTION_DAYS"
 )
 
 // Validate checks if the configuration has all required fields and valid values.
@@ -208,7 +208,7 @@ func (c Config) WithDefaults() Config {
 	if config.DataRetentionPeriod == 0 {
 		config.DataRetentionPeriod = ConfigDefaults.DataRetentionPeriod
 	}
-	
+
 	// Apply retry config defaults
 	if config.RetryConfig.MaxAttempts == 0 {
 		config.RetryConfig = DefaultRetryConfig()
@@ -366,26 +366,26 @@ func NewConfigFromEnvironment() Config {
 // ToMap converts the configuration to a map for debugging/logging
 func (c Config) ToMap() map[string]interface{} {
 	return map[string]interface{}{
-		"table_name":                c.TableName,
-		"index_name":                c.IndexName,
-		"region":                    c.Region,
-		"max_retries":               c.MaxRetries,
-		"timeout_ms":                c.TimeoutMs,
-		"batch_size":                c.BatchSize,
-		"max_connections":           c.MaxConnections,
-		"connection_timeout":        c.ConnectionTimeout.String(),
-		"operation_timeout":         c.OperationTimeout.String(),
-		"rate_limit_per_second":     c.RateLimitPerSecond,
-		"rate_limit_burst":          c.RateLimitBurst,
-		"enable_strict_validation":  c.EnableStrictValidation,
-		"max_content_length":        c.MaxContentLength,
-		"max_keyword_count":         c.MaxKeywordCount,
-		"enable_caching":            c.EnableCaching,
-		"enable_metrics":            c.EnableMetrics,
-		"enable_idempotency":        c.EnableIdempotency,
-		"enable_circuit_breaker":    c.EnableCircuitBreaker,
-		"enable_auto_cleanup":       c.EnableAutoCleanup,
-		"cleanup_interval":          c.CleanupInterval.String(),
-		"data_retention_period":     c.DataRetentionPeriod.String(),
+		"table_name":               c.TableName,
+		"index_name":               c.IndexName,
+		"region":                   c.Region,
+		"max_retries":              c.MaxRetries,
+		"timeout_ms":               c.TimeoutMs,
+		"batch_size":               c.BatchSize,
+		"max_connections":          c.MaxConnections,
+		"connection_timeout":       c.ConnectionTimeout.String(),
+		"operation_timeout":        c.OperationTimeout.String(),
+		"rate_limit_per_second":    c.RateLimitPerSecond,
+		"rate_limit_burst":         c.RateLimitBurst,
+		"enable_strict_validation": c.EnableStrictValidation,
+		"max_content_length":       c.MaxContentLength,
+		"max_keyword_count":        c.MaxKeywordCount,
+		"enable_caching":           c.EnableCaching,
+		"enable_metrics":           c.EnableMetrics,
+		"enable_idempotency":       c.EnableIdempotency,
+		"enable_circuit_breaker":   c.EnableCircuitBreaker,
+		"enable_auto_cleanup":      c.EnableAutoCleanup,
+		"cleanup_interval":         c.CleanupInterval.String(),
+		"data_retention_period":    c.DataRetentionPeriod.String(),
 	}
 }
