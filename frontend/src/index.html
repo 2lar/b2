@@ -40,45 +40,110 @@
             </div>
         </header>
 
-        <main>
-            <!-- Memory Input Section -->
-            <div class="memory-input-section">
-                <h2>Create a Memory</h2>
-                <form id="memory-form">
-                    <textarea 
-                        id="memory-content" 
-                        placeholder="Write your memory, thought, or idea here... The system will automatically connect it to related memories."
-                        rows="4"
-                        required
-                    ></textarea>
-                    <button type="submit" class="primary-btn">Save Memory</button>
-                </form>
-                <div id="memory-status" class="status-message"></div>
+        <main class="dashboard-layout">
+            <!-- Left Sidebar -->
+            <div class="left-sidebar">
+                <div class="sidebar-header">
+                    <h3>Navigation</h3>
+                </div>
+                <div class="sidebar-content">
+                    <button class="sidebar-btn">
+                        <span class="sidebar-icon">👤</span>
+                        Profile
+                    </button>
+                    <button class="sidebar-btn">
+                        <span class="sidebar-icon">⚙️</span>
+                        Settings
+                    </button>
+                    <button class="sidebar-btn">
+                        <span class="sidebar-icon">📊</span>
+                        Analytics
+                    </button>
+                    <button class="sidebar-btn">
+                        <span class="sidebar-icon">💡</span>
+                        Help
+                    </button>
+                </div>
             </div>
 
-            <!-- Graph Visualization Section -->
-            <div class="graph-section">
-                <div class="graph-header">
-                    <h2>Your Memory Graph</h2>
-                    <div class="graph-controls">
+            <!-- Column Resize Handle -->
+            <div class="resize-handle horizontal" data-resize="horizontal-left"></div>
+
+            <!-- Middle Column - Memory Graph -->
+            <div class="dashboard-container" id="graph-container" data-container="graph">
+                <div class="container-header" data-drag-handle>
+                    <span class="container-title">Memory Graph</span>
+                    <div class="container-controls">
                         <button id="refresh-graph" class="secondary-btn">Refresh</button>
                         <button id="fit-graph" class="secondary-btn">Fit to View</button>
+                        <span class="drag-handle">⋮⋮</span>
                     </div>
                 </div>
-                <div id="cy" class="graph-container"></div>
+                <div class="container-content graph-content">
+                    <div id="cy" class="graph-container"></div>
+                    <!-- Node Details - Floating Panel -->
+                    <div id="node-details" class="node-details floating-panel" style="display: none;">
+                        <div class="panel-header">
+                            <h3>Memory Details</h3>
+                            <button id="close-details" class="close-btn">×</button>
+                        </div>
+                        <div class="panel-content">
+                            <div id="node-content" class="node-content-section"></div>
+                            <div class="connections-section">
+                                <h4>Connected Memories</h4>
+                                <div id="node-connections" class="scrollable-connections"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div id="node-details" class="node-details" style="display: none;">
-                <h3>Memory Details</h3>
-                <div id="node-content"></div>
-                <div id="node-connections"></div>
-                <button id="close-details" class="secondary-btn">Close</button>
-            </div>
+            <!-- Column Resize Handle -->
+            <div class="resize-handle horizontal" data-resize="horizontal-right"></div>
 
-            <!-- Memory List Section -->
-            <div class="memory-list-section">
-                <h2>All Memories</h2>
-                <div id="memory-list" class="memory-list"></div>
+            <!-- Right Column Container -->
+            <div class="right-column">
+                <!-- Top Right - Memory Input -->
+                <div class="dashboard-container" id="input-container" data-container="input">
+                    <div class="container-header" data-drag-handle>
+                        <span class="container-title">Create a Memory</span>
+                        <span class="drag-handle">⋮⋮</span>
+                    </div>
+                    <div class="container-content">
+                        <form id="memory-form">
+                            <textarea 
+                                id="memory-content" 
+                                placeholder="Write your memory, thought, or idea here... The system will automatically connect it to related memories."
+                                rows="4"
+                                required
+                            ></textarea>
+                            <button type="submit" class="primary-btn">Save Memory</button>
+                        </form>
+                        <div id="memory-status" class="status-message"></div>
+                    </div>
+                </div>
+
+                <!-- Vertical Resize Handle -->
+                <div class="resize-handle vertical" data-resize="vertical"></div>
+
+                <!-- Bottom Right - Memory List -->
+                <div class="dashboard-container" id="list-container" data-container="list">
+                    <div class="container-header" data-drag-handle>
+                        <span class="container-title">All Memories</span>
+                        <div class="container-controls">
+                            <span id="memory-count">0 memories</span>
+                            <span class="drag-handle">⋮⋮</span>
+                        </div>
+                    </div>
+                    <div class="container-content">
+                        <div id="memory-list" class="memory-list"></div>
+                        <div class="pagination-controls">
+                            <button id="prev-page" class="pagination-btn" disabled>← Previous</button>
+                            <span id="page-info">Page 1 of 1</span>
+                            <button id="next-page" class="pagination-btn" disabled>Next →</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>

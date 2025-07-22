@@ -34,6 +34,18 @@ const memoryList = document.getElementById('memory-list') as HTMLElement;
 const refreshGraphBtn = document.getElementById('refresh-graph') as HTMLButtonElement;
 const fitGraphBtn = document.getElementById('fit-graph') as HTMLButtonElement;
 
+// Pagination elements
+const memoryCount = document.getElementById('memory-count') as HTMLElement;
+const prevPageBtn = document.getElementById('prev-page') as HTMLButtonElement;
+const nextPageBtn = document.getElementById('next-page') as HTMLButtonElement;
+const pageInfo = document.getElementById('page-info') as HTMLElement;
+
+// Pagination state
+let currentPage = 1;
+let totalPages = 1;
+let totalMemories = 0;
+const MEMORIES_PER_PAGE = 50;
+
 // Dynamic module loading for graph visualization (code splitting)
 let graphViz: {
     initGraph: () => void; 
@@ -107,6 +119,24 @@ async function init(): Promise<void> {
             }
         }
     });
+
+    // Pagination event listeners
+    prevPageBtn.addEventListener('click', () => {
+        if (currentPage > 1) {
+            currentPage--;
+            loadMemories();
+        }
+    });
+
+    nextPageBtn.addEventListener('click', () => {
+        if (currentPage < totalPages) {
+            currentPage++;
+            loadMemories();
+        }
+    });
+
+    // Initialize dashboard functionality
+    initDashboard();
     
     // Set up graph visualization if enabled
     if (ENABLE_GRAPH_VISUALIZATION) {
@@ -114,7 +144,13 @@ async function init(): Promise<void> {
         refreshGraphBtn.addEventListener('click', () => graphViz?.refreshGraph())
         fitGraphBtn.addEventListener('click', () => {
             if (window.cy) {
-                window.cy.fit();
+                window.cy.resize();
+                setTimeout(() => {
+                    if (window.cy) {
+                        window.cy.fit();
+                        window.cy.center();
+                    }
+                }, 100);
             }
         });
     } else {
@@ -368,24 +404,38 @@ async function handleMemoryListClick(e: MouseEvent): Promise<void> {
 async function loadMemories(): Promise<void> {
     try {
         const data = await api.listNodes();
-        displayMemories(data.nodes || []);
+        const allNodes = data.nodes || [];
+        totalMemories = allNodes.length;
+        totalPages = Math.ceil(totalMemories / MEMORIES_PER_PAGE);
+        
+        updateMemoryCount();
+        displayMemories(allNodes);
+        updatePaginationControls();
     } catch (error) {
         console.error('Error loading memories:', error);
         memoryList.innerHTML = '<p class="error-message">Failed to load memories</p>';
+        updateMemoryCount();
+        updatePaginationControls();
     }
 }
 
 /**
- * Render memories to the DOM
+ * Render memories to the DOM with pagination
  * Only handles HTML generation, events handled by delegation
  */
-function displayMemories(nodes: Node[]): void {
-    if (nodes.length === 0) {
+function displayMemories(allNodes: Node[]): void {
+    if (allNodes.length === 0) {
         memoryList.innerHTML = '<p class="empty-state">No memories yet. Create your first memory above!</p>';
         return;
     }
 
-    nodes.sort((a, b) => new Date(b.timestamp || '').getTime() - new Date(a.timestamp || '').getTime());
+    // Sort all nodes by timestamp
+    allNodes.sort((a, b) => new Date(b.timestamp || '').getTime() - new Date(a.timestamp || '').getTime());
+
+    // Calculate pagination
+    const startIndex = (currentPage - 1) * MEMORIES_PER_PAGE;
+    const endIndex = startIndex + MEMORIES_PER_PAGE;
+    const nodesForCurrentPage = allNodes.slice(startIndex, endIndex);
 
     // Create multi-select controls header
     const multiSelectHeader = `
@@ -394,7 +444,7 @@ function displayMemories(nodes: Node[]): void {
                 <label class="checkbox-container">
                     <input type="checkbox" id="select-all-checkbox" class="select-all-checkbox">
                     <span class="checkmark"></span>
-                    Select All
+                    Select All (Page)
                 </label>
                 <span class="selected-count" id="selected-count">0 selected</span>
             </div>
@@ -404,7 +454,7 @@ function displayMemories(nodes: Node[]): void {
         </div>
     `;
 
-    const memoriesHtml = nodes.map(node => `
+    const memoriesHtml = nodesForCurrentPage.map(node => `
         <div class="memory-item" data-node-id="${node.nodeId || ''}">
             <div class="memory-item-header">
                 <label class="checkbox-container">
@@ -424,6 +474,32 @@ function displayMemories(nodes: Node[]): void {
     `).join('');
 
     memoryList.innerHTML = multiSelectHeader + memoriesHtml;
+}
+
+/**
+ * Update memory count display
+ */
+function updateMemoryCount(): void {
+    if (memoryCount) {
+        memoryCount.textContent = totalMemories === 1 ? '1 memory' : `${totalMemories} memories`;
+    }
+}
+
+/**
+ * Update pagination controls
+ */
+function updatePaginationControls(): void {
+    if (prevPageBtn) {
+        prevPageBtn.disabled = currentPage <= 1;
+    }
+    
+    if (nextPageBtn) {
+        nextPageBtn.disabled = currentPage >= totalPages;
+    }
+    
+    if (pageInfo) {
+        pageInfo.textContent = totalPages > 0 ? `Page ${currentPage} of ${totalPages}` : 'No pages';
+    }
 }
 
 /**
@@ -575,6 +651,286 @@ async function handleBulkDelete(): Promise<void> {
         // Handle complete failure
         console.error('Failed to bulk delete memories:', error);
         showStatus('Failed to delete selected memories.', 'error');
+    }
+}
+
+/**
+ * Dashboard Layout Management
+ * Handles drag and drop functionality for movable containers
+ */
+function initDashboard(): void {
+    const containers = document.querySelectorAll('.dashboard-container');
+
+    containers.forEach(container => {
+        const header = container.querySelector('[data-drag-handle]') as HTMLElement;
+        if (!header) return;
+
+        // Make containers draggable
+        container.setAttribute('draggable', 'true');
+
+        // Drag start
+        container.addEventListener('dragstart', (e: Event) => {
+            const dragEvent = e as DragEvent;
+            if (!dragEvent.dataTransfer) return;
+            
+            const containerElement = e.currentTarget as HTMLElement;
+            const containerId = containerElement.id;
+            
+            dragEvent.dataTransfer.setData('text/plain', containerId);
+            dragEvent.dataTransfer.effectAllowed = 'move';
+            
+            containerElement.classList.add('dragging');
+            
+            // Set drag image to the container
+            dragEvent.dataTransfer.setDragImage(containerElement, 0, 0);
+        });
+
+        // Drag end
+        container.addEventListener('dragend', (e: Event) => {
+            const containerElement = e.currentTarget as HTMLElement;
+            containerElement.classList.remove('dragging');
+            
+            // Remove drop target classes from all containers
+            containers.forEach(c => c.classList.remove('drop-target'));
+        });
+
+        // Drag over (allow drop)
+        container.addEventListener('dragover', (e: Event) => {
+            const dragEvent = e as DragEvent;
+            e.preventDefault();
+            if (dragEvent.dataTransfer) {
+                dragEvent.dataTransfer.dropEffect = 'move';
+            }
+        });
+
+        // Drag enter
+        container.addEventListener('dragenter', (e: Event) => {
+            e.preventDefault();
+            const containerElement = e.currentTarget as HTMLElement;
+            if (!containerElement.classList.contains('dragging')) {
+                containerElement.classList.add('drop-target');
+            }
+        });
+
+        // Drag leave
+        container.addEventListener('dragleave', (e: Event) => {
+            const dragEvent = e as DragEvent;
+            const containerElement = e.currentTarget as HTMLElement;
+            const rect = containerElement.getBoundingClientRect();
+            const x = dragEvent.clientX;
+            const y = dragEvent.clientY;
+            
+            // Only remove drop-target if we've actually left the container
+            if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                containerElement.classList.remove('drop-target');
+            }
+        });
+
+        // Drop
+        container.addEventListener('drop', (e: Event) => {
+            const dragEvent = e as DragEvent;
+            e.preventDefault();
+            if (!dragEvent.dataTransfer) return;
+
+            const draggedId = dragEvent.dataTransfer.getData('text/plain');
+            const dropTarget = e.currentTarget as HTMLElement;
+            const dropTargetId = dropTarget.id;
+
+            if (draggedId !== dropTargetId) {
+                swapContainers(draggedId, dropTargetId);
+            }
+
+            dropTarget.classList.remove('drop-target');
+        });
+    });
+
+    // Initialize resize functionality
+    initResizeHandles();
+}
+
+function swapContainers(container1Id: string, container2Id: string): void {
+    const container1 = document.getElementById(container1Id);
+    const container2 = document.getElementById(container2Id);
+
+    if (!container1 || !container2) return;
+
+    // Get the parent containers
+    const parent1 = container1.parentElement;
+    const parent2 = container2.parentElement;
+    
+    // Get the next sibling to know where to insert
+    const next1 = container1.nextElementSibling;
+    const next2 = container2.nextElementSibling;
+
+    // Swap the containers
+    if (next1) {
+        parent2?.insertBefore(container1, next1);
+    } else {
+        parent2?.appendChild(container1);
+    }
+
+    if (next2) {
+        parent1?.insertBefore(container2, next2);
+    } else {
+        parent1?.appendChild(container2);
+    }
+
+    // If graph container was moved, we need to reinitialize the graph
+    if (container1Id === 'graph-container' || container2Id === 'graph-container') {
+        setTimeout(() => {
+            if (ENABLE_GRAPH_VISUALIZATION && graphViz && window.cy) {
+                window.cy.resize();
+                window.cy.fit();
+                window.cy.center();
+            }
+        }, 150);
+    }
+}
+
+function initResizeHandles(): void {
+    const resizeHandles = document.querySelectorAll('.resize-handle');
+    
+    resizeHandles.forEach(handle => {
+        const handleElement = handle as HTMLElement;
+        const resizeType = handleElement.dataset.resize;
+
+        if (resizeType === 'vertical') {
+            initVerticalResize(handleElement);
+        } else if (resizeType === 'horizontal-left' || resizeType === 'horizontal-right') {
+            initHorizontalResize(handleElement, resizeType);
+        }
+    });
+}
+
+function initVerticalResize(handle: HTMLElement): void {
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+    let topContainer: HTMLElement;
+    let bottomContainer: HTMLElement;
+
+    handle.addEventListener('mousedown', (e: Event) => {
+        const mouseEvent = e as MouseEvent;
+        isResizing = true;
+        startY = mouseEvent.clientY;
+        
+        const rightColumn = handle.parentElement as HTMLElement;
+        
+        topContainer = rightColumn.querySelector('#input-container') as HTMLElement;
+        bottomContainer = rightColumn.querySelector('#list-container') as HTMLElement;
+        
+        if (topContainer && bottomContainer) {
+            startHeight = topContainer.getBoundingClientRect().height;
+            
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            
+            // Prevent text selection during resize
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'row-resize';
+        }
+    });
+
+    function handleMouseMove(e: MouseEvent): void {
+        if (!isResizing || !topContainer || !bottomContainer) return;
+        
+        const deltaY = e.clientY - startY;
+        const newHeight = Math.max(100, Math.min(600, startHeight + deltaY));
+        
+        topContainer.style.flex = `0 0 ${newHeight}px`;
+    }
+
+    function handleMouseUp(): void {
+        isResizing = false;
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        
+        // Restore normal cursor and selection
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+    }
+}
+
+function initHorizontalResize(handle: HTMLElement, resizeType: string): void {
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+    let targetElement: HTMLElement;
+
+    handle.addEventListener('mousedown', (e: Event) => {
+        const mouseEvent = e as MouseEvent;
+        isResizing = true;
+        startX = mouseEvent.clientX;
+        
+        const dashboardLayout = handle.parentElement as HTMLElement;
+        
+        if (resizeType === 'horizontal-left') {
+            targetElement = dashboardLayout.querySelector('.left-sidebar') as HTMLElement;
+        } else {
+            targetElement = dashboardLayout.querySelector('#graph-container') as HTMLElement;
+        }
+        
+        if (targetElement) {
+            startWidth = targetElement.getBoundingClientRect().width;
+            
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            
+            // Prevent text selection during resize
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'col-resize';
+        }
+    });
+
+    function handleMouseMove(e: MouseEvent): void {
+        if (!isResizing || !targetElement) return;
+        
+        const deltaX = e.clientX - startX;
+        let newWidth = startWidth + deltaX;
+        
+        // Get container dimensions for better constraints
+        const dashboardLayout = targetElement.parentElement as HTMLElement;
+        const totalWidth = dashboardLayout.getBoundingClientRect().width;
+        
+        // Set min/max constraints based on available space
+        if (resizeType === 'horizontal-left') {
+            newWidth = Math.max(150, Math.min(400, newWidth));
+            dashboardLayout.style.gridTemplateColumns = `${newWidth}px 8px 1fr 8px 1fr`;
+        } else {
+            const sidebar = dashboardLayout.querySelector('.left-sidebar') as HTMLElement;
+            const sidebarWidth = sidebar.getBoundingClientRect().width;
+            const rightColumnMinWidth = 300; // Minimum width for right column
+            const availableWidth = totalWidth - sidebarWidth - 16; // Subtract sidebar and resize handles
+            const maxGraphWidth = availableWidth - rightColumnMinWidth;
+            
+            // More flexible constraints for graph resizing
+            newWidth = Math.max(200, Math.min(maxGraphWidth, newWidth));
+            
+            // Calculate remaining width for right column
+            const rightColumnWidth = availableWidth - newWidth;
+            dashboardLayout.style.gridTemplateColumns = `${sidebarWidth}px 8px ${newWidth}px 8px ${rightColumnWidth}px`;
+        }
+    }
+
+    function handleMouseUp(): void {
+        isResizing = false;
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        
+        // Restore normal cursor and selection
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        
+        // Trigger graph resize if graph was affected
+        if (ENABLE_GRAPH_VISUALIZATION && window.cy) {
+            setTimeout(() => {
+                if (window.cy) {
+                    window.cy.resize();
+                    window.cy.fit();
+                    window.cy.center();
+                }
+            }, 150);
+        }
     }
 }
 
