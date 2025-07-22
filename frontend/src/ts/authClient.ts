@@ -5,7 +5,7 @@
  * Handles user registration, login, session management, and JWT token operations.
  */
 
-import { createClient, SupabaseClient, Session, AuthError } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 
 // Environment configuration
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -24,97 +24,21 @@ if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY === 'undefined') {
 // Initialize Supabase client
 const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// DOM Elements
-const authForm = document.getElementById('auth-submit-form') as HTMLFormElement;
-const authTitle = document.getElementById('auth-title') as HTMLElement;
-const authButton = document.getElementById('auth-button') as HTMLButtonElement;
-const authSwitchText = document.getElementById('auth-switch-text') as HTMLElement;
-const authSwitchLink = document.getElementById('auth-switch-link') as HTMLAnchorElement;
-const authErrorEl = document.getElementById('auth-error') as HTMLElement;
-const emailInput = document.getElementById('email') as HTMLInputElement;
-const passwordInput = document.getElementById('password') as HTMLInputElement;
-
-// State
-let isSignUp: boolean = false;
-
-// Initialize the auth module
+// Initialize auth state listener for React components
 function initAuth(): void {
-    authForm.addEventListener('submit', handleAuthSubmit);
-
-    authSwitchLink.addEventListener('click', (e: Event) => {
-        e.preventDefault();
-        toggleAuthMode();
-    });
-
     supabase.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_IN' && session?.user?.email) {
-            window.showApp(session.user.email);
+            // React components can listen to this change
+            console.log('User signed in:', session.user.email);
         }
     });
-}
-
-// Toggle between sign in and sign up modes
-function toggleAuthMode(): void {
-    isSignUp = !isSignUp;
-
-    authTitle.textContent = isSignUp ? 'Sign Up' : 'Sign In';
-    authButton.textContent = isSignUp ? 'Sign Up' : 'Sign In';
-    authSwitchText.textContent = isSignUp ? 'Already have an account?' : "Don't have an account?";
-    authSwitchLink.textContent = isSignUp ? 'Sign In' : 'Sign Up';
-
-    authErrorEl.textContent = '';
-}
-
-// Handle auth form submission
-async function handleAuthSubmit(e: Event): Promise<void> {
-    e.preventDefault();
-
-    const email = emailInput.value.trim();
-    const password = passwordInput.value;
-
-    if (!email || !password) {
-        showAuthError('Please fill in all fields');
-        return;
-    }
-
-    authButton.disabled = true;
-    authErrorEl.textContent = '';
-
-    try {
-        if (isSignUp) {
-            const { data, error } = await supabase.auth.signUp({ email, password });
-            if (error) throw error;
-            if (data.user && !data.session) {
-                showAuthError('Please check your email to confirm your account.');
-                return;
-            }
-        } else {
-            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-            if (error) throw error;
-
-            // Handle successful sign in immediately
-            if (data.session?.user?.email) {
-                window.showApp(data.session.user.email);
-            }
-        }
-    } catch (error) {
-        console.error('Auth error:', error);
-        showAuthError((error as AuthError).message || 'Authentication failed.');
-    } finally {
-        authButton.disabled = false;
-    }
-}
-
-// Display an authentication error message
-function showAuthError(message: string): void {
-    authErrorEl.textContent = message;
-    setTimeout(() => {
-        authErrorEl.textContent = '';
-    }, 5000);
 }
 
 // Public auth object
 export const auth = {
+    // Expose Supabase client for React components
+    supabase,
+    
     async getSession(): Promise<Session | null> {
         const { data } = await supabase.auth.getSession();
         return data.session;
@@ -123,6 +47,18 @@ export const auth = {
     async getJwtToken(): Promise<string | null> {
         const session = await this.getSession();
         return session ? session.access_token : null;
+    },
+
+    async signIn(email: string, password: string): Promise<Session | null> {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        return data.session;
+    },
+
+    async signUp(email: string, password: string): Promise<Session | null> {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        return data.session;
     },
     
     async signOut(): Promise<void> {

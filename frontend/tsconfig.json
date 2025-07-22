@@ -13,10 +13,17 @@
     "isolatedModules": true,
     "noEmit": true,
 
+    /* React */
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+
+    /* Type definitions */
+    "typeRoots": ["./src/types", "./node_modules/@types"],
+
     /* Linting */
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"]

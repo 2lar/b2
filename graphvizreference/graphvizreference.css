@@ -1,0 +1,166 @@
+.graph-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  position: relative;
+}
+
+.graph-visualization {
+  width: 100%;
+  height: 700px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #020818; /* Even deeper space background */
+  position: relative;
+  box-shadow: inset 0 0 100px rgba(0, 20, 80, 0.5);
+}
+
+/* Toolbar for graph controls */
+.graph-tools {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 20;
+  display: flex;
+  gap: 5px;
+}
+
+.reset-view-button {
+  background-color: rgba(20, 20, 30, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+  backdrop-filter: blur(5px);
+}
+
+.reset-view-button:hover {
+  background-color: rgba(52, 152, 219, 0.3);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* Sidebar for displaying node content */
+.graph-sidebar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 300px;
+  height: 100%;
+  background-color: rgba(15, 15, 25, 0.9);
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.5);
+  padding: 20px;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  overflow-y: auto;
+  backdrop-filter: blur(10px);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.graph-sidebar.visible {
+  transform: translateX(0);
+}
+
+.graph-sidebar.pinned {
+  background-color: rgba(20, 20, 35, 0.95);
+  border-left: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+}
+
+.unpin-button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 5px;
+  line-height: 1;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.unpin-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--error);
+}
+
+.sidebar-date {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 15px;
+  padding: 4px 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.sidebar-content {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+  padding: 10px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  border-left: 3px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-footer {
+  margin-top: 15px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+  text-align: center;
+}
+
+/* Node and edge glow effects */
+.cy-glow-effect {
+  filter: url(#glow);
+}
+
+/* For mobile screens, make sidebar full width */
+@media (max-width: 768px) {
+  .graph-visualization {
+    height: 500px;
+  }
+  
+  .graph-sidebar {
+    width: 100%;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    transform: translateY(100%);
+    height: 50%;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
+  }
+  
+  .graph-sidebar.visible {
+    transform: translateY(0);
+  }
+}
