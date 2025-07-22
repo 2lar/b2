@@ -33,6 +33,8 @@ const memoryStatus = document.getElementById('memory-status') as HTMLElement;
 const memoryList = document.getElementById('memory-list') as HTMLElement;
 const refreshGraphBtn = document.getElementById('refresh-graph') as HTMLButtonElement;
 const fitGraphBtn = document.getElementById('fit-graph') as HTMLButtonElement;
+const themeToggle = document.getElementById('theme-toggle') as HTMLButtonElement;
+const fullscreenGraphBtn = document.getElementById('fullscreen-graph') as HTMLButtonElement;
 
 // Pagination elements
 const memoryCount = document.getElementById('memory-count') as HTMLElement;
@@ -137,6 +139,10 @@ async function init(): Promise<void> {
 
     // Initialize dashboard functionality
     initDashboard();
+    
+    // Initialize theme and fullscreen functionality
+    initTheme();
+    initGraphFullscreen();
     
     // Set up graph visualization if enabled
     if (ENABLE_GRAPH_VISUALIZATION) {
@@ -932,6 +938,106 @@ function initHorizontalResize(handle: HTMLElement, resizeType: string): void {
             }, 150);
         }
     }
+}
+
+/**
+ * Theme Management
+ * Handles dark/light mode switching with localStorage persistence
+ */
+function initTheme(): void {
+    // Get saved theme or default to dark
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeButton(savedTheme);
+
+    // Theme toggle event listener
+    themeToggle.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        
+        document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+        updateThemeButton(newTheme);
+    });
+}
+
+function updateThemeButton(theme: string): void {
+    if (theme === 'dark') {
+        themeToggle.innerHTML = '🌙 Dark';
+    } else {
+        themeToggle.innerHTML = '☀️ Light';
+    }
+}
+
+/**
+ * Graph Fullscreen Functionality
+ * Handles fullscreen mode for graph visualization
+ */
+let isGraphFullscreen = false;
+
+function initGraphFullscreen(): void {
+    fullscreenGraphBtn.addEventListener('click', toggleGraphFullscreen);
+    
+    // Listen for escape key to exit fullscreen
+    document.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && isGraphFullscreen) {
+            exitGraphFullscreen();
+        }
+    });
+}
+
+function toggleGraphFullscreen(): void {
+    if (isGraphFullscreen) {
+        exitGraphFullscreen();
+    } else {
+        enterGraphFullscreen();
+    }
+}
+
+function enterGraphFullscreen(): void {
+    const graphContainer = document.getElementById('graph-container');
+    if (!graphContainer) return;
+
+    // Add fullscreen class
+    graphContainer.classList.add('graph-fullscreen');
+    
+    // Update button text
+    fullscreenGraphBtn.innerHTML = '🗗 Exit Fullscreen';
+    
+    // Set flag
+    isGraphFullscreen = true;
+    
+    // Resize graph after fullscreen transition
+    setTimeout(() => {
+        if (window.cy) {
+            window.cy.resize();
+            window.cy.fit();
+            window.cy.center();
+        }
+    }, 100);
+}
+
+function exitGraphFullscreen(): void {
+    const graphContainer = document.getElementById('graph-container');
+    if (!graphContainer) return;
+
+    // Remove fullscreen class
+    graphContainer.classList.remove('graph-fullscreen');
+    
+    // Update button text
+    fullscreenGraphBtn.innerHTML = '⛶ Fullscreen';
+    
+    // Set flag
+    isGraphFullscreen = false;
+    
+    // Resize graph after fullscreen exit
+    setTimeout(() => {
+        if (window.cy) {
+            window.cy.resize();
+            window.cy.fit();
+            window.cy.center();
+        }
+    }, 100);
 }
 
 // Expose showApp function to global scope for auth integration

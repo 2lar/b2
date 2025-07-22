@@ -6,6 +6,23 @@
 }
 
 :root {
+    /* Dark Theme (Default) */
+    --primary-color: #3b82f6;
+    --primary-hover: #2563eb;
+    --secondary-color: #6b7280;
+    --background: #111827;
+    --surface: #1f2937;
+    --text-primary: #f9fafb;
+    --text-secondary: #d1d5db;
+    --border: #374151;
+    --error: #ef4444;
+    --success: #10b981;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+}
+
+/* Light Theme Override */
+[data-theme="light"] {
     --primary-color: #2563eb;
     --primary-hover: #1d4ed8;
     --secondary-color: #64748b;
@@ -448,7 +465,7 @@ header h1 {
 }
 
 .scrollable-connections::-webkit-scrollbar-track {
-    background: var(--background);
+    background: var(--surface);
     border-radius: 3px;
 }
 
@@ -459,7 +476,7 @@ header h1 {
 }
 
 .scrollable-connections::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
+    background: var(--secondary-color);
 }
 
 .scrollable-connections ul {
@@ -582,6 +599,72 @@ header h1 {
 
 .drop-zone.active {
     display: flex;
+}
+
+/* Graph Fullscreen Styles */
+.graph-fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: var(--background);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+}
+
+.graph-fullscreen .container-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 2rem;
+    flex-shrink: 0;
+}
+
+.graph-fullscreen .container-content {
+    flex: 1;
+    padding: 1rem;
+    min-height: 0;
+}
+
+.graph-fullscreen .graph-container {
+    height: 100%;
+    min-height: auto;
+}
+
+.fullscreen-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+}
+
+.fullscreen-btn:hover {
+    background: var(--background);
+    border-color: var(--primary-color);
+}
+
+.theme-toggle {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.theme-toggle:hover {
+    background: var(--background);
+    border-color: var(--primary-color);
 }
 
 /* Pagination Controls */
@@ -759,7 +842,7 @@ header h1 {
 }
 
 .memory-list::-webkit-scrollbar-track {
-    background: var(--background);
+    background: var(--surface);
     border-radius: 4px;
 }
 
@@ -770,7 +853,7 @@ header h1 {
 }
 
 .memory-list::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
+    background: var(--secondary-color);
 }
 
 .memory-item {
