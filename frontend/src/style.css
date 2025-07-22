@@ -601,35 +601,53 @@ header h1 {
     display: flex;
 }
 
-/* Graph Fullscreen Styles */
-.graph-fullscreen {
-    position: fixed;
-    top: 0;
-    left: 0;
+/* Graph Fullscreen Styles - Graph container itself goes fullscreen */
+#graph-container:fullscreen,
+#graph-container:-webkit-full-screen,
+#graph-container:-moz-full-screen,
+#graph-container:-ms-fullscreen {
     width: 100vw;
     height: 100vh;
     background: var(--background);
-    z-index: 9999;
     display: flex;
     flex-direction: column;
+    margin: 0;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    padding: 0;
 }
 
-.graph-fullscreen .container-header {
+#graph-container:fullscreen .container-header,
+#graph-container:-webkit-full-screen .container-header,
+#graph-container:-moz-full-screen .container-header,
+#graph-container:-ms-fullscreen .container-header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     padding: 1rem 2rem;
     flex-shrink: 0;
+    border-radius: 0;
 }
 
-.graph-fullscreen .container-content {
+#graph-container:fullscreen .container-content,
+#graph-container:-webkit-full-screen .container-content,
+#graph-container:-moz-full-screen .container-content,
+#graph-container:-ms-fullscreen .container-content {
     flex: 1;
     padding: 1rem;
     min-height: 0;
+    overflow: hidden;
 }
 
-.graph-fullscreen .graph-container {
+#graph-container:fullscreen .graph-container,
+#graph-container:-webkit-full-screen .graph-container,
+#graph-container:-moz-full-screen .graph-container,
+#graph-container:-ms-fullscreen .graph-container {
+    width: 100%;
     height: 100%;
     min-height: auto;
+    border-radius: 0;
+    border: 1px solid var(--border);
 }
 
 .fullscreen-btn {

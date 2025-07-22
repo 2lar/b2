@@ -971,19 +971,18 @@ function updateThemeButton(theme: string): void {
 
 /**
  * Graph Fullscreen Functionality
- * Handles fullscreen mode for graph visualization
+ * Handles fullscreen mode for graph visualization using HTML5 Fullscreen API
  */
 let isGraphFullscreen = false;
 
 function initGraphFullscreen(): void {
     fullscreenGraphBtn.addEventListener('click', toggleGraphFullscreen);
     
-    // Listen for escape key to exit fullscreen
-    document.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.key === 'Escape' && isGraphFullscreen) {
-            exitGraphFullscreen();
-        }
-    });
+    // Listen for fullscreen change events (handles ESC key and other fullscreen exits)
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
 }
 
 function toggleGraphFullscreen(): void {
@@ -994,50 +993,101 @@ function toggleGraphFullscreen(): void {
     }
 }
 
-function enterGraphFullscreen(): void {
+async function enterGraphFullscreen(): Promise<void> {
     const graphContainer = document.getElementById('graph-container');
     if (!graphContainer) return;
 
-    // Add fullscreen class
-    graphContainer.classList.add('graph-fullscreen');
-    
-    // Update button text
-    fullscreenGraphBtn.innerHTML = '🗗 Exit Fullscreen';
-    
-    // Set flag
-    isGraphFullscreen = true;
-    
-    // Resize graph after fullscreen transition
-    setTimeout(() => {
-        if (window.cy) {
-            window.cy.resize();
-            window.cy.fit();
-            window.cy.center();
+    try {
+        // Add fullscreen class for styling before requesting fullscreen
+        graphContainer.classList.add('graph-fullscreen');
+        
+        // Request fullscreen on the graph container itself with cross-browser compatibility
+        if (graphContainer.requestFullscreen) {
+            await graphContainer.requestFullscreen();
+        } else if ((graphContainer as any).webkitRequestFullscreen) {
+            await (graphContainer as any).webkitRequestFullscreen();
+        } else if ((graphContainer as any).mozRequestFullScreen) {
+            await (graphContainer as any).mozRequestFullScreen();
+        } else if ((graphContainer as any).msRequestFullscreen) {
+            await (graphContainer as any).msRequestFullscreen();
+        } else {
+            console.warn('Fullscreen API not supported by this browser');
+            // Fallback to previous method if fullscreen API not supported
+            graphContainer.classList.remove('graph-fullscreen');
+            return;
         }
-    }, 100);
+        
+        // State will be updated by handleFullscreenChange
+    } catch (error) {
+        console.error('Error entering fullscreen:', error);
+        graphContainer.classList.remove('graph-fullscreen');
+    }
 }
 
-function exitGraphFullscreen(): void {
-    const graphContainer = document.getElementById('graph-container');
-    if (!graphContainer) return;
-
-    // Remove fullscreen class
-    graphContainer.classList.remove('graph-fullscreen');
-    
-    // Update button text
-    fullscreenGraphBtn.innerHTML = '⛶ Fullscreen';
-    
-    // Set flag
-    isGraphFullscreen = false;
-    
-    // Resize graph after fullscreen exit
-    setTimeout(() => {
-        if (window.cy) {
-            window.cy.resize();
-            window.cy.fit();
-            window.cy.center();
+async function exitGraphFullscreen(): Promise<void> {
+    try {
+        // Exit fullscreen with cross-browser compatibility
+        if (document.exitFullscreen) {
+            await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+            await (document as any).webkitExitFullscreen();
+        } else if ((document as any).mozCancelFullScreen) {
+            await (document as any).mozCancelFullScreen();
+        } else if ((document as any).msExitFullscreen) {
+            await (document as any).msExitFullscreen();
         }
-    }, 100);
+        
+        // State will be updated by handleFullscreenChange
+    } catch (error) {
+        console.error('Error exiting fullscreen:', error);
+    }
+}
+
+function handleFullscreenChange(): void {
+    const fullscreenElement = document.fullscreenElement || 
+                             (document as any).webkitFullscreenElement || 
+                             (document as any).mozFullScreenElement || 
+                             (document as any).msFullscreenElement;
+    
+    const graphContainer = document.getElementById('graph-container');
+    
+    if (fullscreenElement) {
+        // Entering fullscreen
+        isGraphFullscreen = true;
+        fullscreenGraphBtn.innerHTML = '🗗 Exit Fullscreen';
+        
+        // Ensure graph container has fullscreen class
+        if (graphContainer) {
+            graphContainer.classList.add('graph-fullscreen');
+        }
+        
+        // Resize graph after fullscreen transition
+        setTimeout(() => {
+            if (window.cy) {
+                window.cy.resize();
+                window.cy.fit();
+                window.cy.center();
+            }
+        }, 100);
+    } else {
+        // Exiting fullscreen
+        isGraphFullscreen = false;
+        fullscreenGraphBtn.innerHTML = '⛶ Fullscreen';
+        
+        // Remove fullscreen class
+        if (graphContainer) {
+            graphContainer.classList.remove('graph-fullscreen');
+        }
+        
+        // Resize graph after fullscreen exit
+        setTimeout(() => {
+            if (window.cy) {
+                window.cy.resize();
+                window.cy.fit();
+                window.cy.center();
+            }
+        }, 100);
+    }
 }
 
 // Expose showApp function to global scope for auth integration
