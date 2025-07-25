@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
-import cytoscape, { Core, ElementDefinition, NodeSingular } from 'cytoscape';
+import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
+import cytoscape, { Core, ElementDefinition, NodeSingular, NodeCollection } from 'cytoscape';
 import cola from 'cytoscape-cola';
 import { api } from '../ts/apiClient';
 import { components } from '../ts/generated-types';
 import { useFullscreen } from '../hooks/useFullscreen';
+import { throttle } from 'lodash-es';
 
 // Register the cola layout
 cytoscape.use(cola);
@@ -15,6 +16,10 @@ interface GraphVisualizationProps {
     refreshTrigger: number;
 }
 
+export interface GraphVisualizationRef {
+    selectAndCenterNode: (nodeId: string) => boolean;
+}
+
 interface DisplayNode {
     id: string;
     content: string;
@@ -22,21 +27,21 @@ interface DisplayNode {
     timestamp: string;
 }
 
-// Color spectrum for node clustering
+// Cosmic color spectrum for node clustering - vibrant space colors
 const NODE_COLORS = [
-    '#2563eb', // blue (primary)
-    '#10b981', // green
-    '#f59e0b', // yellow
-    '#ef4444', // red
-    '#8b5cf6', // purple
-    '#06b6d4', // cyan
-    '#f97316', // orange
-    '#ec4899', // pink
-    '#84cc16', // lime
-    '#6366f1', // indigo
+    '#00d4ff', // electric cyan
+    '#ff006e', // cosmic magenta
+    '#8338ec', // nebula purple
+    '#ffbe0b', // stellar yellow
+    '#fb5607', // solar orange
+    '#3a86ff', // deep space blue
+    '#06ffa5', // alien green
+    '#ff4081', // plasma pink
+    '#7209b7', // galaxy purple
+    '#f72585', // supernova red
 ];
 
-const GraphVisualization: React.FC<GraphVisualizationProps> = ({ refreshTrigger }) => {
+const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationProps>(({ refreshTrigger }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const graphContainerRef = useRef<HTMLDivElement>(null);
     const cyRef = useRef<Core | null>(null);
@@ -44,6 +49,38 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ refreshTrigger 
     
     // Fullscreen functionality
     const { isFullscreen, toggleFullscreen } = useFullscreen(graphContainerRef);
+
+    // Expose methods to parent component via ref
+    useImperativeHandle(ref, () => ({
+        selectAndCenterNode: (nodeId: string) => {
+            if (!cyRef.current) return false;
+            
+            const cy = cyRef.current;
+            const node = cy.getElementById(nodeId);
+            
+            if (node.length === 0) {
+                console.warn(`Node with ID ${nodeId} not found in graph`);
+                return false;
+            }
+            
+            // Center and zoom to the node
+            cy.animate({
+                center: { eles: node },
+                zoom: 1.5
+            }, {
+                duration: 500,
+                easing: 'ease-in-out'
+            });
+            
+            // Highlight the node and its connections
+            highlightConnectedNodes(node);
+            
+            // Show node details
+            showNodeDetails(nodeId);
+            
+            return true;
+        }
+    }), []);
 
     // Initialize cytoscape once on component mount
     useEffect(() => {
@@ -54,66 +91,80 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ refreshTrigger 
             elements: [],
             zoom: 0.8,
             minZoom: 0.1,
-            maxZoom: 3.0,
+            maxZoom: 10,
             wheelSensitivity: 2,
+            motionBlur: false,
             style: [
                 {
                     selector: 'node',
                     style: {
                         'background-color': 'data(color)',
-                        'label': 'data(label)',
-                        'color': '#1e293b',
-                        'text-valign': 'center',
-                        'text-halign': 'center',
-                        'font-size': 12,
-                        'width': 50,
-                        'height': 50,
-                        'text-wrap': 'ellipsis',
-                        'text-max-width': '80px',
+                        'width': 25,
+                        'height': 25,
                         'border-width': 2,
-                        'border-color': '#e2e8f0',
-                        'transition-property': 'background-color, border-color, border-width, width, height, opacity',
-                        'transition-duration': 200
+                        'border-color': 'data(color)',
+                        'border-opacity': 1,
+                        'label': '', // No labels for cleaner look
+                        'shadow-blur': 8,
+                        'shadow-color': 'data(color)',
+                        'shadow-opacity': 0.6,
+                        'shadow-offset-x': 0,
+                        'shadow-offset-y': 0,
+                        'transition-property': 'background-color, border-width, border-color, width, height, opacity, shadow-blur',
+                        'transition-duration': 300
                     }
                 },
                 {
                     selector: 'edge',
                     style: {
-                        'width': 1.5,
-                        'line-color': '#cbd5e1',
-                        'target-arrow-color': '#cbd5e1',
-                        'target-arrow-shape': 'triangle',
-                        'curve-style': 'bezier',
+                        'width': (ele: any) => {
+                            // Scale width based on edge strength
+                            const strength = ele.data('strength') || 0.5;
+                            return Math.max(1.5, Math.min(strength * 7, 12));
+                        },
+                        'line-color': 'data(color)',
                         'opacity': 0.7,
-                        'transition-property': 'line-color, width, opacity',
-                        'transition-duration': 200
+                        'curve-style': 'bezier',
+                        'shadow-blur': 4,
+                        'shadow-color': 'data(color)',
+                        'shadow-opacity': 0.4,
+                        'shadow-offset-x': 0,
+                        'shadow-offset-y': 0,
+                        'transition-property': 'width, line-color, opacity, shadow-blur',
+                        'transition-duration': 300,
+                        'target-arrow-shape': 'none',
+                        'z-index': 0
                     }
                 },
                 {
                     selector: 'node:selected',
                     style: {
-                        'background-color': '#1d4ed8',
-                        'border-width': 3,
-                        'border-color': '#2563eb',
-                        'width': 60,
-                        'height': 60
+                        'border-width': 4,
+                        'border-color': '#ffffff',
+                        'width': 35,
+                        'height': 35,
+                        'shadow-blur': 15,
+                        'shadow-color': '#ffffff',
+                        'shadow-opacity': 0.8,
+                        'z-index': 999
                     }
                 },
                 {
-                    selector: 'node.highlighted',
+                    selector: 'edge:selected',
                     style: {
-                        'background-color': '#10b981',
-                        'border-color': '#059669',
-                        'border-width': 3
+                        'width': 5,
+                        'opacity': 1,
+                        'shadow-blur': 8,
+                        'shadow-color': 'data(color)',
+                        'shadow-opacity': 0.8,
+                        'z-index': 998
                     }
                 },
                 {
-                    selector: 'edge.highlighted',
+                    selector: '.highlighted',
                     style: {
-                        'line-color': '#10b981',
-                        'target-arrow-color': '#10b981',
-                        'width': 3,
-                        'opacity': 1
+                        'opacity': 1,
+                        'z-index': 900
                     }
                 }
             ],
@@ -127,6 +178,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ refreshTrigger 
 
         // Store global reference for legacy compatibility
         (window as any).cy = cy;
+
+        // Prevent unwanted viewport resets
+        preventViewportReset(cy);
 
         return () => {
             if (cyRef.current) {
@@ -147,6 +201,79 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ refreshTrigger 
             if (evt.target === cy) {
                 hideNodeDetails();
                 unhighlightAll();
+            }
+        });
+    };
+
+    const preventViewportReset = (cy: Core) => {
+        // Create a custom viewport manager that keeps track of user's view
+        let userViewport = {
+            zoom: cy.zoom(),
+            pan: cy.pan()
+        };
+        
+        // Only update when user intentionally changes view
+        let viewChanged = false;
+        
+        // Listen for user-initiated zoom/pan
+        cy.on('zoom pan', () => {
+            if (!viewChanged) {
+                userViewport = {
+                    zoom: cy.zoom(),
+                    pan: cy.pan()
+                };
+            }
+        });
+        
+        // Override the fit function
+        const originalFit = cy.fit;
+        cy.fit = function(eles?: any, padding?: number) {
+            // Check for manual reset via a different approach
+            if (arguments[2] === true || (arguments[0] as any)?.reset === true) {
+                viewChanged = true;
+                const result = originalFit.apply(cy, [eles, padding]);
+                
+                // Update user viewport after manual reset
+                setTimeout(() => {
+                    userViewport = {
+                        zoom: cy.zoom(),
+                        pan: cy.pan()
+                    };
+                    viewChanged = false;
+                }, 100);
+                
+                return result;
+            }
+            return cy;
+        };
+        
+        // Periodically check if view was reset unexpectedly
+        setInterval(() => {
+            // Don't restore during user interactions
+            if (cy.nodes().filter(':grabbed').length > 0) return;
+            
+            const currentZoom = cy.zoom();
+            const currentPan = cy.pan();
+            
+            // If viewport changed without user action, restore
+            if (!viewChanged && 
+                (Math.abs(currentZoom - userViewport.zoom) > 0.01 ||
+                 Math.abs(currentPan.x - userViewport.pan.x) > 10 ||
+                 Math.abs(currentPan.y - userViewport.pan.y) > 10)) {
+                
+                cy.viewport({
+                    zoom: userViewport.zoom,
+                    pan: userViewport.pan
+                });
+            }
+        }, 200);
+        
+        // For zoom button handlers
+        cy.on('wheelzoom', (event) => {
+            // Ensure zoom stays within bounds
+            const zoom = cy.zoom();
+            if (zoom <= cy.minZoom() || zoom >= cy.maxZoom()) {
+                event.preventDefault();
             }
         });
     };
@@ -220,18 +347,34 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ refreshTrigger 
                 cy.add(processedElements as ElementDefinition[]);
             });
 
-            // Apply cola layout with minimal stable parameters
+            // Apply cola layout with advanced physics parameters
             const layout = cy.layout({
                 name: 'cola',
                 animate: true,
-                fit: true,
-                padding: 50,
-                nodeSpacing: () => 50,
-                edgeLength: () => 100,
+                refresh: 1,
+                maxSimulationTime: 7000,
+                nodeSpacing: function() { return 50; },
+                edgeLength: function(edge: any) {
+                    // Dynamic edge length based on connection strength if available
+                    const strength = edge.data('strength') || 0.5;
+                    return 80 + (1 - strength) * 150;
+                },
+                // Physics parameters for interactive feel
+                gravity: 0.3,
+                padding: 30,
                 avoidOverlap: true,
+                randomize: false,
+                unconstrIter: 10,
+                userConstIter: 15,
+                allConstIter: 20,
+                // Key physics parameters for dragging
                 handleDisconnected: true,
-                convergenceThreshold: 0.01,
-                maxSimulationTime: 2000,
+                convergenceThreshold: 0.001,
+                flow: {
+                    enabled: true,          
+                    friction: 0.6
+                },
+                infinite: true, // Keep physics simulation running - CRITICAL for interactive feel
                 stop: () => {
                     cy.animate({
                         fit: { eles: cy.elements(), padding: 30 },
@@ -241,6 +384,15 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ refreshTrigger 
             } as any);
 
             layout.run();
+
+            // Add background effects
+            addBackgroundEffects();
+            
+            // Setup interactive drag behavior
+            setupDragBehavior(cy);
+            
+            // Add continuous node animations
+            animateNodes();
 
         } catch (error) {
             console.error('Error loading graph data:', error);
@@ -295,6 +447,262 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ refreshTrigger 
         
         return [...processedNodes, ...edges];
     }
+
+    const setupDragBehavior = (cy: Core) => {
+        let draggedNode: NodeSingular | null = null;
+        let connectedNodes: NodeCollection = cy.collection();
+        
+        cy.on('grab', 'node', function(e) {
+            draggedNode = e.target;
+            if (!draggedNode) return;
+            connectedNodes = draggedNode.neighborhood().nodes();
+            
+            // Visual feedback
+            draggedNode.style({
+                'border-width': 3,
+                'border-color': 'white'
+            });
+        });
+        
+        cy.on('drag', 'node', throttle(function() {
+            if (!draggedNode) return;
+            
+            requestAnimationFrame(() => {
+                // Pull connected nodes with diminishing effect
+                connectedNodes.forEach(node => {
+                    // Skip the dragged node itself
+                    if (!draggedNode) return;
+                    if (node.id() === draggedNode.id()) return;
+                    
+                    // Find connection strength
+                    const edge = cy.edges().filter(edge => 
+                        (edge.source().id() === draggedNode!.id() && edge.target().id() === node.id()) ||
+                        (edge.target().id() === draggedNode!.id() && edge.source().id() === node.id())
+                    );
+                    
+                    if (edge.length === 0) return;
+                    
+                    // Use connection strength for pull effect
+                    const strength = edge.data('strength') * 0.02 || 0.005;
+                    const nodePos = node.position();
+                    const draggedPos = draggedNode.position();
+                    
+                    // Apply pull effect
+                    node.position({
+                        x: nodePos.x + (draggedPos.x - nodePos.x) * strength,
+                        y: nodePos.y + (draggedPos.y - nodePos.y) * strength
+                    });
+                });
+            });
+        }, 30));
+        
+        cy.on('free', 'node', function() {
+            if (!draggedNode) return;
+            
+            // Reset styles
+            draggedNode.style({
+                'border-width': 2,
+                'border-color': draggedNode.data('color')
+            });
+            
+            // Reset variables
+            draggedNode = null;
+            connectedNodes = cy.collection();
+        });
+    };
+
+    const animateNodes = () => {
+        if (!cyRef.current) return;
+        
+        const cy = cyRef.current;
+        
+        // Apply subtle random movement to keep graph alive
+        setInterval(() => {
+            // Only apply jitter if graph is not being interacted with
+            if (cy.nodes().filter(':grabbed').length === 0) {
+                // Add tiny random movements to random nodes
+                cy.nodes().forEach(node => {
+                    if (Math.random() > 0.7) {  // Only affect ~30% of nodes each time
+                        const jitter = (Math.random() - 0.5) * 1;
+                        const pos = node.position();
+                        node.position({
+                            x: pos.x + jitter,
+                            y: pos.y + jitter
+                        });
+                    }
+                });
+            }
+        }, 2000);
+        
+        // Occasionally add pulse effects to random nodes
+        setInterval(() => {
+            if (!cyRef.current) return;
+            if (cy.nodes().filter(':grabbed').length === 0) {
+                const nodes = cy.nodes();
+                if (nodes.length === 0) return;
+                
+                const randomNodeIndex = Math.floor(Math.random() * nodes.length);
+                const randomNode = nodes[randomNodeIndex];
+                
+                // Don't animate if node is selected or being dragged
+                if (randomNode.selected() || randomNode.grabbed()) return;
+                
+                // Add a subtle pulse effect with fixed dimensions to prevent size drift
+                const originalWidth = 25;  // Fixed base size from CSS
+                const originalHeight = 25; // Fixed base size from CSS
+                
+                randomNode.animate({
+                    style: { 
+                        'width': originalWidth * 1.1, 
+                        'height': originalHeight * 1.1,
+                        'border-width': 7
+                    }
+                }, {
+                    duration: 800,
+                    easing: 'ease-in-sine',
+                    complete: function() {
+                        randomNode.animate({
+                            style: { 
+                                'width': originalWidth, 
+                                'height': originalHeight,
+                                'border-width': 2
+                            }
+                        }, {
+                            duration: 800,
+                            easing: 'ease-out-sine'
+                        });
+                    }
+                });
+            }
+        }, 700);
+    };
+
+    const addBackgroundEffects = () => {
+        if (!graphContainerRef.current) return;
+        
+        // Clear any existing canvas
+        const existingCanvas = graphContainerRef.current.querySelector('.star-background');
+        if (existingCanvas) {
+            existingCanvas.remove();
+        }
+        
+        // Create canvas
+        const canvas = document.createElement('canvas');
+        canvas.setAttribute('class', 'star-background');
+        canvas.style.position = 'absolute';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.pointerEvents = 'none';
+        canvas.style.zIndex = '0';
+        
+        graphContainerRef.current.appendChild(canvas);
+        
+        // Set canvas size
+        canvas.width = graphContainerRef.current.clientWidth;
+        canvas.height = graphContainerRef.current.clientHeight;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        // Create enhanced cosmic stars with varied sizes
+        const stars: {x: number, y: number, size: number, opacity: number, twinkleSpeed: number, type: 'normal' | 'bright' | 'distant'}[] = [];
+        
+        for (let i = 0; i < 200; i++) {
+            const starType = Math.random();
+            let size, opacity, twinkleSpeed, type: 'normal' | 'bright' | 'distant';
+            
+            if (starType < 0.1) {
+                // Bright stars (10%)
+                size = Math.random() * 2 + 1.5;
+                opacity = Math.random() * 0.4 + 0.6;
+                twinkleSpeed = Math.random() * 2000 + 1000;
+                type = 'bright';
+            } else if (starType < 0.7) {
+                // Normal stars (60%)
+                size = Math.random() * 1 + 0.5;
+                opacity = Math.random() * 0.6 + 0.3;
+                twinkleSpeed = Math.random() * 3000 + 2000;
+                type = 'normal';
+            } else {
+                // Distant stars (30%)
+                size = Math.random() * 0.5 + 0.2;
+                opacity = Math.random() * 0.4 + 0.1;
+                twinkleSpeed = Math.random() * 4000 + 3000;
+                type = 'distant';
+            }
+            
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size,
+                opacity,
+                twinkleSpeed,
+                type
+            });
+        }
+        
+        // Animation loop
+        const animate = () => {
+            if (!ctx) return;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw enhanced cosmic stars
+            stars.forEach(star => {
+                ctx.beginPath();
+                
+                // Enhanced twinkling effect based on star type
+                const time = Date.now();
+                const twinkle = Math.sin(time / star.twinkleSpeed) * 0.5 + 0.5;
+                const currentOpacity = star.opacity * (0.3 + twinkle * 0.7);
+                
+                // Different colors for different star types
+                let color;
+                switch (star.type) {
+                    case 'bright':
+                        color = `rgba(255, 255, 255, ${currentOpacity})`;
+                        // Add subtle glow for bright stars
+                        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+                        ctx.shadowBlur = star.size * 2;
+                        break;
+                    case 'normal':
+                        color = `rgba(200, 220, 255, ${currentOpacity})`;
+                        ctx.shadowColor = 'rgba(200, 220, 255, 0.3)';
+                        ctx.shadowBlur = star.size;
+                        break;
+                    case 'distant':
+                        color = `rgba(150, 150, 200, ${currentOpacity})`;
+                        ctx.shadowColor = 'transparent';
+                        ctx.shadowBlur = 0;
+                        break;
+                }
+                
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                
+                // Reset shadow for next star
+                ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+                
+                // Slowly move stars (slower for distant stars)
+                const moveSpeed = star.type === 'distant' ? 0.02 : star.type === 'bright' ? 0.08 : 0.05;
+                star.y -= moveSpeed;
+                
+                // Reset stars that go off screen
+                if (star.y < -star.size) {
+                    star.y = canvas.height + star.size;
+                    star.x = Math.random() * canvas.width;
+                }
+            });
+            
+            requestAnimationFrame(animate);
+        };
+        
+        animate();
+    };
 
     const formatDate = (dateString: string): string => {
         if (!dateString) return '';
@@ -364,6 +772,8 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({ refreshTrigger 
             </div>
         </div>
     );
-};
+});
+
+GraphVisualization.displayName = 'GraphVisualization';
 
 export default GraphVisualization;

@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 
 interface UseFullscreenReturn {
     isFullscreen: boolean;
     toggleFullscreen: () => Promise<void>;
 }
 
-export const useFullscreen = (elementRef: React.RefObject<HTMLElement>): UseFullscreenReturn => {
+export const useFullscreen = (elementRef: React.RefObject<HTMLElement | null>): UseFullscreenReturn => {
     const [isFullscreen, setIsFullscreen] = useState(false);
     
     const enterFullscreen = async (element: HTMLElement): Promise<void> => {
@@ -49,9 +49,12 @@ export const useFullscreen = (elementRef: React.RefObject<HTMLElement>): UseFull
             console.error('Error exiting fullscreen:', error);
         }
     };
-
+    
     const toggleFullscreen = async (): Promise<void> => {
-        if (!elementRef.current) return;
+        if (!elementRef.current) {
+            console.warn('Element ref is null, cannot toggle fullscreen');
+            return;
+        }
         
         if (isFullscreen) {
             await exitFullscreen();
@@ -66,7 +69,7 @@ export const useFullscreen = (elementRef: React.RefObject<HTMLElement>): UseFull
                                  (document as any).mozFullScreenElement || 
                                  (document as any).msFullscreenElement;
         
-        const isCurrentlyFullscreen = !!fullscreenElement && fullscreenElement === elementRef.current;
+        const isCurrentlyFullscreen = !!fullscreenElement && !!elementRef.current && fullscreenElement === elementRef.current;
         setIsFullscreen(isCurrentlyFullscreen);
         
         // Manage fullscreen class

@@ -786,12 +786,46 @@ header h1 {
     border: 1px solid var(--border);
     border-radius: 8px;
     position: relative;
-    /* 
-        Explicitly set a background color. This prevents
-        the browser's default gray background from flashing
-        during redraws or zooms.
-    */
-    background-color: var(--surface);
+    /* Enhanced cosmic space background */
+    background: radial-gradient(ellipse at center, 
+        rgba(255, 203, 203, 0.3) 0%,
+        rgba(40, 75, 173, 0.2) 1%,
+        rgba(24, 38, 68, 0.8) 3%,
+        rgba(0, 0, 0, 0.95) 11%
+    );
+    overflow: hidden;
+}
+
+/* Enhanced star background canvas */
+.star-background {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    pointer-events: none !important;
+    z-index: 0 !important;
+    opacity: 0.8;
+}
+
+/* Cosmic glow effects for cytoscape nodes */
+.graph-container canvas[data-id="layer0-selectbox"],
+.graph-container canvas[data-id="layer1-drag"], 
+.graph-container canvas[data-id="layer2-main"] {
+    filter: dsop-shadow(0 0 3px rgba(59, 130, 246, 0.3));
+}
+
+/* Enhanced fullscreen cosmic background */
+#graph-container:fullscreen .graph-container,
+#graph-container:-webkit-full-screen .graph-container,
+#graph-container:-moz-full-screen .graph-container,
+#graph-container:-ms-fullscreen .graph-container {
+    background: radial-gradient(ellipse at center, 
+        rgba(88, 28, 135, 0.4) 0%,
+        rgba(29, 78, 216, 0.3) 20%,
+        rgba(17, 24, 39, 0.9) 10%,
+        rgba(0, 0, 0, 1) 100%
+    );
 }
 
 /* Node Details */
@@ -884,6 +918,17 @@ header h1 {
 .memory-item:hover {
     box-shadow: var(--shadow);
     border-color: var(--primary-color);
+}
+
+.memory-item-clickable:hover {
+    box-shadow: var(--shadow-lg);
+    border-color: var(--primary-color);
+    background-color: var(--surface);
+    transform: translateY(-1px);
+}
+
+.memory-item-clickable {
+    transition: all 0.2s ease-in-out;
 }
 
 .memory-item-content {

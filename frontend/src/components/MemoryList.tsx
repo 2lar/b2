@@ -13,6 +13,7 @@ interface MemoryListProps {
     onPageChange: (page: number) => void;
     onMemoryDeleted: () => void;
     onMemoryUpdated: () => void;
+    onMemoryViewInGraph?: (nodeId: string) => void;
 }
 
 const MemoryList: React.FC<MemoryListProps> = ({
@@ -23,7 +24,8 @@ const MemoryList: React.FC<MemoryListProps> = ({
     isLoading,
     onPageChange,
     onMemoryDeleted,
-    onMemoryUpdated
+    onMemoryUpdated,
+    onMemoryViewInGraph
 }) => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editContent, setEditContent] = useState('');
@@ -170,13 +172,22 @@ const MemoryList: React.FC<MemoryListProps> = ({
                         <div className="empty-state">No memories yet. Create your first memory above!</div>
                     ) : (
                         memories.map(memory => (
-                            <div key={memory.nodeId} className="memory-item" data-node-id={memory.nodeId}>
+                            <div 
+                                key={memory.nodeId} 
+                                className={`memory-item ${onMemoryViewInGraph ? 'memory-item-clickable' : ''}`}
+                                data-node-id={memory.nodeId}
+                                onClick={onMemoryViewInGraph && editingId !== memory.nodeId ? () => onMemoryViewInGraph(memory.nodeId || '') : undefined}
+                                style={onMemoryViewInGraph && editingId !== memory.nodeId ? { cursor: 'pointer' } : undefined}
+                            >
                                 <div className="memory-item-header">
-                                    <label className="checkbox-container">
+                                    <label className="checkbox-container" onClick={(e) => e.stopPropagation()}>
                                         <input 
                                             type="checkbox" 
                                             checked={selectedMemories.has(memory.nodeId || '')}
-                                            onChange={() => handleSelectMemory(memory.nodeId || '')}
+                                            onChange={(e) => {
+                                                e.stopPropagation();
+                                                handleSelectMemory(memory.nodeId || '');
+                                            }}
                                             className="memory-checkbox" 
                                         />
                                         <span className="checkmark"></span>
@@ -186,6 +197,7 @@ const MemoryList: React.FC<MemoryListProps> = ({
                                             <textarea 
                                                 value={editContent}
                                                 onChange={(e) => setEditContent(e.target.value)}
+                                                onClick={(e) => e.stopPropagation()}
                                                 className="edit-textarea"
                                                 autoFocus
                                             />
@@ -202,13 +214,19 @@ const MemoryList: React.FC<MemoryListProps> = ({
                                         <>
                                             <button 
                                                 className="primary-btn save-btn"
-                                                onClick={() => handleSave(memory.nodeId || '')}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleSave(memory.nodeId || '');
+                                                }}
                                             >
                                                 Save
                                             </button>
                                             <button 
                                                 className="secondary-btn cancel-btn"
-                                                onClick={handleCancel}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCancel();
+                                                }}
                                             >
                                                 Cancel
                                             </button>
@@ -217,13 +235,19 @@ const MemoryList: React.FC<MemoryListProps> = ({
                                         <>
                                             <button 
                                                 className="secondary-btn edit-btn"
-                                                onClick={() => handleEdit(memory)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleEdit(memory);
+                                                }}
                                             >
                                                 Edit
                                             </button>
                                             <button 
                                                 className="danger-btn delete-btn"
-                                                onClick={() => handleDelete(memory.nodeId || '')}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDelete(memory.nodeId || '');
+                                                }}
                                             >
                                                 Delete
                                             </button>

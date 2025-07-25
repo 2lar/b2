@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User } from '@supabase/supabase-js';
 import Header from './Header';
-import GraphVisualization from './GraphVisualization';
+import GraphVisualization, { GraphVisualizationRef } from './GraphVisualization';
 import MemoryInput from './MemoryInput';
 import MemoryList from './MemoryList';
 import { api } from '../ts/apiClient';
@@ -20,6 +20,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [refreshGraph, setRefreshGraph] = useState(0);
+    const graphRef = useRef<GraphVisualizationRef>(null);
 
     const MEMORIES_PER_PAGE = 50;
 
@@ -65,6 +66,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
         setRefreshGraph(prev => prev + 1);
     };
 
+    const handleViewInGraph = (nodeId: string) => {
+        if (graphRef.current) {
+            const success = graphRef.current.selectAndCenterNode(nodeId);
+            if (!success) {
+                console.warn(`Could not find node ${nodeId} in graph. The graph may still be loading.`);
+            }
+        }
+    };
+
     // Get current page memories
     const startIndex = (currentPage - 1) * MEMORIES_PER_PAGE;
     const endIndex = startIndex + MEMORIES_PER_PAGE;
@@ -107,7 +117,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                 <div className="resize-handle horizontal" data-resize="horizontal-left"></div>
 
                 {/* Middle Column - Memory Graph */}
-                <GraphVisualization refreshTrigger={refreshGraph} />
+                <GraphVisualization ref={graphRef} refreshTrigger={refreshGraph} />
 
                 {/* Column Resize Handle */}
                 <div className="resize-handle horizontal" data-resize="horizontal-right"></div>
@@ -130,6 +140,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                         onPageChange={setCurrentPage}
                         onMemoryDeleted={handleMemoryDeleted}
                         onMemoryUpdated={handleMemoryUpdated}
+                        onMemoryViewInGraph={handleViewInGraph}
                     />
                 </div>
             </main>
