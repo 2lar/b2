@@ -5,6 +5,7 @@ import { api } from '../ts/apiClient';
 import { components } from '../ts/generated-types';
 import { useFullscreen } from '../hooks/useFullscreen';
 import { throttle } from 'lodash-es';
+import TagDisplay from './TagDisplay';
 
 // Register the cola layout
 cytoscape.use(cola);
@@ -25,6 +26,7 @@ interface DisplayNode {
     content: string;
     label: string;
     timestamp: string;
+    tags?: string[];
 }
 
 // Cosmic color spectrum for node clustering - vibrant space colors
@@ -300,7 +302,8 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                 id: nodeId,
                 content: nodeData.content || '',
                 label: nodeData.content ? (nodeData.content.length > 50 ? nodeData.content.substring(0, 47) + '...' : nodeData.content) : '',
-                timestamp: nodeData.timestamp || ''
+                timestamp: nodeData.timestamp || '',
+                tags: nodeData.tags || []
             });
         } catch (error) {
             console.error('Error loading node details:', error);
@@ -759,6 +762,14 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                         <div className="panel-content">
                             <div className="node-content-section">
                                 {selectedNode.content}
+                            </div>
+                            <div className="node-tags-section">
+                                <h4>Tags</h4>
+                                <TagDisplay 
+                                    tags={selectedNode.tags} 
+                                    maxTags={0} 
+                                    size="medium" 
+                                />
                             </div>
                             <div className="connections-section">
                                 <h4>Connected Memories</h4>

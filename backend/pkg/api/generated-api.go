@@ -155,10 +155,11 @@ func (t *GraphDataResponse_Elements_Item) UnmarshalJSON(b []byte) error {
 
 // Additional response types for compatibility
 type NodeResponse struct {
-	NodeID    string `json:"nodeId"`
-	Content   string `json:"content"`
-	Timestamp string `json:"timestamp"`
-	Version   int    `json:"version"`
+	NodeID    string   `json:"nodeId"`
+	Content   string   `json:"content"`
+	Timestamp string   `json:"timestamp"`
+	Version   int      `json:"version"`
+	Tags      []string `json:"tags"`
 }
 
 type NodeDetailsResponse struct {
@@ -166,5 +167,6 @@ type NodeDetailsResponse struct {
 	Content   string   `json:"content"`
 	Timestamp string   `json:"timestamp"`
 	Version   int      `json:"version"`
+	Tags      []string `json:"tags"`
 	Edges     []string `json:"edges"`
 }

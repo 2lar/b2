@@ -45,6 +45,16 @@ export interface components {
       timestamp: string;
       /** @example 1 */
       version: number;
+      /**
+       * @description Auto-generated tags for categorizing and connecting memories
+       * @example [
+       *   "machine",
+       *   "learning",
+       *   "datasets",
+       *   "training"
+       * ]
+       */
+      tags?: string[];
     };
     NodeDetails: components["schemas"]["Node"] & {
       /**

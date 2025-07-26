@@ -305,6 +305,12 @@ components:
           type: integer
           minimum: 0
           example: 1
+        tags:
+          type: array
+          items:
+            type: string
+          description: Auto-generated tags for categorizing and connecting memories
+          example: ["machine", "learning", "datasets", "training"]
 
     NodeDetails:
       allOf:

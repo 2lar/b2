@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../ts/apiClient';
 import { components } from '../ts/generated-types';
+import TagDisplay from './TagDisplay';
 
 type Node = components['schemas']['Node'];
 
@@ -207,7 +208,16 @@ const MemoryList: React.FC<MemoryListProps> = ({
                                     </div>
                                 </div>
                                 <div className="memory-item-meta">
-                                    {formatDate(memory.timestamp || '')}
+                                    <div className="memory-meta-row">
+                                        <span>{formatDate(memory.timestamp || '')}</span>
+                                    </div>
+                                    <div className="memory-tags-row">
+                                        <TagDisplay 
+                                            tags={memory.tags} 
+                                            maxTags={3} 
+                                            size="small" 
+                                        />
+                                    </div>
                                 </div>
                                 <div className="memory-item-actions">
                                     {editingId === memory.nodeId ? (
