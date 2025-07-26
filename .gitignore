@@ -1,3 +1,133 @@
+# Dependencies
+**/node_modules/
+**/vendor/
+
+# Build outputs
+**/dist/
+**/build/
+**/out/
+backend/main
+backend/build/
+frontend/dist/
+
+# Environment & Configuration
+.env
+.env.local
+.env.*.local
+**/.env
+
+# Python
+tagger-service/venv/
+tagger-service/env/
+tagger-service/__pycache__/
+tagger-service/**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Go
+*.so
+*.exe
+*.test
+coverage.txt
+coverage.out
+
+# CDK/AWS
+infra/cdk.out/
 aws/
-frontend/node_modules/
-infra/node_modules/
+.aws-sam/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+tagger-service/tagger.log
+backend/backend.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.vscode/settings.json
+
+# OS generated files
+Thumbs.db
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Package managers
+package-lock.json
+yarn.lock
+go.sum
+
+# Models and large files (for tagger service)
+tagger-service/models/
+*.bin
+*.safetensors
+*.onnx
+
+# Docker
+.dockerignore
+
+# Terraform (if used)
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Local database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets and keys
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.json
+
+# Cache directories
+.cache/
+.npm/
+.yarn/
