@@ -9,13 +9,33 @@
 import { auth } from './authClient';
 import { components, operations } from './generated-types';
 
-// API Base URL from environment configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Dynamic API Configuration
+function getApiBaseUrl(): string {
+    // Environment detection for automatic URL selection
+    const isLocal = import.meta.env.DEV || 
+                   window.location.hostname === 'localhost' || 
+                   window.location.hostname === '127.0.0.1' ||
+                   window.location.hostname.includes('local');
 
-// Configuration validation
-if (!API_BASE_URL || API_BASE_URL === 'undefined') {
-    console.error('VITE_API_BASE_URL is not defined. Please check your .env file.');
+    if (isLocal) {
+        // Use local development URL from environment
+        const localUrl = import.meta.env.VITE_API_BASE_URL_LOCAL;
+        if (!localUrl || localUrl === 'undefined') {
+            throw new Error('VITE_API_BASE_URL_LOCAL is not defined in .env file');
+        }
+        return localUrl;
+    }
+
+    // Use production URL from environment
+    const prodUrl = import.meta.env.VITE_API_BASE_URL;
+    if (!prodUrl || prodUrl === 'undefined') {
+        throw new Error('VITE_API_BASE_URL is not defined in .env file');
+    }
+    return prodUrl;
 }
+
+// API Base URL with dynamic configuration
+const API_BASE_URL = getApiBaseUrl();
 
 // Type definitions generated from OpenAPI specification
 
