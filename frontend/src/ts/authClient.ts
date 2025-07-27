@@ -5,7 +5,7 @@
  * Handles user registration, login, session management, and JWT token operations.
  */
 
-import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, Session, AuthChangeEvent } from '@supabase/supabase-js';
 
 // Environment configuration
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -26,7 +26,7 @@ const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Initialize auth state listener for React components
 function initAuth(): void {
-    supabase.auth.onAuthStateChange((event, session) => {
+    supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
         if (event === 'SIGNED_IN' && session?.user?.email) {
             // React components can listen to this change
             console.log('User signed in:', session.user.email);
