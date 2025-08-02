@@ -12,10 +12,13 @@ import { components, operations } from './generated-types';
 // Dynamic API Configuration
 function getApiBaseUrl(): string {
     // Environment detection for automatic URL selection
-    const isLocal = import.meta.env.DEV || 
-                   window.location.hostname === 'localhost' || 
-                   window.location.hostname === '127.0.0.1' ||
-                   window.location.hostname.includes('local');
+    
+    const isLocal = false;
+    
+    // const isLocal = import.meta.env.DEV || 
+    //                window.location.hostname === 'localhost' || 
+    //                window.location.hostname === '127.0.0.1' ||
+    //                window.location.hostname.includes('local');
 
     if (isLocal) {
         // Use local development URL from environment
@@ -43,6 +46,12 @@ const API_BASE_URL = getApiBaseUrl();
 type Node = components['schemas']['Node'];
 type NodeDetails = components['schemas']['NodeDetails'];
 
+// Category Types
+type Category = components['schemas']['Category'];
+type CreateCategoryRequest = components['schemas']['CreateCategoryRequest'];
+type UpdateCategoryRequest = components['schemas']['UpdateCategoryRequest'];
+type AddMemoryToCategoryRequest = components['schemas']['AddMemoryToCategoryRequest'];
+
 // Request/Response Types for Bulk Operations
 type BulkDeleteRequest = components['schemas']['BulkDeleteRequest'];
 type BulkDeleteResponse = components['schemas']['BulkDeleteResponse'];
@@ -54,6 +63,8 @@ type GraphDataResponse = components['schemas']['GraphDataResponse'];
 
 // Operation Response Types - Extract specific response shapes
 type ListNodesResponse = operations['listNodes']['responses']['200']['content']['application/json'];
+type ListCategoriesResponse = operations['listCategories']['responses']['200']['content']['application/json'];
+type GetMemoriesInCategoryResponse = operations['getMemoriesInCategory']['responses']['200']['content']['application/json'];
 
 /**
  * ApiClient class - Centralized HTTP communication
@@ -111,10 +122,11 @@ class ApiClient {
     /**
      * Create a new memory node
      * @param content The text content of the memory
+     * @param tags Optional array of tags for the memory
      * @returns Promise resolving to the created Node
      */
-    public createNode(content: string): Promise<Node> {
-        return this.request<Node>('POST', '/api/nodes', { content });
+    public createNode(content: string, tags?: string[]): Promise<Node> {
+        return this.request<Node>('POST', '/api/nodes', { content, tags });
     }
 
     /**
@@ -152,13 +164,14 @@ class ApiClient {
     }
 
     /**
-     * Update memory node content
+     * Update memory node content and tags
      * @param nodeId Unique identifier of the memory node to update
      * @param content New text content for the memory
+     * @param tags Optional array of tags for the memory
      * @returns Promise resolving to success message
      */
-    public updateNode(nodeId: string, content: string): Promise<{ message: string }> {
-        return this.request<{ message: string }>('PUT', `/api/nodes/${nodeId}`, { content });
+    public updateNode(nodeId: string, content: string, tags?: string[]): Promise<{ message: string }> {
+        return this.request<{ message: string }>('PUT', `/api/nodes/${nodeId}`, { content, tags });
     }
 
     /**
@@ -168,6 +181,84 @@ class ApiClient {
      */
     public bulkDeleteNodes(nodeIds: string[]): Promise<BulkDeleteResponse> {
         return this.request<BulkDeleteResponse>('POST', '/api/nodes/bulk-delete', { nodeIds });
+    }
+
+    // Category management operations
+
+    /**
+     * Create a new category
+     * @param title The title of the category
+     * @param description Optional description of the category
+     * @returns Promise resolving to the created Category
+     */
+    public createCategory(title: string, description?: string): Promise<Category> {
+        return this.request<Category>('POST', '/api/categories', { title, description });
+    }
+
+    /**
+     * List all user's categories
+     * @returns Promise resolving to array of categories
+     */
+    public listCategories(): Promise<ListCategoriesResponse> {
+        return this.request<ListCategoriesResponse>('GET', '/api/categories');
+    }
+
+    /**
+     * Get detailed information about a specific category
+     * @param categoryId Unique identifier of the category
+     * @returns Promise resolving to Category with details
+     */
+    public getCategory(categoryId: string): Promise<Category> {
+        return this.request<Category>('GET', `/api/categories/${categoryId}`);
+    }
+
+    /**
+     * Update a category's details
+     * @param categoryId Unique identifier of the category to update
+     * @param title New title for the category
+     * @param description New description for the category
+     * @returns Promise resolving to success message
+     */
+    public updateCategory(categoryId: string, title: string, description?: string): Promise<{ message: string; categoryId: string }> {
+        return this.request<{ message: string; categoryId: string }>('PUT', `/api/categories/${categoryId}`, { title, description });
+    }
+
+    /**
+     * Delete a category permanently
+     * @param categoryId Unique identifier of the category to delete
+     * @returns Promise resolving to success message
+     */
+    public deleteCategory(categoryId: string): Promise<{ message: string }> {
+        return this.request<{ message: string }>('DELETE', `/api/categories/${categoryId}`);
+    }
+
+    /**
+     * Get all memories in a specific category
+     * @param categoryId Unique identifier of the category
+     * @returns Promise resolving to array of memories in the category
+     */
+    public getMemoriesInCategory(categoryId: string): Promise<GetMemoriesInCategoryResponse> {
+        return this.request<GetMemoriesInCategoryResponse>('GET', `/api/categories/${categoryId}/memories`);
+    }
+
+    /**
+     * Add a memory to a category
+     * @param categoryId Unique identifier of the category
+     * @param memoryId Unique identifier of the memory to add
+     * @returns Promise resolving to success message
+     */
+    public addMemoryToCategory(categoryId: string, memoryId: string): Promise<{ message: string }> {
+        return this.request<{ message: string }>('POST', `/api/categories/${categoryId}/memories`, { memoryId });
+    }
+
+    /**
+     * Remove a memory from a category
+     * @param categoryId Unique identifier of the category
+     * @param memoryId Unique identifier of the memory to remove
+     * @returns Promise resolving to success message
+     */
+    public removeMemoryFromCategory(categoryId: string, memoryId: string): Promise<{ message: string }> {
+        return this.request<{ message: string }>('DELETE', `/api/categories/${categoryId}/memories/${memoryId}`);
     }
 }
 

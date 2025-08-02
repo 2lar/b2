@@ -27,6 +27,30 @@ export interface paths {
     /** Get complete graph data optimized for visualization libraries */
     get: operations["getGraphData"];
   };
+  "/api/categories": {
+    /** List all categories for the authenticated user */
+    get: operations["listCategories"];
+    /** Create a new category */
+    post: operations["createCategory"];
+  };
+  "/api/categories/{categoryId}": {
+    /** Get detailed information for a single category */
+    get: operations["getCategory"];
+    /** Update a category's details */
+    put: operations["updateCategory"];
+    /** Delete a category and all its memory associations */
+    delete: operations["deleteCategory"];
+  };
+  "/api/categories/{categoryId}/memories": {
+    /** Get all memories in a specific category */
+    get: operations["getMemoriesInCategory"];
+    /** Add a memory to a category */
+    post: operations["addMemoryToCategory"];
+  };
+  "/api/categories/{categoryId}/memories/{memoryId}": {
+    /** Remove a memory from a category */
+    delete: operations["removeMemoryFromCategory"];
+  };
 }
 
 export type webhooks = Record<string, never>;
@@ -38,6 +62,15 @@ export interface components {
       nodeId: string;
       /** @example Machine learning requires large datasets for effective model training */
       content: string;
+      /**
+       * @description User-defined tags for organizing and categorizing memories
+       * @example [
+       *   "urgent",
+       *   "work",
+       *   "ml"
+       * ]
+       */
+      tags?: string[];
       /**
        * Format: date-time
        * @example 2024-01-15T14:30:00Z
@@ -59,10 +92,29 @@ export interface components {
     CreateNodeRequest: {
       /** @example GraphQL provides a more efficient alternative to REST for complex data fetching requirements */
       content: string;
+      /**
+       * @description User-defined tags for organizing and categorizing memories
+       * @example [
+       *   "work",
+       *   "graphql",
+       *   "api"
+       * ]
+       */
+      tags?: string[];
     };
     UpdateNodeRequest: {
       /** @example GraphQL and REST both have their place, but GraphQL excels in scenarios requiring flexible data fetching */
       content: string;
+      /**
+       * @description User-defined tags for organizing and categorizing memories
+       * @example [
+       *   "work",
+       *   "graphql",
+       *   "api",
+       *   "updated"
+       * ]
+       */
+      tags?: string[];
     };
     BulkDeleteRequest: {
       /**
@@ -131,6 +183,35 @@ export interface components {
       source: string;
       /** @example node-def-456-ghi-789 */
       target: string;
+    };
+    Category: {
+      /** @example cat-abc-123-def-456 */
+      id: string;
+      /** @example Work Projects */
+      title: string;
+      /** @example All work-related memories and tasks */
+      description?: string;
+      /**
+       * Format: date-time
+       * @example 2024-01-15T14:30:00Z
+       */
+      createdAt: string;
+    };
+    CreateCategoryRequest: {
+      /** @example Personal Projects */
+      title: string;
+      /** @example Side projects and personal learning */
+      description?: string;
+    };
+    UpdateCategoryRequest: {
+      /** @example Updated Category Title */
+      title: string;
+      /** @example Updated category description */
+      description?: string;
+    };
+    AddMemoryToCategoryRequest: {
+      /** @example abc-123-def-456 */
+      memoryId: string;
     };
   };
   responses: never;
@@ -385,6 +466,259 @@ export interface operations {
         content: never;
       };
       /** @description Internal server error retrieving graph data */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** List all categories for the authenticated user */
+  listCategories: {
+    responses: {
+      /** @description Successfully retrieved user's categories */
+      200: {
+        content: {
+          "application/json": {
+            /** @description Array of categories owned by the authenticated user */
+            categories?: components["schemas"]["Category"][];
+          };
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Create a new category */
+  createCategory: {
+    /** @description Category details to create */
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateCategoryRequest"];
+      };
+    };
+    responses: {
+      /** @description Category created successfully */
+      201: {
+        content: {
+          "application/json": components["schemas"]["Category"];
+        };
+      };
+      /** @description Validation error - title is required */
+      400: {
+        content: never;
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Get detailed information for a single category */
+  getCategory: {
+    parameters: {
+      path: {
+        /** @description Unique identifier for the category */
+        categoryId: string;
+      };
+    };
+    responses: {
+      /** @description Successfully retrieved category details */
+      200: {
+        content: {
+          "application/json": components["schemas"]["Category"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Category not found */
+      404: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Update a category's details */
+  updateCategory: {
+    parameters: {
+      path: {
+        /** @description Unique identifier for the category to update */
+        categoryId: string;
+      };
+    };
+    /** @description Updated category details */
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateCategoryRequest"];
+      };
+    };
+    responses: {
+      /** @description Category updated successfully */
+      200: {
+        content: {
+          "application/json": {
+            /** @example Category updated successfully */
+            message?: string;
+            /** @example abc-123-def-456 */
+            categoryId?: string;
+          };
+        };
+      };
+      /** @description Validation error */
+      400: {
+        content: never;
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Category not found */
+      404: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Delete a category and all its memory associations */
+  deleteCategory: {
+    parameters: {
+      path: {
+        /** @description Unique identifier for the category to delete */
+        categoryId: string;
+      };
+    };
+    responses: {
+      /** @description Category deleted successfully */
+      204: {
+        content: never;
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Category not found */
+      404: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Get all memories in a specific category */
+  getMemoriesInCategory: {
+    parameters: {
+      path: {
+        /** @description Unique identifier for the category */
+        categoryId: string;
+      };
+    };
+    responses: {
+      /** @description Successfully retrieved memories in category */
+      200: {
+        content: {
+          "application/json": {
+            memories?: components["schemas"]["Node"][];
+          };
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Category not found */
+      404: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Add a memory to a category */
+  addMemoryToCategory: {
+    parameters: {
+      path: {
+        /** @description Unique identifier for the category */
+        categoryId: string;
+      };
+    };
+    /** @description Memory to add to category */
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AddMemoryToCategoryRequest"];
+      };
+    };
+    responses: {
+      /** @description Memory added to category successfully */
+      200: {
+        content: {
+          "application/json": {
+            /** @example Memory added to category successfully */
+            message?: string;
+          };
+        };
+      };
+      /** @description Validation error */
+      400: {
+        content: never;
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Category or memory not found */
+      404: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Remove a memory from a category */
+  removeMemoryFromCategory: {
+    parameters: {
+      path: {
+        /** @description Unique identifier for the category */
+        categoryId: string;
+        /** @description Unique identifier for the memory */
+        memoryId: string;
+      };
+    };
+    responses: {
+      /** @description Memory removed from category successfully */
+      204: {
+        content: never;
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Category or memory not found */
+      404: {
+        content: never;
+      };
+      /** @description Internal server error */
       500: {
         content: never;
       };

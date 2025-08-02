@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Session } from '@supabase/supabase-js';
 import { auth } from '../ts/authClient';
 import { webSocketClient } from '../ts/webSocketClient';
 import AuthSection from './AuthSection';
 import Dashboard from './Dashboard';
+import CategoriesList from './CategoriesList';
+import CategoryDetail from './CategoryDetail';
 
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
@@ -64,16 +67,18 @@ const App: React.FC = () => {
     }
 
     return (
-        <>
+        <Router>
             {session && session.user?.email ? (
-                <Dashboard 
-                    user={session.user} 
-                    onSignOut={handleSignOut}
-                />
+                <Routes>
+                    <Route path="/" element={<Dashboard user={session.user} onSignOut={handleSignOut} />} />
+                    <Route path="/categories" element={<CategoriesList />} />
+                    <Route path="/categories/:categoryId" element={<CategoryDetail />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
             ) : (
                 <AuthSection onAuthSuccess={setSession} />
             )}
-        </>
+        </Router>
     );
 };
 

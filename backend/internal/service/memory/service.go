@@ -50,7 +50,7 @@ type Service interface {
 	CreateNodeWithEdges(ctx context.Context, userID, content string) (*domain.Node, error)
 	
 	// UpdateNode modifies an existing memory and recalculates its connections
-	UpdateNode(ctx context.Context, userID, nodeID, content string) (*domain.Node, error)
+	UpdateNode(ctx context.Context, userID, nodeID, content string, tags []string) (*domain.Node, error)
 	
 	// DeleteNode removes a memory and cleans up all its relationships
 	DeleteNode(ctx context.Context, userID, nodeID string) error
@@ -124,7 +124,7 @@ func (s *service) CreateNodeWithEdges(ctx context.Context, userID, content strin
 }
 
 // UpdateNode orchestrates updating a node's content and reconnecting it.
-func (s *service) UpdateNode(ctx context.Context, userID, nodeID, content string) (*domain.Node, error) {
+func (s *service) UpdateNode(ctx context.Context, userID, nodeID, content string, tags []string) (*domain.Node, error) {
 	if content == "" {
 		return nil, appErrors.NewValidation("content cannot be empty")
 	}
@@ -143,6 +143,7 @@ func (s *service) UpdateNode(ctx context.Context, userID, nodeID, content string
 		UserID:    userID,
 		Content:   content,
 		Keywords:  keywords,
+		Tags:      tags,
 		CreatedAt: time.Now(),
 		Version:   existingNode.Version + 1,
 	}

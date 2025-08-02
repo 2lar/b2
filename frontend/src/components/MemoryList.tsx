@@ -206,6 +206,15 @@ const MemoryList: React.FC<MemoryListProps> = ({
                                         )}
                                     </div>
                                 </div>
+                                {memory.tags && memory.tags.length > 0 && (
+                                    <div className="memory-tags">
+                                        {memory.tags.map((tag, index) => (
+                                            <span key={index} className="memory-tag">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                                 <div className="memory-item-meta">
                                     {formatDate(memory.timestamp || '')}
                                 </div>

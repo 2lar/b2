@@ -7,6 +7,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ userEmail, onSignOut }) => {
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
     useEffect(() => {
         // Get saved theme or default to dark
@@ -22,6 +23,14 @@ const Header: React.FC<HeaderProps> = ({ userEmail, onSignOut }) => {
         localStorage.setItem('theme', newTheme);
     };
 
+    const toggleDropdown = () => {
+        setIsDropdownOpen(!isDropdownOpen);
+    };
+
+    const closeDropdown = () => {
+        setIsDropdownOpen(false);
+    };
+
     return (
         <header>
             <h1>Memory Book</h1>
@@ -32,13 +41,48 @@ const Header: React.FC<HeaderProps> = ({ userEmail, onSignOut }) => {
                 >
                     {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
                 </button>
-                <span id="user-email">{userEmail}</span>
-                <button 
-                    className="secondary-btn" 
-                    onClick={onSignOut}
-                >
-                    Sign Out
-                </button>
+                
+                <div className="user-dropdown">
+                    <button 
+                        className="user-dropdown-toggle"
+                        onClick={toggleDropdown}
+                    >
+                        <span className="user-email">{userEmail}</span>
+                        <span className="dropdown-arrow">{isDropdownOpen ? '▲' : '▼'}</span>
+                    </button>
+                    
+                    {isDropdownOpen && (
+                        <div className="user-dropdown-menu">
+                            <button className="dropdown-item" onClick={closeDropdown}>
+                                <span className="dropdown-icon">👤</span>
+                                Profile
+                            </button>
+                            <button className="dropdown-item" onClick={closeDropdown}>
+                                <span className="dropdown-icon">⚙️</span>
+                                Settings
+                            </button>
+                            <button className="dropdown-item" onClick={closeDropdown}>
+                                <span className="dropdown-icon">📊</span>
+                                Analytics
+                            </button>
+                            <button className="dropdown-item" onClick={closeDropdown}>
+                                <span className="dropdown-icon">💡</span>
+                                Help
+                            </button>
+                            <div className="dropdown-divider"></div>
+                            <button 
+                                className="dropdown-item sign-out-item" 
+                                onClick={() => {
+                                    closeDropdown();
+                                    onSignOut();
+                                }}
+                            >
+                                <span className="dropdown-icon">🚪</span>
+                                Sign Out
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </header>
     );

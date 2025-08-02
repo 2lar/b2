@@ -12,6 +12,7 @@ import (
 	"brain2-backend/internal/domain"
 	"brain2-backend/internal/repository/ddb"
 	"brain2-backend/internal/service/memory"
+	"brain2-backend/internal/service/category"
 	"brain2-backend/pkg/api"
 	"brain2-backend/pkg/config"
 	appErrors "brain2-backend/pkg/errors"
@@ -41,6 +42,7 @@ type contextKey struct {
 var userIDKey = contextKey{"userID"}
 var chiLambda *chiadapter.ChiLambdaV2
 var memoryService memory.Service
+var categoryService category.Service
 var eventbridgeClient *eventbridge.Client
 
 func init() {
@@ -56,6 +58,7 @@ func init() {
 	
 	repo := ddb.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName)
 	memoryService = memory.NewService(repo)
+	categoryService = category.NewService(repo)
 	
 	r := chi.NewRouter()
 	
@@ -81,6 +84,18 @@ func init() {
 		r.Post("/nodes/bulk-delete", bulkDeleteNodesHandler)
 		
 		r.Get("/graph-data", getGraphDataHandler)
+		
+		// Category routes
+		r.Get("/categories", listCategoriesHandler)
+		r.Post("/categories", createCategoryHandler)
+		r.Get("/categories/{categoryId}", getCategoryHandler)
+		r.Put("/categories/{categoryId}", updateCategoryHandler)
+		r.Delete("/categories/{categoryId}", deleteCategoryHandler)
+		
+		// Category-memory association routes
+		r.Post("/categories/{categoryId}/memories", addMemoryToCategoryHandler)
+		r.Get("/categories/{categoryId}/memories", getMemoriesInCategoryHandler)
+		r.Delete("/categories/{categoryId}/memories/{memoryId}", removeMemoryFromCategoryHandler)
 	})
 	
 	chiLambda = chiadapter.NewV2(r)
@@ -141,11 +156,16 @@ func createNodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create the node object
+	tags := []string{}
+	if req.Tags != nil {
+		tags = *req.Tags
+	}
 	node := domain.Node{
 		ID:        uuid.New().String(),
 		UserID:    userID,
 		Content:   req.Content,
 		Keywords:  memory.ExtractKeywords(req.Content),
+		Tags:      tags,
 		CreatedAt: time.Now(),
 		Version:   0,
 	}
@@ -187,6 +207,7 @@ func createNodeHandler(w http.ResponseWriter, r *http.Request) {
 	api.Success(w, http.StatusCreated, api.NodeResponse{
 		NodeID:    node.ID,
 		Content:   node.Content,
+		Tags:      node.Tags,
 		Timestamp: node.CreatedAt.Format(time.RFC3339),
 		Version:   node.Version,
 	})
@@ -204,6 +225,7 @@ func listNodesHandler(w http.ResponseWriter, r *http.Request) {
 		nodesResponse = append(nodesResponse, api.NodeResponse{
 			NodeID:    node.ID,
 			Content:   node.Content,
+			Tags:      node.Tags,
 			Timestamp: node.CreatedAt.Format(time.RFC3339),
 			Version:   node.Version,
 		})
@@ -229,6 +251,7 @@ func getNodeHandler(w http.ResponseWriter, r *http.Request) {
 	api.Success(w, http.StatusOK, api.NodeDetailsResponse{
 		NodeID:    node.ID,
 		Content:   node.Content,
+		Tags:      node.Tags,
 		Timestamp: node.CreatedAt.Format(time.RFC3339),
 		Version:   node.Version,
 		Edges:     edgeIDs,
@@ -258,7 +281,11 @@ func updateNodeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = memoryService.UpdateNode(r.Context(), userID, nodeID, req.Content)
+	tags := []string{}
+	if req.Tags != nil {
+		tags = *req.Tags
+	}
+	_, err = memoryService.UpdateNode(r.Context(), userID, nodeID, req.Content, tags)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -340,8 +367,8 @@ func getGraphDataHandler(w http.ResponseWriter, r *http.Request) {
 
 		graphNode := api.GraphNode{
 			Data: &api.NodeData{
-				Id:    &node.ID,
-				Label: &label,
+				Id:    node.ID,
+				Label: label,
 			},
 		}
 
@@ -357,9 +384,9 @@ func getGraphDataHandler(w http.ResponseWriter, r *http.Request) {
 		edgeID := fmt.Sprintf("%s-%s", edge.SourceID, edge.TargetID)
 		graphEdge := api.GraphEdge{
 			Data: &api.EdgeData{
-				Id:     &edgeID,
-				Source: &edge.SourceID,
-				Target: &edge.TargetID,
+				Id:     edgeID,
+				Source: edge.SourceID,
+				Target: edge.TargetID,
 			},
 		}
 
@@ -383,6 +410,217 @@ func handleServiceError(w http.ResponseWriter, err error) {
 		log.Printf("INTERNAL ERROR: %v", err)
 		api.Error(w, http.StatusInternalServerError, "An internal error occurred")
 	}
+}
+
+// Category handlers
+
+func listCategoriesHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	categories, err := categoryService.ListCategories(r.Context(), userID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	type CategoryResponse struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		CreatedAt   string `json:"createdAt"`
+	}
+
+	var categoriesResponse []CategoryResponse
+	for _, category := range categories {
+		categoriesResponse = append(categoriesResponse, CategoryResponse{
+			ID:          category.ID,
+			Title:       category.Title,
+			Description: category.Description,
+			CreatedAt:   category.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	api.Success(w, http.StatusOK, map[string][]CategoryResponse{"categories": categoriesResponse})
+}
+
+func createCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	
+	type CreateCategoryRequest struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+
+	var req CreateCategoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Title == "" {
+		api.Error(w, http.StatusBadRequest, "Title cannot be empty")
+		return
+	}
+
+	category, err := categoryService.CreateCategory(r.Context(), userID, req.Title, req.Description)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	type CategoryResponse struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		CreatedAt   string `json:"createdAt"`
+	}
+
+	api.Success(w, http.StatusCreated, CategoryResponse{
+		ID:          category.ID,
+		Title:       category.Title,
+		Description: category.Description,
+		CreatedAt:   category.CreatedAt.Format(time.RFC3339),
+	})
+}
+
+func getCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	categoryID := chi.URLParam(r, "categoryId")
+
+	category, err := categoryService.GetCategory(r.Context(), userID, categoryID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	type CategoryResponse struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		CreatedAt   string `json:"createdAt"`
+	}
+
+	api.Success(w, http.StatusOK, CategoryResponse{
+		ID:          category.ID,
+		Title:       category.Title,
+		Description: category.Description,
+		CreatedAt:   category.CreatedAt.Format(time.RFC3339),
+	})
+}
+
+func updateCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	categoryID := chi.URLParam(r, "categoryId")
+
+	type UpdateCategoryRequest struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+
+	var req UpdateCategoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Title == "" {
+		api.Error(w, http.StatusBadRequest, "Title cannot be empty")
+		return
+	}
+
+	category, err := categoryService.UpdateCategory(r.Context(), userID, categoryID, req.Title, req.Description)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	api.Success(w, http.StatusOK, map[string]interface{}{
+		"message":    "Category updated successfully",
+		"categoryId": category.ID,
+	})
+}
+
+func deleteCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	categoryID := chi.URLParam(r, "categoryId")
+
+	if err := categoryService.DeleteCategory(r.Context(), userID, categoryID); err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func addMemoryToCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	categoryID := chi.URLParam(r, "categoryId")
+
+	type AddMemoryRequest struct {
+		MemoryID string `json:"memoryId"`
+	}
+
+	var req AddMemoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.MemoryID == "" {
+		api.Error(w, http.StatusBadRequest, "MemoryID cannot be empty")
+		return
+	}
+
+	if err := categoryService.AddMemoryToCategory(r.Context(), userID, categoryID, req.MemoryID); err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	api.Success(w, http.StatusOK, map[string]string{"message": "Memory added to category successfully"})
+}
+
+func getMemoriesInCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	categoryID := chi.URLParam(r, "categoryId")
+
+	memories, err := categoryService.GetMemoriesInCategory(r.Context(), userID, categoryID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	type MemoryResponse struct {
+		NodeID    string   `json:"nodeId"`
+		Content   string   `json:"content"`
+		Tags      []string `json:"tags"`
+		Timestamp string   `json:"timestamp"`
+		Version   int      `json:"version"`
+	}
+
+	var memoriesResponse []MemoryResponse
+	for _, memory := range memories {
+		memoriesResponse = append(memoriesResponse, MemoryResponse{
+			NodeID:    memory.ID,
+			Content:   memory.Content,
+			Tags:      memory.Tags,
+			Timestamp: memory.CreatedAt.Format(time.RFC3339),
+			Version:   memory.Version,
+		})
+	}
+
+	api.Success(w, http.StatusOK, map[string][]MemoryResponse{"memories": memoriesResponse})
+}
+
+func removeMemoryFromCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	categoryID := chi.URLParam(r, "categoryId")
+	memoryID := chi.URLParam(r, "memoryId")
+
+	if err := categoryService.RemoveMemoryFromCategory(r.Context(), userID, categoryID, memoryID); err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func main() {

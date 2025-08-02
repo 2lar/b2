@@ -110,3 +110,29 @@ func (q GraphQuery) HasNodeFilter() bool {
 func (q GraphQuery) HasDepthLimit() bool {
 	return q.MaxDepth > 0
 }
+
+// CategoryQuery represents query parameters for finding categories.
+type CategoryQuery struct {
+	UserID string // Required: The user ID to query categories for
+	Limit  int    // Optional: Maximum number of results (0 = no limit)
+	Offset int    // Optional: Number of results to skip
+}
+
+// Validate checks if the CategoryQuery has valid parameters.
+func (q CategoryQuery) Validate() error {
+	if q.UserID == "" {
+		return NewInvalidQuery("UserID", "cannot be empty")
+	}
+	if q.Limit < 0 {
+		return NewInvalidQuery("Limit", "cannot be negative")
+	}
+	if q.Offset < 0 {
+		return NewInvalidQuery("Offset", "cannot be negative")
+	}
+	return nil
+}
+
+// HasPagination returns true if the query includes pagination parameters.
+func (q CategoryQuery) HasPagination() bool {
+	return q.Limit > 0 || q.Offset > 0
+}

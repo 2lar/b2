@@ -278,6 +278,257 @@ paths:
         '500':
           description: Internal server error retrieving graph data
 
+  /api/categories:
+    get:
+      summary: List all categories for the authenticated user
+      operationId: listCategories
+      tags:
+        - Category Management
+      responses:
+        '200':
+          description: Successfully retrieved user's categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+                    description: Array of categories owned by the authenticated user
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
+    post:
+      summary: Create a new category
+      operationId: createCategory
+      tags:
+        - Category Management
+      requestBody:
+        required: true
+        description: Category details to create
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryRequest'
+      responses:
+        '201':
+          description: Category created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          description: Validation error - title is required
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
+  /api/categories/{categoryId}:
+    get:
+      summary: Get detailed information for a single category
+      operationId: getCategory
+      tags:
+        - Category Management
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          description: Unique identifier for the category
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+      responses:
+        '200':
+          description: Successfully retrieved category details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '404':
+          description: Category not found
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
+    put:
+      summary: Update a category's details
+      operationId: updateCategory
+      tags:
+        - Category Management
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          description: Unique identifier for the category to update
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+      requestBody:
+        required: true
+        description: Updated category details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCategoryRequest'
+      responses:
+        '200':
+          description: Category updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Category updated successfully"
+                  categoryId:
+                    type: string
+                    example: "abc-123-def-456"
+        '400':
+          description: Validation error
+        '404':
+          description: Category not found
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
+    delete:
+      summary: Delete a category and all its memory associations
+      operationId: deleteCategory
+      tags:
+        - Category Management
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          description: Unique identifier for the category to delete
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+      responses:
+        '204':
+          description: Category deleted successfully
+        '404':
+          description: Category not found
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
+  /api/categories/{categoryId}/memories:
+    get:
+      summary: Get all memories in a specific category
+      operationId: getMemoriesInCategory
+      tags:
+        - Category Management
+        - Memory Organization
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          description: Unique identifier for the category
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+      responses:
+        '200':
+          description: Successfully retrieved memories in category
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  memories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+        '404':
+          description: Category not found
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
+    post:
+      summary: Add a memory to a category
+      operationId: addMemoryToCategory
+      tags:
+        - Category Management
+        - Memory Organization
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          description: Unique identifier for the category
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+      requestBody:
+        required: true
+        description: Memory to add to category
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMemoryToCategoryRequest'
+      responses:
+        '200':
+          description: Memory added to category successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Memory added to category successfully"
+        '400':
+          description: Validation error
+        '404':
+          description: Category or memory not found
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
+  /api/categories/{categoryId}/memories/{memoryId}:
+    delete:
+      summary: Remove a memory from a category
+      operationId: removeMemoryFromCategory
+      tags:
+        - Category Management
+        - Memory Organization
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          description: Unique identifier for the category
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+        - name: memoryId
+          in: path
+          required: true
+          description: Unique identifier for the memory
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+      responses:
+        '204':
+          description: Memory removed from category successfully
+        '404':
+          description: Category or memory not found
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
 components:
   schemas:
     Node:
@@ -297,6 +548,12 @@ components:
           minLength: 1
           maxLength: 10000
           example: "Machine learning requires large datasets for effective model training"
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["urgent", "work", "ml"]
+          description: "User-defined tags for organizing and categorizing memories"
         timestamp:
           type: string
           format: date-time
@@ -331,6 +588,13 @@ components:
           minLength: 1
           maxLength: 10000
           example: "GraphQL provides a more efficient alternative to REST for complex data fetching requirements"
+        tags:
+          type: array
+          items:
+            type: string
+          description: User-defined tags for organizing and categorizing memories
+          maxItems: 10
+          example: ["work", "graphql", "api"]
 
     UpdateNodeRequest:
       type: object
@@ -342,6 +606,13 @@ components:
           minLength: 1
           maxLength: 10000
           example: "GraphQL and REST both have their place, but GraphQL excels in scenarios requiring flexible data fetching"
+        tags:
+          type: array
+          items:
+            type: string
+          description: User-defined tags for organizing and categorizing memories
+          maxItems: 10
+          example: ["work", "graphql", "api", "updated"]
 
     BulkDeleteRequest:
       type: object
@@ -444,3 +715,68 @@ components:
           type: string
           pattern: '^node-[a-zA-Z0-9-]+$'
           example: "node-def-456-ghi-789"
+
+    Category:
+      type: object
+      required:
+        - id
+        - title
+        - createdAt
+      properties:
+        id:
+          type: string
+          pattern: '^[a-zA-Z0-9-]+$'
+          example: "cat-abc-123-def-456"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "Work Projects"
+        description:
+          type: string
+          maxLength: 500
+          example: "All work-related memories and tasks"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T14:30:00Z"
+
+    CreateCategoryRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "Personal Projects"
+        description:
+          type: string
+          maxLength: 500
+          example: "Side projects and personal learning"
+
+    UpdateCategoryRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "Updated Category Title"
+        description:
+          type: string
+          maxLength: 500
+          example: "Updated category description"
+
+    AddMemoryToCategoryRequest:
+      type: object
+      required:
+        - memoryId
+      properties:
+        memoryId:
+          type: string
+          pattern: '^[a-zA-Z0-9-]+$'
+          example: "abc-123-def-456"
