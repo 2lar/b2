@@ -662,52 +662,14 @@ func toAttributeValueList(ss []string) []types.AttributeValue {
 
 // Category operations implementation
 
-// CreateCategory creates a new category.
+// CreateCategory creates a new category with enhanced hierarchical support.
 func (r *ddbRepository) CreateCategory(ctx context.Context, category domain.Category) error {
-	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", category.UserID, category.ID)
-	categoryItem, err := attributevalue.MarshalMap(ddbCategory{
-		PK:          pk,
-		SK:          "METADATA#v0",
-		CategoryID:  category.ID,
-		UserID:      category.UserID,
-		Title:       category.Title,
-		Description: category.Description,
-		Timestamp:   category.CreatedAt.Format(time.RFC3339),
-	})
-	if err != nil {
-		return appErrors.Wrap(err, "failed to marshal category item")
-	}
-
-	_, err = r.dbClient.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(r.config.TableName),
-		Item:      categoryItem,
-	})
-	if err != nil {
-		return appErrors.Wrap(err, "put item failed for category")
-	}
-	return nil
+	return r.CreateEnhancedCategory(ctx, category)
 }
 
-// UpdateCategory updates an existing category.
+// UpdateCategory updates an existing category with enhanced hierarchical support.
 func (r *ddbRepository) UpdateCategory(ctx context.Context, category domain.Category) error {
-	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", category.UserID, category.ID)
-	_, err := r.dbClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(r.config.TableName),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: pk},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA#v0"},
-		},
-		UpdateExpression: aws.String("SET Title = :t, Description = :d, Timestamp = :ts"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":t":  &types.AttributeValueMemberS{Value: category.Title},
-			":d":  &types.AttributeValueMemberS{Value: category.Description},
-			":ts": &types.AttributeValueMemberS{Value: category.CreatedAt.Format(time.RFC3339)},
-		},
-	})
-	if err != nil {
-		return appErrors.Wrap(err, "failed to update category")
-	}
-	return nil
+	return r.UpdateEnhancedCategory(ctx, category)
 }
 
 // DeleteCategory deletes a category and all its memory associations.

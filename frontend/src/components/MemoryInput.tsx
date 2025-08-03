@@ -50,7 +50,16 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated }) => {
         setIsSubmitting(true);
 
         try {
-            await api.createNode(trimmedContent, tags.length > 0 ? tags : undefined);
+            const newNode = await api.createNode(trimmedContent, tags.length > 0 ? tags : undefined);
+            
+            // Auto-categorize the new node
+            try {
+                await api.categorizeNode(newNode.nodeId);
+            } catch (categorizationError) {
+                // Don't fail the whole operation if categorization fails
+                console.warn('Auto-categorization failed:', categorizationError);
+            }
+            
             showStatus('Memory saved successfully!', 'success');
             setContent('');
             setTags([]);

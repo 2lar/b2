@@ -260,6 +260,59 @@ class ApiClient {
     public removeMemoryFromCategory(categoryId: string, memoryId: string): Promise<{ message: string }> {
         return this.request<{ message: string }>('DELETE', `/api/categories/${categoryId}/memories/${memoryId}`);
     }
+
+    // Enhanced category operations
+
+    /**
+     * Get hierarchical category tree
+     * @returns Promise resolving to category hierarchy with parent-child relationships
+     */
+    public getCategoryHierarchy(): Promise<operations['getCategoryHierarchy']['responses']['200']['content']['application/json']> {
+        return this.request('GET', '/api/categories/hierarchy');
+    }
+
+    /**
+     * Get AI-powered category suggestions for content
+     * @param content The content to analyze for category suggestions
+     * @returns Promise resolving to array of category suggestions with confidence scores
+     */
+    public suggestCategories(content: string): Promise<operations['suggestCategories']['responses']['200']['content']['application/json']> {
+        return this.request('POST', '/api/categories/suggest', { content });
+    }
+
+    /**
+     * Rebuild and optimize category structure
+     * @returns Promise resolving to rebuild results and statistics
+     */
+    public rebuildCategories(): Promise<operations['rebuildCategories']['responses']['200']['content']['application/json']> {
+        return this.request('POST', '/api/categories/rebuild');
+    }
+
+    /**
+     * Get category usage insights and analytics
+     * @returns Promise resolving to comprehensive category insights
+     */
+    public getCategoryInsights(): Promise<operations['getCategoryInsights']['responses']['200']['content']['application/json']> {
+        return this.request('GET', '/api/categories/insights');
+    }
+
+    /**
+     * Get all categories assigned to a node
+     * @param nodeId Unique identifier of the memory node
+     * @returns Promise resolving to array of categories assigned to the node
+     */
+    public getNodeCategories(nodeId: string): Promise<operations['getNodeCategories']['responses']['200']['content']['application/json']> {
+        return this.request('GET', `/api/nodes/${nodeId}/categories`);
+    }
+
+    /**
+     * Auto-categorize a node using AI
+     * @param nodeId Unique identifier of the memory node to categorize
+     * @returns Promise resolving to array of assigned categories
+     */
+    public categorizeNode(nodeId: string): Promise<operations['categorizeNode']['responses']['200']['content']['application/json']> {
+        return this.request('POST', `/api/nodes/${nodeId}/categories`);
+    }
 }
 
 // Singleton API client instance for use throughout the application

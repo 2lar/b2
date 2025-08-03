@@ -51,6 +51,28 @@ export interface paths {
     /** Remove a memory from a category */
     delete: operations["removeMemoryFromCategory"];
   };
+  "/api/categories/hierarchy": {
+    /** Get hierarchical category tree */
+    get: operations["getCategoryHierarchy"];
+  };
+  "/api/categories/suggest": {
+    /** Get AI-powered category suggestions for content */
+    post: operations["suggestCategories"];
+  };
+  "/api/categories/rebuild": {
+    /** Rebuild and optimize category structure */
+    post: operations["rebuildCategories"];
+  };
+  "/api/categories/insights": {
+    /** Get category usage insights and analytics */
+    get: operations["getCategoryInsights"];
+  };
+  "/api/nodes/{nodeId}/categories": {
+    /** Get all categories assigned to a node */
+    get: operations["getNodeCategories"];
+    /** Auto-categorize a node using AI */
+    post: operations["categorizeNode"];
+  };
 }
 
 export type webhooks = Record<string, never>;
@@ -192,10 +214,45 @@ export interface components {
       /** @example All work-related memories and tasks */
       description?: string;
       /**
+       * @description Hierarchy level: 0 = top level, 1 = sub, 2 = sub-sub
+       * @example 0
+       */
+      level: number;
+      /**
+       * @description ID of parent category (null for root categories)
+       * @example cat-parent-123
+       */
+      parentId?: string;
+      /**
+       * @description Hex color code for UI
+       * @example #2563eb
+       */
+      color?: string;
+      /**
+       * @description Icon identifier for UI
+       * @example folder
+       */
+      icon?: string;
+      /**
+       * @description Whether this category was created by AI
+       * @example false
+       */
+      aiGenerated?: boolean;
+      /**
+       * @description Number of memories in this category
+       * @example 5
+       */
+      noteCount?: number;
+      /**
        * Format: date-time
        * @example 2024-01-15T14:30:00Z
        */
       createdAt: string;
+      /**
+       * Format: date-time
+       * @example 2024-01-15T14:30:00Z
+       */
+      updatedAt: string;
     };
     CreateCategoryRequest: {
       /** @example Personal Projects */
@@ -212,6 +269,114 @@ export interface components {
     AddMemoryToCategoryRequest: {
       /** @example abc-123-def-456 */
       memoryId: string;
+    };
+    CategorySuggestion: {
+      /**
+       * @description Suggested category name
+       * @example Technology
+       */
+      name: string;
+      /**
+       * @description Suggested hierarchy level
+       * @example 0
+       */
+      level: number;
+      /**
+       * @description AI confidence score for this suggestion
+       * @example 0.85
+       */
+      confidence: number;
+      /**
+       * @description Explanation for why this category was suggested
+       * @example Content discusses artificial intelligence and technology concepts
+       */
+      reason: string;
+      /**
+       * @description ID of suggested parent category
+       * @example cat-parent-123
+       */
+      parentId?: string;
+    };
+    CategoryInsights: {
+      /** @description Categories with the most recent activity */
+      mostActiveCategories?: components["schemas"]["CategoryActivity"][];
+      /** @description Growth patterns over time */
+      categoryGrowthTrends?: components["schemas"]["CategoryGrowthTrend"][];
+      /** @description Suggested relationships between categories */
+      suggestedConnections?: components["schemas"]["CategoryConnection"][];
+      /** @description Identified areas for knowledge expansion */
+      knowledgeGaps?: components["schemas"]["KnowledgeGap"][];
+    };
+    CategoryActivity: {
+      /** @example cat-abc-123 */
+      categoryId: string;
+      /** @example Machine Learning */
+      categoryName: string;
+      /** @example 15 */
+      memoryCount: number;
+      /**
+       * @description Memories added in the last 7 days
+       * @example 3
+       */
+      recentAdds: number;
+    };
+    CategoryGrowthTrend: {
+      /** @example cat-abc-123 */
+      categoryId: string;
+      /** @example Machine Learning */
+      categoryName: string;
+      /**
+       * Format: date-time
+       * @example 2024-01-15T00:00:00Z
+       */
+      date: string;
+      /** @example 12 */
+      memoryCount: number;
+    };
+    CategoryConnection: {
+      /** @example cat-abc-123 */
+      category1Id: string;
+      /** @example Machine Learning */
+      category1Name: string;
+      /** @example cat-def-456 */
+      category2Id: string;
+      /** @example Data Science */
+      category2Name: string;
+      /**
+       * @description Connection strength score
+       * @example 0.78
+       */
+      strength: number;
+      /**
+       * @description Explanation for the suggested connection
+       * @example Both categories contain content about statistical analysis and algorithms
+       */
+      reason: string;
+    };
+    KnowledgeGap: {
+      /**
+       * @description Identified knowledge gap topic
+       * @example Deep Learning Optimization
+       */
+      topic: string;
+      /**
+       * @description Confidence in this gap identification
+       * @example 0.72
+       */
+      confidence: number;
+      /**
+       * @description Categories that could be created to fill this gap
+       * @example [
+       *   "Optimization Algorithms",
+       *   "Neural Network Tuning"
+       * ]
+       */
+      suggestedCategories: string[];
+      /**
+       * @description Explanation for why this is a knowledge gap
+       * @example You have extensive ML content but limited coverage of optimization techniques
+       */
+      reason: string;
     };
   };
   responses: never;
@@ -720,6 +885,194 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        content: never;
+      };
+    };
+  };
+  /** Get hierarchical category tree */
+  getCategoryHierarchy: {
+    responses: {
+      /** @description Successfully retrieved category hierarchy */
+      200: {
+        content: {
+          "application/json": {
+            categories?: components["schemas"]["Category"][];
+            /** @description Map of parent category IDs to arrays of child category IDs */
+            hierarchy?: {
+              [key: string]: string[];
+            };
+          };
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Get AI-powered category suggestions for content */
+  suggestCategories: {
+    requestBody: {
+      content: {
+        "application/json": {
+          /**
+           * @description Content to analyze for category suggestions
+           * @example Learning about machine learning algorithms and neural networks
+           */
+          content: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Successfully generated category suggestions */
+      200: {
+        content: {
+          "application/json": {
+            suggestions?: components["schemas"]["CategorySuggestion"][];
+          };
+        };
+      };
+      /** @description Validation error - content is required */
+      400: {
+        content: never;
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+      /** @description AI service temporarily unavailable */
+      503: {
+        content: never;
+      };
+    };
+  };
+  /** Rebuild and optimize category structure */
+  rebuildCategories: {
+    responses: {
+      /** @description Category rebuild completed successfully */
+      200: {
+        content: {
+          "application/json": {
+            /** @example Category structure rebuilt successfully */
+            message?: string;
+            /** @example 25 */
+            categoriesProcessed?: number;
+            /** @example 8 */
+            hierarchiesCreated?: number;
+            /** @example 3 */
+            categoriesMerged?: number;
+          };
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Get category usage insights and analytics */
+  getCategoryInsights: {
+    responses: {
+      /** @description Successfully retrieved category insights */
+      200: {
+        content: {
+          "application/json": components["schemas"]["CategoryInsights"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Get all categories assigned to a node */
+  getNodeCategories: {
+    parameters: {
+      path: {
+        /** @description Unique identifier for the memory node */
+        nodeId: string;
+      };
+    };
+    responses: {
+      /** @description Successfully retrieved node categories */
+      200: {
+        content: {
+          "application/json": {
+            categories?: (components["schemas"]["Category"] & ({
+                /** @description AI confidence score for this categorization */
+                confidence?: number;
+                /**
+                 * @description How this category was assigned
+                 * @enum {string}
+                 */
+                method?: "ai" | "manual" | "rule-based";
+              }))[];
+          };
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Node not found */
+      404: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+    };
+  };
+  /** Auto-categorize a node using AI */
+  categorizeNode: {
+    parameters: {
+      path: {
+        /** @description Unique identifier for the memory node */
+        nodeId: string;
+      };
+    };
+    responses: {
+      /** @description Successfully categorized node */
+      200: {
+        content: {
+          "application/json": {
+            categories?: components["schemas"]["Category"][];
+            /** @example Node categorized successfully */
+            message?: string;
+          };
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        content: never;
+      };
+      /** @description Node not found */
+      404: {
+        content: never;
+      };
+      /** @description Internal server error */
+      500: {
+        content: never;
+      };
+      /** @description AI service temporarily unavailable */
+      503: {
         content: never;
       };
     };

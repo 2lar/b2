@@ -6,15 +6,19 @@ import GraphVisualization, { GraphVisualizationRef } from './GraphVisualization'
 import MemoryInput from './MemoryInput';
 import MemoryList from './MemoryList';
 import { api, type Node } from '../services';
+import { components } from '../types/generated/generated-types';
 
 interface DashboardProps {
     user: User;
     onSignOut: () => void;
 }
 
+type Category = components['schemas']['Category'];
+
 const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     const navigate = useNavigate();
     const [memories, setMemories] = useState<Node[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
@@ -25,6 +29,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
 
     useEffect(() => {
         loadMemories();
+        loadCategories();
     }, []);
 
     const loadMemories = async () => {
@@ -44,6 +49,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
             console.error('Error loading memories:', error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const loadCategories = async () => {
+        try {
+            const data = await api.listCategories();
+            setCategories(data.categories || []);
+        } catch (error) {
+            console.error('Error loading categories:', error);
         }
     };
 
@@ -102,21 +116,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                         </button>
                         <div className="sidebar-divider"></div>
                         <div className="category-list">
-                            <div className="category-item" onClick={() => navigate('/categories')}>
-                                <span className="category-icon">💼</span>
-                                <span className="category-name">Work</span>
-                                <span className="memory-count">5</span>
-                            </div>
-                            <div className="category-item" onClick={() => navigate('/categories')}>
-                                <span className="category-icon">🎓</span>
-                                <span className="category-name">Learning</span>
-                                <span className="memory-count">12</span>
-                            </div>
-                            <div className="category-item" onClick={() => navigate('/categories')}>
-                                <span className="category-icon">💡</span>
-                                <span className="category-name">Ideas</span>
-                                <span className="memory-count">8</span>
-                            </div>
+                            {categories.slice(0, 5).map((category) => (
+                                <div 
+                                    key={category.id} 
+                                    className="category-item" 
+                                    onClick={() => navigate(`/categories/${category.id}`)}
+                                >
+                                    <span className="category-icon">
+                                        {category.icon || (category.aiGenerated ? '🤖' : '📁')}
+                                    </span>
+                                    <span className="category-name">{category.title}</span>
+                                    <span className="memory-count">{category.noteCount || 0}</span>
+                                </div>
+                            ))}
+                            {categories.length === 0 && (
+                                <div className="category-item">
+                                    <span className="category-icon">📂</span>
+                                    <span className="category-name">No categories yet</span>
+                                    <span className="memory-count">0</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
