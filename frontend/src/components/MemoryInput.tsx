@@ -1,7 +1,48 @@
+/**
+ * MemoryInput Component - Memory Creation Form
+ * 
+ * Purpose:
+ * Provides an intuitive form interface for users to create new memories with content and tags.
+ * Handles automatic categorization and provides real-time feedback during the creation process.
+ * 
+ * Key Features:
+ * - Rich text area for memory content input
+ * - Dynamic tag management with keyboard shortcuts
+ * - Auto-categorization using AI after memory creation
+ * - Real-time form validation and submission feedback
+ * - Keyboard shortcuts (Enter to submit, Shift+Enter for new line)
+ * - Tag pills with easy removal functionality
+ * - Status messages for success/error feedback
+ * 
+ * Tag Management:
+ * - Add tags with Enter or comma key
+ * - Remove tags with backspace when input is empty
+ * - Prevents duplicate tags
+ * - Case-insensitive tag handling
+ * 
+ * Auto-categorization:
+ * - Automatically triggers AI categorization after memory creation
+ * - Fails gracefully if categorization service is unavailable
+ * - Does not block memory creation if categorization fails
+ * 
+ * State Management:
+ * - content: Main memory text content
+ * - tags: Array of user-defined tags
+ * - tagInput: Current tag input field value
+ * - isSubmitting: Loading state during memory creation
+ * - status: Success/error message display
+ * 
+ * Integration:
+ * - Calls onMemoryCreated callback to refresh parent components
+ * - Uses API client for memory creation and categorization
+ * - Positioned in top-right panel of Dashboard layout
+ */
+
 import React, { useState } from 'react';
 import { api } from '../services';
 
 interface MemoryInputProps {
+    /** Callback function called after successful memory creation */
     onMemoryCreated: () => void;
 }
 

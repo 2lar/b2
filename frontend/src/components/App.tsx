@@ -1,3 +1,31 @@
+/**
+ * App Component - Main Application Root
+ * 
+ * Purpose:
+ * The root component of the Brain2 application that handles:
+ * - Authentication state management
+ * - Client-side routing between different views
+ * - WebSocket connection lifecycle management
+ * - User session handling and sign-out functionality
+ * 
+ * Key Features:
+ * - Protected routing (redirects to auth if not logged in)
+ * - Automatic WebSocket connection/disconnection based on auth state
+ * - Loading states during authentication checks
+ * - Clean session management and cleanup on sign-out
+ * 
+ * Routes:
+ * - "/" - Main dashboard (protected)
+ * - "/categories" - Categories list view (protected)  
+ * - "/categories/:categoryId" - Individual category detail view (protected)
+ * - Unauthenticated users see AuthSection component
+ * 
+ * Dependencies:
+ * - useAuth hook for authentication state
+ * - webSocketClient for real-time updates
+ * - React Router for navigation
+ */
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';

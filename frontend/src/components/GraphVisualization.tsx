@@ -1,3 +1,49 @@
+/**
+ * GraphVisualization Component - Interactive Memory Network Visualization
+ * 
+ * Purpose:
+ * Provides an interactive graph visualization of memory connections using Cytoscape.js.
+ * Displays memories as nodes and their relationships as edges with advanced physics simulation
+ * and rich interactive features including node details panels and navigation controls.
+ * 
+ * Key Features:
+ * - Interactive node-link diagram with physics-based layout
+ * - Cosmic-themed visual design with animated star background
+ * - Node details panel showing content, tags, and connected memories
+ * - Click-to-navigate between connected memories
+ * - Fullscreen mode with responsive resizing
+ * - Dynamic node coloring based on connectivity
+ * - Smooth animations and drag interactions
+ * - Advanced physics simulation for realistic movement
+ * 
+ * Visualization Features:
+ * - Cosmic color palette with vibrant space colors
+ * - Node size and color reflect connection strength
+ * - Animated star field background with parallax effect
+ * - Smooth zoom, pan, and selection animations
+ * - Drag-to-move nodes with connected node physics
+ * - Hover effects and selection highlighting
+ * 
+ * Node Details Panel:
+ * - Shows full memory content and metadata
+ * - Lists all connected memories with click navigation
+ * - Displays creation timestamp and tags
+ * - Provides direct links to related memories
+ * - Floating panel with close/minimize controls
+ * 
+ * Layout Algorithm:
+ * - Uses Cola.js force-directed layout for organic clustering
+ * - Dynamic edge lengths based on connection strength
+ * - Gravity and repulsion forces for natural spreading
+ * - Interactive physics that respond to user manipulation
+ * 
+ * Integration:
+ * - Exposes selectAndCenterNode method for external navigation
+ * - Receives refresh triggers from Dashboard
+ * - Integrates with memory selection from sidebar and list views
+ * - Positioned in center panel of Dashboard layout
+ */
+
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import cytoscape, { Core, ElementDefinition, NodeSingular, NodeCollection } from 'cytoscape';
 import cola from 'cytoscape-cola';
@@ -9,10 +55,12 @@ import { throttle } from 'lodash-es';
 cytoscape.use(cola);
 
 interface GraphVisualizationProps {
+    /** Trigger number that causes graph refresh when changed */
     refreshTrigger: number;
 }
 
 export interface GraphVisualizationRef {
+    /** Programmatically select and center a specific node */
     selectAndCenterNode: (nodeId: string) => boolean;
 }
 
@@ -22,6 +70,11 @@ interface DisplayNode {
     label: string;
     timestamp: string;
     tags?: string[];
+}
+
+interface ConnectedMemory {
+    id: string;
+    label: string;
 }
 
 // Cosmic color spectrum for node clustering - vibrant space colors
@@ -43,6 +96,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
     const graphContainerRef = useRef<HTMLDivElement>(null);
     const cyRef = useRef<Core | null>(null);
     const [selectedNode, setSelectedNode] = useState<DisplayNode | null>(null);
+    const [connectedMemories, setConnectedMemories] = useState<ConnectedMemory[]>([]);
     
     // Fullscreen functionality
     const { isFullscreen, toggleFullscreen } = useFullscreen(graphContainerRef);
@@ -101,12 +155,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                         'border-width': 2,
                         'border-color': 'data(color)',
                         'border-opacity': 1,
-                        'label': '', // No labels for cleaner look
-                        'shadow-blur': 8,
-                        'shadow-color': 'data(color)',
-                        'shadow-opacity': 0.6,
-                        'shadow-offset-x': 0,
-                        'shadow-offset-y': 0,
+                        'label': '', // No labels for cleaner look,
                         'transition-property': 'background-color, border-width, border-color, width, height, opacity, shadow-blur',
                         'transition-duration': 300
                     }
@@ -122,11 +171,6 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                         'line-color': 'data(color)',
                         'opacity': 0.7,
                         'curve-style': 'bezier',
-                        'shadow-blur': 4,
-                        'shadow-color': 'data(color)',
-                        'shadow-opacity': 0.4,
-                        'shadow-offset-x': 0,
-                        'shadow-offset-y': 0,
                         'transition-property': 'width, line-color, opacity, shadow-blur',
                         'transition-duration': 300,
                         'target-arrow-shape': 'none',
@@ -140,9 +184,6 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                         'border-color': '#ffffff',
                         'width': 35,
                         'height': 35,
-                        'shadow-blur': 15,
-                        'shadow-color': '#ffffff',
-                        'shadow-opacity': 0.8,
                         'z-index': 999
                     }
                 },
@@ -151,9 +192,6 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                     style: {
                         'width': 5,
                         'opacity': 1,
-                        'shadow-blur': 8,
-                        'shadow-color': 'data(color)',
-                        'shadow-opacity': 0.8,
                         'z-index': 998
                     }
                 },
@@ -300,13 +338,58 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                 timestamp: nodeData.timestamp || '',
                 tags: nodeData.tags || []
             });
+
+            // Process connected memories
+            if (nodeData.edges && nodeData.edges.length > 0 && cyRef.current) {
+                const cy = cyRef.current;
+                const connectedNodesInfo = nodeData.edges.map(edgeId => {
+                    const connectedNode = cy.getElementById(edgeId);
+                    if (connectedNode && connectedNode.length > 0) {
+                        return {
+                            id: edgeId,
+                            label: connectedNode.data('label') || 'Untitled'
+                        };
+                    }
+                    return null;
+                }).filter((node): node is ConnectedMemory => node !== null);
+
+                setConnectedMemories(connectedNodesInfo);
+            } else {
+                setConnectedMemories([]);
+            }
         } catch (error) {
             console.error('Error loading node details:', error);
+            setConnectedMemories([]);
         }
     }
 
     function hideNodeDetails(): void {
         setSelectedNode(null);
+        setConnectedMemories([]);
+    }
+
+    function handleConnectedMemoryClick(memoryId: string): void {
+        if (!cyRef.current) return;
+        
+        const cy = cyRef.current;
+        const targetNode = cy.getElementById(memoryId);
+        
+        if (targetNode && targetNode.length > 0) {
+            // Center and highlight the connected node
+            cy.animate({
+                center: { eles: targetNode },
+                zoom: 1.5
+            }, {
+                duration: 300,
+                easing: 'ease-out'
+            });
+            
+            // Highlight the connected node and its connections
+            highlightConnectedNodes(targetNode);
+            
+            // Show details for the connected node
+            showNodeDetails(memoryId);
+        }
     }
 
     // Handle fullscreen changes - resize cytoscape when entering/exiting fullscreen
@@ -768,9 +851,26 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                                 </div>
                             )}
                             <div className="connections-section">
-                                <h4>Connected Memories</h4>
+                                <h4>Connected Memories ({connectedMemories.length})</h4>
                                 <div className="scrollable-connections">
-                                    <p>Created: {formatDate(selectedNode.timestamp)}</p>
+                                    {connectedMemories.length > 0 ? (
+                                        <ul className="connected-memories-list">
+                                            {connectedMemories.map(memory => (
+                                                <li 
+                                                    key={memory.id}
+                                                    className="connected-memory-item"
+                                                    onClick={() => handleConnectedMemoryClick(memory.id)}
+                                                >
+                                                    • {memory.label}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="no-connections">No connections yet</p>
+                                    )}
+                                    <div className="memory-metadata">
+                                        <p>Created: {formatDate(selectedNode.timestamp)}</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>

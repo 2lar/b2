@@ -1,3 +1,58 @@
+/**
+ * CategorySuggestions Component - AI-Powered Category Recommendations
+ * 
+ * Purpose:
+ * Provides intelligent category suggestions for memories using AI analysis.
+ * Analyzes memory content and suggests relevant categories with confidence scores,
+ * allowing users to quickly categorize memories or create new categories based on AI recommendations.
+ * 
+ * Key Features:
+ * - AI-powered content analysis for category suggestions
+ * - Confidence scoring for suggestion quality assessment
+ * - Interactive suggestion cards with accept/reject actions
+ * - Automatic triggering based on content changes
+ * - New category creation from suggestions
+ * - Suggestion history and learning capabilities
+ * - Loading states and error handling
+ * - Batch suggestion processing for multiple memories
+ * 
+ * AI Suggestion Features:
+ * - Natural language processing of memory content
+ * - Context-aware category recommendations
+ * - Confidence scores for suggestion reliability
+ * - Multiple suggestion options per memory
+ * - Learning from user accept/reject patterns
+ * - Integration with existing category taxonomy
+ * 
+ * User Interaction:
+ * - Accept suggestions to apply categories immediately
+ * - Reject suggestions to improve AI learning
+ * - Create new categories from high-confidence suggestions
+ * - Batch processing for multiple suggestions
+ * - Manual triggering or automatic suggestion generation
+ * 
+ * Suggestion Display:
+ * - Card-based layout with suggestion details
+ * - Confidence indicators and visual feedback
+ * - Category preview with descriptions
+ * - Action buttons for accept/reject/create
+ * - Loading states during AI processing
+ * - Error handling for failed suggestions
+ * 
+ * State Management:
+ * - suggestions: Array of AI-generated category suggestions
+ * - loading: Loading state for AI processing
+ * - error: Error state and message handling
+ * - showSuggestions: Toggle for suggestion panel visibility
+ * 
+ * Integration:
+ * - Triggered automatically when content changes (if autoTrigger enabled)
+ * - Can be manually triggered for existing memories
+ * - Integrates with category creation and assignment APIs
+ * - Provides callbacks for suggestion acceptance/rejection
+ * - Works with both new memory creation and existing memory categorization
+ */
+
 import React, { useState } from 'react';
 import { components } from '../types/generated/generated-types';
 
@@ -6,10 +61,15 @@ type CategorySuggestion = components['schemas']['CategorySuggestion'];
 type Category = components['schemas']['Category'];
 
 interface CategorySuggestionsProps {
+  /** Memory content to analyze for suggestions */
   content?: string;
+  /** Optional node ID for existing memory categorization */
   nodeId?: string;
+  /** Callback when user accepts a suggestion */
   onSuggestionAccept?: (suggestion: CategorySuggestion) => void;
+  /** Callback when user rejects a suggestion */
   onSuggestionReject?: (suggestion: CategorySuggestion) => void;
+  /** Whether to automatically trigger suggestions on content changes */
   autoTrigger?: boolean;
 }
 

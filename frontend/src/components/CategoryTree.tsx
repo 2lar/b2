@@ -1,3 +1,58 @@
+/**
+ * CategoryTree Component - Hierarchical Category Tree View
+ * 
+ * Purpose:
+ * Provides a hierarchical tree view of categories with parent-child relationships.
+ * Displays categories in an expandable tree structure similar to file system directories
+ * with advanced features for navigation, editing, and visual customization.
+ * 
+ * Key Features:
+ * - Hierarchical tree structure with parent-child category relationships
+ * - Expandable/collapsible nodes with smooth animations
+ * - Visual indicators for AI-generated categories
+ * - Memory count badges on each category
+ * - Category selection with highlighting
+ * - Dynamic loading of category hierarchy from API
+ * - Customizable display options for badges and counts
+ * - Edit mode support for category management
+ * 
+ * Tree Structure:
+ * - Root-level categories at the top level
+ * - Child categories nested under parent categories
+ * - Unlimited nesting depth support
+ * - Automatic sorting by category title at each level
+ * - Visual indentation and tree lines for hierarchy
+ * - Expand/collapse arrows for parent categories
+ * 
+ * Visual Features:
+ * - Category icons based on hierarchy level
+ * - Color coding and highlighting for selected categories
+ * - AI generation badges for automatically created categories
+ * - Memory count indicators for each category
+ * - Hover effects and interactive feedback
+ * - Smooth animations for expand/collapse operations
+ * 
+ * Customization Options:
+ * - showAIBadges: Toggle display of AI generation indicators
+ * - showNoteCounts: Toggle display of memory count badges
+ * - editable: Enable edit mode with management actions
+ * - selectedCategoryId: Highlight specific category
+ * 
+ * State Management:
+ * - categories: Flat array of category objects
+ * - hierarchy: Parent-child relationship mapping
+ * - treeData: Processed hierarchical tree structure
+ * - expandedNodes: Set of expanded category IDs
+ * - loading: Loading state for data fetching
+ * - error: Error state and message handling
+ * 
+ * Integration:
+ * - Fetches category hierarchy from dedicated API endpoint
+ * - Integrates with category selection callbacks
+ * - Can be embedded in sidebars or standalone views
+ * - Supports both read-only and editable modes
+ */
+
 import React, { useState, useEffect } from 'react';
 import { components } from '../types/generated/generated-types';
 
@@ -6,10 +61,15 @@ type Category = components['schemas']['Category'];
 type CategoryHierarchy = { [key: string]: string[] };
 
 interface CategoryTreeProps {
+  /** Callback when a category is selected */
   onCategorySelect?: (categoryId: string) => void;
+  /** ID of currently selected category for highlighting */
   selectedCategoryId?: string;
+  /** Whether to show AI generation badges */
   showAIBadges?: boolean;
+  /** Whether to show memory count badges */
   showNoteCounts?: boolean;
+  /** Whether tree is in editable mode with management actions */
   editable?: boolean;
 }
 

@@ -1,3 +1,54 @@
+/**
+ * CategoryInsights Component - Category Analytics Dashboard
+ * 
+ * Purpose:
+ * Provides comprehensive analytics and insights about category usage, trends, and patterns.
+ * Displays data-driven insights to help users understand their memory organization and
+ * identify opportunities for better categorization and knowledge management.
+ * 
+ * Key Features:
+ * - Multi-tab interface for different types of insights
+ * - Category activity tracking and visualization
+ * - Growth trend analysis over time
+ * - Category connection mapping and relationship analysis
+ * - Knowledge gap identification and recommendations
+ * - Interactive charts and data visualizations
+ * - Real-time data loading with error handling
+ * 
+ * Insights Tabs:
+ * - Activity: Most/least used categories, recent activity patterns
+ * - Trends: Growth patterns, seasonal trends, category evolution
+ * - Connections: Category relationships, cross-category memory patterns
+ * - Gaps: Identified knowledge gaps, uncategorized content analysis
+ * 
+ * Analytics Features:
+ * - Category usage statistics and rankings
+ * - Time-based trend analysis with charts
+ * - Memory distribution across categories
+ * - Category relationship strength measurements
+ * - Automated knowledge gap detection
+ * - Actionable recommendations for improvement
+ * 
+ * Data Visualization:
+ * - Interactive charts for trend analysis
+ * - Category relationship network diagrams
+ * - Usage heatmaps and activity timelines
+ * - Progress indicators and statistics
+ * - Comparative analysis between categories
+ * 
+ * State Management:
+ * - insights: Complete insights data object
+ * - loading: Loading state for data fetching
+ * - error: Error state and message handling
+ * - activeTab: Currently selected insights tab
+ * 
+ * Integration:
+ * - Fetches insights from dedicated analytics API endpoint
+ * - Can be accessed from main navigation or category views
+ * - Provides actionable insights for category management
+ * - Supports data export and sharing functionality
+ */
+
 import React, { useState, useEffect } from 'react';
 import { components } from '../types/generated/generated-types';
 

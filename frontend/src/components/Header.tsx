@@ -1,7 +1,38 @@
+/**
+ * Header Component - Application Navigation Bar
+ * 
+ * Purpose:
+ * Provides the top navigation bar with user controls and application-wide settings.
+ * Displays user information and provides access to key application functions.
+ * 
+ * Key Features:
+ * - Dark/Light theme toggle with persistence
+ * - User profile dropdown with email display
+ * - Sign-out functionality
+ * - Responsive design that adapts to screen size
+ * - Click-outside detection for dropdown management
+ * 
+ * Theme Management:
+ * - Persists theme preference in localStorage
+ * - Applies theme changes to document root element
+ * - Defaults to dark theme for new users
+ * 
+ * State Management:
+ * - theme: Current theme setting ('dark' | 'light')
+ * - isDropdownOpen: Controls visibility of user dropdown menu
+ * 
+ * Integration:
+ * - Receives user email from parent Dashboard
+ * - Calls onSignOut callback when user signs out
+ * - Works with CSS custom properties for theming
+ */
+
 import React, { useState, useEffect } from 'react';
 
 interface HeaderProps {
+    /** Email address of the authenticated user */
     userEmail: string;
+    /** Callback function to handle user sign-out */
     onSignOut: () => void;
 }
 

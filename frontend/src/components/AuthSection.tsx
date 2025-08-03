@@ -1,3 +1,36 @@
+/**
+ * AuthSection Component - User Authentication Interface
+ * 
+ * Purpose:
+ * Provides the login and registration interface for users who are not authenticated.
+ * Handles both sign-in and sign-up workflows with form validation and error handling.
+ * 
+ * Key Features:
+ * - Toggle between sign-in and sign-up modes
+ * - Email and password form validation
+ * - Loading states during authentication requests
+ * - Error message display with user-friendly messaging
+ * - Responsive form design
+ * - Integration with Supabase authentication
+ * 
+ * State Management:
+ * - isSignUp: Controls whether showing login or registration form
+ * - email/password: Form input values
+ * - error: Error messages from authentication attempts
+ * - isLoading: Loading state during API calls
+ * 
+ * Authentication Flow:
+ * - Uses auth service for Supabase integration
+ * - Successful authentication is handled by useAuth hook in App component
+ * - Form resets and shows loading state during requests
+ * - Displays specific error messages for failed attempts
+ * 
+ * Integration:
+ * - Rendered by App component when user is not authenticated
+ * - Works with useAuth hook for session state management
+ * - Integrates with Supabase Auth for user management
+ */
+
 import React, { useState } from 'react';
 import { auth } from '../services';
 

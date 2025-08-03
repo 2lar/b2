@@ -1,3 +1,38 @@
+/**
+ * Dashboard Component - Main Application Interface
+ * 
+ * Purpose:
+ * The primary dashboard that orchestrates all main UI components in a multi-panel layout.
+ * Acts as the central hub where users interact with their memory data through different views.
+ * 
+ * Key Features:
+ * - Multi-panel layout with resizable columns
+ * - File system sidebar for browsing memories by category
+ * - Interactive graph visualization of memory connections
+ * - Memory input form for creating new memories
+ * - Paginated memory list for browsing and management
+ * - Real-time synchronization between all components
+ * - Automatic refresh coordination across panels
+ * 
+ * Layout Structure:
+ * - Left: FileSystemSidebar (categories and memories in folder structure)
+ * - Center: GraphVisualization (interactive node graph)
+ * - Right Top: MemoryInput (creation form)
+ * - Right Bottom: MemoryList (paginated list view)
+ * 
+ * State Management:
+ * - Manages memory and category data loading
+ * - Coordinates refresh triggers across all child components
+ * - Handles pagination state for memory list
+ * - Manages navigation between different views
+ * 
+ * Integration:
+ * - Receives user session from App component
+ * - Passes memory selection events to graph visualization
+ * - Coordinates data refresh after CRUD operations
+ * - Handles routing to category detail views
+ */
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User } from '@supabase/supabase-js';
@@ -5,11 +40,14 @@ import Header from './Header';
 import GraphVisualization, { GraphVisualizationRef } from './GraphVisualization';
 import MemoryInput from './MemoryInput';
 import MemoryList from './MemoryList';
+import FileSystemSidebar from './FileSystemSidebar';
 import { api, type Node } from '../services';
 import { components } from '../types/generated/generated-types';
 
 interface DashboardProps {
+    /** Authenticated user object from Supabase */
     user: User;
+    /** Callback function to handle user sign-out */
     onSignOut: () => void;
 }
 
@@ -23,6 +61,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [refreshGraph, setRefreshGraph] = useState(0);
+    const [refreshSidebar, setRefreshSidebar] = useState(0);
     const graphRef = useRef<GraphVisualizationRef>(null);
 
     const MEMORIES_PER_PAGE = 50;
@@ -63,20 +102,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
 
     const handleMemoryCreated = () => {
         loadMemories();
-        // Trigger graph refresh
+        loadCategories(); // Refresh categories as new memories might be auto-categorized
+        // Trigger graph and sidebar refresh
         setRefreshGraph(prev => prev + 1);
+        setRefreshSidebar(prev => prev + 1);
     };
 
     const handleMemoryDeleted = () => {
         loadMemories();
-        // Trigger graph refresh
+        loadCategories(); // Refresh categories as counts might change
+        // Trigger graph and sidebar refresh
         setRefreshGraph(prev => prev + 1);
+        setRefreshSidebar(prev => prev + 1);
     };
 
     const handleMemoryUpdated = () => {
         loadMemories();
-        // Trigger graph refresh
+        loadCategories(); // Refresh categories as content might affect categorization
+        // Trigger graph and sidebar refresh
         setRefreshGraph(prev => prev + 1);
+        setRefreshSidebar(prev => prev + 1);
     };
 
     const handleViewInGraph = (nodeId: string) => {
@@ -101,44 +146,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
             />
 
             <main className="dashboard-layout">
-                {/* Left Sidebar - Category Navigation */}
-                <div className="left-sidebar">
-                    <div className="sidebar-header">
-                        <h3>Categories</h3>
-                    </div>
-                    <div className="sidebar-content">
-                        <button 
-                            className="sidebar-btn primary"
-                            onClick={() => navigate('/categories')}
-                        >
-                            <span className="sidebar-icon">📁</span>
-                            All Categories
-                        </button>
-                        <div className="sidebar-divider"></div>
-                        <div className="category-list">
-                            {categories.slice(0, 5).map((category) => (
-                                <div 
-                                    key={category.id} 
-                                    className="category-item" 
-                                    onClick={() => navigate(`/categories/${category.id}`)}
-                                >
-                                    <span className="category-icon">
-                                        {category.icon || (category.aiGenerated ? '🤖' : '📁')}
-                                    </span>
-                                    <span className="category-name">{category.title}</span>
-                                    <span className="memory-count">{category.noteCount || 0}</span>
-                                </div>
-                            ))}
-                            {categories.length === 0 && (
-                                <div className="category-item">
-                                    <span className="category-icon">📂</span>
-                                    <span className="category-name">No categories yet</span>
-                                    <span className="memory-count">0</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                {/* Left Sidebar - File System Explorer */}
+                <FileSystemSidebar
+                    userId={user.id}
+                    onMemorySelect={handleViewInGraph}
+                    onCategorySelect={(categoryId) => navigate(`/categories/${categoryId}`)}
+                    refreshTrigger={refreshSidebar}
+                />
 
                 {/* Column Resize Handle */}
                 <div className="resize-handle horizontal" data-resize="horizontal-left"></div>

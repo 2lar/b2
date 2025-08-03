@@ -1,10 +1,65 @@
+/**
+ * CategoryDetail Component - Individual Category Management Interface
+ * 
+ * Purpose:
+ * Provides a detailed view of a single category with editing capabilities and memory management.
+ * Displays category information, associated memories, and provides comprehensive management tools.
+ * 
+ * Key Features:
+ * - Category information display with title and description
+ * - Inline editing of category details with form validation
+ * - Memory listing within the category with management options
+ * - Navigation integration with URL parameters and programmatic routing
+ * - Loading states for category and memory data
+ * - Edit mode toggle with save/cancel functionality
+ * - Memory actions including view in graph integration
+ * 
+ * Category Management:
+ * - Display category title, description, and metadata
+ * - Inline editing with click-to-edit functionality
+ * - Form validation and error handling
+ * - Save/cancel operations with loading states
+ * - Automatic data refresh after updates
+ * 
+ * Memory Management:
+ * - Display all memories within the category
+ * - Memory count and pagination support
+ * - Integration with graph visualization for memory viewing
+ * - Memory metadata display (content preview, timestamps)
+ * - Loading states during memory data fetching
+ * 
+ * Navigation Features:
+ * - Support for URL-based navigation with category ID parameter
+ * - Programmatic navigation with callback support
+ * - Back navigation functionality
+ * - Integration with React Router
+ * 
+ * State Management:
+ * - category: Current category data object
+ * - memories: Array of memories within the category
+ * - isLoading: Loading state for category data
+ * - isLoadingMemories: Loading state for memory data
+ * - isEditing: Toggle for edit mode
+ * - editTitle/editDescription: Form input values
+ * - isSaving: Loading state during save operations
+ * 
+ * Integration:
+ * - Can receive category ID from URL params or props
+ * - Integrates with graph visualization for memory viewing
+ * - Uses API client for all data operations
+ * - Supports both standalone and embedded usage
+ */
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, type Category, type Node } from '../services';
 
 interface CategoryDetailProps {
+    /** Optional category ID when used programmatically */
     categoryId?: string;
+    /** Optional callback for back navigation */
     onBack?: () => void;
+    /** Optional callback for viewing memory in graph */
     onMemoryViewInGraph?: (nodeId: string) => void;
 }
 

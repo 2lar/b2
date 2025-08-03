@@ -1,15 +1,67 @@
+/**
+ * MemoryList Component - Paginated Memory Management Interface
+ * 
+ * Purpose:
+ * Provides a comprehensive list view for browsing, editing, and managing memories.
+ * Offers bulk operations, individual memory actions, and seamless integration with the graph view.
+ * 
+ * Key Features:
+ * - Paginated display of memories with configurable page size
+ * - Inline editing with click-to-edit functionality
+ * - Bulk selection and deletion operations
+ * - Individual memory actions (edit, delete, view in graph)
+ * - Search and filtering capabilities
+ * - Timestamp display with relative time formatting
+ * - Loading states and error handling
+ * - Responsive design for different screen sizes
+ * 
+ * Memory Management:
+ * - Click to edit memory content inline
+ * - Bulk select with checkboxes for multiple operations
+ * - Delete confirmation dialogs for safety
+ * - Real-time updates after edit/delete operations
+ * - Integration with graph visualization for memory viewing
+ * 
+ * Pagination:
+ * - Configurable page size (default 50 memories per page)
+ * - Navigation controls with page numbers
+ * - Total count display
+ * - Efficient loading of large memory collections
+ * 
+ * State Management:
+ * - editingId: Currently editing memory ID
+ * - editContent: Content being edited
+ * - selectedMemories: Set of selected memory IDs for bulk operations
+ * - isDeleting: Loading state during delete operations
+ * 
+ * Integration:
+ * - Receives paginated memory data from Dashboard
+ * - Calls callbacks for data refresh after operations
+ * - Integrates with GraphVisualization for "View in Graph" functionality
+ * - Positioned in bottom-right panel of Dashboard layout
+ */
+
 import React, { useState } from 'react';
 import { api, type Node } from '../services';
 
 interface MemoryListProps {
+    /** Array of memory objects to display */
     memories: Node[];
+    /** Total number of memories across all pages */
     totalMemories: number;
+    /** Current page number (1-based) */
     currentPage: number;
+    /** Total number of pages available */
     totalPages: number;
+    /** Loading state indicator */
     isLoading: boolean;
+    /** Callback for page navigation */
     onPageChange: (page: number) => void;
+    /** Callback after memory deletion */
     onMemoryDeleted: () => void;
+    /** Callback after memory update */
     onMemoryUpdated: () => void;
+    /** Optional callback to view memory in graph visualization */
     onMemoryViewInGraph?: (nodeId: string) => void;
 }
 
