@@ -7,7 +7,7 @@
  */
 
 import { auth } from './authClient';
-import { components, operations } from './generated-types';
+import { components, operations } from '../types/generated/generated-types';
 
 // Dynamic API Configuration
 function getApiBaseUrl(): string {

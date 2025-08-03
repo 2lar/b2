@@ -1,4 +1,4 @@
-import type { components } from './generated-types';
+import type { components } from '../types/generated/generated-types';
 
 // Barrel export for all services
 export { api } from './apiClient';
@@ -9,7 +9,7 @@ export { webSocketClient } from './webSocketClient';
 export type { 
     components,
     operations 
-} from './generated-types';
+} from '../types/generated/generated-types';
 
 // Export specific types that components commonly use
 export type Node = components['schemas']['Node'];

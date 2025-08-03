@@ -1,6 +1,6 @@
 import cytoscape, { Core, LayoutOptions, ElementDefinition, NodeSingular, EdgeSingular } from 'cytoscape';
 import { api } from './apiClient';
-import { components } from './generated-types';
+import { components } from '../types/generated/generated-types';
 
 // Type alias for easier usage
 type NodeDetails = components['schemas']['NodeDetails'];

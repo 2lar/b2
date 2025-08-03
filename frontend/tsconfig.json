@@ -18,7 +18,6 @@
     "jsxImportSource": "react",
 
     /* Type definitions */
-    "typeRoots": ["./src/types", "./node_modules/@types"],
 
     /* Path aliases */
     "baseUrl": "./src",
@@ -33,5 +32,5 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src", "src/types/**/*.ts"]
 }
