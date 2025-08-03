@@ -29,5 +29,11 @@ export default defineConfig(({ mode }) => {
     },
     // Explicitly tell Vite where to find env files
     envDir: '../',  // This tells Vite to look in the parent directory (frontend/) for .env files
+    resolve: {
+      alias: {
+        '@services': resolve(__dirname, './src/services'),
+        '@components': resolve(__dirname, './src/components')
+      }
+    }
   }
 })

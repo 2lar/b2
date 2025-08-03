@@ -18,7 +18,13 @@
     "jsxImportSource": "react",
 
     /* Type definitions */
-    "typeRoots": ["./src/types", "./node_modules/@types"],
+
+    /* Path aliases */
+    "baseUrl": "./src",
+    "paths": {
+      "@services/*": ["services/*"],
+      "@components/*": ["components/*"]
+    },
 
     /* Linting */
     "strict": true,
@@ -26,5 +32,5 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src", "src/types/**/*.ts"]
 }

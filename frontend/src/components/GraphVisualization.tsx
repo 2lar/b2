@@ -1,16 +1,12 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import cytoscape, { Core, ElementDefinition, NodeSingular, NodeCollection } from 'cytoscape';
 import cola from 'cytoscape-cola';
-import { api } from '../ts/apiClient';
-import { components } from '../ts/generated-types';
+import { api, type NodeDetails } from '../services';
 import { useFullscreen } from '../hooks/useFullscreen';
 import { throttle } from 'lodash-es';
 
 // Register the cola layout
 cytoscape.use(cola);
-
-// Type aliases for easier usage
-type NodeDetails = components['schemas']['NodeDetails'];
 
 interface GraphVisualizationProps {
     refreshTrigger: number;
@@ -25,6 +21,7 @@ interface DisplayNode {
     content: string;
     label: string;
     timestamp: string;
+    tags?: string[];
 }
 
 // Cosmic color spectrum for node clustering - vibrant space colors
@@ -300,7 +297,8 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                 id: nodeId,
                 content: nodeData.content || '',
                 label: nodeData.content ? (nodeData.content.length > 50 ? nodeData.content.substring(0, 47) + '...' : nodeData.content) : '',
-                timestamp: nodeData.timestamp || ''
+                timestamp: nodeData.timestamp || '',
+                tags: nodeData.tags || []
             });
         } catch (error) {
             console.error('Error loading node details:', error);
@@ -760,6 +758,15 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                             <div className="node-content-section">
                                 {selectedNode.content}
                             </div>
+                            {selectedNode.tags && selectedNode.tags.length > 0 && (
+                                <div className="memory-tags">
+                                    {selectedNode.tags.map((tag, index) => (
+                                        <span key={index} className="memory-tag">
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                             <div className="connections-section">
                                 <h4>Connected Memories</h4>
                                 <div className="scrollable-connections">

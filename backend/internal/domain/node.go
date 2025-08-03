@@ -8,6 +8,7 @@ type Node struct {
 	UserID    string    `json:"user_id"`
 	Content   string    `json:"content"`
 	Keywords  []string  `json:"keywords"`
+	Tags      []string  `json:"tags"`
 	CreatedAt time.Time `json:"created_at"`
 	Version   int       `json:"version"`
 }

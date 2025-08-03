@@ -10,16 +10,50 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// AddMemoryToCategoryRequest defines model for AddMemoryToCategoryRequest.
+type AddMemoryToCategoryRequest struct {
+	MemoryId string `json:"memoryId"`
+}
+
+// BulkDeleteRequest defines model for BulkDeleteRequest.
+type BulkDeleteRequest struct {
+	NodeIds []string `json:"nodeIds"`
+}
+
+// BulkDeleteResponse defines model for BulkDeleteResponse.
+type BulkDeleteResponse struct {
+	DeletedCount  *int      `json:"deletedCount,omitempty"`
+	FailedNodeIds *[]string `json:"failedNodeIds,omitempty"`
+	Message       *string   `json:"message,omitempty"`
+}
+
+// Category defines model for Category.
+type Category struct {
+	CreatedAt   time.Time `json:"createdAt"`
+	Description *string   `json:"description,omitempty"`
+	Id          string    `json:"id"`
+	Title       string    `json:"title"`
+}
+
+// CreateCategoryRequest defines model for CreateCategoryRequest.
+type CreateCategoryRequest struct {
+	Description *string `json:"description,omitempty"`
+	Title       string  `json:"title"`
+}
+
 // CreateNodeRequest defines model for CreateNodeRequest.
 type CreateNodeRequest struct {
 	Content string `json:"content"`
+
+	// Tags User-defined tags for organizing and categorizing memories
+	Tags *[]string `json:"tags,omitempty"`
 }
 
 // EdgeData defines model for EdgeData.
 type EdgeData struct {
-	Id     *string `json:"id,omitempty"`
-	Source *string `json:"source,omitempty"`
-	Target *string `json:"target,omitempty"`
+	Id     string `json:"id"`
+	Source string `json:"source"`
+	Target string `json:"target"`
 }
 
 // GraphDataResponse defines model for GraphDataResponse.
@@ -44,52 +78,64 @@ type GraphNode struct {
 
 // Node defines model for Node.
 type Node struct {
-	Content   *string    `json:"content,omitempty"`
-	NodeId    *string    `json:"nodeId,omitempty"`
-	Timestamp *time.Time `json:"timestamp,omitempty"`
-	Version   *int       `json:"version,omitempty"`
+	Content string `json:"content"`
+	NodeId  string `json:"nodeId"`
+
+	// Tags User-defined tags for organizing and categorizing memories
+	Tags      *[]string `json:"tags,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+	Version   int       `json:"version"`
 }
 
 // NodeData defines model for NodeData.
 type NodeData struct {
-	Id    *string `json:"id,omitempty"`
-	Label *string `json:"label,omitempty"`
+	Id    string `json:"id"`
+	Label string `json:"label"`
 }
 
 // NodeDetails defines model for NodeDetails.
 type NodeDetails struct {
-	Content   *string    `json:"content,omitempty"`
-	Edges     *[]string  `json:"edges,omitempty"`
-	NodeId    *string    `json:"nodeId,omitempty"`
-	Timestamp *time.Time `json:"timestamp,omitempty"`
-	Version   *int       `json:"version,omitempty"`
+	Content string    `json:"content"`
+	Edges   *[]string `json:"edges,omitempty"`
+	NodeId  string    `json:"nodeId"`
+
+	// Tags User-defined tags for organizing and categorizing memories
+	Tags      *[]string `json:"tags,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+	Version   int       `json:"version"`
+}
+
+// UpdateCategoryRequest defines model for UpdateCategoryRequest.
+type UpdateCategoryRequest struct {
+	Description *string `json:"description,omitempty"`
+	Title       string  `json:"title"`
 }
 
 // UpdateNodeRequest defines model for UpdateNodeRequest.
 type UpdateNodeRequest struct {
 	Content string `json:"content"`
+
+	// Tags User-defined tags for organizing and categorizing memories
+	Tags *[]string `json:"tags,omitempty"`
 }
 
-// BulkDeleteRequest defines model for BulkDeleteRequest.
-type BulkDeleteRequest struct {
-	NodeIds []string `json:"nodeIds"`
-}
+// CreateCategoryJSONRequestBody defines body for CreateCategory for application/json ContentType.
+type CreateCategoryJSONRequestBody = CreateCategoryRequest
 
-// BulkDeleteResponse defines model for BulkDeleteResponse.
-type BulkDeleteResponse struct {
-	DeletedCount   *int      `json:"deletedCount,omitempty"`
-	FailedNodeIds  *[]string `json:"failedNodeIds,omitempty"`
-	Message        *string   `json:"message,omitempty"`
-}
+// UpdateCategoryJSONRequestBody defines body for UpdateCategory for application/json ContentType.
+type UpdateCategoryJSONRequestBody = UpdateCategoryRequest
+
+// AddMemoryToCategoryJSONRequestBody defines body for AddMemoryToCategory for application/json ContentType.
+type AddMemoryToCategoryJSONRequestBody = AddMemoryToCategoryRequest
 
 // CreateNodeJSONRequestBody defines body for CreateNode for application/json ContentType.
 type CreateNodeJSONRequestBody = CreateNodeRequest
 
-// UpdateNodeJSONRequestBody defines body for UpdateNode for application/json ContentType.
-type UpdateNodeJSONRequestBody = UpdateNodeRequest
-
 // BulkDeleteNodesJSONRequestBody defines body for BulkDeleteNodes for application/json ContentType.
 type BulkDeleteNodesJSONRequestBody = BulkDeleteRequest
+
+// UpdateNodeJSONRequestBody defines body for UpdateNode for application/json ContentType.
+type UpdateNodeJSONRequestBody = UpdateNodeRequest
 
 // AsGraphNode returns the union data inside the GraphDataResponse_Elements_Item as a GraphNode
 func (t GraphDataResponse_Elements_Item) AsGraphNode() (GraphNode, error) {
@@ -151,20 +197,4 @@ func (t GraphDataResponse_Elements_Item) MarshalJSON() ([]byte, error) {
 func (t *GraphDataResponse_Elements_Item) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
-}
-
-// Additional response types for compatibility
-type NodeResponse struct {
-	NodeID    string `json:"nodeId"`
-	Content   string `json:"content"`
-	Timestamp string `json:"timestamp"`
-	Version   int    `json:"version"`
-}
-
-type NodeDetailsResponse struct {
-	NodeID    string   `json:"nodeId"`
-	Content   string   `json:"content"`
-	Timestamp string   `json:"timestamp"`
-	Version   int      `json:"version"`
-	Edges     []string `json:"edges"`
 }

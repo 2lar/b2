@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { User } from '@supabase/supabase-js';
 import Header from './Header';
 import GraphVisualization, { GraphVisualizationRef } from './GraphVisualization';
 import MemoryInput from './MemoryInput';
 import MemoryList from './MemoryList';
-import { api } from '../ts/apiClient';
-import { components } from '../ts/generated-types';
-
-type Node = components['schemas']['Node'];
+import { api, type Node } from '../services';
 
 interface DashboardProps {
     user: User;
@@ -15,6 +13,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
+    const navigate = useNavigate();
     const [memories, setMemories] = useState<Node[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
@@ -88,28 +87,37 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
             />
 
             <main className="dashboard-layout">
-                {/* Left Sidebar */}
+                {/* Left Sidebar - Category Navigation */}
                 <div className="left-sidebar">
                     <div className="sidebar-header">
-                        <h3>Navigation</h3>
+                        <h3>Categories</h3>
                     </div>
                     <div className="sidebar-content">
-                        <button className="sidebar-btn">
-                            <span className="sidebar-icon">👤</span>
-                            Profile
+                        <button 
+                            className="sidebar-btn primary"
+                            onClick={() => navigate('/categories')}
+                        >
+                            <span className="sidebar-icon">📁</span>
+                            All Categories
                         </button>
-                        <button className="sidebar-btn">
-                            <span className="sidebar-icon">⚙️</span>
-                            Settings
-                        </button>
-                        <button className="sidebar-btn">
-                            <span className="sidebar-icon">📊</span>
-                            Analytics
-                        </button>
-                        <button className="sidebar-btn">
-                            <span className="sidebar-icon">💡</span>
-                            Help
-                        </button>
+                        <div className="sidebar-divider"></div>
+                        <div className="category-list">
+                            <div className="category-item" onClick={() => navigate('/categories')}>
+                                <span className="category-icon">💼</span>
+                                <span className="category-name">Work</span>
+                                <span className="memory-count">5</span>
+                            </div>
+                            <div className="category-item" onClick={() => navigate('/categories')}>
+                                <span className="category-icon">🎓</span>
+                                <span className="category-name">Learning</span>
+                                <span className="memory-count">12</span>
+                            </div>
+                            <div className="category-item" onClick={() => navigate('/categories')}>
+                                <span className="category-icon">💡</span>
+                                <span className="category-name">Ideas</span>
+                                <span className="memory-count">8</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

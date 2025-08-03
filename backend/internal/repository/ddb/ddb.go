@@ -27,6 +27,7 @@ type ddbNode struct {
 	UserID    string   `dynamodbav:"UserID"`
 	Content   string   `dynamodbav:"Content"`
 	Keywords  []string `dynamodbav:"Keywords"`
+	Tags      []string `dynamodbav:"Tags"`
 	IsLatest  bool     `dynamodbav:"IsLatest"`
 	Version   int      `dynamodbav:"Version"`
 	Timestamp string   `dynamodbav:"Timestamp"`
@@ -45,6 +46,27 @@ type ddbEdge struct {
 	PK       string `dynamodbav:"PK"`
 	SK       string `dynamodbav:"SK"`
 	TargetID string `dynamodbav:"TargetID"`
+}
+
+// ddbCategory represents a category item in DynamoDB.
+type ddbCategory struct {
+	PK          string `dynamodbav:"PK"`
+	SK          string `dynamodbav:"SK"`
+	CategoryID  string `dynamodbav:"CategoryID"`
+	UserID      string `dynamodbav:"UserID"`
+	Title       string `dynamodbav:"Title"`
+	Description string `dynamodbav:"Description"`
+	Timestamp   string `dynamodbav:"Timestamp"`
+}
+
+// ddbCategoryMemory represents a category-memory relationship item in DynamoDB.
+type ddbCategoryMemory struct {
+	PK         string `dynamodbav:"PK"`
+	SK         string `dynamodbav:"SK"`
+	CategoryID string `dynamodbav:"CategoryID"`
+	MemoryID   string `dynamodbav:"MemoryID"`
+	UserID     string `dynamodbav:"UserID"`
+	AddedAt    string `dynamodbav:"AddedAt"`
 }
 
 // ddbRepository is the concrete implementation for DynamoDB.
@@ -78,7 +100,7 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node domain.N
 	// 1. Add the main node metadata to the transaction
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
 		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
-		Keywords: node.Keywords, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
+		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
@@ -120,7 +142,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
 		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
-		Keywords: node.Keywords, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
+		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
@@ -170,12 +192,13 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 	_, err := r.dbClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName:        aws.String(r.config.TableName),
 		Key:              map[string]types.AttributeValue{"PK": &types.AttributeValueMemberS{Value: pk}, "SK": &types.AttributeValueMemberS{Value: "METADATA#v0"}},
-		UpdateExpression: aws.String("SET Content = :c, Keywords = :k, Timestamp = :t, Version = :v"),
+		UpdateExpression: aws.String("SET Content = :c, Keywords = :k, Tags = :tg, Timestamp = :t, Version = :v"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":c": &types.AttributeValueMemberS{Value: node.Content},
-			":k": &types.AttributeValueMemberL{Value: toAttributeValueList(node.Keywords)},
-			":t": &types.AttributeValueMemberS{Value: node.CreatedAt.Format(time.RFC3339)},
-			":v": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version)},
+			":c":  &types.AttributeValueMemberS{Value: node.Content},
+			":k":  &types.AttributeValueMemberL{Value: toAttributeValueList(node.Keywords)},
+			":tg": &types.AttributeValueMemberL{Value: toAttributeValueList(node.Tags)},
+			":t":  &types.AttributeValueMemberS{Value: node.CreatedAt.Format(time.RFC3339)},
+			":v":  &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version)},
 		},
 	})
 	if err != nil {
@@ -266,7 +289,7 @@ func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string)
 	createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
 	return &domain.Node{
 		ID: ddbItem.NodeID, UserID: ddbItem.UserID, Content: ddbItem.Content,
-		Keywords: ddbItem.Keywords, CreatedAt: createdAt, Version: ddbItem.Version,
+		Keywords: ddbItem.Keywords, Tags: ddbItem.Tags, CreatedAt: createdAt, Version: ddbItem.Version,
 	}, nil
 }
 
@@ -346,6 +369,7 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 						UserID:    ddbItem.UserID,
 						Content:   ddbItem.Content,
 						Keywords:  ddbItem.Keywords,
+						Tags:      ddbItem.Tags,
 						CreatedAt: createdAt,
 						Version:   ddbItem.Version,
 					})
@@ -566,7 +590,7 @@ func (r *ddbRepository) CreateNode(ctx context.Context, node domain.Node) error 
 	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
 		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
-		Keywords: node.Keywords, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
+		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
@@ -634,4 +658,308 @@ func toAttributeValueList(ss []string) []types.AttributeValue {
 		avs = append(avs, &types.AttributeValueMemberS{Value: s})
 	}
 	return avs
+}
+
+// Category operations implementation
+
+// CreateCategory creates a new category.
+func (r *ddbRepository) CreateCategory(ctx context.Context, category domain.Category) error {
+	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", category.UserID, category.ID)
+	categoryItem, err := attributevalue.MarshalMap(ddbCategory{
+		PK:          pk,
+		SK:          "METADATA#v0",
+		CategoryID:  category.ID,
+		UserID:      category.UserID,
+		Title:       category.Title,
+		Description: category.Description,
+		Timestamp:   category.CreatedAt.Format(time.RFC3339),
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to marshal category item")
+	}
+
+	_, err = r.dbClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(r.config.TableName),
+		Item:      categoryItem,
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "put item failed for category")
+	}
+	return nil
+}
+
+// UpdateCategory updates an existing category.
+func (r *ddbRepository) UpdateCategory(ctx context.Context, category domain.Category) error {
+	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", category.UserID, category.ID)
+	_, err := r.dbClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.config.TableName),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: pk},
+			"SK": &types.AttributeValueMemberS{Value: "METADATA#v0"},
+		},
+		UpdateExpression: aws.String("SET Title = :t, Description = :d, Timestamp = :ts"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":t":  &types.AttributeValueMemberS{Value: category.Title},
+			":d":  &types.AttributeValueMemberS{Value: category.Description},
+			":ts": &types.AttributeValueMemberS{Value: category.CreatedAt.Format(time.RFC3339)},
+		},
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to update category")
+	}
+	return nil
+}
+
+// DeleteCategory deletes a category and all its memory associations.
+func (r *ddbRepository) DeleteCategory(ctx context.Context, userID, categoryID string) error {
+	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", userID, categoryID)
+	
+	// First, query all items for this category
+	queryResult, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
+		TableName:                 aws.String(r.config.TableName),
+		KeyConditionExpression:    aws.String("PK = :pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: pk}},
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to query category items for deletion")
+	}
+
+	if len(queryResult.Items) == 0 {
+		return nil // Nothing to delete
+	}
+
+	// Delete all items (category metadata and memory associations)
+	var writeRequests []types.WriteRequest
+	for _, item := range queryResult.Items {
+		writeRequests = append(writeRequests, types.WriteRequest{
+			DeleteRequest: &types.DeleteRequest{
+				Key: map[string]types.AttributeValue{
+					"PK": item["PK"],
+					"SK": item["SK"],
+				},
+			},
+		})
+	}
+
+	if len(writeRequests) > 0 {
+		_, err = r.dbClient.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{
+				r.config.TableName: writeRequests,
+			},
+		})
+		if err != nil {
+			return appErrors.Wrap(err, "failed to batch delete category items")
+		}
+	}
+	return nil
+}
+
+// FindCategoryByID retrieves a single category by ID.
+func (r *ddbRepository) FindCategoryByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", userID, categoryID)
+	sk := "METADATA#v0"
+	
+	result, err := r.dbClient.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(r.config.TableName),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: pk},
+			"SK": &types.AttributeValueMemberS{Value: sk},
+		},
+	})
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to get category from dynamodb")
+	}
+	if result.Item == nil {
+		return nil, nil // Not found
+	}
+
+	var ddbItem ddbCategory
+	if err := attributevalue.UnmarshalMap(result.Item, &ddbItem); err != nil {
+		return nil, appErrors.Wrap(err, "failed to unmarshal category item")
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
+	return &domain.Category{
+		ID:          ddbItem.CategoryID,
+		UserID:      ddbItem.UserID,
+		Title:       ddbItem.Title,
+		Description: ddbItem.Description,
+		CreatedAt:   createdAt,
+	}, nil
+}
+
+// FindCategories retrieves categories based on query parameters.
+func (r *ddbRepository) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]domain.Category, error) {
+	if err := query.Validate(); err != nil {
+		return nil, err
+	}
+
+	// Scan for all categories for the user
+	scanInput := &dynamodb.ScanInput{
+		TableName:        aws.String(r.config.TableName),
+		FilterExpression: aws.String("begins_with(PK, :pkPrefix) AND SK = :sk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pkPrefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#CATEGORY#", query.UserID)},
+			":sk":       &types.AttributeValueMemberS{Value: "METADATA#v0"},
+		},
+	}
+
+	var categories []domain.Category
+	paginator := dynamodb.NewScanPaginator(r.dbClient, scanInput)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, appErrors.Wrap(err, "failed to scan categories")
+		}
+
+		for _, item := range page.Items {
+			var ddbItem ddbCategory
+			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
+				createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
+				categories = append(categories, domain.Category{
+					ID:          ddbItem.CategoryID,
+					UserID:      ddbItem.UserID,
+					Title:       ddbItem.Title,
+					Description: ddbItem.Description,
+					CreatedAt:   createdAt,
+				})
+			}
+		}
+	}
+
+	// Apply pagination if specified
+	if query.HasPagination() {
+		start := query.Offset
+		if start >= len(categories) {
+			return []domain.Category{}, nil
+		}
+
+		end := len(categories)
+		if query.Limit > 0 && start+query.Limit < len(categories) {
+			end = start + query.Limit
+		}
+
+		categories = categories[start:end]
+	}
+
+	return categories, nil
+}
+
+// AddMemoryToCategory adds a memory to a category.
+func (r *ddbRepository) AddMemoryToCategory(ctx context.Context, userID, categoryID, memoryID string) error {
+	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", userID, categoryID)
+	sk := fmt.Sprintf("MEMORY#%s", memoryID)
+	
+	categoryMemoryItem, err := attributevalue.MarshalMap(ddbCategoryMemory{
+		PK:         pk,
+		SK:         sk,
+		CategoryID: categoryID,
+		MemoryID:   memoryID,
+		UserID:     userID,
+		AddedAt:    time.Now().Format(time.RFC3339),
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to marshal category-memory item")
+	}
+
+	_, err = r.dbClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(r.config.TableName),
+		Item:      categoryMemoryItem,
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "put item failed for category-memory association")
+	}
+	return nil
+}
+
+// RemoveMemoryFromCategory removes a memory from a category.
+func (r *ddbRepository) RemoveMemoryFromCategory(ctx context.Context, userID, categoryID, memoryID string) error {
+	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", userID, categoryID)
+	sk := fmt.Sprintf("MEMORY#%s", memoryID)
+	
+	_, err := r.dbClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		TableName: aws.String(r.config.TableName),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: pk},
+			"SK": &types.AttributeValueMemberS{Value: sk},
+		},
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to delete category-memory association")
+	}
+	return nil
+}
+
+// FindMemoriesInCategory retrieves all memories in a specific category.
+func (r *ddbRepository) FindMemoriesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error) {
+	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", userID, categoryID)
+	
+	queryResult, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
+		TableName:                 aws.String(r.config.TableName),
+		KeyConditionExpression:    aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk":       &types.AttributeValueMemberS{Value: pk},
+			":skPrefix": &types.AttributeValueMemberS{Value: "MEMORY#"},
+		},
+	})
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to query memories in category")
+	}
+
+	var memories []domain.Node
+	for _, item := range queryResult.Items {
+		var ddbItem ddbCategoryMemory
+		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
+			// Get the actual memory node
+			memory, err := r.FindNodeByID(ctx, userID, ddbItem.MemoryID)
+			if err != nil {
+				log.Printf("failed to find memory %s in category %s: %v", ddbItem.MemoryID, categoryID, err)
+				continue
+			}
+			if memory != nil {
+				memories = append(memories, *memory)
+			}
+		}
+	}
+
+	return memories, nil
+}
+
+// FindCategoriesForMemory retrieves all categories that contain a specific memory.
+func (r *ddbRepository) FindCategoriesForMemory(ctx context.Context, userID, memoryID string) ([]domain.Category, error) {
+	// This requires scanning since we need to find all categories that contain the memory
+	scanInput := &dynamodb.ScanInput{
+		TableName:        aws.String(r.config.TableName),
+		FilterExpression: aws.String("begins_with(PK, :pkPrefix) AND SK = :sk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pkPrefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#CATEGORY#", userID)},
+			":sk":       &types.AttributeValueMemberS{Value: fmt.Sprintf("MEMORY#%s", memoryID)},
+		},
+	}
+
+	var categories []domain.Category
+	paginator := dynamodb.NewScanPaginator(r.dbClient, scanInput)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, appErrors.Wrap(err, "failed to scan category-memory associations")
+		}
+
+		for _, item := range page.Items {
+			var ddbItem ddbCategoryMemory
+			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
+				// Get the actual category
+				category, err := r.FindCategoryByID(ctx, userID, ddbItem.CategoryID)
+				if err != nil {
+					log.Printf("failed to find category %s for memory %s: %v", ddbItem.CategoryID, memoryID, err)
+					continue
+				}
+				if category != nil {
+					categories = append(categories, *category)
+				}
+			}
+		}
+	}
+
+	return categories, nil
 }

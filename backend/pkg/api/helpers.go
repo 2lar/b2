@@ -23,3 +23,22 @@ func Error(w http.ResponseWriter, statusCode int, message string) {
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
+
+// NodeResponse represents the response format for node operations.
+type NodeResponse struct {
+	NodeID    string   `json:"nodeId"`
+	Content   string   `json:"content"`
+	Tags      []string `json:"tags,omitempty"`
+	Timestamp string   `json:"timestamp"`
+	Version   int      `json:"version"`
+}
+
+// NodeDetailsResponse represents the response format for detailed node information.
+type NodeDetailsResponse struct {
+	NodeID    string   `json:"nodeId"`
+	Content   string   `json:"content"`
+	Tags      []string `json:"tags,omitempty"`
+	Timestamp string   `json:"timestamp"`
+	Version   int      `json:"version"`
+	Edges     []string `json:"edges,omitempty"`
+}

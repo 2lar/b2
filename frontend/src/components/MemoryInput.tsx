@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { api } from '../ts/apiClient';
+import { api } from '../services';
 
 interface MemoryInputProps {
     onMemoryCreated: () => void;
@@ -7,12 +7,38 @@ interface MemoryInputProps {
 
 const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated }) => {
     const [content, setContent] = useState('');
+    const [tags, setTags] = useState<string[]>([]);
+    const [tagInput, setTagInput] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [status, setStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
     const showStatus = (message: string, type: 'success' | 'error') => {
         setStatus({ message, type });
         setTimeout(() => setStatus(null), 3000);
+    };
+
+    const addTag = (tag: string) => {
+        const trimmedTag = tag.trim().toLowerCase();
+        if (trimmedTag && !tags.includes(trimmedTag)) {
+            setTags([...tags, trimmedTag]);
+        }
+        setTagInput('');
+    };
+
+    const removeTag = (tagToRemove: string) => {
+        setTags(tags.filter(tag => tag !== tagToRemove));
+    };
+
+    const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            if (tagInput.trim()) {
+                addTag(tagInput);
+            }
+        } else if (e.key === 'Backspace' && !tagInput && tags.length > 0) {
+            // Remove last tag if input is empty and backspace is pressed
+            setTags(tags.slice(0, -1));
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -24,9 +50,11 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated }) => {
         setIsSubmitting(true);
 
         try {
-            await api.createNode(trimmedContent);
+            await api.createNode(trimmedContent, tags.length > 0 ? tags : undefined);
             showStatus('Memory saved successfully!', 'success');
             setContent('');
+            setTags([]);
+            setTagInput('');
             onMemoryCreated();
         } catch (error) {
             showStatus('Failed to save memory. Please try again.', 'error');
@@ -62,6 +90,35 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated }) => {
                         required
                         disabled={isSubmitting}
                     />
+                    
+                    <div className="tag-input-section">
+                        <label htmlFor="tag-input">Tags (optional)</label>
+                        <div className="tag-input-container">
+                            {tags.map((tag, index) => (
+                                <span key={index} className="tag-pill">
+                                    {tag}
+                                    <button
+                                        type="button"
+                                        className="tag-remove"
+                                        onClick={() => removeTag(tag)}
+                                        disabled={isSubmitting}
+                                    >
+                                        ×
+                                    </button>
+                                </span>
+                            ))}
+                            <input
+                                id="tag-input"
+                                type="text"
+                                value={tagInput}
+                                onChange={(e) => setTagInput(e.target.value)}
+                                onKeyDown={handleTagInputKeyDown}
+                                placeholder={tags.length === 0 ? "Add tags (press Enter or comma to add)" : "Add tag..."}
+                                disabled={isSubmitting}
+                                className="tag-input"
+                            />
+                        </div>
+                    </div>
                     <button 
                         type="submit" 
                         className="primary-btn"

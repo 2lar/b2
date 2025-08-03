@@ -16,4 +16,17 @@ type Repository interface {
 	FindEdges(ctx context.Context, query EdgeQuery) ([]domain.Edge, error)
 	GetGraphData(ctx context.Context, query GraphQuery) (*domain.Graph, error)
 	FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]domain.Node, error)
+
+	// Category operations
+	CreateCategory(ctx context.Context, category domain.Category) error
+	UpdateCategory(ctx context.Context, category domain.Category) error
+	DeleteCategory(ctx context.Context, userID, categoryID string) error
+	FindCategoryByID(ctx context.Context, userID, categoryID string) (*domain.Category, error)
+	FindCategories(ctx context.Context, query CategoryQuery) ([]domain.Category, error)
+
+	// Category-Memory relationship operations
+	AddMemoryToCategory(ctx context.Context, userID, categoryID, memoryID string) error
+	RemoveMemoryFromCategory(ctx context.Context, userID, categoryID, memoryID string) error
+	FindMemoriesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error)
+	FindCategoriesForMemory(ctx context.Context, userID, memoryID string) ([]domain.Category, error)
 }

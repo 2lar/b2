@@ -9,7 +9,7 @@
     "clean": "rm -rf node_modules dist",
     "build": "npm run clean && npm install && npm run generate-api-types && vite build",
     "preview": "vite preview",
-    "generate-api-types": "openapi-typescript ../openapi.yaml --output src/ts/generated-types.ts"
+    "generate-api-types": "openapi-typescript ../openapi.yaml --output src/types/generated/generated-types.ts"
   },
   "keywords": [],
   "author": "",
@@ -25,11 +25,13 @@
     "@types/lodash-es": "^4.17.12",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@types/react-router-dom": "^5.3.3",
     "@vitejs/plugin-react": "^4.7.0",
     "cytoscape": "^3.32.0",
     "cytoscape-cola": "^2.5.1",
     "lodash-es": "^4.17.21",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.7.1"
   }
 }

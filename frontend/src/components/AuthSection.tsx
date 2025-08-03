@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
-import { Session } from '@supabase/supabase-js';
-import { auth } from '../ts/authClient';
+import { auth } from '../services';
 
-interface AuthSectionProps {
-    onAuthSuccess: (session: Session) => void;
-}
-
-const AuthSection: React.FC<AuthSectionProps> = ({ onAuthSuccess }) => {
+const AuthSection: React.FC = () => {
     const [isSignUp, setIsSignUp] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -19,17 +14,12 @@ const AuthSection: React.FC<AuthSectionProps> = ({ onAuthSuccess }) => {
         setIsLoading(true);
 
         try {
-            let session: Session | null = null;
-            
             if (isSignUp) {
-                session = await auth.signUp(email, password);
+                await auth.signUp(email, password);
             } else {
-                session = await auth.signIn(email, password);
+                await auth.signIn(email, password);
             }
-
-            if (session) {
-                onAuthSuccess(session);
-            }
+            // The useAuth hook in App.tsx will handle the session update
         } catch (err: any) {
             console.error('Auth error:', err);
             setError(err.message || 'Authentication failed. Please try again.');

@@ -1,8 +1,5 @@
 import React, { useState } from 'react';
-import { api } from '../ts/apiClient';
-import { components } from '../ts/generated-types';
-
-type Node = components['schemas']['Node'];
+import { api, type Node } from '../services';
 
 interface MemoryListProps {
     memories: Node[];
@@ -206,6 +203,15 @@ const MemoryList: React.FC<MemoryListProps> = ({
                                         )}
                                     </div>
                                 </div>
+                                {memory.tags && memory.tags.length > 0 && (
+                                    <div className="memory-tags">
+                                        {memory.tags.map((tag: string, index: number) => (
+                                            <span key={index} className="memory-tag">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                                 <div className="memory-item-meta">
                                     {formatDate(memory.timestamp || '')}
                                 </div>
