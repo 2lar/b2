@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../ts/apiClient';
-import { components } from '../ts/generated-types';
-
-type Category = components['schemas']['Category'];
+import { api, type Category } from '../services';
 
 interface CategoriesListProps {
     onCategorySelect?: (categoryId: string) => void;

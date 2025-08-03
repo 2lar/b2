@@ -20,6 +20,13 @@
     /* Type definitions */
     "typeRoots": ["./src/types", "./node_modules/@types"],
 
+    /* Path aliases */
+    "baseUrl": "./src",
+    "paths": {
+      "@services/*": ["services/*"],
+      "@components/*": ["components/*"]
+    },
+
     /* Linting */
     "strict": true,
     "noUnusedLocals": false,

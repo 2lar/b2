@@ -5,10 +5,7 @@ import Header from './Header';
 import GraphVisualization, { GraphVisualizationRef } from './GraphVisualization';
 import MemoryInput from './MemoryInput';
 import MemoryList from './MemoryList';
-import { api } from '../ts/apiClient';
-import { components } from '../ts/generated-types';
-
-type Node = components['schemas']['Node'];
+import { api, type Node } from '../services';
 
 interface DashboardProps {
     user: User;

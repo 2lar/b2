@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { api } from '../ts/apiClient';
+import { api } from '../services';
 
 interface MemoryInputProps {
     onMemoryCreated: () => void;

@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '../ts/apiClient';
-import { components } from '../ts/generated-types';
-
-type Category = components['schemas']['Category'];
-type Node = components['schemas']['Node'];
+import { api, type Category, type Node } from '../services';
 
 interface CategoryDetailProps {
     categoryId?: string;
@@ -30,11 +26,14 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        loadCategory();
-        loadMemories();
+        if (categoryId) {
+            loadCategory();
+            loadMemories();
+        }
     }, [categoryId]);
 
     const loadCategory = async () => {
+        if (!categoryId) return;
         setIsLoading(true);
         try {
             const categoryData = await api.getCategory(categoryId);
@@ -49,6 +48,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({
     };
 
     const loadMemories = async () => {
+        if (!categoryId) return;
         setIsLoadingMemories(true);
         try {
             const data = await api.getMemoriesInCategory(categoryId);
@@ -65,7 +65,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({
     };
 
     const handleSave = async () => {
-        if (!editTitle.trim()) return;
+        if (!editTitle.trim() || !categoryId) return;
 
         setIsSaving(true);
         try {
@@ -244,7 +244,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({
                                 </div>
                                 {memory.tags && memory.tags.length > 0 && (
                                     <div className="memory-tags">
-                                        {memory.tags.map((tag, index) => (
+                                        {memory.tags.map((tag: string, index: number) => (
                                             <span key={index} className="memory-tag">
                                                 {tag}
                                             </span>

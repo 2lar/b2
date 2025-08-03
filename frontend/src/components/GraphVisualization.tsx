@@ -1,16 +1,12 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import cytoscape, { Core, ElementDefinition, NodeSingular, NodeCollection } from 'cytoscape';
 import cola from 'cytoscape-cola';
-import { api } from '../ts/apiClient';
-import { components } from '../ts/generated-types';
+import { api, type NodeDetails } from '../services';
 import { useFullscreen } from '../hooks/useFullscreen';
 import { throttle } from 'lodash-es';
 
 // Register the cola layout
 cytoscape.use(cola);
-
-// Type aliases for easier usage
-type NodeDetails = components['schemas']['NodeDetails'];
 
 interface GraphVisualizationProps {
     refreshTrigger: number;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Session } from '@supabase/supabase-js';
-import { auth } from '../ts/authClient';
+import { auth } from '../services';
 
 interface AuthSectionProps {
     onAuthSuccess: (session: Session) => void;
