@@ -32,7 +32,7 @@
  */
 
 import React, { useState } from 'react';
-import { auth } from '../services';
+import { auth } from '../api/auth';
 
 const AuthSection: React.FC = () => {
     const [isSignUp, setIsSignUp] = useState(false);

@@ -36,13 +36,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User } from '@supabase/supabase-js';
-import Header from './Header';
-import GraphVisualization, { GraphVisualizationRef } from './GraphVisualization';
-import MemoryInput from './MemoryInput';
-import MemoryList from './MemoryList';
-import FileSystemSidebar from './FileSystemSidebar';
-import { api, type Node } from '../services';
-import { components } from '../types/generated/generated-types';
+import { Header } from '../../../common';
+import { GraphVisualization, type GraphVisualizationRef, MemoryInput, MemoryList, FileSystemSidebar, nodesApi } from '../../memories';
+import { categoriesApi } from '../../categories';
+import type { Node } from '../../../services';
+import { components } from '../../../types/generated/generated-types';
 
 interface DashboardProps {
     /** Authenticated user object from Supabase */
@@ -74,7 +72,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     const loadMemories = async () => {
         setIsLoading(true);
         try {
-            const data = await api.listNodes();
+            const data = await nodesApi.listNodes();
             const allNodes = data.nodes || [];
             
             // Sort by timestamp (newest first)
@@ -93,7 +91,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
 
     const loadCategories = async () => {
         try {
-            const data = await api.listCategories();
+            const data = await categoriesApi.listCategories();
             setCategories(data.categories || []);
         } catch (error) {
             console.error('Error loading categories:', error);

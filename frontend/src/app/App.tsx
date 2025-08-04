@@ -28,12 +28,10 @@
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth, AuthSection } from '../features/auth';
 import { webSocketClient } from '../services';
-import AuthSection from './AuthSection';
-import Dashboard from './Dashboard';
-import CategoriesList from './CategoriesList';
-import CategoryDetail from './CategoryDetail';
+import { Dashboard } from '../features/dashboard';
+import { CategoriesList, CategoryDetail } from '../features/categories';
 
 const App: React.FC = () => {
     const { session, loading, auth } = useAuth();

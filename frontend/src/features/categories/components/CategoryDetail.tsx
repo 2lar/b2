@@ -52,7 +52,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, type Category, type Node } from '../services';
+import { categoriesApi } from '../api/categories';
+import { nodesApi } from '../../memories/api/nodes';
+import type { Category, Node } from '../../../services';
 
 interface CategoryDetailProps {
     /** Optional category ID when used programmatically */
@@ -91,7 +93,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({
         if (!categoryId) return;
         setIsLoading(true);
         try {
-            const categoryData = await api.getCategory(categoryId);
+            const categoryData = await categoriesApi.getCategory(categoryId);
             setCategory(categoryData);
             setEditTitle(categoryData.title);
             setEditDescription(categoryData.description || '');
@@ -106,7 +108,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({
         if (!categoryId) return;
         setIsLoadingMemories(true);
         try {
-            const data = await api.getMemoriesInCategory(categoryId);
+            const data = await categoriesApi.getMemoriesInCategory(categoryId);
             setMemories(data.memories || []);
         } catch (error) {
             console.error('Error loading memories:', error);
@@ -124,7 +126,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({
 
         setIsSaving(true);
         try {
-            await api.updateCategory(categoryId, editTitle.trim(), editDescription.trim() || undefined);
+            await categoriesApi.updateCategory(categoryId, editTitle.trim(), editDescription.trim() || undefined);
             setIsEditing(false);
             loadCategory(); // Reload to get updated data
         } catch (error) {
@@ -149,7 +151,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({
         }
 
         try {
-            await api.deleteCategory(categoryId);
+            await categoriesApi.deleteCategory(categoryId);
             if (onBack) {
                 onBack();
             } else {
@@ -167,7 +169,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({
         }
 
         try {
-            await api.removeMemoryFromCategory(categoryId, memoryId);
+            await categoriesApi.removeMemoryFromCategory(categoryId, memoryId);
             loadMemories(); // Reload memories
         } catch (error) {
             console.error('Error removing memory from category:', error);

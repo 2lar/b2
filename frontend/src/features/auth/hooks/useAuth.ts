@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { auth } from '../services';
+import { auth } from '../api/auth';
 import type { Session } from '@supabase/supabase-js';
 
 export const useAuth = () => {

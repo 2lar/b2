@@ -39,7 +39,7 @@
  */
 
 import React, { useState } from 'react';
-import { api } from '../services';
+import { nodesApi } from '../api/nodes';
 
 interface MemoryInputProps {
     /** Callback function called after successful memory creation */
@@ -91,11 +91,11 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated }) => {
         setIsSubmitting(true);
 
         try {
-            const newNode = await api.createNode(trimmedContent, tags.length > 0 ? tags : undefined);
+            const newNode = await nodesApi.createNode(trimmedContent, tags.length > 0 ? tags : undefined);
             
             // Auto-categorize the new node
             try {
-                await api.categorizeNode(newNode.nodeId);
+                await nodesApi.categorizeNode(newNode.nodeId);
             } catch (categorizationError) {
                 // Don't fail the whole operation if categorization fails
                 console.warn('Auto-categorization failed:', categorizationError);

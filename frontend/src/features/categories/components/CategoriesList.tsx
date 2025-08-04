@@ -44,7 +44,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, type Category } from '../services';
+import { categoriesApi } from '../api/categories';
+import type { Category } from '../../../services';
 
 interface CategoriesListProps {
     /** Optional callback when category is selected instead of navigation */
@@ -67,7 +68,7 @@ const CategoriesList: React.FC<CategoriesListProps> = ({ onCategorySelect }) => 
     const loadCategories = async () => {
         setIsLoading(true);
         try {
-            const data = await api.listCategories();
+            const data = await categoriesApi.listCategories();
             setCategories(data.categories || []);
         } catch (error) {
             console.error('Error loading categories:', error);
@@ -81,7 +82,7 @@ const CategoriesList: React.FC<CategoriesListProps> = ({ onCategorySelect }) => 
 
         setIsCreating(true);
         try {
-            await api.createCategory(newCategoryTitle.trim(), newCategoryDescription.trim() || undefined);
+            await categoriesApi.createCategory(newCategoryTitle.trim(), newCategoryDescription.trim() || undefined);
             setNewCategoryTitle('');
             setNewCategoryDescription('');
             setShowCreateForm(false);

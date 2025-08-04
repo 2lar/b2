@@ -47,8 +47,9 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import cytoscape, { Core, ElementDefinition, NodeSingular, NodeCollection } from 'cytoscape';
 import cola from 'cytoscape-cola';
-import { api, type NodeDetails } from '../services';
-import { useFullscreen } from '../hooks/useFullscreen';
+import { nodesApi } from '../api/nodes';
+import type { NodeDetails } from '../../../services';
+import { useFullscreen } from '../../../common/hooks/useFullscreen';
 import { throttle } from 'lodash-es';
 
 // Register the cola layout
@@ -330,7 +331,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
 
     async function showNodeDetails(nodeId: string): Promise<void> {
         try {
-            const nodeData: NodeDetails = await api.getNode(nodeId);
+            const nodeData: NodeDetails = await nodesApi.getNode(nodeId);
             setSelectedNode({
                 id: nodeId,
                 content: nodeData.content || '',
@@ -415,7 +416,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         if (!cyRef.current) return;
         
         try {
-            const graphData = await api.getGraphData();
+            const graphData = await nodesApi.getGraphData();
             const elements = graphData.elements || [];
 
             if (elements.length === 0) return;

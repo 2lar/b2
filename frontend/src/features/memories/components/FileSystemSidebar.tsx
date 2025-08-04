@@ -60,7 +60,8 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { api } from '../services';
+import { nodesApi } from '../api/nodes';
+import { categoriesApi } from '../../categories/api/categories';
 import { components } from '../types/generated/generated-types';
 
 // Type aliases for easier usage
@@ -141,7 +142,7 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
     const loadCategories = async () => {
         setIsLoading(true);
         try {
-            const response = await api.listCategories();
+            const response = await categoriesApi.listCategories();
             const categoriesData = response.categories || [];
             
             // Sort categories alphabetically
@@ -173,7 +174,7 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
                 cat.id === categoryId ? { ...cat, isLoading: true } : cat
             ));
 
-            const response = await api.getMemoriesInCategory(categoryId);
+            const response = await categoriesApi.getMemoriesInCategory(categoryId);
             const memories = response.memories || [];
 
             // Sort memories by timestamp (newest first)
@@ -211,7 +212,7 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
         setIsLoadingUncategorized(true);
         try {
             // Get all memories
-            const allMemoriesResponse = await api.listNodes();
+            const allMemoriesResponse = await nodesApi.listNodes();
             const allMemories = allMemoriesResponse.nodes || [];
 
             // Get all categorized memory IDs
@@ -343,11 +344,11 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
         try {
             // Remove from old category if it exists
             if (fromCategoryId) {
-                await api.removeMemoryFromCategory(fromCategoryId, nodeId);
+                await categoriesApi.removeMemoryFromCategory(fromCategoryId, nodeId);
             }
 
             // Add to new category
-            await api.addMemoryToCategory(targetCategoryId, nodeId);
+            await categoriesApi.addMemoryToCategory(targetCategoryId, nodeId);
 
             // Update local state by clearing cache and reloading
             setMemoriesCache(prev => {
@@ -426,7 +427,7 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
         if (!confirm('Are you sure you want to delete this memory?')) return;
         
         try {
-            await api.deleteNode(nodeId);
+            await nodesApi.deleteNode(nodeId);
             
             // Update local state
             if (categoryId) {
@@ -459,7 +460,7 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
 
     const handleRemoveMemoryFromCategory = async (nodeId: string, categoryId: string) => {
         try {
-            await api.removeMemoryFromCategory(categoryId, nodeId);
+            await categoriesApi.removeMemoryFromCategory(categoryId, nodeId);
             
             // Update local state
             setMemoriesCache(prev => ({
@@ -491,7 +492,7 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
         if (!confirm('Are you sure you want to delete this category? Memories will become uncategorized.')) return;
         
         try {
-            await api.deleteCategory(categoryId);
+            await categoriesApi.deleteCategory(categoryId);
             
             // Update local state
             setCategories(prev => prev.filter(cat => cat.id !== categoryId));

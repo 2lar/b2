@@ -42,7 +42,8 @@
  */
 
 import React, { useState } from 'react';
-import { api, type Node } from '../services';
+import { nodesApi } from '../api/nodes';
+import type { Node } from '../../../services';
 
 interface MemoryListProps {
     /** Array of memory objects to display */
@@ -106,7 +107,7 @@ const MemoryList: React.FC<MemoryListProps> = ({
         if (!editContent.trim()) return;
 
         try {
-            await api.updateNode(nodeId, editContent.trim());
+            await nodesApi.updateNode(nodeId, editContent.trim());
             setEditingId(null);
             setEditContent('');
             onMemoryUpdated();
@@ -126,7 +127,7 @@ const MemoryList: React.FC<MemoryListProps> = ({
         }
 
         try {
-            await api.deleteNode(nodeId);
+            await nodesApi.deleteNode(nodeId);
             onMemoryDeleted();
         } catch (error) {
             console.error('Failed to delete memory:', error);
@@ -163,7 +164,7 @@ const MemoryList: React.FC<MemoryListProps> = ({
 
         setIsDeleting(true);
         try {
-            await api.bulkDeleteNodes(selectedIds);
+            await nodesApi.bulkDeleteNodes(selectedIds);
             setSelectedMemories(new Set());
             onMemoryDeleted();
         } catch (error) {
