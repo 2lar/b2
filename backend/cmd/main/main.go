@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"brain2-backend/internal/domain"
-	"brain2-backend/internal/repository/ddb"
+	infraDynamoDB "brain2-backend/infrastructure/dynamodb"
 	"brain2-backend/internal/service/memory"
 	"brain2-backend/internal/service/category"
 	"brain2-backend/internal/service/llm"
@@ -58,7 +58,7 @@ func init() {
 	dbClient := dynamodb.NewFromConfig(awsCfg)
 	eventbridgeClient = eventbridge.NewFromConfig(awsCfg)
 	
-	repo := ddb.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName)
+	repo := infraDynamoDB.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName)
 	memoryService = memory.NewService(repo)
 	
 	// Initialize LLM service with mock provider for now
