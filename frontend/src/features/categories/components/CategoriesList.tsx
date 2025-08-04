@@ -1,10 +1,10 @@
 /**
  * CategoriesList Component - Category Management Grid View
- * 
+ *
  * Purpose:
  * Provides a comprehensive grid-based interface for viewing, creating, and managing categories.
  * Displays all user categories in an organized card layout with creation and navigation functionality.
- * 
+ *
  * Key Features:
  * - Grid layout displaying category cards with metadata
  * - Inline category creation form with title and description
@@ -13,28 +13,28 @@
  * - Loading states and empty state handling
  * - Responsive grid layout that adapts to screen size
  * - Integration with routing for category navigation
- * 
+ *
  * Category Creation:
  * - Toggle-able creation form with title and description fields
  * - Form validation and submission handling
  * - Loading states during category creation
  * - Automatic refresh after successful creation
  * - Error handling for failed operations
- * 
+ *
  * Category Display:
  * - Card-based layout with hover effects
  * - Category title and description display
  * - Creation date formatting and display
  * - Click-to-navigate to category detail view
  * - Empty state messaging for new users
- * 
+ *
  * State Management:
  * - categories: Array of category objects
  * - isLoading: Loading state for initial data fetch
  * - showCreateForm: Toggle for creation form visibility
  * - newCategoryTitle/Description: Form input values
  * - isCreating: Loading state during category creation
- * 
+ *
  * Integration:
  * - Can be used standalone or with callback for category selection
  * - Integrates with React Router for navigation
@@ -42,10 +42,12 @@
  * - Accessible from main navigation and dashboard
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { categoriesApi } from '../api/categories';
 import type { Category } from '../../../services';
+import { useUiStore } from '../../../stores/uiStore';
 
 interface CategoriesListProps {
     /** Optional callback when category is selected instead of navigation */
@@ -54,44 +56,34 @@ interface CategoriesListProps {
 
 const CategoriesList: React.FC<CategoriesListProps> = ({ onCategorySelect }) => {
     const navigate = useNavigate();
-    const [categories, setCategories] = useState<Category[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+    const queryClient = useQueryClient();
+    const { isSidebarOpen, toggleSidebar } = useUiStore();
+
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [newCategoryTitle, setNewCategoryTitle] = useState('');
     const [newCategoryDescription, setNewCategoryDescription] = useState('');
-    const [isCreating, setIsCreating] = useState(false);
 
-    useEffect(() => {
-        loadCategories();
-    }, []);
-
-    const loadCategories = async () => {
-        setIsLoading(true);
-        try {
+    const { data: categories = [], isLoading, isError, error } = useQuery({
+        queryKey: ['categories'],
+        queryFn: async () => {
             const data = await categoriesApi.listCategories();
-            setCategories(data.categories || []);
-        } catch (error) {
-            console.error('Error loading categories:', error);
-        } finally {
-            setIsLoading(false);
+            return data.categories || [];
         }
-    };
+    });
 
-    const handleCreateCategory = async () => {
-        if (!newCategoryTitle.trim()) return;
-
-        setIsCreating(true);
-        try {
-            await categoriesApi.createCategory(newCategoryTitle.trim(), newCategoryDescription.trim() || undefined);
+    const createCategoryMutation = useMutation({
+        mutationFn: () => categoriesApi.createCategory(newCategoryTitle.trim(), newCategoryDescription.trim() || undefined),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['categories'] });
             setNewCategoryTitle('');
             setNewCategoryDescription('');
             setShowCreateForm(false);
-            loadCategories();
-        } catch (error) {
-            console.error('Error creating category:', error);
-        } finally {
-            setIsCreating(false);
-        }
+        },
+    });
+
+    const handleCreateCategory = () => {
+        if (!newCategoryTitle.trim()) return;
+        createCategoryMutation.mutate();
     };
 
     const handleCancelCreate = () => {
@@ -105,16 +97,28 @@ const CategoriesList: React.FC<CategoriesListProps> = ({ onCategorySelect }) => 
         return date.toLocaleDateString();
     };
 
+    if (isError) {
+        return <div>Error loading categories: {error.message}</div>;
+    }
+
     return (
         <div className="categories-container">
             <div className="categories-header">
                 <h2>All Categories</h2>
-                <button 
-                    className="primary-btn create-category-btn"
-                    onClick={() => setShowCreateForm(true)}
-                >
-                    + New Category
-                </button>
+                <div>
+                    <button
+                        className="secondary-btn"
+                        onClick={toggleSidebar}
+                    >
+                        {isSidebarOpen ? 'Close' : 'Open'} Sidebar (Zustand)
+                    </button>
+                    <button
+                        className="primary-btn create-category-btn"
+                        onClick={() => setShowCreateForm(true)}
+                    >
+                        + New Category
+                    </button>
+                </div>
             </div>
 
             {showCreateForm && (
@@ -141,17 +145,17 @@ const CategoriesList: React.FC<CategoriesListProps> = ({ onCategorySelect }) => 
                         />
                     </div>
                     <div className="form-actions">
-                        <button 
+                        <button
                             className="primary-btn"
                             onClick={handleCreateCategory}
-                            disabled={!newCategoryTitle.trim() || isCreating}
+                            disabled={!newCategoryTitle.trim() || createCategoryMutation.isPending}
                         >
-                            {isCreating ? 'Creating...' : 'Create Category'}
+                            {createCategoryMutation.isPending ? 'Creating...' : 'Create Category'}
                         </button>
-                        <button 
+                        <button
                             className="secondary-btn"
                             onClick={handleCancelCreate}
-                            disabled={isCreating}
+                            disabled={createCategoryMutation.isPending}
                         >
                             Cancel
                         </button>
@@ -168,9 +172,9 @@ const CategoriesList: React.FC<CategoriesListProps> = ({ onCategorySelect }) => 
                         <p>Create your first category to start organizing your memories!</p>
                     </div>
                 ) : (
-                    categories.map(category => (
-                        <div 
-                            key={category.id} 
+                    categories.map((category: Category) => (
+                        <div
+                            key={category.id}
                             className="category-card"
                             onClick={() => {
                                 if (onCategorySelect) {

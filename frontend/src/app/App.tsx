@@ -1,25 +1,25 @@
 /**
  * App Component - Main Application Root
- * 
+ *
  * Purpose:
  * The root component of the Brain2 application that handles:
  * - Authentication state management
  * - Client-side routing between different views
  * - WebSocket connection lifecycle management
  * - User session handling and sign-out functionality
- * 
+ *
  * Key Features:
  * - Protected routing (redirects to auth if not logged in)
  * - Automatic WebSocket connection/disconnection based on auth state
  * - Loading states during authentication checks
  * - Clean session management and cleanup on sign-out
- * 
+ *
  * Routes:
  * - "/" - Main dashboard (protected)
- * - "/categories" - Categories list view (protected)  
+ * - "/categories" - Categories list view (protected)
  * - "/categories/:categoryId" - Individual category detail view (protected)
  * - Unauthenticated users see AuthSection component
- * 
+ *
  * Dependencies:
  * - useAuth hook for authentication state
  * - webSocketClient for real-time updates
@@ -32,9 +32,11 @@ import { useAuth, AuthSection } from '../features/auth';
 import { webSocketClient } from '../services';
 import { Dashboard } from '../features/dashboard';
 import { CategoriesList, CategoryDetail } from '../features/categories';
+import { useUiStore } from '../stores/uiStore';
 
 const App: React.FC = () => {
     const { session, loading, auth } = useAuth();
+    const { isSidebarOpen } = useUiStore();
 
     React.useEffect(() => {
         if (session) {
@@ -63,16 +65,26 @@ const App: React.FC = () => {
 
     return (
         <Router>
-            {session && session.user?.email ? (
-                <Routes>
-                    <Route path="/" element={<Dashboard user={session.user} onSignOut={handleSignOut} />} />
-                    <Route path="/categories" element={<CategoriesList />} />
-                    <Route path="/categories/:categoryId" element={<CategoryDetail />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-            ) : (
-                <AuthSection />
-            )}
+            <div style={{ display: 'flex' }}>
+                {isSidebarOpen && (
+                    <div style={{ width: '200px', background: '#f0f0f0', padding: '1rem' }}>
+                        <h2>Sidebar</h2>
+                        <p>This is the sidebar content.</p>
+                    </div>
+                )}
+                <div style={{ flex: 1 }}>
+                    {session && session.user?.email ? (
+                        <Routes>
+                            <Route path="/" element={<Dashboard user={session.user} onSignOut={handleSignOut} />} />
+                            <Route path="/categories" element={<CategoriesList />} />
+                            <Route path="/categories/:categoryId" element={<CategoryDetail />} />
+                            <Route path="*" element={<Navigate to="/" replace />} />
+                        </Routes>
+                    ) : (
+                        <AuthSection />
+                    )}
+                </div>
+            </div>
         </Router>
     );
 };
