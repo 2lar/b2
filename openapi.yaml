@@ -529,6 +529,216 @@ paths:
         '500':
           description: Internal server error
 
+  # Enhanced Category Endpoints
+  /api/categories/hierarchy:
+    get:
+      summary: Get hierarchical category tree
+      operationId: getCategoryHierarchy
+      tags:
+        - Category Management
+        - Hierarchy
+      responses:
+        '200':
+          description: Successfully retrieved category hierarchy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+                  hierarchy:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: string
+                    description: "Map of parent category IDs to arrays of child category IDs"
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
+  /api/categories/suggest:
+    post:
+      summary: Get AI-powered category suggestions for content
+      operationId: suggestCategories
+      tags:
+        - Category Management
+        - AI Features
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+                  description: "Content to analyze for category suggestions"
+                  example: "Learning about machine learning algorithms and neural networks"
+      responses:
+        '200':
+          description: Successfully generated category suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CategorySuggestion'
+        '400':
+          description: Validation error - content is required
+        '401':
+          description: Authentication required
+        '503':
+          description: AI service temporarily unavailable
+        '500':
+          description: Internal server error
+
+  /api/categories/rebuild:
+    post:
+      summary: Rebuild and optimize category structure
+      operationId: rebuildCategories
+      tags:
+        - Category Management
+        - AI Features
+      responses:
+        '200':
+          description: Category rebuild completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Category structure rebuilt successfully"
+                  categoriesProcessed:
+                    type: integer
+                    example: 25
+                  hierarchiesCreated:
+                    type: integer
+                    example: 8
+                  categoriesMerged:
+                    type: integer
+                    example: 3
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
+  /api/categories/insights:
+    get:
+      summary: Get category usage insights and analytics
+      operationId: getCategoryInsights
+      tags:
+        - Category Management
+        - Analytics
+      responses:
+        '200':
+          description: Successfully retrieved category insights
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryInsights'
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
+  /api/nodes/{nodeId}/categories:
+    get:
+      summary: Get all categories assigned to a node
+      operationId: getNodeCategories
+      tags:
+        - Memory Management
+        - Category Management
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          description: Unique identifier for the memory node
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+      responses:
+        '200':
+          description: Successfully retrieved node categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Category'
+                        - type: object
+                          properties:
+                            confidence:
+                              type: number
+                              minimum: 0
+                              maximum: 1
+                              description: "AI confidence score for this categorization"
+                            method:
+                              type: string
+                              enum: ["ai", "manual", "rule-based"]
+                              description: "How this category was assigned"
+        '404':
+          description: Node not found
+        '401':
+          description: Authentication required
+        '500':
+          description: Internal server error
+
+    post:
+      summary: Auto-categorize a node using AI
+      operationId: categorizeNode
+      tags:
+        - Memory Management
+        - AI Features
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          description: Unique identifier for the memory node
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9-]+$'
+      responses:
+        '200':
+          description: Successfully categorized node
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+                  message:
+                    type: string
+                    example: "Node categorized successfully"
+        '404':
+          description: Node not found
+        '401':
+          description: Authentication required
+        '503':
+          description: AI service temporarily unavailable
+        '500':
+          description: Internal server error
+
 components:
   schemas:
     Node:
@@ -721,7 +931,9 @@ components:
       required:
         - id
         - title
+        - level
         - createdAt
+        - updatedAt
       properties:
         id:
           type: string
@@ -736,7 +948,41 @@ components:
           type: string
           maxLength: 500
           example: "All work-related memories and tasks"
+        level:
+          type: integer
+          minimum: 0
+          maximum: 2
+          description: "Hierarchy level: 0 = top level, 1 = sub, 2 = sub-sub"
+          example: 0
+        parentId:
+          type: string
+          pattern: '^[a-zA-Z0-9-]+$'
+          description: "ID of parent category (null for root categories)"
+          example: "cat-parent-123"
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          description: "Hex color code for UI"
+          example: "#2563eb"
+        icon:
+          type: string
+          maxLength: 50
+          description: "Icon identifier for UI"
+          example: "folder"
+        aiGenerated:
+          type: boolean
+          description: "Whether this category was created by AI"
+          example: false
+        noteCount:
+          type: integer
+          minimum: 0
+          description: "Number of memories in this category"
+          example: 5
         createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-15T14:30:00Z"
+        updatedAt:
           type: string
           format: date-time
           example: "2024-01-15T14:30:00Z"
@@ -780,3 +1026,181 @@ components:
           type: string
           pattern: '^[a-zA-Z0-9-]+$'
           example: "abc-123-def-456"
+
+    # Enhanced Category Schemas
+    CategorySuggestion:
+      type: object
+      required:
+        - name
+        - level
+        - confidence
+        - reason
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: "Suggested category name"
+          example: "Technology"
+        level:
+          type: integer
+          minimum: 0
+          maximum: 2
+          description: "Suggested hierarchy level"
+          example: 0
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: "AI confidence score for this suggestion"
+          example: 0.85
+        reason:
+          type: string
+          maxLength: 500
+          description: "Explanation for why this category was suggested"
+          example: "Content discusses artificial intelligence and technology concepts"
+        parentId:
+          type: string
+          pattern: '^[a-zA-Z0-9-]+$'
+          description: "ID of suggested parent category"
+          example: "cat-parent-123"
+
+    CategoryInsights:
+      type: object
+      properties:
+        mostActiveCategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryActivity'
+          description: "Categories with the most recent activity"
+        categoryGrowthTrends:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryGrowthTrend'
+          description: "Growth patterns over time"
+        suggestedConnections:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryConnection'
+          description: "Suggested relationships between categories"
+        knowledgeGaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeGap'
+          description: "Identified areas for knowledge expansion"
+
+    CategoryActivity:
+      type: object
+      required:
+        - categoryId
+        - categoryName
+        - memoryCount
+        - recentAdds
+      properties:
+        categoryId:
+          type: string
+          pattern: '^[a-zA-Z0-9-]+$'
+          example: "cat-abc-123"
+        categoryName:
+          type: string
+          example: "Machine Learning"
+        memoryCount:
+          type: integer
+          minimum: 0
+          example: 15
+        recentAdds:
+          type: integer
+          minimum: 0
+          description: "Memories added in the last 7 days"
+          example: 3
+
+    CategoryGrowthTrend:
+      type: object
+      required:
+        - categoryId
+        - categoryName
+        - date
+        - memoryCount
+      properties:
+        categoryId:
+          type: string
+          pattern: '^[a-zA-Z0-9-]+$'
+          example: "cat-abc-123"
+        categoryName:
+          type: string
+          example: "Machine Learning"
+        date:
+          type: string
+          format: date-time
+          example: "2024-01-15T00:00:00Z"
+        memoryCount:
+          type: integer
+          minimum: 0
+          example: 12
+
+    CategoryConnection:
+      type: object
+      required:
+        - category1Id
+        - category1Name
+        - category2Id
+        - category2Name
+        - strength
+        - reason
+      properties:
+        category1Id:
+          type: string
+          pattern: '^[a-zA-Z0-9-]+$'
+          example: "cat-abc-123"
+        category1Name:
+          type: string
+          example: "Machine Learning"
+        category2Id:
+          type: string
+          pattern: '^[a-zA-Z0-9-]+$'
+          example: "cat-def-456"
+        category2Name:
+          type: string
+          example: "Data Science"
+        strength:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: "Connection strength score"
+          example: 0.78
+        reason:
+          type: string
+          maxLength: 500
+          description: "Explanation for the suggested connection"
+          example: "Both categories contain content about statistical analysis and algorithms"
+
+    KnowledgeGap:
+      type: object
+      required:
+        - topic
+        - confidence
+        - suggestedCategories
+        - reason
+      properties:
+        topic:
+          type: string
+          maxLength: 200
+          description: "Identified knowledge gap topic"
+          example: "Deep Learning Optimization"
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: "Confidence in this gap identification"
+          example: 0.72
+        suggestedCategories:
+          type: array
+          items:
+            type: string
+          description: "Categories that could be created to fill this gap"
+          example: ["Optimization Algorithms", "Neural Network Tuning"]
+        reason:
+          type: string
+          maxLength: 500
+          description: "Explanation for why this is a knowledge gap"
+          example: "You have extensive ML content but limited coverage of optimization techniques"

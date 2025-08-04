@@ -10,9 +10,10 @@ import (
 	"time"
 
 	"brain2-backend/internal/domain"
-	"brain2-backend/internal/repository/ddb"
+	infraDynamoDB "brain2-backend/infrastructure/dynamodb"
 	"brain2-backend/internal/service/memory"
 	"brain2-backend/internal/service/category"
+	"brain2-backend/internal/service/llm"
 	"brain2-backend/pkg/api"
 	"brain2-backend/pkg/config"
 	appErrors "brain2-backend/pkg/errors"
@@ -43,6 +44,7 @@ var userIDKey = contextKey{"userID"}
 var chiLambda *chiadapter.ChiLambdaV2
 var memoryService memory.Service
 var categoryService category.Service
+var llmService *llm.Service
 var eventbridgeClient *eventbridge.Client
 
 func init() {
@@ -56,9 +58,14 @@ func init() {
 	dbClient := dynamodb.NewFromConfig(awsCfg)
 	eventbridgeClient = eventbridge.NewFromConfig(awsCfg)
 	
-	repo := ddb.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName)
+	repo := infraDynamoDB.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName)
 	memoryService = memory.NewService(repo)
-	categoryService = category.NewService(repo)
+	
+	// Initialize LLM service with mock provider for now
+	llmService = llm.NewService(llm.NewMockProvider())
+	
+	// Use enhanced category service with LLM integration
+	categoryService = category.NewEnhancedService(repo, llmService)
 	
 	r := chi.NewRouter()
 	
@@ -96,6 +103,16 @@ func init() {
 		r.Post("/categories/{categoryId}/memories", addMemoryToCategoryHandler)
 		r.Get("/categories/{categoryId}/memories", getMemoriesInCategoryHandler)
 		r.Delete("/categories/{categoryId}/memories/{memoryId}", removeMemoryFromCategoryHandler)
+		
+		// Enhanced category routes
+		r.Get("/categories/hierarchy", getCategoryHierarchyHandler)
+		r.Post("/categories/suggest", suggestCategoriesHandler)
+		r.Post("/categories/rebuild", rebuildCategoriesHandler)
+		r.Get("/categories/insights", getCategoryInsightsHandler)
+		
+		// Node categorization routes
+		r.Get("/nodes/{nodeId}/categories", getNodeCategoriesHandler)
+		r.Post("/nodes/{nodeId}/categories", categorizeNodeHandler)
 	})
 	
 	chiLambda = chiadapter.NewV2(r)
@@ -423,10 +440,17 @@ func listCategoriesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type CategoryResponse struct {
-		ID          string `json:"id"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		CreatedAt   string `json:"createdAt"`
+		ID          string  `json:"id"`
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		Level       int     `json:"level"`
+		ParentID    *string `json:"parentId"`
+		Color       *string `json:"color"`
+		Icon        *string `json:"icon"`
+		AIGenerated bool    `json:"aiGenerated"`
+		NoteCount   int     `json:"noteCount"`
+		CreatedAt   string  `json:"createdAt"`
+		UpdatedAt   string  `json:"updatedAt"`
 	}
 
 	var categoriesResponse []CategoryResponse
@@ -435,7 +459,14 @@ func listCategoriesHandler(w http.ResponseWriter, r *http.Request) {
 			ID:          category.ID,
 			Title:       category.Title,
 			Description: category.Description,
+			Level:       category.Level,
+			ParentID:    category.ParentID,
+			Color:       category.Color,
+			Icon:        category.Icon,
+			AIGenerated: category.AIGenerated,
+			NoteCount:   category.NoteCount,
 			CreatedAt:   category.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:   category.UpdatedAt.Format(time.RFC3339),
 		})
 	}
 
@@ -468,17 +499,31 @@ func createCategoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type CategoryResponse struct {
-		ID          string `json:"id"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		CreatedAt   string `json:"createdAt"`
+		ID          string  `json:"id"`
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		Level       int     `json:"level"`
+		ParentID    *string `json:"parentId"`
+		Color       *string `json:"color"`
+		Icon        *string `json:"icon"`
+		AIGenerated bool    `json:"aiGenerated"`
+		NoteCount   int     `json:"noteCount"`
+		CreatedAt   string  `json:"createdAt"`
+		UpdatedAt   string  `json:"updatedAt"`
 	}
 
 	api.Success(w, http.StatusCreated, CategoryResponse{
 		ID:          category.ID,
 		Title:       category.Title,
 		Description: category.Description,
+		Level:       category.Level,
+		ParentID:    category.ParentID,
+		Color:       category.Color,
+		Icon:        category.Icon,
+		AIGenerated: category.AIGenerated,
+		NoteCount:   category.NoteCount,
 		CreatedAt:   category.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   category.UpdatedAt.Format(time.RFC3339),
 	})
 }
 
@@ -493,17 +538,31 @@ func getCategoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type CategoryResponse struct {
-		ID          string `json:"id"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		CreatedAt   string `json:"createdAt"`
+		ID          string  `json:"id"`
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		Level       int     `json:"level"`
+		ParentID    *string `json:"parentId"`
+		Color       *string `json:"color"`
+		Icon        *string `json:"icon"`
+		AIGenerated bool    `json:"aiGenerated"`
+		NoteCount   int     `json:"noteCount"`
+		CreatedAt   string  `json:"createdAt"`
+		UpdatedAt   string  `json:"updatedAt"`
 	}
 
 	api.Success(w, http.StatusOK, CategoryResponse{
 		ID:          category.ID,
 		Title:       category.Title,
 		Description: category.Description,
+		Level:       category.Level,
+		ParentID:    category.ParentID,
+		Color:       category.Color,
+		Icon:        category.Icon,
+		AIGenerated: category.AIGenerated,
+		NoteCount:   category.NoteCount,
 		CreatedAt:   category.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   category.UpdatedAt.Format(time.RFC3339),
 	})
 }
 
@@ -621,6 +680,190 @@ func removeMemoryFromCategoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Enhanced category handlers
+
+func getCategoryHierarchyHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	
+	// Cast to enhanced service to access hierarchy methods
+	enhancedSvc, ok := categoryService.(category.EnhancedService)
+	if !ok {
+		api.Error(w, http.StatusInternalServerError, "Enhanced category features not available")
+		return
+	}
+	
+	// Get hierarchical category tree
+	categories, err := enhancedSvc.GetCategoryTree(r.Context(), userID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	// Build hierarchy map
+	hierarchy := make(map[string][]string)
+	for _, cat := range categories {
+		if cat.ParentID != nil {
+			parentID := *cat.ParentID
+			if hierarchy[parentID] == nil {
+				hierarchy[parentID] = []string{}
+			}
+			hierarchy[parentID] = append(hierarchy[parentID], cat.ID)
+		}
+	}
+
+	api.Success(w, http.StatusOK, map[string]interface{}{
+		"categories": categories,
+		"hierarchy":  hierarchy,
+	})
+}
+
+func suggestCategoriesHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	
+	type SuggestCategoriesRequest struct {
+		Content string `json:"content"`
+	}
+
+	var req SuggestCategoriesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Content == "" {
+		api.Error(w, http.StatusBadRequest, "Content cannot be empty")
+		return
+	}
+
+	// Cast to enhanced service
+	enhancedSvc, ok := categoryService.(category.EnhancedService)
+	if !ok {
+		api.Error(w, http.StatusInternalServerError, "Enhanced category features not available")
+		return
+	}
+
+	suggestions, err := enhancedSvc.SuggestCategories(r.Context(), req.Content, userID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	api.Success(w, http.StatusOK, map[string]interface{}{"suggestions": suggestions})
+}
+
+func rebuildCategoriesHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	
+	// Cast to enhanced service
+	enhancedSvc, ok := categoryService.(category.EnhancedService)
+	if !ok {
+		api.Error(w, http.StatusInternalServerError, "Enhanced category features not available")
+		return
+	}
+	
+	err := enhancedSvc.OptimizeCategoryStructure(r.Context(), userID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	api.Success(w, http.StatusOK, map[string]interface{}{
+		"message":             "Category structure rebuilt successfully",
+		"categoriesProcessed": 0, // Placeholder values since we don't track these yet
+		"hierarchiesCreated":  0,
+		"categoriesMerged":    0,
+	})
+}
+
+func getCategoryInsightsHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	
+	// Cast to enhanced service
+	enhancedSvc, ok := categoryService.(category.EnhancedService)
+	if !ok {
+		api.Error(w, http.StatusInternalServerError, "Enhanced category features not available")
+		return
+	}
+	
+	insights, err := enhancedSvc.GenerateCategoryInsights(r.Context(), userID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	api.Success(w, http.StatusOK, insights)
+}
+
+func getNodeCategoriesHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	nodeID := chi.URLParam(r, "nodeId")
+
+	// Verify ownership before proceeding
+	_, err := checkOwnership(r.Context(), nodeID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	categories, err := categoryService.GetCategoriesForMemory(r.Context(), userID, nodeID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	// Transform to include method and confidence if available
+	var categoryResponses []map[string]interface{}
+	for _, category := range categories {
+		categoryData := map[string]interface{}{
+			"id":          category.ID,
+			"title":       category.Title,
+			"description": category.Description,
+			"level":       category.Level,
+			"parentId":    category.ParentID,
+			"color":       category.Color,
+			"icon":        category.Icon,
+			"aiGenerated": category.AIGenerated,
+			"noteCount":   category.NoteCount,
+			"createdAt":   category.CreatedAt.Format(time.RFC3339),
+			"updatedAt":   category.UpdatedAt.Format(time.RFC3339),
+			"confidence":  0.9, // Default confidence
+			"method":      "manual", // Default method
+		}
+		categoryResponses = append(categoryResponses, categoryData)
+	}
+
+	api.Success(w, http.StatusOK, map[string]interface{}{"categories": categoryResponses})
+}
+
+func categorizeNodeHandler(w http.ResponseWriter, r *http.Request) {
+	nodeID := chi.URLParam(r, "nodeId")
+
+	// Verify ownership before proceeding
+	node, err := checkOwnership(r.Context(), nodeID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	// Cast to enhanced service
+	enhancedSvc, ok := categoryService.(category.EnhancedService)
+	if !ok {
+		api.Error(w, http.StatusInternalServerError, "Enhanced category features not available")
+		return
+	}
+
+	categories, err := enhancedSvc.CategorizeNode(r.Context(), *node)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	api.Success(w, http.StatusOK, map[string]interface{}{
+		"categories": categories,
+		"message":    "Node categorized successfully",
+	})
 }
 
 func main() {

@@ -267,6 +267,303 @@ header h1 {
     justify-content: center;
 }
 
+/* File System Sidebar */
+.file-system-sidebar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-size: 0.9rem;
+}
+
+.file-system-sidebar .sidebar-header {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--background);
+    border-radius: 12px 12px 0 0;
+}
+
+.file-system-sidebar .sidebar-header h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.search-container {
+    margin-top: 0.5rem;
+}
+
+.search-input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.file-system-sidebar .sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+.file-system-item {
+    margin-bottom: 0.25rem;
+}
+
+.folder-header {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.folder-header:hover {
+    background: var(--background);
+}
+
+.expand-icon {
+    font-size: 1rem;
+    min-width: 16px;
+}
+
+.expand-arrow {
+    font-size: 0.7rem;
+    min-width: 12px;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+    transform: rotate(0deg);
+}
+
+.expand-arrow.expanded {
+    transform: rotate(90deg);
+}
+
+.folder-name {
+    flex: 1;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.memory-count {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    background: var(--background);
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.ai-badge {
+    font-size: 0.7rem;
+    opacity: 0.8;
+}
+
+.folder-contents {
+    margin-left: 1.5rem;
+    border-left: 1px solid var(--border);
+    padding-left: 0.5rem;
+}
+
+.memory-file {
+    display: flex;
+    align-items: center;
+    padding: 0.4rem 0.75rem;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    margin-bottom: 0.1rem;
+}
+
+.memory-file:hover {
+    background: var(--background);
+}
+
+.file-icon {
+    font-size: 0.8rem;
+    min-width: 14px;
+    opacity: 0.7;
+}
+
+.file-name {
+    flex: 1;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.file-timestamp {
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    opacity: 0.7;
+}
+
+.loading-memories, .empty-folder {
+    padding: 0.5rem 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-style: italic;
+}
+
+.uncategorized-section .folder-header {
+    color: var(--text-secondary);
+}
+
+.uncategorized-section .folder-name {
+    color: var(--text-secondary);
+}
+
+.loading-state, .empty-state {
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.empty-state p {
+    margin: 0.25rem 0;
+}
+
+/* Drag and Drop Styles */
+.memory-file[draggable="true"] {
+    cursor: grab;
+}
+
+.memory-file.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+.folder-header.drop-target {
+    background: var(--primary-color);
+    color: white;
+    border-radius: 6px;
+}
+
+.folder-header.drop-target .folder-name {
+    color: white;
+}
+
+.folder-header.drop-target .memory-count {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+/* Context Menu Styles */
+.context-menu {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    padding: 0.5rem 0;
+    min-width: 180px;
+    font-size: 0.85rem;
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: background-color 0.2s;
+}
+
+.context-menu-item:hover {
+    background: var(--background);
+}
+
+.context-menu-item.danger {
+    color: var(--error);
+}
+
+.context-menu-item.danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.context-menu-icon {
+    font-size: 0.9rem;
+    min-width: 16px;
+    text-align: center;
+}
+
+.context-menu-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 0.5rem 0;
+}
+
+/* Connected Memories Styles */
+.connected-memories-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.connected-memory-item {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+    font-size: 0.85rem;
+    line-height: 1.3;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.connected-memory-item:hover {
+    background: var(--background);
+    color: var(--primary-color);
+}
+
+.no-connections {
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 0.85rem;
+    margin: 0.5rem 0;
+}
+
+.memory-metadata {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+
+.memory-metadata p {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    margin: 0;
+}
+
+.connections-section h4 {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.scrollable-connections {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
 .right-column {
     display: flex;
     flex-direction: column;
@@ -947,8 +1244,26 @@ header h1 {
         grid-template-columns: 180px 8px 1fr 8px 1fr !important;
     }
     
-    .left-sidebar {
+    .left-sidebar, .file-system-sidebar {
         font-size: 0.85rem;
+    }
+    
+    .file-system-sidebar .sidebar-header h3 {
+        font-size: 0.9rem;
+    }
+    
+    .search-input {
+        font-size: 0.8rem;
+    }
+    
+    .folder-header {
+        font-size: 0.8rem;
+        padding: 0.4rem 0.6rem;
+    }
+    
+    .memory-file {
+        font-size: 0.75rem;
+        padding: 0.3rem 0.6rem;
     }
     
     .sidebar-btn {
@@ -965,10 +1280,35 @@ header h1 {
         overflow: auto;
     }
     
-    .left-sidebar {
+    .left-sidebar, .file-system-sidebar {
         order: 1;
-        flex-direction: row;
+        flex-direction: column;
         height: auto;
+        max-height: 300px;
+    }
+    
+    .file-system-sidebar .sidebar-content {
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    
+    .search-container {
+        margin-top: 0.25rem;
+    }
+    
+    .folder-header {
+        font-size: 0.75rem;
+        padding: 0.3rem 0.5rem;
+    }
+    
+    .memory-file {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    .context-menu {
+        font-size: 0.8rem;
+        min-width: 160px;
     }
     
     .sidebar-content {

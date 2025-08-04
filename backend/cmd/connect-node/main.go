@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"brain2-backend/internal/repository"
-	"brain2-backend/internal/repository/ddb"
+	infraDynamoDB "brain2-backend/infrastructure/dynamodb"
 	"brain2-backend/pkg/config"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -29,7 +29,7 @@ func init() {
 	}
 	dbClient := dynamodb.NewFromConfig(awsCfg)
 	eventbridgeClient = eventbridge.NewFromConfig(awsCfg)
-	repo = ddb.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName)
+	repo = infraDynamoDB.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName)
 }
 
 type NodeCreatedEvent struct {

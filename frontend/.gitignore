@@ -7,3 +7,6 @@ dist
 # Ignore environment variables file
 .env
 .env.*
+
+# Ignore generated files
+src/types/generated/

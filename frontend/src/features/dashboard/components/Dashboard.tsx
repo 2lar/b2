@@ -1,0 +1,190 @@
+/**
+ * Dashboard Component - Main Application Interface
+ * 
+ * Purpose:
+ * The primary dashboard that orchestrates all main UI components in a multi-panel layout.
+ * Acts as the central hub where users interact with their memory data through different views.
+ * 
+ * Key Features:
+ * - Multi-panel layout with resizable columns
+ * - File system sidebar for browsing memories by category
+ * - Interactive graph visualization of memory connections
+ * - Memory input form for creating new memories
+ * - Paginated memory list for browsing and management
+ * - Real-time synchronization between all components
+ * - Automatic refresh coordination across panels
+ * 
+ * Layout Structure:
+ * - Left: FileSystemSidebar (categories and memories in folder structure)
+ * - Center: GraphVisualization (interactive node graph)
+ * - Right Top: MemoryInput (creation form)
+ * - Right Bottom: MemoryList (paginated list view)
+ * 
+ * State Management:
+ * - Manages memory and category data loading
+ * - Coordinates refresh triggers across all child components
+ * - Handles pagination state for memory list
+ * - Manages navigation between different views
+ * 
+ * Integration:
+ * - Receives user session from App component
+ * - Passes memory selection events to graph visualization
+ * - Coordinates data refresh after CRUD operations
+ * - Handles routing to category detail views
+ */
+
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { User } from '@supabase/supabase-js';
+import { Header } from '../../../common';
+import { GraphVisualization, type GraphVisualizationRef, MemoryInput, MemoryList, FileSystemSidebar, nodesApi } from '../../memories';
+import { categoriesApi } from '../../categories';
+import type { Node } from '../../../services';
+import { components } from '../../../types/generated/generated-types';
+
+interface DashboardProps {
+    /** Authenticated user object from Supabase */
+    user: User;
+    /** Callback function to handle user sign-out */
+    onSignOut: () => void;
+}
+
+type Category = components['schemas']['Category'];
+
+const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
+    const navigate = useNavigate();
+    const [memories, setMemories] = useState<Node[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [refreshGraph, setRefreshGraph] = useState(0);
+    const [refreshSidebar, setRefreshSidebar] = useState(0);
+    const graphRef = useRef<GraphVisualizationRef>(null);
+
+    const MEMORIES_PER_PAGE = 50;
+
+    useEffect(() => {
+        loadMemories();
+        loadCategories();
+    }, []);
+
+    const loadMemories = async () => {
+        setIsLoading(true);
+        try {
+            const data = await nodesApi.listNodes();
+            const allNodes = data.nodes || [];
+            
+            // Sort by timestamp (newest first)
+            allNodes.sort((a, b) => 
+                new Date(b.timestamp || '').getTime() - new Date(a.timestamp || '').getTime()
+            );
+
+            setMemories(allNodes);
+            setTotalPages(Math.ceil(allNodes.length / MEMORIES_PER_PAGE));
+        } catch (error) {
+            console.error('Error loading memories:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const loadCategories = async () => {
+        try {
+            const data = await categoriesApi.listCategories();
+            setCategories(data.categories || []);
+        } catch (error) {
+            console.error('Error loading categories:', error);
+        }
+    };
+
+    const handleMemoryCreated = () => {
+        loadMemories();
+        loadCategories(); // Refresh categories as new memories might be auto-categorized
+        // Trigger graph and sidebar refresh
+        setRefreshGraph(prev => prev + 1);
+        setRefreshSidebar(prev => prev + 1);
+    };
+
+    const handleMemoryDeleted = () => {
+        loadMemories();
+        loadCategories(); // Refresh categories as counts might change
+        // Trigger graph and sidebar refresh
+        setRefreshGraph(prev => prev + 1);
+        setRefreshSidebar(prev => prev + 1);
+    };
+
+    const handleMemoryUpdated = () => {
+        loadMemories();
+        loadCategories(); // Refresh categories as content might affect categorization
+        // Trigger graph and sidebar refresh
+        setRefreshGraph(prev => prev + 1);
+        setRefreshSidebar(prev => prev + 1);
+    };
+
+    const handleViewInGraph = (nodeId: string) => {
+        if (graphRef.current) {
+            const success = graphRef.current.selectAndCenterNode(nodeId);
+            if (!success) {
+                console.warn(`Could not find node ${nodeId} in graph. The graph may still be loading.`);
+            }
+        }
+    };
+
+    // Get current page memories
+    const startIndex = (currentPage - 1) * MEMORIES_PER_PAGE;
+    const endIndex = startIndex + MEMORIES_PER_PAGE;
+    const currentPageMemories = memories.slice(startIndex, endIndex);
+
+    return (
+        <div className="app-container">
+            <Header 
+                userEmail={user.email || ''} 
+                onSignOut={onSignOut} 
+            />
+
+            <main className="dashboard-layout">
+                {/* Left Sidebar - File System Explorer */}
+                <FileSystemSidebar
+                    userId={user.id}
+                    onMemorySelect={handleViewInGraph}
+                    onCategorySelect={(categoryId) => navigate(`/categories/${categoryId}`)}
+                    refreshTrigger={refreshSidebar}
+                />
+
+                {/* Column Resize Handle */}
+                <div className="resize-handle horizontal" data-resize="horizontal-left"></div>
+
+                {/* Middle Column - Memory Graph */}
+                <GraphVisualization ref={graphRef} refreshTrigger={refreshGraph} />
+
+                {/* Column Resize Handle */}
+                <div className="resize-handle horizontal" data-resize="horizontal-right"></div>
+
+                {/* Right Column Container */}
+                <div className="right-column">
+                    {/* Top Right - Memory Input */}
+                    <MemoryInput onMemoryCreated={handleMemoryCreated} />
+
+                    {/* Vertical Resize Handle */}
+                    <div className="resize-handle vertical" data-resize="vertical"></div>
+
+                    {/* Bottom Right - Memory List */}
+                    <MemoryList 
+                        memories={currentPageMemories}
+                        totalMemories={memories.length}
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        isLoading={isLoading}
+                        onPageChange={setCurrentPage}
+                        onMemoryDeleted={handleMemoryDeleted}
+                        onMemoryUpdated={handleMemoryUpdated}
+                        onMemoryViewInGraph={handleViewInGraph}
+                    />
+                </div>
+            </main>
+        </div>
+    );
+};
+
+export default Dashboard;
