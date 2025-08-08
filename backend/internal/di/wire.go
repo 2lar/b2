@@ -1,138 +1,137 @@
 //go:build wireinject
-// +build wireinject
 
-// Package di provides dependency injection configuration using Wire.
 package di
 
 import (
 	"context"
-	"log"
+	"net/http"
 
-	infraDynamoDB "brain2-backend/infrastructure/dynamodb"
-	"brain2-backend/internal/app"
+	"brain2-backend/internal/config"
+	"brain2-backend/internal/handlers"
 	"brain2-backend/internal/repository"
-	"brain2-backend/internal/service/category"
-	"brain2-backend/internal/service/llm"
-	"brain2-backend/internal/service/memory"
-	"brain2-backend/pkg/config"
+	categoryService "brain2-backend/internal/service/category"
+	memoryService "brain2-backend/internal/service/memory"
+	"brain2-backend/infrastructure/dynamodb"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/wire"
+	"brain2-backend/pkg/api"
 )
 
-// ProviderSets define the dependency injection sets.
-var (
-	// ConfigSet provides configuration-related dependencies
-	ConfigSet = wire.NewSet(
-		ProvideConfig,
-	)
-
-	// AWSSet provides AWS service clients
-	AWSSet = wire.NewSet(
-		ProvideAWSConfig,
-		ProvideDynamoDBClient,
-		ProvideEventBridgeClient,
-	)
-
-	// RepositorySet provides repository implementations
-	RepositorySet = wire.NewSet(
-		ProvideRepository,
-	)
-
-	// ServiceSet provides business logic services
-	ServiceSet = wire.NewSet(
-		ProvideMemoryService,
-		ProvideLLMService,
-		ProvideCategoryService,
-	)
-
-	// HTTPSet provides HTTP-related dependencies
-	HTTPSet = wire.NewSet(
-		ProvideRouter,
-		ProvideChiLambda,
-	)
-
-	// AllSet combines all provider sets
-	AllSet = wire.NewSet(
-		ConfigSet,
-		AWSSet,
-		RepositorySet,
-		ServiceSet,
-		HTTPSet,
-	)
-)
-
-// Provider functions for dependency injection
-
-// ProvideConfig creates and returns the application configuration.
-func ProvideConfig() *config.Config {
-	return config.New()
-}
-
-// ProvideAWSConfig loads the AWS configuration.
-func ProvideAWSConfig(cfg *config.Config) (aws.Config, error) {
-	awsCfg, err := awsConfig.LoadDefaultConfig(context.TODO(), awsConfig.WithRegion(cfg.Region))
+// ProvideDynamoDBClient provides a DynamoDB client.
+func ProvideDynamoDBClient() (*awsDynamodb.Client, error) {
+	cfg, err := awsConfig.LoadDefaultConfig(context.TODO())
 	if err != nil {
-		log.Printf("unable to load SDK config: %v", err)
-		return aws.Config{}, err
+		return nil, err
 	}
-	return awsCfg, nil
+	return awsDynamodb.NewFromConfig(cfg), nil
 }
 
-// ProvideDynamoDBClient creates and returns a DynamoDB client.
-func ProvideDynamoDBClient(awsCfg aws.Config) *dynamodb.Client {
-	return dynamodb.NewFromConfig(awsCfg)
+// ProvideRepository provides the DynamoDB repository implementation.
+func ProvideRepository(client *awsDynamodb.Client, cfg config.Config) repository.Repository {
+	return dynamodb.NewRepository(client, cfg.TableName, cfg.IndexName)
 }
 
-// ProvideEventBridgeClient creates and returns an EventBridge client.
-func ProvideEventBridgeClient(awsCfg aws.Config) *eventbridge.Client {
-	return eventbridge.NewFromConfig(awsCfg)
+// ProvideMemoryService provides the memory service.
+func ProvideMemoryService(repo repository.Repository) memoryService.Service {
+	return memoryService.NewService(repo)
 }
 
-// ProvideRepository creates and returns a repository implementation.
-func ProvideRepository(client *dynamodb.Client, cfg *config.Config) repository.Repository {
-	return infraDynamoDB.NewRepository(client, cfg.TableName, cfg.KeywordIndexName)
+// ProvideCategoryService provides the category service.
+func ProvideCategoryService(repo repository.Repository) categoryService.Service {
+	return categoryService.NewService(repo)
 }
 
-// ProvideMemoryService creates and returns a memory service.
-func ProvideMemoryService(repo repository.Repository) memory.Service {
-	return memory.NewService(repo)
+// ProvideEventBridgeClient provides an EventBridge client.
+func ProvideEventBridgeClient() (*awsEventbridge.Client, error) {
+	cfg, err := awsConfig.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		return nil, err
+	}
+	return awsEventbridge.NewFromConfig(cfg), nil
 }
 
-// ProvideLLMService creates and returns an LLM service with mock provider.
-func ProvideLLMService() *llm.Service {
-	return llm.NewService(llm.NewMockProvider())
+// ProvideMemoryHandler provides the memory handler.
+func ProvideMemoryHandler(svc memoryService.Service, eventBridgeClient *awsEventbridge.Client) *handlers.MemoryHandler {
+	return handlers.NewMemoryHandler(svc, eventBridgeClient)
 }
 
-// ProvideCategoryService creates and returns an enhanced category service.
-func ProvideCategoryService(repo repository.Repository, llmSvc *llm.Service) category.Service {
-	return category.NewEnhancedService(repo, llmSvc)
+// ProvideCategoryHandler provides the category handler.
+func ProvideCategoryHandler(svc categoryService.Service) *handlers.CategoryHandler {
+	return handlers.NewCategoryHandler(svc)
 }
 
-// ProvideRouter creates and configures the HTTP router with all routes and middleware.
-func ProvideRouter(
-	memorySvc memory.Service,
-	categorySvc category.Service,
-	eventBridgeClient *eventbridge.Client,
-) *chi.Mux {
-	return SetupRouter(memorySvc, categorySvc, eventBridgeClient)
+// ProvideRouter provides the HTTP router with all handlers.
+func ProvideRouter(memoryHandler *handlers.MemoryHandler, categoryHandler *handlers.CategoryHandler) *chi.Mux {
+	r := chi.NewRouter()
+
+	// Public routes
+	r.Group(func(r chi.Router) {
+		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+			api.Success(w, http.StatusOK, map[string]string{"status": "ok"})
+		})
+	})
+
+	// Protected routes (example, assuming auth middleware is applied elsewhere)
+	r.Group(func(r chi.Router) {
+		// r.Use(authMiddleware) // Assuming an auth middleware is applied here
+
+		r.Post("/api/nodes", memoryHandler.CreateNode)
+		r.Get("/api/nodes", memoryHandler.ListNodes)
+		r.Get("/api/nodes/{nodeId}", memoryHandler.GetNode)
+		r.Put("/api/nodes/{nodeId}", memoryHandler.UpdateNode)
+		r.Delete("/api/nodes/{nodeId}", memoryHandler.DeleteNode)
+		r.Post("/api/nodes/bulk-delete", memoryHandler.BulkDeleteNodes)
+		r.Get("/api/graph-data", memoryHandler.GetGraphData)
+
+		r.Post("/api/categories", categoryHandler.CreateCategory)
+		r.Get("/api/categories", categoryHandler.ListCategories)
+		r.Get("/api/categories/{categoryId}", categoryHandler.GetCategory)
+		r.Put("/api/categories/{categoryId}", categoryHandler.UpdateCategory)
+		r.Delete("/api/categories/{categoryId}", categoryHandler.DeleteCategory)
+		r.Post("/api/categories/{categoryId}/memories", categoryHandler.AddMemoryToCategory)
+		r.Get("/api/categories/{categoryId}/memories", categoryHandler.GetMemoriesInCategory)
+		r.Delete("/api/categories/{categoryId}/memories/{memoryId}", categoryHandler.RemoveMemoryFromCategory)
+	})
+
+	return r
 }
 
-// ProvideChiLambda creates a Chi Lambda adapter.
+// ProvideChiLambda provides the ChiLambdaV2 adapter.
 func ProvideChiLambda(router *chi.Mux) *chiadapter.ChiLambdaV2 {
 	return chiadapter.NewV2(router)
 }
 
-// InitializeContainer wires together all dependencies and returns a complete Container.
-func InitializeContainer() (*app.Container, error) {
+var ( 
+	DynamoDBSet = wire.NewSet(
+		ProvideDynamoDBClient,
+		config.LoadConfig,
+		ProvideRepository,
+	)
+
+	ServiceSet = wire.NewSet(
+		ProvideMemoryService,
+		ProvideCategoryService,
+	)
+
+	HandlerSet = wire.NewSet(
+		ProvideMemoryHandler,
+		ProvideCategoryHandler,
+		ProvideEventBridgeClient,
+	)
+)
+
+func InitializeAPI() (*chi.Mux, error) { // Changed return type to *chi.Mux
 	wire.Build(
-		AllSet,
-		wire.Struct(new(app.Container), "*"),
+		DynamoDBSet,
+		ServiceSet,
+		HandlerSet,
+		ProvideRouter,
+		// ProvideChiLambda, // Removed from here
 	)
 	return nil, nil
 }
