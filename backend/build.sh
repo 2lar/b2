@@ -7,6 +7,14 @@ set -e
 echo "🧹 Cleaning previous build artifacts..."
 rm -rf build/
 
+# # Install Wire if not already installed
+# echo "Installing Wire for dependency injection..."
+# go install github.com/google/wire/cmd/wire@latest
+
+# Run Wire to generate dependency injection code
+echo "Generating dependency injection code with Wire..."
+cd internal/di && wire && cd ../..
+
 # List of all applications to build
 apps=("main" "connect-node" "ws-connect" "ws-disconnect" "ws-send-message")
 
