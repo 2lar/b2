@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"brain2-backend/internal/domain"
+	"brain2-backend/internal/repository"
 	"brain2-backend/internal/service/memory"
 	"brain2-backend/pkg/api"
 	appErrors "brain2-backend/pkg/errors"
@@ -323,4 +325,153 @@ func (h *MemoryHandler) checkOwnership(ctx context.Context, nodeID string) (*dom
 	}
 
 	return node, nil
+}
+
+// GetNodesPage handles GET /api/nodes/page with pagination support
+func (h *MemoryHandler) GetNodesPage(w http.ResponseWriter, r *http.Request) {
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	// Parse pagination parameters
+	pagination := repository.Pagination{
+		Limit:  50, // Default limit
+		Offset: 0,  // Default offset
+	}
+
+	// Parse query parameters for pagination
+	query := r.URL.Query()
+	if limitStr := query.Get("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && limit <= 1000 {
+			pagination.Limit = limit
+		}
+	}
+	if offsetStr := query.Get("offset"); offsetStr != "" {
+		if offset, err := strconv.Atoi(offsetStr); err == nil && offset >= 0 {
+			pagination.Offset = offset
+		}
+	}
+	if cursor := query.Get("cursor"); cursor != "" {
+		pagination.Cursor = cursor
+	}
+
+	page, err := h.memoryService.GetNodesPage(r.Context(), userID, pagination)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	// Convert nodes to API response format
+	nodes := make([]api.EnhancedNode, len(page.Items))
+	for i, node := range page.Items {
+		createdAt := node.CreatedAt.Format(time.RFC3339)
+		nodes[i] = api.EnhancedNode{
+			Node: api.Node{
+				Content:   node.Content,
+				NodeId:    node.ID,
+				Tags:      &node.Tags,
+				Timestamp: node.CreatedAt,
+				Version:   node.Version,
+			},
+			Keywords:  &node.Keywords,
+			CreatedAt: &createdAt,
+		}
+	}
+
+	response := api.NodePageResponse{
+		Items:      &nodes,
+		HasMore:    &page.HasMore,
+		NextCursor: &page.NextCursor,
+		PageInfo: &api.PageInfo{
+			CurrentPage: &page.PageInfo.CurrentPage,
+			PageSize:    &page.PageInfo.PageSize,
+			ItemsInPage: &page.PageInfo.ItemsInPage,
+		},
+	}
+
+	api.Success(w, http.StatusOK, response)
+}
+
+// GetNodeNeighborhood handles GET /api/nodes/{nodeId}/neighborhood with depth parameter
+func (h *MemoryHandler) GetNodeNeighborhood(w http.ResponseWriter, r *http.Request) {
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	nodeID := chi.URLParam(r, "nodeId")
+	if nodeID == "" {
+		api.Error(w, http.StatusBadRequest, "Node ID is required")
+		return
+	}
+
+	// Parse depth parameter (default: 2, max: 3)
+	depth := 2
+	if depthStr := r.URL.Query().Get("depth"); depthStr != "" {
+		if d, err := strconv.Atoi(depthStr); err == nil && d >= 1 && d <= 3 {
+			depth = d
+		}
+	}
+
+	graph, err := h.memoryService.GetNodeNeighborhood(r.Context(), userID, nodeID, depth)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	// Convert to graph data response format (reuse existing logic)
+	var elements []api.GraphDataResponse_Elements_Item
+
+	for _, node := range graph.Nodes {
+		label := node.Content
+		if len(label) > 50 {
+			label = label[:47] + "..."
+		}
+
+		graphNode := api.GraphNode{
+			Data: &api.NodeData{
+				Id:    node.ID,
+				Label: label,
+			},
+		}
+
+		var element api.GraphDataResponse_Elements_Item
+		if err := element.FromGraphNode(graphNode); err != nil {
+			continue
+		}
+		elements = append(elements, element)
+	}
+
+	for _, edge := range graph.Edges {
+		edgeID := fmt.Sprintf("%s-%s", edge.SourceID, edge.TargetID)
+		graphEdge := api.GraphEdge{
+			Data: &api.EdgeData{
+				Id:     edgeID,
+				Source: edge.SourceID,
+				Target: edge.TargetID,
+			},
+		}
+
+		var element api.GraphDataResponse_Elements_Item
+		if err := element.FromGraphEdge(graphEdge); err != nil {
+			continue
+		}
+		elements = append(elements, element)
+	}
+
+	response := api.NodeNeighborhoodResponse{
+		Elements: &elements,
+		Depth:    &depth,
+		CenterNode: &api.Node{
+			NodeId:    nodeID,
+			Content:   "", // Will be filled from the graph data
+			Timestamp: time.Now(),
+			Version:   0,
+		},
+	}
+
+	api.Success(w, http.StatusOK, response)
 }

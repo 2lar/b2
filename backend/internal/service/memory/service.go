@@ -63,6 +63,10 @@ type Service interface {
 	
 	// GetGraphData retrieves the complete knowledge graph for visualization
 	GetGraphData(ctx context.Context, userID string) (*domain.Graph, error)
+	
+	// Enhanced methods for performance
+	GetNodesPage(ctx context.Context, userID string, pagination repository.Pagination) (*repository.NodePage, error)
+	GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error)
 }
 
 // service implements the Service interface with concrete business logic.
@@ -255,6 +259,40 @@ func (s *service) GetGraphData(ctx context.Context, userID string) (*domain.Grap
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get all graph data from repository")
 	}
+	return graph, nil
+}
+
+// GetNodesPage retrieves a paginated list of nodes for better performance
+func (s *service) GetNodesPage(ctx context.Context, userID string, pagination repository.Pagination) (*repository.NodePage, error) {
+	query := repository.NodeQuery{
+		UserID: userID,
+	}
+	
+	page, err := s.repo.GetNodesPage(ctx, query, pagination)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to get nodes page from repository")
+	}
+	
+	return page, nil
+}
+
+// GetNodeNeighborhood retrieves a node's neighborhood with depth limiting for performance
+func (s *service) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error) {
+	// Validate that the node exists and belongs to the user
+	existingNode, err := s.repo.FindNodeByID(ctx, userID, nodeID)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to check for existing node")
+	}
+	if existingNode == nil {
+		return nil, appErrors.NewNotFound("node not found")
+	}
+	
+	// Get the neighborhood
+	graph, err := s.repo.GetNodeNeighborhood(ctx, userID, nodeID, depth)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to get node neighborhood from repository")
+	}
+	
 	return graph, nil
 }
 

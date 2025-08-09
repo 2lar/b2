@@ -17,6 +17,14 @@ type Repository interface {
 	GetGraphData(ctx context.Context, query GraphQuery) (*domain.Graph, error)
 	FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]domain.Node, error)
 
+	// Enhanced paginated queries for performance
+	GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error)
+	GetEdgesPage(ctx context.Context, query EdgeQuery, pagination Pagination) (*EdgePage, error)
+	GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error)
+	
+	// Optimized graph data retrieval with pagination
+	GetGraphDataPaginated(ctx context.Context, query GraphQuery, pagination Pagination) (*domain.Graph, string, error)
+
 	// Category operations
 	CreateCategory(ctx context.Context, category domain.Category) error
 	UpdateCategory(ctx context.Context, category domain.Category) error
