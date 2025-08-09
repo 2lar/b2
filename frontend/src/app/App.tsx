@@ -32,11 +32,11 @@ import { useAuth, AuthSection } from '../features/auth';
 import { webSocketClient } from '../services';
 import { Dashboard } from '../features/dashboard';
 import { CategoriesList, CategoryDetail } from '../features/categories';
-import { useUiStore } from '../stores/uiStore';
+import { useGraphStore } from '../stores/graphStore';
 
 const App: React.FC = () => {
     const { session, loading, auth } = useAuth();
-    const { isSidebarOpen } = useUiStore();
+    const { isSidebarOpen } = useGraphStore();
 
     React.useEffect(() => {
         if (session) {

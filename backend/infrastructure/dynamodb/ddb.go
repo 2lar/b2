@@ -796,122 +796,40 @@ func (r *ddbRepository) FindCategories(ctx context.Context, query repository.Cat
 }
 
 // AddMemoryToCategory adds a memory to a category.
+// Deprecated: Use AssignNodeToCategory instead for better data consistency.
 func (r *ddbRepository) AddMemoryToCategory(ctx context.Context, userID, categoryID, memoryID string) error {
-	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", userID, categoryID)
-	sk := fmt.Sprintf("MEMORY#%s", memoryID)
-	
-	categoryMemoryItem, err := attributevalue.MarshalMap(ddbCategoryMemory{
-		PK:         pk,
-		SK:         sk,
-		CategoryID: categoryID,
-		MemoryID:   memoryID,
+	// Delegate to the enhanced AssignNodeToCategory method
+	mapping := domain.NodeCategory{
 		UserID:     userID,
-		AddedAt:    time.Now().Format(time.RFC3339),
-	})
-	if err != nil {
-		return appErrors.Wrap(err, "failed to marshal category-memory item")
+		NodeID:     memoryID,
+		CategoryID: categoryID,
+		Confidence: 1.0,
+		Method:     "manual",
+		CreatedAt:  time.Now(),
 	}
-
-	_, err = r.dbClient.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(r.config.TableName),
-		Item:      categoryMemoryItem,
-	})
-	if err != nil {
-		return appErrors.Wrap(err, "put item failed for category-memory association")
-	}
-	return nil
+	
+	return r.AssignNodeToCategory(ctx, mapping)
 }
 
 // RemoveMemoryFromCategory removes a memory from a category.
+// Deprecated: Use RemoveNodeFromCategory instead for better data consistency.
 func (r *ddbRepository) RemoveMemoryFromCategory(ctx context.Context, userID, categoryID, memoryID string) error {
-	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", userID, categoryID)
-	sk := fmt.Sprintf("MEMORY#%s", memoryID)
-	
-	_, err := r.dbClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(r.config.TableName),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: pk},
-			"SK": &types.AttributeValueMemberS{Value: sk},
-		},
-	})
-	if err != nil {
-		return appErrors.Wrap(err, "failed to delete category-memory association")
-	}
-	return nil
+	// Delegate to the enhanced RemoveNodeFromCategory method
+	return r.RemoveNodeFromCategory(ctx, userID, memoryID, categoryID)
 }
 
 // FindMemoriesInCategory retrieves all memories in a specific category.
+// Deprecated: Use FindNodesByCategory instead for better data consistency.
 func (r *ddbRepository) FindMemoriesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error) {
-	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", userID, categoryID)
-	
-	queryResult, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
-		TableName:                 aws.String(r.config.TableName),
-		KeyConditionExpression:    aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk":       &types.AttributeValueMemberS{Value: pk},
-			":skPrefix": &types.AttributeValueMemberS{Value: "MEMORY#"},
-		},
-	})
-	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to query memories in category")
-	}
-
-	var memories []domain.Node
-	for _, item := range queryResult.Items {
-		var ddbItem ddbCategoryMemory
-		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
-			// Get the actual memory node
-			memory, err := r.FindNodeByID(ctx, userID, ddbItem.MemoryID)
-			if err != nil {
-				log.Printf("failed to find memory in category: %v", err)
-				continue
-			}
-			if memory != nil {
-				memories = append(memories, *memory)
-			}
-		}
-	}
-
-	return memories, nil
+	// Delegate to the enhanced FindNodesByCategory method
+	return r.FindNodesByCategory(ctx, userID, categoryID)
 }
 
 // FindCategoriesForMemory retrieves all categories that contain a specific memory.
+// Deprecated: Use FindCategoriesForNode instead for better data consistency.
 func (r *ddbRepository) FindCategoriesForMemory(ctx context.Context, userID, memoryID string) ([]domain.Category, error) {
-	// This requires scanning since we need to find all categories that contain the memory
-	scanInput := &dynamodb.ScanInput{
-		TableName:        aws.String(r.config.TableName),
-		FilterExpression: aws.String("begins_with(PK, :pkPrefix) AND SK = :sk"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pkPrefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#CATEGORY#", userID)},
-			":sk":       &types.AttributeValueMemberS{Value: fmt.Sprintf("MEMORY#%s", memoryID)},
-		},
-	}
-
-	var categories []domain.Category
-	paginator := dynamodb.NewScanPaginator(r.dbClient, scanInput)
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to scan category-memory associations")
-		}
-
-		for _, item := range page.Items {
-			var ddbItem ddbCategoryMemory
-			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
-				// Get the actual category
-				category, err := r.FindCategoryByID(ctx, userID, ddbItem.CategoryID)
-				if err != nil {
-					log.Printf("failed to find category for memory: %v", err)
-					continue
-				}
-				if category != nil {
-					categories = append(categories, *category)
-				}
-			}
-		}
-	}
-
-	return categories, nil
+	// Delegate to the enhanced FindCategoriesForNode method
+	return r.FindCategoriesForNode(ctx, userID, memoryID)
 }
 
 // GetNodesPage retrieves a paginated list of nodes for a user

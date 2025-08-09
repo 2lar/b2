@@ -67,6 +67,7 @@ type Service interface {
 	// Enhanced methods for performance
 	GetNodesPage(ctx context.Context, userID string, pagination repository.Pagination) (*repository.NodePage, error)
 	GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error)
+	GetGraphDataPaginated(ctx context.Context, userID string, pagination repository.Pagination) (*domain.Graph, string, error)
 }
 
 // service implements the Service interface with concrete business logic.
@@ -294,6 +295,21 @@ func (s *service) GetNodeNeighborhood(ctx context.Context, userID, nodeID string
 	}
 	
 	return graph, nil
+}
+
+// GetGraphDataPaginated retrieves graph data with pagination for performance with large datasets
+func (s *service) GetGraphDataPaginated(ctx context.Context, userID string, pagination repository.Pagination) (*domain.Graph, string, error) {
+	graphQuery := repository.GraphQuery{
+		UserID:       userID,
+		IncludeEdges: true,
+	}
+	
+	graph, nextCursor, err := s.repo.GetGraphDataPaginated(ctx, graphQuery, pagination)
+	if err != nil {
+		return nil, "", appErrors.Wrap(err, "failed to get paginated graph data from repository")
+	}
+	
+	return graph, nextCursor, nil
 }
 
 // ExtractKeywords extracts meaningful keywords from text content for connection discovery.

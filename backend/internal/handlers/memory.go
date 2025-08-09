@@ -116,7 +116,14 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	graph, err := h.memoryService.GetGraphData(r.Context(), userID)
+	
+	// Use paginated version for better performance
+	pagination := repository.Pagination{
+		Limit:  1000, // Reasonable limit for node listing
+		Offset: 0,
+	}
+	
+	graph, _, err := h.memoryService.GetGraphDataPaginated(r.Context(), userID, pagination)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -261,7 +268,15 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	graph, err := h.memoryService.GetGraphData(r.Context(), userID)
+	
+	// Use paginated version for better performance, but maintain backward compatibility
+	// For existing API, we'll load a large page by default to maintain compatibility
+	pagination := repository.Pagination{
+		Limit:  5000, // Large default to maintain existing behavior
+		Offset: 0,
+	}
+	
+	graph, _, err := h.memoryService.GetGraphDataPaginated(r.Context(), userID, pagination)
 	if err != nil {
 		handleServiceError(w, err)
 		return

@@ -44,6 +44,7 @@ interface GraphState {
   selectedNodes: Set<string>;
   selectedEdges: Set<string>;
   focusedNode: string | null;
+  isSidebarOpen: boolean;
   
   // Performance states
   loadingStates: LoadingStates;
@@ -70,6 +71,9 @@ interface GraphState {
   // Error handling
   clearErrors: () => void;
   retryOperation: (operationId: string) => Promise<void>;
+  
+  // UI actions
+  toggleSidebar: () => void;
 }
 
 const createLoadingStates = (): LoadingStates => ({
@@ -106,6 +110,7 @@ export const useGraphStore = create<GraphState>()(
         selectedNodes: new Set(),
         selectedEdges: new Set(),
         focusedNode: null,
+        isSidebarOpen: false,
         loadingStates: createLoadingStates(),
         errorStates: createErrorStates(),
         cache: createCacheState(),
@@ -522,6 +527,13 @@ export const useGraphStore = create<GraphState>()(
           // Implementation for retrying failed operations
           console.log('Retrying operation:', operationId);
         },
+
+        // UI actions
+        toggleSidebar: () => {
+          set((state) => ({
+            isSidebarOpen: !state.isSidebarOpen,
+          }));
+        },
       }),
       {
         name: 'brain2-graph-storage',
@@ -529,6 +541,7 @@ export const useGraphStore = create<GraphState>()(
           // Only persist essential data
           nodes: Array.from(state.nodes.entries()),
           edges: Array.from(state.edges.entries()),
+          isSidebarOpen: state.isSidebarOpen,
           cache: {
             ...state.cache,
             nodeDetails: Array.from(state.cache.nodeDetails.entries()),
