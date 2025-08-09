@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -26,7 +27,11 @@ func NewCategoryHandler(categoryService category.Service) *CategoryHandler {
 
 // ListCategories handles GET /api/categories
 func (h *CategoryHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	categories, err := h.categoryService.ListCategories(r.Context(), userID)
 	if err != nil {
 		handleServiceError(w, err)
@@ -69,7 +74,11 @@ func (h *CategoryHandler) ListCategories(w http.ResponseWriter, r *http.Request)
 
 // CreateCategory handles POST /api/categories
 func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 
 	type CreateCategoryRequest struct {
 		Title       string `json:"title"`
@@ -281,4 +290,84 @@ func (h *CategoryHandler) RemoveMemoryFromCategory(w http.ResponseWriter, r *htt
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetNodeCategories handles GET /api/nodes/{nodeId}/categories
+func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	nodeID := chi.URLParam(r, "nodeId")
+
+	if nodeID == "" {
+		api.Error(w, http.StatusBadRequest, "Node ID is required")
+		return
+	}
+
+	// Get categories for this memory/node
+	categories, err := h.categoryService.GetCategoriesForMemory(r.Context(), userID, nodeID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	type CategoryResponse struct {
+		ID          string  `json:"id"`
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		Level       int     `json:"level"`
+		ParentID    *string `json:"parentId"`
+		Color       *string `json:"color"`
+		Icon        *string `json:"icon"`
+		AIGenerated bool    `json:"aiGenerated"`
+		NoteCount   int     `json:"noteCount"`
+		CreatedAt   string  `json:"createdAt"`
+		UpdatedAt   string  `json:"updatedAt"`
+	}
+
+	var categoriesResponse []CategoryResponse
+	for _, cat := range categories {
+		categoriesResponse = append(categoriesResponse, CategoryResponse{
+			ID:          cat.ID,
+			Title:       cat.Title,
+			Description: cat.Description,
+			Level:       cat.Level,
+			ParentID:    cat.ParentID,
+			Color:       cat.Color,
+			Icon:        cat.Icon,
+			AIGenerated: cat.AIGenerated,
+			NoteCount:   cat.NoteCount,
+			CreatedAt:   cat.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:   cat.UpdatedAt.Format(time.RFC3339),
+		})
+	}
+
+	api.Success(w, http.StatusOK, map[string][]CategoryResponse{"categories": categoriesResponse})
+}
+
+// CategorizeNode handles POST /api/nodes/{nodeId}/categories  
+func (h *CategoryHandler) CategorizeNode(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	nodeID := chi.URLParam(r, "nodeId")
+	
+	if nodeID == "" {
+		api.Error(w, http.StatusBadRequest, "Node ID is required")
+		return
+	}
+
+	// TODO: Implement AI-powered categorization when LLM service infrastructure is ready
+	// For now, return success with empty categories to prevent frontend errors
+	
+	// Future implementation should:
+	// 1. Get the node content using the memory service
+	// 2. Use enhanced category service with AI categorization 
+	// 3. Automatically assign relevant categories based on content analysis
+	
+	// Log for development visibility
+	log.Printf("Auto-categorization requested for nodeID %s by user %s - not yet implemented", nodeID, userID)
+	
+	// Return empty categories array for now
+	api.Success(w, http.StatusOK, map[string]interface{}{
+		"message": "Auto-categorization not yet implemented",
+		"categories": []interface{}{},
+		"nodeId": nodeID,
+	})
 }

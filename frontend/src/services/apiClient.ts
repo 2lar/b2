@@ -81,8 +81,20 @@ class ApiClient {
     private async request<T>(method: string, path: string, body: unknown = null): Promise<T> {
         // Get authentication token
         const token = await auth.getJwtToken();
+        
+        // Debug authentication state
+        console.log('🔐 Authentication Debug:', {
+            hasToken: !!token,
+            tokenLength: token?.length,
+            tokenStart: token?.substring(0, 20) + '...',
+            method,
+            path,
+            apiBaseUrl: API_BASE_URL
+        });
+
         if (!token) {
-            throw new Error('Not authenticated');
+            console.error('❌ No authentication token available');
+            throw new Error('Not authenticated - please sign in to continue');
         }
 
         // Configure request with authentication headers
@@ -100,19 +112,44 @@ class ApiClient {
         }
 
         try {
+            console.log('📡 Making API request:', { method, path, hasBody: !!body });
+            
             // Execute HTTP request
             const response = await fetch(`${API_BASE_URL}${path}`, options);
             
+            console.log('📨 API response:', {
+                status: response.status,
+                statusText: response.statusText,
+                path,
+                ok: response.ok
+            });
+            
             // Check response status
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'Request failed' }));
+                const errorText = await response.text();
+                let errorData;
+                try {
+                    errorData = JSON.parse(errorText);
+                } catch {
+                    errorData = { error: errorText || 'Request failed' };
+                }
+                
+                console.error('❌ API Error Response:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    errorData,
+                    path
+                });
+                
                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
             
             // Parse and return response
-            return await response.json() as T;
+            const data = await response.json() as T;
+            console.log('✅ API request successful:', { method, path, dataKeys: Object.keys(data as any) });
+            return data;
         } catch (error) {
-            console.error('API request failed:', method, path, error);
+            console.error('💥 API request failed:', { method, path, error: error.message });
             throw error;
         }
     }
@@ -297,6 +334,72 @@ class ApiClient {
     }
 
     /**
+     * Test API health endpoint (no authentication required)
+     * @returns Promise resolving to health status
+     */
+    public async testHealth(): Promise<{ message: string }> {
+        try {
+            console.log('🏥 Testing health endpoint (no auth required)');
+            const response = await fetch(`${API_BASE_URL}/health`);
+            
+            console.log('🏥 Health check response:', {
+                status: response.status,
+                statusText: response.statusText,
+                ok: response.ok
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Health check failed:', errorText);
+                throw new Error(`Health check failed: ${response.status} - ${errorText}`);
+            }
+            
+            const data = await response.json();
+            console.log('✅ Health check successful:', data);
+            return data;
+        } catch (error) {
+            console.error('💥 Health check error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Debug authentication and API connectivity
+     * @returns Promise resolving to debug information
+     */
+    public async debugAuth(): Promise<void> {
+        console.log('🔍 Starting authentication debug...');
+        
+        // Test 1: Check if we have a session
+        const session = await auth.getSession();
+        console.log('🔍 Session check:', {
+            hasSession: !!session,
+            userEmail: session?.user?.email,
+            expiresAt: session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'N/A'
+        });
+        
+        // Test 2: Test health endpoint (no auth)
+        try {
+            await this.testHealth();
+            console.log('✅ Health endpoint working');
+        } catch (error) {
+            console.error('❌ Health endpoint failed:', error.message);
+        }
+        
+        // Test 3: Test JWT token retrieval
+        try {
+            const token = await auth.getJwtToken();
+            console.log('🔍 JWT token check:', {
+                hasToken: !!token,
+                tokenLength: token?.length,
+                tokenPreview: token ? token.substring(0, 20) + '...' : 'none'
+            });
+        } catch (error) {
+            console.error('❌ JWT token error:', error.message);
+        }
+    }
+
+    /**
      * Get all categories assigned to a node
      * @param nodeId Unique identifier of the memory node
      * @returns Promise resolving to array of categories assigned to the node
@@ -317,3 +420,12 @@ class ApiClient {
 
 // Singleton API client instance for use throughout the application
 export const api = new ApiClient();
+
+// Add global debug trigger for development
+if (typeof window !== 'undefined') {
+    (window as any).debugAuth = () => api.debugAuth();
+    (window as any).testHealth = () => api.testHealth();
+    console.log('🔧 Debug functions available:');
+    console.log('  - window.debugAuth() - Test authentication flow');
+    console.log('  - window.testHealth() - Test health endpoint');
+}

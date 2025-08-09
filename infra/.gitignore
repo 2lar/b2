@@ -7,6 +7,12 @@ lambda/authorizer/
 # CDK synthesized artifacts (CloudFormation templates, etc.)
 /cdk.out/
 
+# TypeScript build artifacts
+*.js
+*.d.ts
+!jest.config.js
+!**/*.config.js
+
 # IDE and OS files
 .DS_Store
 
@@ -14,6 +20,9 @@ lambda/authorizer/
 .env
 .env.local
 .env.*.local
+
+# Test coverage
+coverage/
 
 # CDK
 cdk.out/

@@ -46,7 +46,34 @@ export const auth = {
 
     async getJwtToken(): Promise<string | null> {
         const session = await this.getSession();
-        return session ? session.access_token : null;
+        
+        // Debug session state
+        console.log('🎫 JWT Token Debug:', {
+            hasSession: !!session,
+            hasAccessToken: !!session?.access_token,
+            tokenLength: session?.access_token?.length,
+            userEmail: session?.user?.email,
+            expiresAt: session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'unknown',
+            isExpired: session?.expires_at ? Date.now() / 1000 > session.expires_at : true
+        });
+        
+        if (!session) {
+            console.warn('⚠️ No active Supabase session found');
+            return null;
+        }
+        
+        if (!session.access_token) {
+            console.warn('⚠️ Session exists but no access token');
+            return null;
+        }
+        
+        // Check if token is expired
+        if (session.expires_at && Date.now() / 1000 > session.expires_at) {
+            console.warn('⚠️ JWT token has expired');
+            return null;
+        }
+        
+        return session.access_token;
     },
 
     async signIn(email: string, password: string): Promise<Session | null> {

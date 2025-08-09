@@ -716,10 +716,10 @@ func (r *ddbRepository) DeleteCategory(ctx context.Context, userID, categoryID s
 	return nil
 }
 
-// FindCategoryByID retrieves a single category by ID.
+// FindCategoryByID retrieves a single category by ID using enhanced format.
 func (r *ddbRepository) FindCategoryByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
-	pk := fmt.Sprintf("USER#%s#CATEGORY#%s", userID, categoryID)
-	sk := "METADATA#v0"
+	pk := fmt.Sprintf("USER#%s", userID)
+	sk := fmt.Sprintf("CATEGORY#%s", categoryID)
 	
 	result, err := r.dbClient.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(r.config.TableName),
@@ -735,19 +735,13 @@ func (r *ddbRepository) FindCategoryByID(ctx context.Context, userID, categoryID
 		return nil, nil // Not found
 	}
 
-	var ddbItem ddbCategory
+	var ddbItem ddbEnhancedCategory
 	if err := attributevalue.UnmarshalMap(result.Item, &ddbItem); err != nil {
-		return nil, appErrors.Wrap(err, "failed to unmarshal category item")
+		return nil, appErrors.Wrap(err, "failed to unmarshal enhanced category item")
 	}
 
-	createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
-	return &domain.Category{
-		ID:          ddbItem.CategoryID,
-		UserID:      ddbItem.UserID,
-		Title:       ddbItem.Title,
-		Description: ddbItem.Description,
-		CreatedAt:   createdAt,
-	}, nil
+	category := r.toDomainCategory(ddbItem)
+	return &category, nil
 }
 
 // FindCategories retrieves categories based on query parameters.
@@ -756,13 +750,13 @@ func (r *ddbRepository) FindCategories(ctx context.Context, query repository.Cat
 		return nil, err
 	}
 
-	// Scan for all categories for the user
+	// Scan for all categories for the user using enhanced format
 	scanInput := &dynamodb.ScanInput{
 		TableName:        aws.String(r.config.TableName),
-		FilterExpression: aws.String("begins_with(PK, :pkPrefix) AND SK = :sk"),
+		FilterExpression: aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pkPrefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#CATEGORY#", query.UserID)},
-			":sk":       &types.AttributeValueMemberS{Value: "METADATA#v0"},
+			":pk":       &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", query.UserID)},
+			":skPrefix": &types.AttributeValueMemberS{Value: "CATEGORY#"},
 		},
 	}
 
@@ -775,16 +769,10 @@ func (r *ddbRepository) FindCategories(ctx context.Context, query repository.Cat
 		}
 
 		for _, item := range page.Items {
-			var ddbItem ddbCategory
+			var ddbItem ddbEnhancedCategory
 			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
-				createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
-				categories = append(categories, domain.Category{
-					ID:          ddbItem.CategoryID,
-					UserID:      ddbItem.UserID,
-					Title:       ddbItem.Title,
-					Description: ddbItem.Description,
-					CreatedAt:   createdAt,
-				})
+				category := r.toDomainCategory(ddbItem)
+				categories = append(categories, category)
 			}
 		}
 	}

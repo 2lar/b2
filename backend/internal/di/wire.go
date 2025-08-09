@@ -76,9 +76,9 @@ func ProvideRouter(memoryHandler *handlers.MemoryHandler, categoryHandler *handl
 		})
 	})
 
-	// Protected routes (example, assuming auth middleware is applied elsewhere)
+	// Protected routes (require authentication)
 	r.Group(func(r chi.Router) {
-		// r.Use(authMiddleware) // Assuming an auth middleware is applied here
+		r.Use(handlers.Authenticator) // Apply authentication middleware
 
 		r.Post("/api/nodes", memoryHandler.CreateNode)
 		r.Get("/api/nodes", memoryHandler.ListNodes)
@@ -96,6 +96,10 @@ func ProvideRouter(memoryHandler *handlers.MemoryHandler, categoryHandler *handl
 		r.Post("/api/categories/{categoryId}/memories", categoryHandler.AddMemoryToCategory)
 		r.Get("/api/categories/{categoryId}/memories", categoryHandler.GetMemoriesInCategory)
 		r.Delete("/api/categories/{categoryId}/memories/{memoryId}", categoryHandler.RemoveMemoryFromCategory)
+		
+		// Node categorization routes
+		r.Get("/api/nodes/{nodeId}/categories", categoryHandler.GetNodeCategories)
+		r.Post("/api/nodes/{nodeId}/categories", categoryHandler.CategorizeNode)
 	})
 
 	return r

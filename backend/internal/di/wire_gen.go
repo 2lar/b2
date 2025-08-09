@@ -101,6 +101,7 @@ func ProvideRouter(memoryHandler *handlers.MemoryHandler, categoryHandler *handl
 	})
 
 	r.Group(func(r chi.Router) {
+		r.Use(handlers.Authenticator)
 
 		r.Post("/api/nodes", memoryHandler.CreateNode)
 		r.Get("/api/nodes", memoryHandler.ListNodes)
@@ -118,6 +119,9 @@ func ProvideRouter(memoryHandler *handlers.MemoryHandler, categoryHandler *handl
 		r.Post("/api/categories/{categoryId}/memories", categoryHandler.AddMemoryToCategory)
 		r.Get("/api/categories/{categoryId}/memories", categoryHandler.GetMemoriesInCategory)
 		r.Delete("/api/categories/{categoryId}/memories/{memoryId}", categoryHandler.RemoveMemoryFromCategory)
+
+		r.Get("/api/nodes/{nodeId}/categories", categoryHandler.GetNodeCategories)
+		r.Post("/api/nodes/{nodeId}/categories", categoryHandler.CategorizeNode)
 	})
 
 	return r

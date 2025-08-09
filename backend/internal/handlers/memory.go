@@ -36,7 +36,11 @@ func NewMemoryHandler(memoryService memory.Service, eventBridgeClient *eventbrid
 
 // CreateNode handles POST /api/nodes
 func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	var req api.CreateNodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		api.Error(w, http.StatusBadRequest, "Invalid request body")
@@ -105,7 +109,11 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 
 // ListNodes handles GET /api/nodes
 func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	graph, err := h.memoryService.GetGraphData(r.Context(), userID)
 	if err != nil {
 		handleServiceError(w, err)
@@ -246,7 +254,11 @@ func (h *MemoryHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) 
 
 // GetGraphData handles GET /api/graph-data
 func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	graph, err := h.memoryService.GetGraphData(r.Context(), userID)
 	if err != nil {
 		handleServiceError(w, err)
