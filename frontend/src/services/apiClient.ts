@@ -50,7 +50,7 @@ type NodeDetails = components['schemas']['NodeDetails'];
 type Category = components['schemas']['Category'];
 type CreateCategoryRequest = components['schemas']['CreateCategoryRequest'];
 type UpdateCategoryRequest = components['schemas']['UpdateCategoryRequest'];
-type AddMemoryToCategoryRequest = components['schemas']['AddMemoryToCategoryRequest'];
+type AssignNodeToCategoryRequest = components['schemas']['AssignNodeToCategoryRequest'];
 
 // Request/Response Types for Bulk Operations
 type BulkDeleteRequest = components['schemas']['BulkDeleteRequest'];
@@ -64,7 +64,7 @@ type GraphDataResponse = components['schemas']['GraphDataResponse'];
 // Operation Response Types - Extract specific response shapes
 type ListNodesResponse = operations['listNodes']['responses']['200']['content']['application/json'];
 type ListCategoriesResponse = operations['listCategories']['responses']['200']['content']['application/json'];
-type GetMemoriesInCategoryResponse = operations['getMemoriesInCategory']['responses']['200']['content']['application/json'];
+type GetNodesInCategoryResponse = operations['getNodesInCategory']['responses']['200']['content']['application/json'];
 
 /**
  * ApiClient class - Centralized HTTP communication
@@ -127,7 +127,7 @@ class ApiClient {
             const data = await response.json() as T;
             return data;
         } catch (error) {
-            console.error('API request error:', error.message);
+            console.error('API request error:', (error as Error).message);
             throw error;
         }
     }
@@ -248,32 +248,32 @@ class ApiClient {
     }
 
     /**
-     * Get all memories in a specific category
+     * Get all nodes in a specific category
      * @param categoryId Unique identifier of the category
-     * @returns Promise resolving to array of memories in the category
+     * @returns Promise resolving to array of nodes in the category
      */
-    public getMemoriesInCategory(categoryId: string): Promise<GetMemoriesInCategoryResponse> {
-        return this.request<GetMemoriesInCategoryResponse>('GET', `/api/categories/${categoryId}/memories`);
+    public getNodesInCategory(categoryId: string): Promise<GetNodesInCategoryResponse> {
+        return this.request<GetNodesInCategoryResponse>('GET', `/api/categories/${categoryId}/nodes`);
     }
 
     /**
-     * Add a memory to a category
+     * Assign a node to a category
      * @param categoryId Unique identifier of the category
-     * @param memoryId Unique identifier of the memory to add
+     * @param nodeId Unique identifier of the node to assign
      * @returns Promise resolving to success message
      */
-    public addMemoryToCategory(categoryId: string, memoryId: string): Promise<{ message: string }> {
-        return this.request<{ message: string }>('POST', `/api/categories/${categoryId}/memories`, { memoryId });
+    public assignNodeToCategory(categoryId: string, nodeId: string): Promise<{ message: string }> {
+        return this.request<{ message: string }>('POST', `/api/categories/${categoryId}/nodes`, { nodeId });
     }
 
     /**
-     * Remove a memory from a category
+     * Remove a node from a category
      * @param categoryId Unique identifier of the category
-     * @param memoryId Unique identifier of the memory to remove
+     * @param nodeId Unique identifier of the node to remove
      * @returns Promise resolving to success message
      */
-    public removeMemoryFromCategory(categoryId: string, memoryId: string): Promise<{ message: string }> {
-        return this.request<{ message: string }>('DELETE', `/api/categories/${categoryId}/memories/${memoryId}`);
+    public removeNodeFromCategory(categoryId: string, nodeId: string): Promise<{ message: string }> {
+        return this.request<{ message: string }>('DELETE', `/api/categories/${categoryId}/nodes/${nodeId}`);
     }
 
     // Enhanced category operations
@@ -352,7 +352,7 @@ class ApiClient {
             await this.testHealth();
             console.log('Health endpoint working');
         } catch (error) {
-            console.error('Health endpoint failed:', error.message);
+            console.error('Health endpoint failed:', (error as Error).message);
         }
         
         // Test 3: Test JWT token retrieval
@@ -362,7 +362,7 @@ class ApiClient {
                 hasToken: !!token
             });
         } catch (error) {
-            console.error('JWT token error:', error.message);
+            console.error('JWT token error:', (error as Error).message);
         }
     }
 

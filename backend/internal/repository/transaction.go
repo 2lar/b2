@@ -45,7 +45,7 @@ func (tm *TransactionManager) Execute(ctx context.Context) error {
 		step := &tm.steps[i]
 		if err := step.Execute(ctx); err != nil {
 			step.Executed = true
-			
+
 			rollbackErr := tm.rollback(ctx, i)
 			if rollbackErr != nil {
 				return NewTransactionError(
@@ -53,43 +53,43 @@ func (tm *TransactionManager) Execute(ctx context.Context) error {
 					fmt.Errorf("original error: %w, rollback error: %v", err, rollbackErr),
 				)
 			}
-			
+
 			return NewTransactionError(
 				fmt.Sprintf("step '%s' failed", step.Name),
 				err,
 			)
 		}
-		
+
 		step.Executed = true
 	}
-	
+
 	return nil
 }
 
 func (tm *TransactionManager) rollback(ctx context.Context, failedStepIndex int) error {
 	var rollbackErrors []error
-	
+
 	for i := failedStepIndex; i >= 0; i-- {
 		step := &tm.steps[i]
-		
+
 		if !step.Executed || step.RollbackRun {
 			continue
 		}
-		
+
 		if step.Rollback != nil {
 			if err := step.Rollback(ctx); err != nil {
-				rollbackErrors = append(rollbackErrors, 
+				rollbackErrors = append(rollbackErrors,
 					fmt.Errorf("rollback failed for step '%s': %w", step.Name, err))
 			}
 		}
-		
+
 		step.RollbackRun = true
 	}
-	
+
 	if len(rollbackErrors) > 0 {
 		return fmt.Errorf("multiple rollback errors: %v", rollbackErrors)
 	}
-	
+
 	return nil
 }
 
@@ -134,7 +134,7 @@ func (ct *CompensatingTransaction) Execute(ctx context.Context) error {
 
 		action := &ct.actions[i]
 		result, err := action.Action(ctx)
-		
+
 		if err != nil {
 			compensateErr := ct.compensate(ctx, i-1)
 			if compensateErr != nil {
@@ -143,44 +143,44 @@ func (ct *CompensatingTransaction) Execute(ctx context.Context) error {
 					fmt.Errorf("original error: %w, compensation error: %v", err, compensateErr),
 				)
 			}
-			
+
 			return NewTransactionError(
 				fmt.Sprintf("action '%s' failed", action.Name),
 				err,
 			)
 		}
-		
+
 		action.Result = result
 		action.Completed = true
 	}
-	
+
 	return nil
 }
 
 func (ct *CompensatingTransaction) compensate(ctx context.Context, lastCompletedIndex int) error {
 	var compensationErrors []error
-	
+
 	for i := lastCompletedIndex; i >= 0; i-- {
 		action := &ct.actions[i]
-		
+
 		if !action.Completed || action.Compensated {
 			continue
 		}
-		
+
 		if action.Compensate != nil {
 			if err := action.Compensate(ctx, action.Result); err != nil {
-				compensationErrors = append(compensationErrors, 
+				compensationErrors = append(compensationErrors,
 					fmt.Errorf("compensation failed for action '%s': %w", action.Name, err))
 			}
 		}
-		
+
 		action.Compensated = true
 	}
-	
+
 	if len(compensationErrors) > 0 {
 		return fmt.Errorf("multiple compensation errors: %v", compensationErrors)
 	}
-	
+
 	return nil
 }
 
@@ -230,26 +230,26 @@ func (bo *BatchOperation) Execute(ctx context.Context) error {
 	if len(bo.items) == 0 {
 		return nil
 	}
-	
+
 	semaphore := make(chan struct{}, bo.options.MaxConcurrency)
 	results := make(chan int, len(bo.items))
-	
+
 	for i := range bo.items {
 		go func(index int) {
 			defer func() { results <- index }()
-			
+
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
-			
+
 			operationCtx, cancel := context.WithTimeout(ctx, bo.options.Timeout)
 			defer cancel()
-			
+
 			item := &bo.items[index]
 			err := item.Operation(operationCtx)
-			
+
 			item.Error = err
 			item.Completed = err == nil
-			
+
 			if err != nil && bo.options.StopOnError {
 				if ctxCancel := ctx.Value("cancel"); ctxCancel != nil {
 					if cancel, ok := ctxCancel.(context.CancelFunc); ok {
@@ -259,7 +259,7 @@ func (bo *BatchOperation) Execute(ctx context.Context) error {
 			}
 		}(i)
 	}
-	
+
 	for i := 0; i < len(bo.items); i++ {
 		select {
 		case <-ctx.Done():
@@ -267,10 +267,10 @@ func (bo *BatchOperation) Execute(ctx context.Context) error {
 		case <-results:
 		}
 	}
-	
+
 	var errors []error
 	successCount := 0
-	
+
 	for _, item := range bo.items {
 		if item.Error != nil {
 			errors = append(errors, fmt.Errorf("item '%s': %w", item.ID, item.Error))
@@ -278,21 +278,21 @@ func (bo *BatchOperation) Execute(ctx context.Context) error {
 			successCount++
 		}
 	}
-	
+
 	if len(errors) > 0 {
 		return NewRepositoryErrorWithDetails(
 			ErrCodeOperationFailed,
 			fmt.Sprintf("batch operation failed: %d/%d items succeeded", successCount, len(bo.items)),
 			map[string]interface{}{
-				"total_items":    len(bo.items),
-				"success_count":  successCount,
-				"failure_count":  len(errors),
-				"errors":         errors,
+				"total_items":   len(bo.items),
+				"success_count": successCount,
+				"failure_count": len(errors),
+				"errors":        errors,
 			},
 			nil,
 		)
 	}
-	
+
 	return nil
 }
 
@@ -340,13 +340,13 @@ func (cc *ConsistencyChecker) AddCheck(name string, validate func(ctx context.Co
 
 func (cc *ConsistencyChecker) Validate(ctx context.Context) error {
 	var errors []error
-	
+
 	for _, check := range cc.checks {
 		if err := check.Validate(ctx); err != nil {
 			errors = append(errors, fmt.Errorf("consistency check '%s' failed: %w", check.Name, err))
 		}
 	}
-	
+
 	if len(errors) > 0 {
 		return NewRepositoryErrorWithDetails(
 			ErrCodeInconsistentState,
@@ -359,7 +359,7 @@ func (cc *ConsistencyChecker) Validate(ctx context.Context) error {
 			nil,
 		)
 	}
-	
+
 	return nil
 }
 
@@ -367,11 +367,11 @@ func CreateNodeWithRollback(repo Repository, node domain.Node) (func(ctx context
 	execute := func(ctx context.Context) error {
 		return repo.CreateNodeAndKeywords(ctx, node)
 	}
-	
+
 	rollback := func(ctx context.Context) error {
 		return repo.DeleteNode(ctx, node.UserID, node.ID)
 	}
-	
+
 	return execute, rollback
 }
 
@@ -379,10 +379,10 @@ func CreateEdgesWithRollback(repo Repository, userID, sourceNodeID string, relat
 	execute := func(ctx context.Context) error {
 		return repo.CreateEdges(ctx, userID, sourceNodeID, relatedNodeIDs)
 	}
-	
+
 	rollback := func(ctx context.Context) error {
 		return repo.DeleteNode(ctx, userID, sourceNodeID)
 	}
-	
+
 	return execute, rollback
 }

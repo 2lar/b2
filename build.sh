@@ -168,8 +168,6 @@ npm install
 
 print_success "Infrastructure prepared successfully"
 
-cd ..
-
 BUILD_END_TIME=$(date +%s)
 BUILD_DURATION=$((BUILD_END_TIME - BUILD_START_TIME))
 
@@ -178,10 +176,10 @@ print_success "Build Complete! 🎉"
 print_status "=================================================="
 
 print_status "Build Summary:"
-print_status "  ✅ Backend (Go Lambda): backend/build/function.zip"
+print_status "  ✅ Backend (Go Lambda): backend/build/"
 print_status "  ✅ Lambda Authorizer: infra/lambda/authorizer/index.js"
 print_status "  ✅ Frontend: frontend/dist/"
-print_status "  ✅ Infrastructure: infra/ (ready for deployment)"
+print_status "  ✅ Infrastructure: infra/cdk.out"
 print_status ""
 
 print_status "Build completed in ${BUILD_DURATION} seconds"
@@ -190,7 +188,7 @@ print_status ""
 print_status "Next steps:"
 print_status "  1. Deploy infrastructure: cd infra && npx cdk deploy"
 print_status "  2. Or run individual components for development"
-print_status "    - Backend: cd backend && go run ."
+print_status "    - Backend: cd backend && go run ./cmd/main"
 print_status "    - Frontend: cd frontend && npm run dev"
 print_status "  3. Monitor deployment: Check AWS console for resource status"
 print_status "=================================================="

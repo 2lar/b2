@@ -54,7 +54,7 @@
  */
 
 import React, { useState } from 'react';
-import { components } from '../types/generated/generated-types';
+import { components } from '../../../types/generated/generated-types';
 
 // Type aliases
 type CategorySuggestion = components['schemas']['CategorySuggestion'];

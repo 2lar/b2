@@ -1,4 +1,8 @@
 // Package di provides HTTP setup functions for dependency injection.
+//
+// DEPRECATED: This file contains legacy HTTP setup code that is no longer used.
+// The active dependency injection is handled through wire.go and wire_gen.go.
+// This file should eventually be removed after verification that no code depends on it.
 package di
 
 import (
@@ -15,10 +19,10 @@ import (
 	"brain2-backend/pkg/api"
 	appErrors "brain2-backend/pkg/errors"
 
-	"github.com/awslabs/aws-lambda-go-api-proxy/core"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+	"github.com/awslabs/aws-lambda-go-api-proxy/core"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -82,10 +86,10 @@ func SetupRouter(
 		r.Put("/categories/{categoryId}", deps.updateCategoryHandler)
 		r.Delete("/categories/{categoryId}", deps.deleteCategoryHandler)
 
-		// Category-memory association routes
-		r.Post("/categories/{categoryId}/memories", deps.addMemoryToCategoryHandler)
-		r.Get("/categories/{categoryId}/memories", deps.getMemoriesInCategoryHandler)
-		r.Delete("/categories/{categoryId}/memories/{memoryId}", deps.removeMemoryFromCategoryHandler)
+		// Category-node association routes (updated from legacy memory-category routes)
+		r.Post("/categories/{categoryId}/nodes", deps.assignNodeToCategoryHandler)
+		r.Get("/categories/{categoryId}/nodes", deps.getNodesInCategoryHandler)
+		r.Delete("/categories/{categoryId}/nodes/{nodeId}", deps.removeNodeFromCategoryHandler)
 
 		// Enhanced category routes
 		r.Get("/categories/hierarchy", deps.getCategoryHierarchyHandler)
@@ -173,7 +177,7 @@ func (deps *Dependencies) createNodeHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Publish "NodeCreated" event to EventBridge
-	eventDetail, err := json.Marshal(map[string]interface{}{
+	eventDetail, err := json.Marshal(map[string]any{
 		"userId":   node.UserID,
 		"nodeId":   node.ID,
 		"content":  node.Content,
@@ -507,16 +511,88 @@ func (deps *Dependencies) createCategoryHandler(w http.ResponseWriter, r *http.R
 }
 
 // Placeholder functions for remaining handlers - they would follow the same dependency injection pattern
-func (deps *Dependencies) getCategoryHandler(w http.ResponseWriter, r *http.Request)                     {}
-func (deps *Dependencies) updateCategoryHandler(w http.ResponseWriter, r *http.Request)                 {}
-func (deps *Dependencies) deleteCategoryHandler(w http.ResponseWriter, r *http.Request)                 {}
-func (deps *Dependencies) addMemoryToCategoryHandler(w http.ResponseWriter, r *http.Request)            {}
-func (deps *Dependencies) getMemoriesInCategoryHandler(w http.ResponseWriter, r *http.Request)          {}
-func (deps *Dependencies) removeMemoryFromCategoryHandler(w http.ResponseWriter, r *http.Request)       {}
-func (deps *Dependencies) getCategoryHierarchyHandler(w http.ResponseWriter, r *http.Request)           {}
-func (deps *Dependencies) suggestCategoriesHandler(w http.ResponseWriter, r *http.Request)              {}
-func (deps *Dependencies) rebuildCategoriesHandler(w http.ResponseWriter, r *http.Request)              {}
-func (deps *Dependencies) getCategoryInsightsHandler(w http.ResponseWriter, r *http.Request)            {}
+func (deps *Dependencies) getCategoryHandler(w http.ResponseWriter, r *http.Request)    {}
+func (deps *Dependencies) updateCategoryHandler(w http.ResponseWriter, r *http.Request) {}
+func (deps *Dependencies) deleteCategoryHandler(w http.ResponseWriter, r *http.Request) {}
+func (deps *Dependencies) assignNodeToCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	categoryID := chi.URLParam(r, "categoryId")
+
+	type AssignNodeRequest struct {
+		NodeID string `json:"nodeId"`
+	}
+
+	var req AssignNodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.NodeID == "" {
+		api.Error(w, http.StatusBadRequest, "Node ID is required")
+		return
+	}
+
+	err := deps.CategoryService.AssignNodeToCategory(r.Context(), userID, req.NodeID, categoryID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	api.Success(w, http.StatusOK, map[string]string{"message": "Node assigned to category successfully"})
+}
+
+func (deps *Dependencies) getNodesInCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	categoryID := chi.URLParam(r, "categoryId")
+
+	if categoryID == "" {
+		api.Error(w, http.StatusBadRequest, "Category ID is required")
+		return
+	}
+
+	nodes, err := deps.CategoryService.GetNodesInCategory(r.Context(), userID, categoryID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	var nodesResponse []api.NodeResponse
+	for _, node := range nodes {
+		nodesResponse = append(nodesResponse, api.NodeResponse{
+			NodeID:    node.ID,
+			Content:   node.Content,
+			Tags:      node.Tags,
+			Timestamp: node.CreatedAt.Format(time.RFC3339),
+			Version:   node.Version,
+		})
+	}
+
+	api.Success(w, http.StatusOK, map[string][]api.NodeResponse{"nodes": nodesResponse})
+}
+
+func (deps *Dependencies) removeNodeFromCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(string)
+	categoryID := chi.URLParam(r, "categoryId")
+	nodeID := chi.URLParam(r, "nodeId")
+
+	if categoryID == "" || nodeID == "" {
+		api.Error(w, http.StatusBadRequest, "Category ID and Node ID are required")
+		return
+	}
+
+	err := deps.CategoryService.RemoveNodeFromCategory(r.Context(), userID, nodeID, categoryID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	api.Success(w, http.StatusOK, map[string]string{"message": "Node removed from category successfully"})
+}
+func (deps *Dependencies) getCategoryHierarchyHandler(w http.ResponseWriter, r *http.Request) {}
+func (deps *Dependencies) suggestCategoriesHandler(w http.ResponseWriter, r *http.Request)    {}
+func (deps *Dependencies) rebuildCategoriesHandler(w http.ResponseWriter, r *http.Request)    {}
+func (deps *Dependencies) getCategoryInsightsHandler(w http.ResponseWriter, r *http.Request)  {}
 func (deps *Dependencies) getNodeCategoriesHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(string)
 
@@ -526,8 +602,8 @@ func (deps *Dependencies) getNodeCategoriesHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Get categories for this memory/node
-	categories, err := deps.CategoryService.GetCategoriesForMemory(r.Context(), userID, nodeID)
+	// Get categories for this node
+	categories, err := deps.CategoryService.GetCategoriesForNode(r.Context(), userID, nodeID)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -569,7 +645,7 @@ func (deps *Dependencies) getNodeCategoriesHandler(w http.ResponseWriter, r *htt
 func (deps *Dependencies) categorizeNodeHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(string)
 	nodeID := chi.URLParam(r, "nodeId")
-	
+
 	if nodeID == "" {
 		api.Error(w, http.StatusBadRequest, "Node ID is required")
 		return
@@ -578,16 +654,16 @@ func (deps *Dependencies) categorizeNodeHandler(w http.ResponseWriter, r *http.R
 	// TODO: Implement AI-powered categorization when LLM service infrastructure is ready
 	// For now, return success with empty categories to prevent frontend errors
 	log.Printf("Categorization requested for nodeID %s by user %s - not yet implemented", nodeID, userID)
-	
+
 	// Future implementation should:
 	// 1. Get the node content using deps.MemoryService.GetNodeDetails()
 	// 2. Use enhanced category service with AI categorization
 	// 3. Automatically assign relevant categories based on content analysis
-	
+
 	// Return empty categories array for now
-	api.Success(w, http.StatusOK, map[string]interface{}{
-		"message": "Auto-categorization not yet implemented",
-		"categories": []interface{}{},
-		"nodeId": nodeID,
+	api.Success(w, http.StatusOK, map[string]any{
+		"message":    "Auto-categorization not yet implemented",
+		"categories": []any{},
+		"nodeId":     nodeID,
 	})
 }

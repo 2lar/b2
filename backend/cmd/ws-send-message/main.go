@@ -30,14 +30,14 @@ var connectionsTable string
 func init() {
 	connectionsTable = os.Getenv("CONNECTIONS_TABLE_NAME")
 	wsApiEndpoint := os.Getenv("WEBSOCKET_API_ENDPOINT")
-	
+
 	awsCfg, err := awsConfig.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		log.Fatalf("Unable to load SDK config, %v", err)
 	}
-	
+
 	dbClient = dynamodb.NewFromConfig(awsCfg)
-	
+
 	apiGatewayManagementClient = apigatewaymanagementapi.NewFromConfig(awsCfg, func(o *apigatewaymanagementapi.Options) {
 		o.BaseEndpoint = &wsApiEndpoint
 	})
@@ -80,10 +80,10 @@ func handler(ctx context.Context, event events.EventBridgeEvent) error {
 		log.Printf("ERROR: Failed to marshal WebSocket message: %v", err)
 		return err
 	}
-	
+
 	for _, item := range result.Items {
 		connectionID := strings.TrimPrefix(item["SK"].(*types.AttributeValueMemberS).Value, "CONN#")
-		
+
 		_, err := apiGatewayManagementClient.PostToConnection(ctx, &apigatewaymanagementapi.PostToConnectionInput{
 			ConnectionId: &connectionID,
 			Data:         message,

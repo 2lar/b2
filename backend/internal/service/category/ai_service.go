@@ -22,16 +22,16 @@ type EnhancedService interface {
 	// AI-powered categorization
 	CategorizeNode(ctx context.Context, node domain.Node) ([]domain.Category, error)
 	SuggestCategories(ctx context.Context, content string, userID string) ([]domain.CategorySuggestion, error)
-	
+
 	// Hierarchy management
 	BuildCategoryHierarchy(ctx context.Context, userID string) error
 	GetCategoryTree(ctx context.Context, userID string) ([]domain.Category, error)
 	CreateCategoryWithParent(ctx context.Context, userID, title, description string, parentID *string) (*domain.Category, error)
-	
+
 	// Category optimization
 	MergeSimilarCategories(ctx context.Context, userID string, threshold float64) error
 	OptimizeCategoryStructure(ctx context.Context, userID string) error
-	
+
 	// Analytics
 	GenerateCategoryInsights(ctx context.Context, userID string) (*domain.CategoryInsights, error)
 }
@@ -262,7 +262,7 @@ func (s *enhancedService) MergeSimilarCategories(ctx context.Context, userID str
 	for _, pair := range similarPairs {
 		err := s.mergeTwoCategories(ctx, userID, pair.Category1ID, pair.Category2ID)
 		if err != nil {
-			log.Printf("Failed to merge categories %s and %s: %v", 
+			log.Printf("Failed to merge categories %s and %s: %v",
 				pair.Category1ID, pair.Category2ID, err)
 		}
 	}
@@ -293,7 +293,7 @@ func (s *enhancedService) GenerateCategoryInsights(ctx context.Context, userID s
 		MostActiveCategories: []domain.CategoryActivity{},
 		CategoryGrowthTrends: []domain.CategoryGrowthTrend{},
 		SuggestedConnections: []domain.CategoryConnection{},
-		KnowledgeGaps:       []domain.KnowledgeGap{},
+		KnowledgeGaps:        []domain.KnowledgeGap{},
 	}
 
 	return insights, nil
@@ -339,7 +339,7 @@ func (s *enhancedService) categorizeByKeywords(ctx context.Context, node domain.
 	// Simple keyword matching against existing categories
 	for _, category := range existingCategories {
 		categoryKeywords := strings.ToLower(category.Title + " " + category.Description)
-		
+
 		// Check for keyword overlap
 		if s.hasKeywordOverlap(content, categoryKeywords) {
 			matchedCategories = append(matchedCategories, category)
@@ -520,10 +520,10 @@ func (s *enhancedService) ListCategories(ctx context.Context, userID string) ([]
 	return s.repo.FindCategories(ctx, repository.CategoryQuery{UserID: userID})
 }
 
-func (s *enhancedService) AddMemoryToCategory(ctx context.Context, userID, categoryID, memoryID string) error {
+func (s *enhancedService) AssignNodeToCategory(ctx context.Context, userID, categoryID, nodeID string) error {
 	mapping := domain.NodeCategory{
 		UserID:     userID,
-		NodeID:     memoryID,
+		NodeID:     nodeID,
 		CategoryID: categoryID,
 		Confidence: 1.0,
 		Method:     "manual",
@@ -532,14 +532,14 @@ func (s *enhancedService) AddMemoryToCategory(ctx context.Context, userID, categ
 	return s.repo.AssignNodeToCategory(ctx, mapping)
 }
 
-func (s *enhancedService) RemoveMemoryFromCategory(ctx context.Context, userID, categoryID, memoryID string) error {
-	return s.repo.RemoveNodeFromCategory(ctx, userID, memoryID, categoryID)
+func (s *enhancedService) RemoveNodeFromCategory(ctx context.Context, userID, categoryID, nodeID string) error {
+	return s.repo.RemoveNodeFromCategory(ctx, userID, nodeID, categoryID)
 }
 
-func (s *enhancedService) GetMemoriesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error) {
+func (s *enhancedService) GetNodesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error) {
 	return s.repo.FindNodesByCategory(ctx, userID, categoryID)
 }
 
-func (s *enhancedService) GetCategoriesForMemory(ctx context.Context, userID, memoryID string) ([]domain.Category, error) {
-	return s.repo.FindCategoriesForNode(ctx, userID, memoryID)
+func (s *enhancedService) GetCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error) {
+	return s.repo.FindCategoriesForNode(ctx, userID, nodeID)
 }

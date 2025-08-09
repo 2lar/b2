@@ -127,7 +127,7 @@ export const useGraphStore = create<GraphState>()(
             return; // Use cached data
           }
 
-          set((state) => ({
+          set((state: GraphState) => ({
             loadingStates: {
               ...state.loadingStates,
               graphLoading: true,
@@ -142,13 +142,23 @@ export const useGraphStore = create<GraphState>()(
             const graphData = await api.getGraphData();
             
             // Convert to Maps for better performance
-            const nodesMap = new Map(graphData.nodes.map(node => [node.nodeId, node]));
+            const nodesMap = new Map();
             const edgesMap = new Map();
             
-            // Process edges if they exist
+            // Process elements to separate nodes and edges
             if (graphData.elements) {
               graphData.elements.forEach((element: any) => {
-                if (element.data && element.data.source && element.data.target) {
+                if (element.data && element.data.id && element.data.label) {
+                  // This is a node
+                  nodesMap.set(element.data.id, {
+                    nodeId: element.data.id,
+                    content: element.data.label,
+                    tags: [],
+                    timestamp: new Date().toISOString(),
+                    version: 0,
+                  });
+                } else if (element.data && element.data.source && element.data.target) {
+                  // This is an edge
                   const edgeId = `${element.data.source}-${element.data.target}`;
                   edgesMap.set(edgeId, {
                     source: element.data.source,
@@ -158,7 +168,7 @@ export const useGraphStore = create<GraphState>()(
               });
             }
 
-            set((state) => ({
+            set((state: GraphState) => ({
               nodes: nodesMap,
               edges: edgesMap,
               loadingStates: {
@@ -172,7 +182,7 @@ export const useGraphStore = create<GraphState>()(
             }));
           } catch (error) {
             console.error('Failed to load graph:', error);
-            set((state) => ({
+            set((state: GraphState) => ({
               loadingStates: {
                 ...state.loadingStates,
                 graphLoading: false,
@@ -200,7 +210,7 @@ export const useGraphStore = create<GraphState>()(
               version: 0,
             };
 
-            set((state) => ({
+            set((state: GraphState) => ({
               nodes: new Map(state.nodes.set(tempId, optimisticNode!)),
               cache: {
                 ...state.cache,
@@ -213,7 +223,7 @@ export const useGraphStore = create<GraphState>()(
           }
 
           // Mark operation as loading
-          set((state) => ({
+          set((state: GraphState) => ({
             loadingStates: {
               ...state.loadingStates,
               operationLoading: new Map(state.loadingStates.operationLoading.set(tempId, 'create')),
@@ -223,7 +233,7 @@ export const useGraphStore = create<GraphState>()(
           try {
             const realNode = await api.createNode(content, tags);
 
-            set((state) => {
+            set((state: GraphState) => {
               const newNodes = new Map(state.nodes);
               const newOperationLoading = new Map(state.loadingStates.operationLoading);
               const newOptimisticUpdates = new Map(state.cache.optimisticUpdates);
@@ -257,7 +267,7 @@ export const useGraphStore = create<GraphState>()(
             
             // Rollback optimistic update
             if (optimistic) {
-              set((state) => {
+              set((state: GraphState) => {
                 const newNodes = new Map(state.nodes);
                 newNodes.delete(tempId);
 
@@ -265,7 +275,11 @@ export const useGraphStore = create<GraphState>()(
                   nodes: newNodes,
                   loadingStates: {
                     ...state.loadingStates,
-                    operationLoading: new Map(state.loadingStates.operationLoading).delete(tempId),
+                    operationLoading: (() => {
+                      const newMap = new Map(state.loadingStates.operationLoading);
+                      newMap.delete(tempId);
+                      return newMap;
+                    })(),
                   },
                   errorStates: {
                     ...state.errorStates,
@@ -273,7 +287,11 @@ export const useGraphStore = create<GraphState>()(
                   },
                   cache: {
                     ...state.cache,
-                    optimisticUpdates: new Map(state.cache.optimisticUpdates).delete(tempId),
+                    optimisticUpdates: (() => {
+                      const newMap = new Map(state.cache.optimisticUpdates);
+                      newMap.delete(tempId);
+                      return newMap;
+                    })(),
                   },
                 };
               });
@@ -292,7 +310,7 @@ export const useGraphStore = create<GraphState>()(
 
           // Optimistic update
           const updatedNode = { ...originalNode, content, tags };
-          set((state) => ({
+          set((state: GraphState) => ({
             nodes: new Map(state.nodes.set(nodeId, updatedNode)),
             cache: {
               ...state.cache,
@@ -308,17 +326,21 @@ export const useGraphStore = create<GraphState>()(
             await api.updateNode(nodeId, content, tags);
             
             // Clear optimistic update on success
-            set((state) => ({
+            set((state: GraphState) => ({
               cache: {
                 ...state.cache,
-                optimisticUpdates: new Map(state.cache.optimisticUpdates).delete(nodeId),
+                optimisticUpdates: (() => {
+                  const newMap = new Map(state.cache.optimisticUpdates);
+                  newMap.delete(nodeId);
+                  return newMap;
+                })(),
               },
             }));
           } catch (error) {
             console.error('Failed to update node:', error);
             
             // Rollback optimistic update
-            set((state) => ({
+            set((state: GraphState) => ({
               nodes: new Map(state.nodes.set(nodeId, originalNode)),
               errorStates: {
                 ...state.errorStates,
@@ -326,7 +348,11 @@ export const useGraphStore = create<GraphState>()(
               },
               cache: {
                 ...state.cache,
-                optimisticUpdates: new Map(state.cache.optimisticUpdates).delete(nodeId),
+                optimisticUpdates: (() => {
+                  const newMap = new Map(state.cache.optimisticUpdates);
+                  newMap.delete(nodeId);
+                  return newMap;
+                })(),
               },
             }));
             throw error;
@@ -346,7 +372,7 @@ export const useGraphStore = create<GraphState>()(
           });
 
           // Optimistic deletion
-          set((state) => {
+          set((state: GraphState) => {
             const newNodes = new Map(state.nodes);
             nodeIds.forEach(id => newNodes.delete(id));
             
@@ -367,17 +393,21 @@ export const useGraphStore = create<GraphState>()(
             await api.bulkDeleteNodes(nodeIds);
             
             // Clear optimistic update on success
-            set((state) => ({
+            set((state: GraphState) => ({
               cache: {
                 ...state.cache,
-                optimisticUpdates: new Map(state.cache.optimisticUpdates).delete('bulk-delete'),
+                optimisticUpdates: (() => {
+                  const newMap = new Map(state.cache.optimisticUpdates);
+                  newMap.delete('bulk-delete');
+                  return newMap;
+                })(),
               },
             }));
           } catch (error) {
             console.error('Failed to delete nodes:', error);
             
             // Rollback deletion
-            set((state) => {
+            set((state: GraphState) => {
               const newNodes = new Map(state.nodes);
               originalNodes.forEach((node, id) => {
                 newNodes.set(id, node);
@@ -391,7 +421,11 @@ export const useGraphStore = create<GraphState>()(
                 },
                 cache: {
                   ...state.cache,
-                  optimisticUpdates: new Map(state.cache.optimisticUpdates).delete('bulk-delete'),
+                  optimisticUpdates: (() => {
+                    const newMap = new Map(state.cache.optimisticUpdates);
+                    newMap.delete('bulk-delete');
+                    return newMap;
+                  })(),
                 },
               };
             });
@@ -401,7 +435,7 @@ export const useGraphStore = create<GraphState>()(
 
         // UI actions
         selectNode: (nodeId: string, multiSelect = false) => {
-          set((state) => {
+          set((state: GraphState) => {
             const newSelectedNodes = multiSelect 
               ? new Set(state.selectedNodes).add(nodeId)
               : new Set([nodeId]);
@@ -436,21 +470,12 @@ export const useGraphStore = create<GraphState>()(
           }
 
           try {
-            // This would call our new neighborhood endpoint
-            const response = await fetch(`${api.getBaseUrl()}/api/nodes/${nodeId}/neighborhood?depth=${depth}`, {
-              headers: {
-                'Authorization': `Bearer ${await api.getToken()}`,
-              },
-            });
-            
-            if (!response.ok) {
-              throw new Error(`HTTP ${response.status}`);
-            }
-            
-            const data = await response.json();
+            // TODO: Add neighborhood endpoint to API client when available
+            // For now, return the full graph data as a fallback
+            const data = await api.getGraphData();
             
             // Cache the result
-            set((state) => ({
+            set((state: GraphState) => ({
               cache: {
                 ...state.cache,
                 neighborhoods: new Map(state.cache.neighborhoods.set(cacheKey, {
@@ -476,7 +501,7 @@ export const useGraphStore = create<GraphState>()(
 
           try {
             const details = await api.getNode(nodeId);
-            set((state) => ({
+            set((state: GraphState) => ({
               cache: {
                 ...state.cache,
                 nodeDetails: new Map(state.cache.nodeDetails.set(nodeId, details)),
@@ -489,7 +514,7 @@ export const useGraphStore = create<GraphState>()(
 
         // Cache management
         invalidateCache: (keys?: string[]) => {
-          set((state) => {
+          set((state: GraphState) => {
             if (!keys) {
               // Clear all cache
               return {
@@ -511,7 +536,7 @@ export const useGraphStore = create<GraphState>()(
         },
 
         clearCache: () => {
-          set((state) => ({
+          set((state: GraphState) => ({
             cache: createCacheState(),
           }));
         },
@@ -530,7 +555,7 @@ export const useGraphStore = create<GraphState>()(
 
         // UI actions
         toggleSidebar: () => {
-          set((state) => ({
+          set((state: GraphState) => ({
             isSidebarOpen: !state.isSidebarOpen,
           }));
         },

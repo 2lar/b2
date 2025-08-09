@@ -40,7 +40,7 @@ func init() {
 	if err != nil {
 		log.Fatalf("Unable to load SDK config, %v", err)
 	}
-	
+
 	dbClient = dynamodb.NewFromConfig(awsCfg)
 
 	client, err := supabase.NewClient(supabaseURL, supabaseKey, nil)
@@ -74,10 +74,10 @@ func handler(ctx context.Context, req events.APIGatewayWebsocketProxyRequest) (e
 	_, err = dbClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(connectionsTable),
 		Item: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: pk},
-			"SK": &types.AttributeValueMemberS{Value: sk},
-			"GSI1PK": &types.AttributeValueMemberS{Value: sk},
-			"GSI1SK": &types.AttributeValueMemberS{Value: pk},
+			"PK":       &types.AttributeValueMemberS{Value: pk},
+			"SK":       &types.AttributeValueMemberS{Value: sk},
+			"GSI1PK":   &types.AttributeValueMemberS{Value: sk},
+			"GSI1SK":   &types.AttributeValueMemberS{Value: pk},
 			"expireAt": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", expireAt)},
 		},
 	})

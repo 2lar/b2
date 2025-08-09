@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package tests provides integration tests for the DynamoDB infrastructure layer.
 // These tests require a running DynamoDB instance (local or AWS).
 package tests

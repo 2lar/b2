@@ -21,7 +21,7 @@ type Repository interface {
 	GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error)
 	GetEdgesPage(ctx context.Context, query EdgeQuery, pagination Pagination) (*EdgePage, error)
 	GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error)
-	
+
 	// Optimized graph data retrieval with pagination
 	GetGraphDataPaginated(ctx context.Context, query GraphQuery, pagination Pagination) (*domain.Graph, string, error)
 
@@ -49,10 +49,4 @@ type Repository interface {
 	// Batch operations for performance
 	BatchAssignCategories(ctx context.Context, mappings []domain.NodeCategory) error
 	UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error
-
-	// Legacy support (deprecated)
-	AddMemoryToCategory(ctx context.Context, userID, categoryID, memoryID string) error
-	RemoveMemoryFromCategory(ctx context.Context, userID, categoryID, memoryID string) error
-	FindMemoriesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error)
-	FindCategoriesForMemory(ctx context.Context, userID, memoryID string) ([]domain.Category, error)
 }

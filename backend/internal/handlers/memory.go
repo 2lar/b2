@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -116,13 +117,13 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	// Use paginated version for better performance
 	pagination := repository.Pagination{
 		Limit:  1000, // Reasonable limit for node listing
 		Offset: 0,
 	}
-	
+
 	graph, _, err := h.memoryService.GetGraphDataPaginated(r.Context(), userID, pagination)
 	if err != nil {
 		handleServiceError(w, err)
@@ -265,24 +266,38 @@ func (h *MemoryHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) 
 func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 	userID, ok := getUserID(r)
 	if !ok {
+		log.Printf("ERROR: GetGraphData - Authentication required, getUserID returned false")
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
+	log.Printf("DEBUG: GetGraphData called for userID: %s", userID)
+
 	// Use paginated version for better performance, but maintain backward compatibility
 	// For existing API, we'll load a large page by default to maintain compatibility
 	pagination := repository.Pagination{
-		Limit:  5000, // Large default to maintain existing behavior
+		Limit:  1000, // Maximum allowed limit for graph data
 		Offset: 0,
 	}
-	
+
+	log.Printf("DEBUG: Calling memoryService.GetGraphDataPaginated with pagination limit: %d", pagination.Limit)
 	graph, _, err := h.memoryService.GetGraphDataPaginated(r.Context(), userID, pagination)
 	if err != nil {
+		log.Printf("ERROR: GetGraphDataPaginated failed: %v", err)
 		handleServiceError(w, err)
 		return
 	}
 
+	log.Printf("DEBUG: GetGraphDataPaginated succeeded, graph has %d nodes and %d edges", len(graph.Nodes), len(graph.Edges))
+
 	var elements []api.GraphDataResponse_Elements_Item
+
+	// Handle case where graph is nil (should not happen, but defensive programming)
+	if graph == nil {
+		log.Printf("WARN: GetGraphDataPaginated returned nil graph, returning empty response")
+		api.Success(w, http.StatusOK, api.GraphDataResponse{Elements: &elements})
+		return
+	}
 
 	for _, node := range graph.Nodes {
 		label := node.Content
@@ -299,6 +314,7 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 
 		var element api.GraphDataResponse_Elements_Item
 		if err := element.FromGraphNode(graphNode); err != nil {
+			log.Printf("WARN: Failed to convert node to GraphDataResponse element: %v", err)
 			continue
 		}
 		elements = append(elements, element)
@@ -316,11 +332,13 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 
 		var element api.GraphDataResponse_Elements_Item
 		if err := element.FromGraphEdge(graphEdge); err != nil {
+			log.Printf("WARN: Failed to convert edge to GraphDataResponse element: %v", err)
 			continue
 		}
 		elements = append(elements, element)
 	}
 
+	log.Printf("DEBUG: GetGraphData completed successfully - returning %d elements", len(elements))
 	api.Success(w, http.StatusOK, api.GraphDataResponse{Elements: &elements})
 }
 
@@ -455,6 +473,7 @@ func (h *MemoryHandler) GetNodeNeighborhood(w http.ResponseWriter, r *http.Reque
 
 		var element api.GraphDataResponse_Elements_Item
 		if err := element.FromGraphNode(graphNode); err != nil {
+			log.Printf("WARN: Failed to convert node to GraphDataResponse element: %v", err)
 			continue
 		}
 		elements = append(elements, element)
@@ -472,6 +491,7 @@ func (h *MemoryHandler) GetNodeNeighborhood(w http.ResponseWriter, r *http.Reque
 
 		var element api.GraphDataResponse_Elements_Item
 		if err := element.FromGraphEdge(graphEdge); err != nil {
+			log.Printf("WARN: Failed to convert edge to GraphDataResponse element: %v", err)
 			continue
 		}
 		elements = append(elements, element)

@@ -62,15 +62,15 @@ func NewResourceManager(config ResourceConfig) *ResourceManager {
 		connections:       make(chan struct{}, config.MaxConnections),
 		activeOperations:  make(map[string]*OperationContext),
 	}
-	
+
 	// Fill the connection pool
 	for i := 0; i < config.MaxConnections; i++ {
 		rm.connections <- struct{}{}
 	}
-	
+
 	// Start cleanup goroutine
 	go rm.cleanupExpiredOperations(config.CleanupInterval)
-	
+
 	return rm
 }
 
@@ -99,10 +99,10 @@ func (rm *ResourceManager) ReleaseConnection() {
 // StartOperation starts tracking an operation
 func (rm *ResourceManager) StartOperation(ctx context.Context, userID, operation string) (context.Context, error) {
 	operationID := fmt.Sprintf("%s_%s_%d", userID, operation, time.Now().UnixNano())
-	
+
 	// Create operation context with timeout
 	operationCtx, cancel := context.WithTimeout(ctx, rm.operationTimeout)
-	
+
 	operationContext := &OperationContext{
 		ID:        operationID,
 		UserID:    userID,
@@ -111,14 +111,14 @@ func (rm *ResourceManager) StartOperation(ctx context.Context, userID, operation
 		Timeout:   rm.operationTimeout,
 		Cancel:    cancel,
 	}
-	
+
 	rm.mu.Lock()
 	rm.activeOperations[operationID] = operationContext
 	rm.mu.Unlock()
-	
+
 	// Add operation ID to context
 	operationCtx = context.WithValue(operationCtx, OperationIDKey, operationID)
-	
+
 	return operationCtx, nil
 }
 
@@ -138,12 +138,12 @@ func (rm *ResourceManager) EndOperation(ctx context.Context) {
 func (rm *ResourceManager) GetActiveOperations() []OperationContext {
 	rm.mu.RLock()
 	defer rm.mu.RUnlock()
-	
+
 	operations := make([]OperationContext, 0, len(rm.activeOperations))
 	for _, op := range rm.activeOperations {
 		operations = append(operations, *op)
 	}
-	
+
 	return operations
 }
 
@@ -151,13 +151,13 @@ func (rm *ResourceManager) GetActiveOperations() []OperationContext {
 func (rm *ResourceManager) CancelOperation(operationID string) bool {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
-	
+
 	if operationContext, exists := rm.activeOperations[operationID]; exists {
 		operationContext.Cancel()
 		delete(rm.activeOperations, operationID)
 		return true
 	}
-	
+
 	return false
 }
 
@@ -165,7 +165,7 @@ func (rm *ResourceManager) CancelOperation(operationID string) bool {
 func (rm *ResourceManager) CancelUserOperations(userID string) int {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
-	
+
 	cancelled := 0
 	for id, operationContext := range rm.activeOperations {
 		if operationContext.UserID == userID {
@@ -174,7 +174,7 @@ func (rm *ResourceManager) CancelUserOperations(userID string) int {
 			cancelled++
 		}
 	}
-	
+
 	return cancelled
 }
 
@@ -182,7 +182,7 @@ func (rm *ResourceManager) CancelUserOperations(userID string) int {
 func (rm *ResourceManager) cleanupExpiredOperations(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		rm.mu.Lock()
 		now := time.Now()
@@ -198,11 +198,11 @@ func (rm *ResourceManager) cleanupExpiredOperations(interval time.Duration) {
 
 // ConnectionPool manages database connections with health checking
 type ConnectionPool struct {
-	connections    chan Connection
-	healthChecker  HealthChecker
-	config         PoolConfig
-	mu             sync.RWMutex
-	closed         bool
+	connections   chan Connection
+	healthChecker HealthChecker
+	config        PoolConfig
+	mu            sync.RWMutex
+	closed        bool
 }
 
 // Connection represents a database connection
@@ -242,10 +242,10 @@ func NewConnectionPool(config PoolConfig, healthChecker HealthChecker) *Connecti
 		healthChecker: healthChecker,
 		config:        config,
 	}
-	
+
 	// Start health checker
 	go pool.healthCheckLoop()
-	
+
 	return pool
 }
 
@@ -257,7 +257,7 @@ func (cp *ConnectionPool) Get(ctx context.Context) (Connection, error) {
 		return nil, fmt.Errorf("connection pool is closed")
 	}
 	cp.mu.RUnlock()
-	
+
 	select {
 	case conn := <-cp.connections:
 		if conn.IsHealthy() {
@@ -283,12 +283,12 @@ func (cp *ConnectionPool) Put(conn Connection) {
 		return
 	}
 	cp.mu.RUnlock()
-	
+
 	if !conn.IsHealthy() {
 		conn.Close()
 		return
 	}
-	
+
 	select {
 	case cp.connections <- conn:
 	default:
@@ -301,19 +301,19 @@ func (cp *ConnectionPool) Put(conn Connection) {
 func (cp *ConnectionPool) Close() error {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
-	
+
 	if cp.closed {
 		return nil
 	}
-	
+
 	cp.closed = true
-	
+
 	// Close all connections
 	close(cp.connections)
 	for conn := range cp.connections {
 		conn.Close()
 	}
-	
+
 	return nil
 }
 
@@ -321,7 +321,7 @@ func (cp *ConnectionPool) Close() error {
 func (cp *ConnectionPool) healthCheckLoop() {
 	ticker := time.NewTicker(cp.config.HealthCheckPeriod)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		cp.mu.RLock()
 		if cp.closed {
@@ -329,7 +329,7 @@ func (cp *ConnectionPool) healthCheckLoop() {
 			return
 		}
 		cp.mu.RUnlock()
-		
+
 		cp.performHealthCheck()
 	}
 }
@@ -337,7 +337,7 @@ func (cp *ConnectionPool) healthCheckLoop() {
 // performHealthCheck checks health of all connections
 func (cp *ConnectionPool) performHealthCheck() {
 	var healthyConnections []Connection
-	
+
 	// Check all connections
 	for {
 		select {
@@ -354,7 +354,7 @@ func (cp *ConnectionPool) performHealthCheck() {
 			goto done
 		}
 	}
-	
+
 done:
 	// Return healthy connections to pool
 	for _, conn := range healthyConnections {
@@ -377,16 +377,16 @@ type TimeoutContext struct {
 // NewTimeoutContext creates a new timeout context
 func NewTimeoutContext(parent context.Context, timeout time.Duration) *TimeoutContext {
 	ctx, cancel := context.WithTimeout(parent, timeout)
-	
+
 	tc := &TimeoutContext{
 		ctx:    ctx,
 		cancel: cancel,
 		done:   make(chan struct{}),
 	}
-	
+
 	// Start timeout monitor
 	go tc.monitor()
-	
+
 	return tc
 }
 
@@ -409,7 +409,7 @@ func (tc *TimeoutContext) monitor() {
 	case <-tc.done:
 		// Manual cancellation
 	}
-	
+
 	// Cleanup resources
 	tc.cancel()
 }
@@ -428,15 +428,15 @@ func NewRateLimiter(capacity int, refillRate time.Duration) *RateLimiter {
 		refill:   refillRate,
 		capacity: capacity,
 	}
-	
+
 	// Fill initial tokens
 	for i := 0; i < capacity; i++ {
 		rl.tokens <- struct{}{}
 	}
-	
+
 	// Start refill goroutine
 	go rl.refillTokens()
-	
+
 	return rl
 }
 
@@ -456,7 +456,7 @@ func (rl *RateLimiter) Allow(ctx context.Context) error {
 func (rl *RateLimiter) refillTokens() {
 	ticker := time.NewTicker(rl.refill)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		select {
 		case rl.tokens <- struct{}{}:
@@ -504,7 +504,7 @@ func (rm *ResourceMonitor) Get(metric string) int64 {
 func (rm *ResourceMonitor) GetAll() map[string]int64 {
 	rm.mu.RLock()
 	defer rm.mu.RUnlock()
-	
+
 	result := make(map[string]int64, len(rm.metrics))
 	for k, v := range rm.metrics {
 		result[k] = v

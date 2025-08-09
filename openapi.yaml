@@ -422,10 +422,10 @@ paths:
         '500':
           description: Internal server error
 
-  /api/categories/{categoryId}/memories:
+  /api/categories/{categoryId}/nodes:
     get:
-      summary: Get all memories in a specific category
-      operationId: getMemoriesInCategory
+      summary: Get all nodes in a specific category
+      operationId: getNodesInCategory
       tags:
         - Category Management
         - Memory Organization
@@ -457,8 +457,8 @@ paths:
           description: Internal server error
 
     post:
-      summary: Add a memory to a category
-      operationId: addMemoryToCategory
+      summary: Assign a node to a category
+      operationId: assignNodeToCategory
       tags:
         - Category Management
         - Memory Organization
@@ -472,14 +472,14 @@ paths:
             pattern: '^[a-zA-Z0-9-]+$'
       requestBody:
         required: true
-        description: Memory to add to category
+        description: Node to assign to category
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AddMemoryToCategoryRequest'
+              $ref: '#/components/schemas/AssignNodeToCategoryRequest'
       responses:
         '200':
-          description: Memory added to category successfully
+          description: Node assigned to category successfully
           content:
             application/json:
               schema:
@@ -497,10 +497,10 @@ paths:
         '500':
           description: Internal server error
 
-  /api/categories/{categoryId}/memories/{memoryId}:
+  /api/categories/{categoryId}/nodes/{nodeId}:
     delete:
-      summary: Remove a memory from a category
-      operationId: removeMemoryFromCategory
+      summary: Remove a node from a category
+      operationId: removeNodeFromCategory
       tags:
         - Category Management
         - Memory Organization
@@ -512,10 +512,10 @@ paths:
           schema:
             type: string
             pattern: '^[a-zA-Z0-9-]+$'
-        - name: memoryId
+        - name: nodeId
           in: path
           required: true
-          description: Unique identifier for the memory
+          description: Unique identifier for the node
           schema:
             type: string
             pattern: '^[a-zA-Z0-9-]+$'
@@ -1017,12 +1017,12 @@ components:
           maxLength: 500
           example: "Updated category description"
 
-    AddMemoryToCategoryRequest:
+    AssignNodeToCategoryRequest:
       type: object
       required:
-        - memoryId
+        - nodeId
       properties:
-        memoryId:
+        nodeId:
           type: string
           pattern: '^[a-zA-Z0-9-]+$'
           example: "abc-123-def-456"

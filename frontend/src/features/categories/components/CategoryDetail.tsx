@@ -108,7 +108,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({
         if (!categoryId) return;
         setIsLoadingMemories(true);
         try {
-            const data = await categoriesApi.getMemoriesInCategory(categoryId);
+            const data = await categoriesApi.getNodesInCategory(categoryId);
             setMemories(data.memories || []);
         } catch (error) {
             console.error('Error loading memories:', error);
@@ -169,7 +169,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({
         }
 
         try {
-            await categoriesApi.removeMemoryFromCategory(categoryId, memoryId);
+            await categoriesApi.removeNodeFromCategory(categoryId, memoryId);
             loadMemories(); // Reload memories
         } catch (error) {
             console.error('Error removing memory from category:', error);

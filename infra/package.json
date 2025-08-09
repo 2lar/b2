@@ -6,7 +6,7 @@
     "infra": "bin/infra.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm test && npm run synth",
     "watch": "tsc -w",
     "test": "jest",
     "test:unit": "jest --testPathPattern=test/unit",

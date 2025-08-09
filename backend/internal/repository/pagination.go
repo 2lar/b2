@@ -12,11 +12,11 @@ import (
 
 // Pagination represents pagination parameters with cursor-based pagination
 type Pagination struct {
-	Limit      int    `json:"limit"`
-	Offset     int    `json:"offset"`
-	Cursor     string `json:"cursor,omitempty"`
-	SortBy     string `json:"sort_by,omitempty"`
-	SortOrder  string `json:"sort_order,omitempty"` // "asc" or "desc"
+	Limit     int    `json:"limit"`
+	Offset    int    `json:"offset"`
+	Cursor    string `json:"cursor,omitempty"`
+	SortBy    string `json:"sort_by,omitempty"`
+	SortOrder string `json:"sort_order,omitempty"` // "asc" or "desc"
 }
 
 // Validate checks if pagination parameters are valid
@@ -51,25 +51,25 @@ func (p Pagination) HasCursor() bool {
 
 // PaginatedResult represents a paginated response with metadata
 type PaginatedResult[T any] struct {
-	Items      []T    `json:"items"`
-	TotalCount int    `json:"total_count,omitempty"`
-	HasMore    bool   `json:"has_more"`
-	NextCursor string `json:"next_cursor,omitempty"`
+	Items      []T      `json:"items"`
+	TotalCount int      `json:"total_count,omitempty"`
+	HasMore    bool     `json:"has_more"`
+	NextCursor string   `json:"next_cursor,omitempty"`
 	PageInfo   PageInfo `json:"page_info"`
 }
 
 // PageInfo contains pagination metadata
 type PageInfo struct {
-	CurrentPage  int `json:"current_page"`
-	PageSize     int `json:"page_size"`
-	TotalPages   int `json:"total_pages,omitempty"`
-	ItemsInPage  int `json:"items_in_page"`
+	CurrentPage int `json:"current_page"`
+	PageSize    int `json:"page_size"`
+	TotalPages  int `json:"total_pages,omitempty"`
+	ItemsInPage int `json:"items_in_page"`
 }
 
 // NodePage represents a paginated list of nodes
 type NodePage = PaginatedResult[domain.Node]
 
-// EdgePage represents a paginated list of edges  
+// EdgePage represents a paginated list of edges
 type EdgePage = PaginatedResult[domain.Edge]
 
 // CategoryPage represents a paginated list of categories
@@ -78,7 +78,7 @@ type CategoryPage = PaginatedResult[domain.Category]
 // CursorData represents the data stored in a pagination cursor
 type CursorData struct {
 	LastEvaluatedKey map[string]types.AttributeValue `json:"last_evaluated_key"`
-	Timestamp        int64                            `json:"timestamp"`
+	Timestamp        int64                           `json:"timestamp"`
 }
 
 // EncodeCursor creates a base64 encoded cursor from DynamoDB's LastEvaluatedKey
@@ -123,7 +123,7 @@ func DecodeCursor(cursor string) (map[string]types.AttributeValue, error) {
 func CreatePageInfo(pagination Pagination, itemCount int, hasMore bool) PageInfo {
 	pageSize := pagination.GetEffectiveLimit()
 	currentPage := (pagination.Offset / pageSize) + 1
-	
+
 	return PageInfo{
 		CurrentPage: currentPage,
 		PageSize:    pageSize,

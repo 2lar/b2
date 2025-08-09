@@ -1,25 +1,27 @@
 //go:build wireinject
 
+//go:generate wire
+
 package di
 
 import (
 	"context"
 	"net/http"
 
+	"brain2-backend/infrastructure/dynamodb"
 	"brain2-backend/internal/config"
 	"brain2-backend/internal/handlers"
 	"brain2-backend/internal/repository"
 	categoryService "brain2-backend/internal/service/category"
 	memoryService "brain2-backend/internal/service/memory"
-	"brain2-backend/infrastructure/dynamodb"
 
+	"brain2-backend/pkg/api"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/wire"
-	"brain2-backend/pkg/api"
 )
 
 // ProvideDynamoDBClient provides a DynamoDB client.
@@ -93,10 +95,10 @@ func ProvideRouter(memoryHandler *handlers.MemoryHandler, categoryHandler *handl
 		r.Get("/api/categories/{categoryId}", categoryHandler.GetCategory)
 		r.Put("/api/categories/{categoryId}", categoryHandler.UpdateCategory)
 		r.Delete("/api/categories/{categoryId}", categoryHandler.DeleteCategory)
-		r.Post("/api/categories/{categoryId}/memories", categoryHandler.AddMemoryToCategory)
-		r.Get("/api/categories/{categoryId}/memories", categoryHandler.GetMemoriesInCategory)
-		r.Delete("/api/categories/{categoryId}/memories/{memoryId}", categoryHandler.RemoveMemoryFromCategory)
-		
+		r.Post("/api/categories/{categoryId}/nodes", categoryHandler.AssignNodeToCategory)
+		r.Get("/api/categories/{categoryId}/nodes", categoryHandler.GetNodesInCategory)
+		r.Delete("/api/categories/{categoryId}/nodes/{nodeId}", categoryHandler.RemoveNodeFromCategory)
+
 		// Node categorization routes
 		r.Get("/api/nodes/{nodeId}/categories", categoryHandler.GetNodeCategories)
 		r.Post("/api/nodes/{nodeId}/categories", categoryHandler.CategorizeNode)
@@ -110,7 +112,7 @@ func ProvideChiLambda(router *chi.Mux) *chiadapter.ChiLambdaV2 {
 	return chiadapter.NewV2(router)
 }
 
-var ( 
+var (
 	DynamoDBSet = wire.NewSet(
 		ProvideDynamoDBClient,
 		config.LoadConfig,

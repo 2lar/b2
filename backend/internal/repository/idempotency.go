@@ -21,13 +21,13 @@ type IdempotencyKey struct {
 type IdempotencyStore interface {
 	// Store stores an idempotency key with its result
 	Store(ctx context.Context, key IdempotencyKey, result interface{}) error
-	
+
 	// Get retrieves a stored result for an idempotency key
 	Get(ctx context.Context, key IdempotencyKey) (interface{}, bool, error)
-	
+
 	// Delete removes an idempotency key (for cleanup)
 	Delete(ctx context.Context, key IdempotencyKey) error
-	
+
 	// Cleanup removes expired idempotency keys
 	Cleanup(ctx context.Context, expiration time.Duration) error
 }
@@ -95,7 +95,7 @@ func (s *InMemoryIdempotencyStore) keyToString(key IdempotencyKey) string {
 func GenerateIdempotencyKey(userID, operation string, node domain.Node) IdempotencyKey {
 	// Create a hash of the node data to ensure uniqueness
 	hasher := sha256.New()
-	hasher.Write([]byte(fmt.Sprintf("%s:%s:%s:%v:%d", 
+	hasher.Write([]byte(fmt.Sprintf("%s:%s:%s:%v:%d",
 		node.ID, node.UserID, node.Content, node.Keywords, node.Version)))
 	hash := fmt.Sprintf("%x", hasher.Sum(nil))
 
@@ -130,7 +130,7 @@ type OptimisticLockError struct {
 }
 
 func (e OptimisticLockError) Error() string {
-	return fmt.Sprintf("optimistic lock conflict for resource %s: expected version %d, actual version %d", 
+	return fmt.Sprintf("optimistic lock conflict for resource %s: expected version %d, actual version %d",
 		e.ResourceID, e.ExpectedVersion, e.ActualVersion)
 }
 
@@ -152,10 +152,10 @@ type ConflictResolutionStrategy int
 const (
 	// ConflictReject rejects the operation when a conflict is detected
 	ConflictReject ConflictResolutionStrategy = iota
-	
+
 	// ConflictRetry retries the operation with the latest version
 	ConflictRetry
-	
+
 	// ConflictMerge attempts to merge the changes
 	ConflictMerge
 )
@@ -184,7 +184,7 @@ func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming d
 	// Merge strategy: combine keywords and use incoming content
 	merged := incoming
 	merged.Version = current.Version + 1
-	
+
 	// Merge keywords
 	keywordSet := make(map[string]bool)
 	for _, keyword := range current.Keywords {
@@ -193,20 +193,20 @@ func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming d
 	for _, keyword := range incoming.Keywords {
 		keywordSet[keyword] = true
 	}
-	
+
 	var mergedKeywords []string
 	for keyword := range keywordSet {
 		mergedKeywords = append(mergedKeywords, keyword)
 	}
 	merged.Keywords = mergedKeywords
-	
+
 	return merged, nil
 }
 
 // IdempotentOperation represents an operation that can be made idempotent
 type IdempotentOperation[T any] struct {
-	store    IdempotencyStore
-	key      IdempotencyKey
+	store     IdempotencyStore
+	key       IdempotencyKey
 	operation func() (T, error)
 }
 
@@ -222,13 +222,13 @@ func NewIdempotentOperation[T any](store IdempotencyStore, key IdempotencyKey, o
 // Execute executes the operation idempotently
 func (op *IdempotentOperation[T]) Execute(ctx context.Context) (T, error) {
 	var zero T
-	
+
 	// Check if we already have a result for this key
 	result, exists, err := op.store.Get(ctx, op.key)
 	if err != nil {
 		return zero, fmt.Errorf("failed to check idempotency store: %w", err)
 	}
-	
+
 	if exists {
 		// Return the cached result
 		if typedResult, ok := result.(T); ok {
@@ -236,19 +236,19 @@ func (op *IdempotentOperation[T]) Execute(ctx context.Context) (T, error) {
 		}
 		return zero, fmt.Errorf("idempotency store returned unexpected type")
 	}
-	
+
 	// Execute the operation
 	result, err = op.operation()
 	if err != nil {
 		return zero, err
 	}
-	
+
 	// Store the result for future idempotency checks
 	if storeErr := op.store.Store(ctx, op.key, result); storeErr != nil {
 		// Log the error but don't fail the operation
 		// The operation succeeded, we just couldn't store the idempotency key
 		fmt.Printf("Warning: failed to store idempotency key: %v\n", storeErr)
 	}
-	
+
 	return result.(T), nil
 }

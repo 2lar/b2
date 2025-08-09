@@ -41,15 +41,15 @@ export interface paths {
     /** Delete a category and all its memory associations */
     delete: operations["deleteCategory"];
   };
-  "/api/categories/{categoryId}/memories": {
-    /** Get all memories in a specific category */
-    get: operations["getMemoriesInCategory"];
-    /** Add a memory to a category */
-    post: operations["addMemoryToCategory"];
+  "/api/categories/{categoryId}/nodes": {
+    /** Get all nodes in a specific category */
+    get: operations["getNodesInCategory"];
+    /** Assign a node to a category */
+    post: operations["assignNodeToCategory"];
   };
-  "/api/categories/{categoryId}/memories/{memoryId}": {
-    /** Remove a memory from a category */
-    delete: operations["removeMemoryFromCategory"];
+  "/api/categories/{categoryId}/nodes/{nodeId}": {
+    /** Remove a node from a category */
+    delete: operations["removeNodeFromCategory"];
   };
   "/api/categories/hierarchy": {
     /** Get hierarchical category tree */
@@ -266,9 +266,9 @@ export interface components {
       /** @example Updated category description */
       description?: string;
     };
-    AddMemoryToCategoryRequest: {
+    AssignNodeToCategoryRequest: {
       /** @example abc-123-def-456 */
-      memoryId: string;
+      nodeId: string;
     };
     CategorySuggestion: {
       /**
@@ -787,8 +787,8 @@ export interface operations {
       };
     };
   };
-  /** Get all memories in a specific category */
-  getMemoriesInCategory: {
+  /** Get all nodes in a specific category */
+  getNodesInCategory: {
     parameters: {
       path: {
         /** @description Unique identifier for the category */
@@ -818,22 +818,22 @@ export interface operations {
       };
     };
   };
-  /** Add a memory to a category */
-  addMemoryToCategory: {
+  /** Assign a node to a category */
+  assignNodeToCategory: {
     parameters: {
       path: {
         /** @description Unique identifier for the category */
         categoryId: string;
       };
     };
-    /** @description Memory to add to category */
+    /** @description Node to assign to category */
     requestBody: {
       content: {
-        "application/json": components["schemas"]["AddMemoryToCategoryRequest"];
+        "application/json": components["schemas"]["AssignNodeToCategoryRequest"];
       };
     };
     responses: {
-      /** @description Memory added to category successfully */
+      /** @description Node assigned to category successfully */
       200: {
         content: {
           "application/json": {
@@ -860,14 +860,14 @@ export interface operations {
       };
     };
   };
-  /** Remove a memory from a category */
-  removeMemoryFromCategory: {
+  /** Remove a node from a category */
+  removeNodeFromCategory: {
     parameters: {
       path: {
         /** @description Unique identifier for the category */
         categoryId: string;
-        /** @description Unique identifier for the memory */
-        memoryId: string;
+        /** @description Unique identifier for the node */
+        nodeId: string;
       };
     };
     responses: {

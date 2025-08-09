@@ -153,7 +153,7 @@ Rules:
 func (s *Service) buildHierarchyPrompt(categories []domain.Category) string {
 	categoryList := make([]string, len(categories))
 	for i, cat := range categories {
-		categoryList[i] = fmt.Sprintf(`{"id": "%s", "name": "%s", "description": "%s"}`, 
+		categoryList[i] = fmt.Sprintf(`{"id": "%s", "name": "%s", "description": "%s"}`,
 			cat.ID, cat.Title, cat.Description)
 	}
 
@@ -180,7 +180,7 @@ Rules:
 func (s *Service) buildSimilarityPrompt(categories []domain.Category, threshold float64) string {
 	categoryList := make([]string, len(categories))
 	for i, cat := range categories {
-		categoryList[i] = fmt.Sprintf(`{"id": "%s", "name": "%s", "description": "%s"}`, 
+		categoryList[i] = fmt.Sprintf(`{"id": "%s", "name": "%s", "description": "%s"}`,
 			cat.ID, cat.Title, cat.Description)
 	}
 

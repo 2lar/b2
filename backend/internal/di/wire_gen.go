@@ -116,9 +116,9 @@ func ProvideRouter(memoryHandler *handlers.MemoryHandler, categoryHandler *handl
 		r.Get("/api/categories/{categoryId}", categoryHandler.GetCategory)
 		r.Put("/api/categories/{categoryId}", categoryHandler.UpdateCategory)
 		r.Delete("/api/categories/{categoryId}", categoryHandler.DeleteCategory)
-		r.Post("/api/categories/{categoryId}/memories", categoryHandler.AddMemoryToCategory)
-		r.Get("/api/categories/{categoryId}/memories", categoryHandler.GetMemoriesInCategory)
-		r.Delete("/api/categories/{categoryId}/memories/{memoryId}", categoryHandler.RemoveMemoryFromCategory)
+		r.Post("/api/categories/{categoryId}/nodes", categoryHandler.AssignNodeToCategory)
+		r.Get("/api/categories/{categoryId}/nodes", categoryHandler.GetNodesInCategory)
+		r.Delete("/api/categories/{categoryId}/nodes/{nodeId}", categoryHandler.RemoveNodeFromCategory)
 
 		r.Get("/api/nodes/{nodeId}/categories", categoryHandler.GetNodeCategories)
 		r.Post("/api/nodes/{nodeId}/categories", categoryHandler.CategorizeNode)

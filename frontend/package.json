@@ -4,10 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "tsc --noEmit",
     "dev": "vite",
     "clean": "rm -rf node_modules dist",
-    "build": "npm run clean && npm install && npm run generate-api-types && vite build",
+    "build": "npm run clean && npm install && npm run generate-api-types && tsc --noEmit && vite build",
     "preview": "vite preview",
     "generate-api-types": "openapi-typescript ../openapi.yaml --output src/types/generated/generated-types.ts"
   },

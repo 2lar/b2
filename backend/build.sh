@@ -7,22 +7,27 @@ set -e
 echo "🧹 Cleaning previous build artifacts..."
 rm -rf build/
 
-# # Install Wire if not already installed
-# echo "Installing Wire for dependency injection..."
-# go install github.com/google/wire/cmd/wire@latest
+echo "🛠️ Installing dependencies..."
+go get github.com/getkin/kin-openapi/openapi3
+go mod tidy
+
+echo "🧪 Running tests..."
+go test ./...
 
 # Run Wire to generate dependency injection code
-echo "Generating dependency injection code with Wire..."
-cd internal/di && wire && cd ../..
+echo "🔄 Generating dependency injection code with Wire..."
+(cd internal/di && go generate)
 
-# List of all applications to build
-apps=("main" "connect-node" "ws-connect" "ws-disconnect" "ws-send-message")
+echo "🏗️ Building Lambda functions..."
+
+# Discover all applications in the cmd directory
+apps=$(ls -d cmd/*/ | xargs -n 1 basename)
 
 # Loop through each application and build it
-for app in "${apps[@]}"
+for app in $apps
 do
     echo "--- Building $app ---"
-    
+
     # Define the source and output paths
     SRC_PATH="./cmd/$app"
     OUTPUT_PATH="./build/$app"

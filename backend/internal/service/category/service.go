@@ -16,30 +16,30 @@ import (
 type Service interface {
 	// CreateCategory creates a new category with validation
 	CreateCategory(ctx context.Context, userID, title, description string) (*domain.Category, error)
-	
+
 	// UpdateCategory modifies an existing category
 	UpdateCategory(ctx context.Context, userID, categoryID, title, description string) (*domain.Category, error)
-	
+
 	// DeleteCategory removes a category and all its memory associations
 	DeleteCategory(ctx context.Context, userID, categoryID string) error
-	
+
 	// GetCategory retrieves a single category by ID
 	GetCategory(ctx context.Context, userID, categoryID string) (*domain.Category, error)
-	
+
 	// ListCategories retrieves all categories for a user
 	ListCategories(ctx context.Context, userID string) ([]domain.Category, error)
-	
-	// AddMemoryToCategory associates a memory with a category
-	AddMemoryToCategory(ctx context.Context, userID, categoryID, memoryID string) error
-	
-	// RemoveMemoryFromCategory removes a memory from a category
-	RemoveMemoryFromCategory(ctx context.Context, userID, categoryID, memoryID string) error
-	
-	// GetMemoriesInCategory retrieves all memories in a specific category
-	GetMemoriesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error)
-	
-	// GetCategoriesForMemory retrieves all categories that contain a specific memory
-	GetCategoriesForMemory(ctx context.Context, userID, memoryID string) ([]domain.Category, error)
+
+	// AssignNodeToCategory associates a node with a category
+	AssignNodeToCategory(ctx context.Context, userID, categoryID, nodeID string) error
+
+	// RemoveNodeFromCategory removes a node from a category
+	RemoveNodeFromCategory(ctx context.Context, userID, categoryID, nodeID string) error
+
+	// GetNodesInCategory retrieves all nodes in a specific category
+	GetNodesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error)
+
+	// GetCategoriesForNode retrieves all categories that contain a specific node
+	GetCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error)
 }
 
 // service implements the Service interface with concrete business logic.
@@ -183,16 +183,16 @@ func (s *service) ListCategories(ctx context.Context, userID string) ([]domain.C
 	return categories, nil
 }
 
-// AddMemoryToCategory associates a memory with a category with validation.
-func (s *service) AddMemoryToCategory(ctx context.Context, userID, categoryID, memoryID string) error {
+// AssignNodeToCategory associates a node with a category with validation.
+func (s *service) AssignNodeToCategory(ctx context.Context, userID, categoryID, nodeID string) error {
 	if userID == "" {
 		return appErrors.NewValidation("userID cannot be empty")
 	}
 	if categoryID == "" {
 		return appErrors.NewValidation("categoryID cannot be empty")
 	}
-	if memoryID == "" {
-		return appErrors.NewValidation("memoryID cannot be empty")
+	if nodeID == "" {
+		return appErrors.NewValidation("nodeID cannot be empty")
 	}
 
 	// Verify category exists and belongs to user
@@ -204,28 +204,36 @@ func (s *service) AddMemoryToCategory(ctx context.Context, userID, categoryID, m
 		return appErrors.NewNotFound("category not found")
 	}
 
-	// Verify memory exists and belongs to user
-	memory, err := s.repo.FindNodeByID(ctx, userID, memoryID)
+	// Verify node exists and belongs to user
+	node, err := s.repo.FindNodeByID(ctx, userID, nodeID)
 	if err != nil {
-		return appErrors.Wrap(err, "failed to verify memory")
+		return appErrors.Wrap(err, "failed to verify node")
 	}
-	if memory == nil {
-		return appErrors.NewNotFound("memory not found")
+	if node == nil {
+		return appErrors.NewNotFound("node not found")
 	}
 
-	return s.repo.AddMemoryToCategory(ctx, userID, categoryID, memoryID)
+	mapping := domain.NodeCategory{
+		UserID:     userID,
+		NodeID:     nodeID,
+		CategoryID: categoryID,
+		Confidence: 1.0,
+		Method:     "manual",
+		CreatedAt:  time.Now(),
+	}
+	return s.repo.AssignNodeToCategory(ctx, mapping)
 }
 
-// RemoveMemoryFromCategory removes a memory from a category with validation.
-func (s *service) RemoveMemoryFromCategory(ctx context.Context, userID, categoryID, memoryID string) error {
+// RemoveNodeFromCategory removes a node from a category with validation.
+func (s *service) RemoveNodeFromCategory(ctx context.Context, userID, categoryID, nodeID string) error {
 	if userID == "" {
 		return appErrors.NewValidation("userID cannot be empty")
 	}
 	if categoryID == "" {
 		return appErrors.NewValidation("categoryID cannot be empty")
 	}
-	if memoryID == "" {
-		return appErrors.NewValidation("memoryID cannot be empty")
+	if nodeID == "" {
+		return appErrors.NewValidation("nodeID cannot be empty")
 	}
 
 	// Verify category exists and belongs to user
@@ -237,11 +245,11 @@ func (s *service) RemoveMemoryFromCategory(ctx context.Context, userID, category
 		return appErrors.NewNotFound("category not found")
 	}
 
-	return s.repo.RemoveMemoryFromCategory(ctx, userID, categoryID, memoryID)
+	return s.repo.RemoveNodeFromCategory(ctx, userID, nodeID, categoryID)
 }
 
-// GetMemoriesInCategory retrieves all memories in a specific category.
-func (s *service) GetMemoriesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error) {
+// GetNodesInCategory retrieves all nodes in a specific category.
+func (s *service) GetNodesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error) {
 	if userID == "" {
 		return nil, appErrors.NewValidation("userID cannot be empty")
 	}
@@ -258,33 +266,33 @@ func (s *service) GetMemoriesInCategory(ctx context.Context, userID, categoryID 
 		return nil, appErrors.NewNotFound("category not found")
 	}
 
-	memories, err := s.repo.FindMemoriesInCategory(ctx, userID, categoryID)
+	nodes, err := s.repo.FindNodesByCategory(ctx, userID, categoryID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to get memories from repository")
+		return nil, appErrors.Wrap(err, "failed to get nodes from repository")
 	}
 
-	return memories, nil
+	return nodes, nil
 }
 
-// GetCategoriesForMemory retrieves all categories that contain a specific memory.
-func (s *service) GetCategoriesForMemory(ctx context.Context, userID, memoryID string) ([]domain.Category, error) {
+// GetCategoriesForNode retrieves all categories that contain a specific node.
+func (s *service) GetCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error) {
 	if userID == "" {
 		return nil, appErrors.NewValidation("userID cannot be empty")
 	}
-	if memoryID == "" {
-		return nil, appErrors.NewValidation("memoryID cannot be empty")
+	if nodeID == "" {
+		return nil, appErrors.NewValidation("nodeID cannot be empty")
 	}
 
-	// Verify memory exists and belongs to user
-	memory, err := s.repo.FindNodeByID(ctx, userID, memoryID)
+	// Verify node exists and belongs to user
+	node, err := s.repo.FindNodeByID(ctx, userID, nodeID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to verify memory")
+		return nil, appErrors.Wrap(err, "failed to verify node")
 	}
-	if memory == nil {
-		return nil, appErrors.NewNotFound("memory not found")
+	if node == nil {
+		return nil, appErrors.NewNotFound("node not found")
 	}
 
-	categories, err := s.repo.FindCategoriesForMemory(ctx, userID, memoryID)
+	categories, err := s.repo.FindCategoriesForNode(ctx, userID, nodeID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get categories from repository")
 	}

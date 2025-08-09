@@ -27,12 +27,12 @@ var gsiName string
 func init() {
 	connectionsTable = os.Getenv("CONNECTIONS_TABLE_NAME")
 	gsiName = os.Getenv("CONNECTIONS_GSI_NAME")
-	
+
 	awsCfg, err := awsConfig.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		log.Fatalf("Unable to load SDK config, %v", err)
 	}
-	
+
 	dbClient = dynamodb.NewFromConfig(awsCfg)
 }
 
@@ -64,7 +64,7 @@ func handler(ctx context.Context, req events.APIGatewayWebsocketProxyRequest) (e
 		PK string `dynamodbav:"PK"`
 		SK string `dynamodbav:"SK"`
 	}
-	
+
 	if err := attributevalue.UnmarshalMap(result.Items[0], &item); err != nil {
 		log.Printf("ERROR: Failed to unmarshal item: %v", err)
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil

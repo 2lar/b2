@@ -36,11 +36,11 @@ func (m *MockProvider) Complete(ctx context.Context, prompt string, options Comp
 	if strings.Contains(prompt, "suggest 1-3 hierarchical categories") {
 		return m.mockCategorization(prompt)
 	}
-	
+
 	if strings.Contains(prompt, "parent-child relationships") {
 		return m.mockHierarchy(prompt)
 	}
-	
+
 	if strings.Contains(prompt, "similar and might be duplicates") {
 		return m.mockSimilarity(prompt)
 	}
@@ -61,12 +61,12 @@ func (m *MockProvider) mockCategorization(prompt string) (string, error) {
 	}
 
 	suggestions := m.generateMockSuggestions(content)
-	
+
 	jsonData, err := json.Marshal(suggestions)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return string(jsonData), nil
 }
 
@@ -88,8 +88,8 @@ func (m *MockProvider) generateMockSuggestions(content string) []domain.Category
 	var suggestions []domain.CategorySuggestion
 
 	// Technology-related content
-	if strings.Contains(content, "ai") || strings.Contains(content, "machine learning") || 
-	   strings.Contains(content, "algorithm") || strings.Contains(content, "neural") {
+	if strings.Contains(content, "ai") || strings.Contains(content, "machine learning") ||
+		strings.Contains(content, "algorithm") || strings.Contains(content, "neural") {
 		suggestions = append(suggestions, domain.CategorySuggestion{
 			Name:       "Technology",
 			Level:      0,
@@ -105,10 +105,10 @@ func (m *MockProvider) generateMockSuggestions(content string) []domain.Category
 	}
 
 	// Programming/Software
-	if strings.Contains(content, "code") || strings.Contains(content, "programming") || 
-	   strings.Contains(content, "software") || strings.Contains(content, "api") ||
-	   strings.Contains(content, "javascript") || strings.Contains(content, "python") ||
-	   strings.Contains(content, "go") || strings.Contains(content, "react") {
+	if strings.Contains(content, "code") || strings.Contains(content, "programming") ||
+		strings.Contains(content, "software") || strings.Contains(content, "api") ||
+		strings.Contains(content, "javascript") || strings.Contains(content, "python") ||
+		strings.Contains(content, "go") || strings.Contains(content, "react") {
 		suggestions = append(suggestions, domain.CategorySuggestion{
 			Name:       "Programming",
 			Level:      0,
@@ -118,9 +118,9 @@ func (m *MockProvider) generateMockSuggestions(content string) []domain.Category
 	}
 
 	// Business/Work
-	if strings.Contains(content, "business") || strings.Contains(content, "work") || 
-	   strings.Contains(content, "project") || strings.Contains(content, "team") ||
-	   strings.Contains(content, "meeting") || strings.Contains(content, "strategy") {
+	if strings.Contains(content, "business") || strings.Contains(content, "work") ||
+		strings.Contains(content, "project") || strings.Contains(content, "team") ||
+		strings.Contains(content, "meeting") || strings.Contains(content, "strategy") {
 		suggestions = append(suggestions, domain.CategorySuggestion{
 			Name:       "Work",
 			Level:      0,
@@ -130,9 +130,9 @@ func (m *MockProvider) generateMockSuggestions(content string) []domain.Category
 	}
 
 	// Learning/Education
-	if strings.Contains(content, "learn") || strings.Contains(content, "study") || 
-	   strings.Contains(content, "course") || strings.Contains(content, "tutorial") ||
-	   strings.Contains(content, "book") || strings.Contains(content, "research") {
+	if strings.Contains(content, "learn") || strings.Contains(content, "study") ||
+		strings.Contains(content, "course") || strings.Contains(content, "tutorial") ||
+		strings.Contains(content, "book") || strings.Contains(content, "research") {
 		suggestions = append(suggestions, domain.CategorySuggestion{
 			Name:       "Learning",
 			Level:      0,
@@ -142,9 +142,9 @@ func (m *MockProvider) generateMockSuggestions(content string) []domain.Category
 	}
 
 	// Personal/Life
-	if strings.Contains(content, "personal") || strings.Contains(content, "life") || 
-	   strings.Contains(content, "health") || strings.Contains(content, "family") ||
-	   strings.Contains(content, "hobby") || strings.Contains(content, "travel") {
+	if strings.Contains(content, "personal") || strings.Contains(content, "life") ||
+		strings.Contains(content, "health") || strings.Contains(content, "family") ||
+		strings.Contains(content, "hobby") || strings.Contains(content, "travel") {
 		suggestions = append(suggestions, domain.CategorySuggestion{
 			Name:       "Personal",
 			Level:      0,

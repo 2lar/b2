@@ -32,11 +32,15 @@ func getUserID(r *http.Request) (string, bool) {
 // handleServiceError converts service errors to appropriate HTTP responses
 func handleServiceError(w http.ResponseWriter, err error) {
 	if appErrors.IsValidation(err) {
+		log.Printf("VALIDATION ERROR: %v", err)
 		api.Error(w, http.StatusBadRequest, err.Error())
 	} else if appErrors.IsNotFound(err) {
+		log.Printf("NOT FOUND ERROR: %v", err)
 		api.Error(w, http.StatusNotFound, err.Error())
 	} else {
-		log.Printf("INTERNAL ERROR: %v", err)
+		// Log the full error details for debugging while hiding sensitive info from client
+		log.Printf("INTERNAL ERROR (full): %+v", err)
+		log.Printf("INTERNAL ERROR (type): %T", err)
 		api.Error(w, http.StatusInternalServerError, "An internal error occurred")
 	}
 }
@@ -50,20 +54,20 @@ func Authenticator(next http.Handler) http.Handler {
 			api.Error(w, http.StatusInternalServerError, "Authentication context not available")
 			return
 		}
-		
+
 		if proxyCtx.Authorizer == nil || proxyCtx.Authorizer.Lambda == nil {
 			log.Println("Error: missing authorizer context")
 			api.Error(w, http.StatusUnauthorized, "Authentication required")
 			return
 		}
-		
+
 		userID, ok := proxyCtx.Authorizer.Lambda["sub"].(string)
 		if !ok || userID == "" {
 			log.Println("Error: missing or invalid user ID in authorizer context")
 			api.Error(w, http.StatusUnauthorized, "Invalid authentication")
 			return
 		}
-		
+
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, userIDKey, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))

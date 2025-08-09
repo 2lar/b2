@@ -21,8 +21,8 @@ type NodePageResponse struct {
 // NodeNeighborhoodResponse represents a node's neighborhood graph
 type NodeNeighborhoodResponse struct {
 	Elements   *[]GraphDataResponse_Elements_Item `json:"elements,omitempty"`
-	Depth      *int                              `json:"depth,omitempty"`
-	CenterNode *Node                             `json:"center_node,omitempty"`
+	Depth      *int                               `json:"depth,omitempty"`
+	CenterNode *Node                              `json:"center_node,omitempty"`
 }
 
 // EnhancedNode extends the basic Node with additional fields for performance

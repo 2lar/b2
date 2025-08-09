@@ -54,7 +54,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { components } from '../types/generated/generated-types';
+import { components } from '../../../types/generated/generated-types';
 
 // Type aliases for easier usage
 type Category = components['schemas']['Category'];

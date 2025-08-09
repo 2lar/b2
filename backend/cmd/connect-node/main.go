@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"log"
 
-	"brain2-backend/internal/repository"
 	infraDynamoDB "brain2-backend/infrastructure/dynamodb"
+	"brain2-backend/internal/repository"
 	"brain2-backend/pkg/config"
 
 	"github.com/aws/aws-lambda-go/events"

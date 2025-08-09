@@ -217,46 +217,46 @@ func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// AddMemoryToCategory handles POST /api/categories/{categoryId}/memories
-func (h *CategoryHandler) AddMemoryToCategory(w http.ResponseWriter, r *http.Request) {
+// AssignNodeToCategory handles POST /api/categories/{categoryId}/nodes
+func (h *CategoryHandler) AssignNodeToCategory(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(string)
 	categoryID := chi.URLParam(r, "categoryId")
 
-	type AddMemoryRequest struct {
-		MemoryID string `json:"memoryId"`
+	type AssignNodeRequest struct {
+		NodeID string `json:"nodeId"`
 	}
 
-	var req AddMemoryRequest
+	var req AssignNodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		api.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	if req.MemoryID == "" {
-		api.Error(w, http.StatusBadRequest, "MemoryID cannot be empty")
+	if req.NodeID == "" {
+		api.Error(w, http.StatusBadRequest, "NodeID cannot be empty")
 		return
 	}
 
-	if err := h.categoryService.AddMemoryToCategory(r.Context(), userID, categoryID, req.MemoryID); err != nil {
+	if err := h.categoryService.AssignNodeToCategory(r.Context(), userID, categoryID, req.NodeID); err != nil {
 		handleServiceError(w, err)
 		return
 	}
 
-	api.Success(w, http.StatusOK, map[string]string{"message": "Memory added to category successfully"})
+	api.Success(w, http.StatusOK, map[string]string{"message": "Node assigned to category successfully"})
 }
 
-// GetMemoriesInCategory handles GET /api/categories/{categoryId}/memories
-func (h *CategoryHandler) GetMemoriesInCategory(w http.ResponseWriter, r *http.Request) {
+// GetNodesInCategory handles GET /api/categories/{categoryId}/nodes
+func (h *CategoryHandler) GetNodesInCategory(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(string)
 	categoryID := chi.URLParam(r, "categoryId")
 
-	memories, err := h.categoryService.GetMemoriesInCategory(r.Context(), userID, categoryID)
+	nodes, err := h.categoryService.GetNodesInCategory(r.Context(), userID, categoryID)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
 
-	type MemoryResponse struct {
+	type NodeResponse struct {
 		NodeID    string   `json:"nodeId"`
 		Content   string   `json:"content"`
 		Tags      []string `json:"tags"`
@@ -264,27 +264,27 @@ func (h *CategoryHandler) GetMemoriesInCategory(w http.ResponseWriter, r *http.R
 		Version   int      `json:"version"`
 	}
 
-	var memoriesResponse []MemoryResponse
-	for _, memory := range memories {
-		memoriesResponse = append(memoriesResponse, MemoryResponse{
-			NodeID:    memory.ID,
-			Content:   memory.Content,
-			Tags:      memory.Tags,
-			Timestamp: memory.CreatedAt.Format(time.RFC3339),
-			Version:   memory.Version,
+	var nodesResponse []NodeResponse
+	for _, node := range nodes {
+		nodesResponse = append(nodesResponse, NodeResponse{
+			NodeID:    node.ID,
+			Content:   node.Content,
+			Tags:      node.Tags,
+			Timestamp: node.CreatedAt.Format(time.RFC3339),
+			Version:   node.Version,
 		})
 	}
 
-	api.Success(w, http.StatusOK, map[string][]MemoryResponse{"memories": memoriesResponse})
+	api.Success(w, http.StatusOK, map[string][]NodeResponse{"nodes": nodesResponse})
 }
 
-// RemoveMemoryFromCategory handles DELETE /api/categories/{categoryId}/memories/{memoryId}
-func (h *CategoryHandler) RemoveMemoryFromCategory(w http.ResponseWriter, r *http.Request) {
+// RemoveNodeFromCategory handles DELETE /api/categories/{categoryId}/nodes/{nodeId}
+func (h *CategoryHandler) RemoveNodeFromCategory(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(string)
 	categoryID := chi.URLParam(r, "categoryId")
-	memoryID := chi.URLParam(r, "memoryId")
+	nodeID := chi.URLParam(r, "nodeId")
 
-	if err := h.categoryService.RemoveMemoryFromCategory(r.Context(), userID, categoryID, memoryID); err != nil {
+	if err := h.categoryService.RemoveNodeFromCategory(r.Context(), userID, categoryID, nodeID); err != nil {
 		handleServiceError(w, err)
 		return
 	}
@@ -302,8 +302,8 @@ func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Get categories for this memory/node
-	categories, err := h.categoryService.GetCategoriesForMemory(r.Context(), userID, nodeID)
+	// Get categories for this node
+	categories, err := h.categoryService.GetCategoriesForNode(r.Context(), userID, nodeID)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -343,11 +343,11 @@ func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Reque
 	api.Success(w, http.StatusOK, map[string][]CategoryResponse{"categories": categoriesResponse})
 }
 
-// CategorizeNode handles POST /api/nodes/{nodeId}/categories  
+// CategorizeNode handles POST /api/nodes/{nodeId}/categories
 func (h *CategoryHandler) CategorizeNode(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(string)
 	nodeID := chi.URLParam(r, "nodeId")
-	
+
 	if nodeID == "" {
 		api.Error(w, http.StatusBadRequest, "Node ID is required")
 		return
@@ -355,19 +355,19 @@ func (h *CategoryHandler) CategorizeNode(w http.ResponseWriter, r *http.Request)
 
 	// TODO: Implement AI-powered categorization when LLM service infrastructure is ready
 	// For now, return success with empty categories to prevent frontend errors
-	
+
 	// Future implementation should:
 	// 1. Get the node content using the memory service
-	// 2. Use enhanced category service with AI categorization 
+	// 2. Use enhanced category service with AI categorization
 	// 3. Automatically assign relevant categories based on content analysis
-	
+
 	// Log for development visibility
 	log.Printf("Auto-categorization requested for nodeID %s by user %s - not yet implemented", nodeID, userID)
-	
+
 	// Return empty categories array for now
 	api.Success(w, http.StatusOK, map[string]interface{}{
-		"message": "Auto-categorization not yet implemented",
+		"message":    "Auto-categorization not yet implemented",
 		"categories": []interface{}{},
-		"nodeId": nodeID,
+		"nodeId":     nodeID,
 	})
 }

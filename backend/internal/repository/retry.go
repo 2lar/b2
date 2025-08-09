@@ -73,7 +73,7 @@ func isAWSRetryableError(err error) bool {
 		return true
 	case *types.LimitExceededException:
 		return true
-	// Note: ThrottlingException is handled by other cases above
+		// Note: ThrottlingException is handled by other cases above
 	}
 
 	// Check for transient network errors
@@ -164,25 +164,25 @@ const (
 
 // CircuitBreaker implements the circuit breaker pattern
 type CircuitBreaker struct {
-	config        CircuitConfig
-	state         CircuitState
-	failures      int
-	lastFailTime  time.Time
-	successCount  int
+	config       CircuitConfig
+	state        CircuitState
+	failures     int
+	lastFailTime time.Time
+	successCount int
 }
 
 // CircuitConfig defines circuit breaker configuration
 type CircuitConfig struct {
-	MaxFailures     int           // Maximum failures before opening circuit
-	ResetTimeout    time.Duration // Time to wait before attempting reset
-	HalfOpenMaxCalls int          // Maximum calls in half-open state
+	MaxFailures      int           // Maximum failures before opening circuit
+	ResetTimeout     time.Duration // Time to wait before attempting reset
+	HalfOpenMaxCalls int           // Maximum calls in half-open state
 }
 
 // DefaultCircuitConfig returns default circuit breaker configuration
 func DefaultCircuitConfig() CircuitConfig {
 	return CircuitConfig{
-		MaxFailures:     5,
-		ResetTimeout:    30 * time.Second,
+		MaxFailures:      5,
+		ResetTimeout:     30 * time.Second,
 		HalfOpenMaxCalls: 3,
 	}
 }

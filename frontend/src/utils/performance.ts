@@ -204,10 +204,10 @@ export function measurePerformance(operationName: string) {
 
 // Utility to measure React component render time
 export function withPerformanceTracking<P extends object>(
-  Component: React.ComponentType<P>,
+  WrappedComponent: React.ComponentType<P>,
   componentName: string
 ) {
-  return React.memo((props: P) => {
+  const PerformanceTrackedComponent = (props: P) => {
     useEffect(() => {
       performanceMonitor.startTimer(`render-${componentName}`);
       return () => {
@@ -215,6 +215,10 @@ export function withPerformanceTracking<P extends object>(
       };
     });
 
-    return <Component {...props} />;
-  });
+    return React.createElement(WrappedComponent, props);
+  };
+
+  PerformanceTrackedComponent.displayName = `withPerformanceTracking(${componentName})`;
+
+  return React.memo(PerformanceTrackedComponent);
 }

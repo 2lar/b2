@@ -36,8 +36,8 @@ type ddbEnhancedCategory struct {
 	CreatedAt   string  `dynamodbav:"CreatedAt"`
 	UpdatedAt   string  `dynamodbav:"UpdatedAt"`
 	// GSI fields
-	GSI1PK      string  `dynamodbav:"GSI1PK"` // For level queries
-	GSI1SK      string  `dynamodbav:"GSI1SK"`
+	GSI1PK string `dynamodbav:"GSI1PK"` // For level queries
+	GSI1SK string `dynamodbav:"GSI1SK"`
 }
 
 // ddbCategoryHierarchy represents category hierarchy relationships
@@ -61,8 +61,8 @@ type ddbNodeCategory struct {
 	Method     string  `dynamodbav:"Method"`
 	CreatedAt  string  `dynamodbav:"CreatedAt"`
 	// GSI fields
-	GSI1PK     string  `dynamodbav:"GSI1PK"` // CAT#{categoryID}
-	GSI1SK     string  `dynamodbav:"GSI1SK"` // NODE#{nodeID}
+	GSI1PK string `dynamodbav:"GSI1PK"` // CAT#{categoryID}
+	GSI1SK string `dynamodbav:"GSI1SK"` // NODE#{nodeID}
 }
 
 // Enhanced category operations
@@ -388,7 +388,7 @@ func (r *ddbRepository) BatchAssignCategories(ctx context.Context, mappings []do
 
 	// DynamoDB batch write limit is 25 items
 	const batchSize = 25
-	
+
 	for i := 0; i < len(mappings); i += batchSize {
 		end := i + batchSize
 		if end > len(mappings) {

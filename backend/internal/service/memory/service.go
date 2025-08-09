@@ -45,25 +45,25 @@ var stopWords = map[string]bool{
 type Service interface {
 	// CreateNodeAndKeywords saves a memory node with extracted keywords
 	CreateNodeAndKeywords(ctx context.Context, node domain.Node) error
-	
+
 	// CreateNodeWithEdges creates a new memory and immediately finds connections
 	CreateNodeWithEdges(ctx context.Context, userID, content string) (*domain.Node, error)
-	
+
 	// UpdateNode modifies an existing memory and recalculates its connections
 	UpdateNode(ctx context.Context, userID, nodeID, content string, tags []string) (*domain.Node, error)
-	
+
 	// DeleteNode removes a memory and cleans up all its relationships
 	DeleteNode(ctx context.Context, userID, nodeID string) error
-	
+
 	// BulkDeleteNodes efficiently removes multiple memories in a single operation
 	BulkDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (int, []string, error)
-	
+
 	// GetNodeDetails retrieves a memory with its direct connections
 	GetNodeDetails(ctx context.Context, userID, nodeID string) (*domain.Node, []domain.Edge, error)
-	
+
 	// GetGraphData retrieves the complete knowledge graph for visualization
 	GetGraphData(ctx context.Context, userID string) (*domain.Graph, error)
-	
+
 	// Enhanced methods for performance
 	GetNodesPage(ctx context.Context, userID string, pagination repository.Pagination) (*repository.NodePage, error)
 	GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error)
@@ -85,7 +85,7 @@ func (s *service) CreateNodeAndKeywords(ctx context.Context, node domain.Node) e
 	if node.Content == "" {
 		return appErrors.NewValidation("content cannot be empty")
 	}
-	
+
 	return s.repo.CreateNodeAndKeywords(ctx, node)
 }
 
@@ -96,7 +96,7 @@ func (s *service) CreateNodeWithEdges(ctx context.Context, userID, content strin
 	}
 
 	keywords := ExtractKeywords(content)
-	
+
 	node := domain.Node{
 		ID:        uuid.New().String(),
 		UserID:    userID,
@@ -110,7 +110,7 @@ func (s *service) CreateNodeWithEdges(ctx context.Context, userID, content strin
 		UserID:   userID,
 		Keywords: keywords,
 	}
-	
+
 	relatedNodes, err := s.repo.FindNodes(ctx, query)
 	if err != nil {
 		log.Printf("Non-critical error finding related nodes for new node: %v", err)
@@ -193,7 +193,7 @@ func (s *service) BulkDeleteNodes(ctx context.Context, userID string, nodeIDs []
 	if len(nodeIDs) == 0 {
 		return 0, nil, appErrors.NewValidation("nodeIds cannot be empty")
 	}
-	
+
 	if len(nodeIDs) > 100 {
 		return 0, nil, appErrors.NewValidation("cannot delete more than 100 nodes at once")
 	}
@@ -268,12 +268,12 @@ func (s *service) GetNodesPage(ctx context.Context, userID string, pagination re
 	query := repository.NodeQuery{
 		UserID: userID,
 	}
-	
+
 	page, err := s.repo.GetNodesPage(ctx, query, pagination)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get nodes page from repository")
 	}
-	
+
 	return page, nil
 }
 
@@ -287,13 +287,13 @@ func (s *service) GetNodeNeighborhood(ctx context.Context, userID, nodeID string
 	if existingNode == nil {
 		return nil, appErrors.NewNotFound("node not found")
 	}
-	
+
 	// Get the neighborhood
 	graph, err := s.repo.GetNodeNeighborhood(ctx, userID, nodeID, depth)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get node neighborhood from repository")
 	}
-	
+
 	return graph, nil
 }
 
@@ -303,12 +303,12 @@ func (s *service) GetGraphDataPaginated(ctx context.Context, userID string, pagi
 		UserID:       userID,
 		IncludeEdges: true,
 	}
-	
+
 	graph, nextCursor, err := s.repo.GetGraphDataPaginated(ctx, graphQuery, pagination)
 	if err != nil {
 		return nil, "", appErrors.Wrap(err, "failed to get paginated graph data from repository")
 	}
-	
+
 	return graph, nextCursor, nil
 }
 
@@ -318,18 +318,18 @@ func ExtractKeywords(content string) []string {
 	reg := regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
 	content = reg.ReplaceAllString(content, "")
 	words := strings.Fields(content)
-	
+
 	uniqueWords := make(map[string]bool)
 	for _, word := range words {
 		if !stopWords[word] && len(word) > 2 {
 			uniqueWords[word] = true
 		}
 	}
-	
+
 	keywords := make([]string, 0, len(uniqueWords))
 	for word := range uniqueWords {
 		keywords = append(keywords, word)
 	}
-	
+
 	return keywords
 }

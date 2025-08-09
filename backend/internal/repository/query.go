@@ -84,9 +84,9 @@ func (q EdgeQuery) HasPagination() bool {
 
 // GraphQuery represents query parameters for retrieving graph data.
 type GraphQuery struct {
-	UserID      string   // Required: The user ID to query graph data for
-	NodeIDs     []string // Optional: Specific node IDs to include in the graph
-	MaxDepth    int      // Optional: Maximum depth of connections to include (0 = all)
+	UserID       string   // Required: The user ID to query graph data for
+	NodeIDs      []string // Optional: Specific node IDs to include in the graph
+	MaxDepth     int      // Optional: Maximum depth of connections to include (0 = all)
 	IncludeEdges bool     // Whether to include edge information (default: true)
 }
 

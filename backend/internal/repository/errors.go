@@ -10,26 +10,26 @@ type ErrorCode string
 
 const (
 	// Resource errors
-	ErrCodeNotFound     ErrorCode = "RESOURCE_NOT_FOUND"
+	ErrCodeNotFound      ErrorCode = "RESOURCE_NOT_FOUND"
 	ErrCodeAlreadyExists ErrorCode = "RESOURCE_ALREADY_EXISTS"
-	ErrCodeConflict     ErrorCode = "RESOURCE_CONFLICT"
-	
+	ErrCodeConflict      ErrorCode = "RESOURCE_CONFLICT"
+
 	// Validation errors
-	ErrCodeInvalidInput  ErrorCode = "INVALID_INPUT"
-	ErrCodeInvalidQuery  ErrorCode = "INVALID_QUERY"
-	ErrCodeValidation    ErrorCode = "VALIDATION_ERROR"
-	
+	ErrCodeInvalidInput ErrorCode = "INVALID_INPUT"
+	ErrCodeInvalidQuery ErrorCode = "INVALID_QUERY"
+	ErrCodeValidation   ErrorCode = "VALIDATION_ERROR"
+
 	// Operation errors
 	ErrCodeTransactionFailed ErrorCode = "TRANSACTION_FAILED"
 	ErrCodeOperationFailed   ErrorCode = "OPERATION_FAILED"
-	ErrCodeTimeout          ErrorCode = "TIMEOUT"
-	ErrCodeRateLimited      ErrorCode = "RATE_LIMITED"
-	
+	ErrCodeTimeout           ErrorCode = "TIMEOUT"
+	ErrCodeRateLimited       ErrorCode = "RATE_LIMITED"
+
 	// Consistency errors
-	ErrCodeOptimisticLock  ErrorCode = "OPTIMISTIC_LOCK_CONFLICT"
-	ErrCodeDataCorruption  ErrorCode = "DATA_CORRUPTION"
+	ErrCodeOptimisticLock    ErrorCode = "OPTIMISTIC_LOCK_CONFLICT"
+	ErrCodeDataCorruption    ErrorCode = "DATA_CORRUPTION"
 	ErrCodeInconsistentState ErrorCode = "INCONSISTENT_STATE"
-	
+
 	// Infrastructure errors
 	ErrCodeUnavailable     ErrorCode = "SERVICE_UNAVAILABLE"
 	ErrCodeInternalError   ErrorCode = "INTERNAL_ERROR"
@@ -91,12 +91,12 @@ func IsNotFound(err error) bool {
 	if ok {
 		return true
 	}
-	
+
 	// Check for repository error with not found code
 	if repoErr, ok := err.(RepositoryError); ok {
 		return repoErr.Code == ErrCodeNotFound
 	}
-	
+
 	return false
 }
 
@@ -117,12 +117,12 @@ func IsConflict(err error) bool {
 	if ok {
 		return true
 	}
-	
+
 	// Check for repository error with conflict code
 	if repoErr, ok := err.(RepositoryError); ok {
 		return repoErr.Code == ErrCodeConflict || repoErr.Code == ErrCodeOptimisticLock
 	}
-	
+
 	return false
 }
 
@@ -142,12 +142,12 @@ func IsInvalidQuery(err error) bool {
 	if ok {
 		return true
 	}
-	
+
 	// Check for repository error with invalid query code
 	if repoErr, ok := err.(RepositoryError); ok {
 		return repoErr.Code == ErrCodeInvalidQuery || repoErr.Code == ErrCodeValidation
 	}
-	
+
 	return false
 }
 
@@ -213,7 +213,7 @@ func NewNotFoundError(resource, id, userID string) RepositoryError {
 	if userID != "" {
 		message = fmt.Sprintf("%s with ID '%s' not found for user '%s'", resource, id, userID)
 	}
-	
+
 	return NewRepositoryErrorWithDetails(ErrCodeNotFound, message, map[string]interface{}{
 		"resource": resource,
 		"id":       id,
@@ -224,7 +224,7 @@ func NewNotFoundError(resource, id, userID string) RepositoryError {
 // NewValidationError creates a standardized validation error
 func NewValidationError(field, reason string, cause error) RepositoryError {
 	message := fmt.Sprintf("validation error for field '%s': %s", field, reason)
-	
+
 	return NewRepositoryErrorWithDetails(ErrCodeValidation, message, map[string]interface{}{
 		"field":  field,
 		"reason": reason,
@@ -233,20 +233,20 @@ func NewValidationError(field, reason string, cause error) RepositoryError {
 
 // NewOptimisticLockError creates a standardized optimistic lock error
 func NewOptimisticLockError(resourceID string, expectedVersion, actualVersion int) RepositoryError {
-	message := fmt.Sprintf("optimistic lock conflict for resource %s: expected version %d, actual version %d", 
+	message := fmt.Sprintf("optimistic lock conflict for resource %s: expected version %d, actual version %d",
 		resourceID, expectedVersion, actualVersion)
-	
+
 	return NewRepositoryErrorWithDetails(ErrCodeOptimisticLock, message, map[string]interface{}{
-		"resource_id":       resourceID,
-		"expected_version":  expectedVersion,
-		"actual_version":    actualVersion,
+		"resource_id":      resourceID,
+		"expected_version": expectedVersion,
+		"actual_version":   actualVersion,
 	}, nil)
 }
 
 // NewTransactionError creates a standardized transaction error
 func NewTransactionError(operation string, cause error) RepositoryError {
 	message := fmt.Sprintf("transaction failed for operation: %s", operation)
-	
+
 	return NewRepositoryErrorWithDetails(ErrCodeTransactionFailed, message, map[string]interface{}{
 		"operation": operation,
 	}, cause)
@@ -255,7 +255,7 @@ func NewTransactionError(operation string, cause error) RepositoryError {
 // NewTimeoutError creates a standardized timeout error
 func NewTimeoutError(operation string, timeout time.Duration) RepositoryError {
 	message := fmt.Sprintf("operation '%s' timed out after %v", operation, timeout)
-	
+
 	return NewRepositoryErrorWithDetails(ErrCodeTimeout, message, map[string]interface{}{
 		"operation": operation,
 		"timeout":   timeout.String(),
@@ -265,7 +265,7 @@ func NewTimeoutError(operation string, timeout time.Duration) RepositoryError {
 // NewRateLimitError creates a standardized rate limit error
 func NewRateLimitError(operation string, retryAfter time.Duration) RepositoryError {
 	message := fmt.Sprintf("rate limit exceeded for operation: %s", operation)
-	
+
 	return NewRepositoryErrorWithDetails(ErrCodeRateLimited, message, map[string]interface{}{
 		"operation":   operation,
 		"retry_after": retryAfter.String(),

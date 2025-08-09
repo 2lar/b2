@@ -8,7 +8,7 @@ export const categoriesApi = {
     deleteCategory: globalApi.deleteCategory.bind(globalApi),
     getCategoryHierarchy: globalApi.getCategoryHierarchy.bind(globalApi),
     getCategoryInsights: globalApi.getCategoryInsights.bind(globalApi),
-    getMemoriesInCategory: globalApi.getMemoriesInCategory.bind(globalApi),
-    addMemoryToCategory: globalApi.addMemoryToCategory.bind(globalApi),
-    removeMemoryFromCategory: globalApi.removeMemoryFromCategory.bind(globalApi)
+    getNodesInCategory: globalApi.getNodesInCategory?.bind(globalApi),
+    assignNodeToCategory: globalApi.assignNodeToCategory?.bind(globalApi),
+    removeNodeFromCategory: globalApi.removeNodeFromCategory?.bind(globalApi)
 };

@@ -62,7 +62,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { nodesApi } from '../api/nodes';
 import { categoriesApi } from '../../categories/api/categories';
-import { components } from '../types/generated/generated-types';
+import { components } from '../../../types/generated/generated-types';
 
 // Type aliases for easier usage
 type Category = components['schemas']['Category'];
@@ -79,7 +79,18 @@ interface FileSystemSidebarProps {
     refreshTrigger?: number;
 }
 
-interface CategoryWithMemories extends Category {
+interface CategoryWithMemories {
+    id: string;
+    title: string;
+    description?: string;
+    level: number;
+    parentId?: string;
+    color?: string;
+    icon?: string;
+    aiGenerated: boolean;
+    noteCount: number;
+    createdAt: string;
+    updatedAt: string;
     memories?: Node[];
     isExpanded?: boolean;
     isLoading?: boolean;
@@ -152,6 +163,8 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
 
             setCategories(sortedCategories.map(cat => ({
                 ...cat,
+                aiGenerated: cat.aiGenerated ?? false,
+                noteCount: cat.noteCount ?? 0,
                 isExpanded: expandedCategories.has(cat.id),
                 isLoading: false
             })));
@@ -174,7 +187,7 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
                 cat.id === categoryId ? { ...cat, isLoading: true } : cat
             ));
 
-            const response = await categoriesApi.getMemoriesInCategory(categoryId);
+            const response = await categoriesApi.getNodesInCategory(categoryId);
             const memories = response.memories || [];
 
             // Sort memories by timestamp (newest first)
@@ -344,11 +357,11 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
         try {
             // Remove from old category if it exists
             if (fromCategoryId) {
-                await categoriesApi.removeMemoryFromCategory(fromCategoryId, nodeId);
+                await categoriesApi.removeNodeFromCategory(fromCategoryId, nodeId);
             }
 
             // Add to new category
-            await categoriesApi.addMemoryToCategory(targetCategoryId, nodeId);
+            await categoriesApi.assignNodeToCategory(targetCategoryId, nodeId);
 
             // Update local state by clearing cache and reloading
             setMemoriesCache(prev => {
@@ -458,9 +471,9 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
         setContextMenu(null);
     };
 
-    const handleRemoveMemoryFromCategory = async (nodeId: string, categoryId: string) => {
+    const handleRemoveNodeFromCategory = async (nodeId: string, categoryId: string) => {
         try {
-            await categoriesApi.removeMemoryFromCategory(categoryId, nodeId);
+            await categoriesApi.removeNodeFromCategory(categoryId, nodeId);
             
             // Update local state
             setMemoriesCache(prev => ({
@@ -735,7 +748,7 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
                             {contextMenu.categoryId && (
                                 <div 
                                     className="context-menu-item" 
-                                    onClick={() => handleRemoveMemoryFromCategory(contextMenu.itemId, contextMenu.categoryId!)}
+                                    onClick={() => handleRemoveNodeFromCategory(contextMenu.itemId, contextMenu.categoryId!)}
                                 >
                                     <span className="context-menu-icon">📤</span>
                                     Remove from Category

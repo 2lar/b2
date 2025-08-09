@@ -10,13 +10,13 @@ import (
 
 const (
 	// Limits for validation
-	MaxContentLength  = 10000 // Maximum content length in characters
-	MaxKeywordCount   = 50    // Maximum number of keywords per node
-	MaxKeywordLength  = 100   // Maximum length of a single keyword
-	MaxNodeIDLength   = 100   // Maximum length of node ID
-	MaxUserIDLength   = 100   // Maximum length of user ID
-	MinContentLength  = 1     // Minimum content length
-	MinKeywordLength  = 1     // Minimum keyword length
+	MaxContentLength = 10000 // Maximum content length in characters
+	MaxKeywordCount  = 50    // Maximum number of keywords per node
+	MaxKeywordLength = 100   // Maximum length of a single keyword
+	MaxNodeIDLength  = 100   // Maximum length of node ID
+	MaxUserIDLength  = 100   // Maximum length of user ID
+	MinContentLength = 1     // Minimum content length
+	MinKeywordLength = 1     // Minimum keyword length
 )
 
 var (
@@ -253,7 +253,7 @@ func SanitizeKeywords(keywords []string) []string {
 	for _, keyword := range keywords {
 		// Normalize keyword
 		normalized := strings.ToLower(strings.TrimSpace(keyword))
-		
+
 		// Skip empty or duplicate keywords
 		if normalized == "" || seen[normalized] {
 			continue
