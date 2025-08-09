@@ -1,0 +1,57 @@
+ Option 2: Single Edge Storage Implementation Plan                                                                                                                                               │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Overview                                                                                                                                                                                        │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Implement single bi-directional edge storage to eliminate duplicate edges and improve performance/scalability.                                                                                  │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Core Strategy                                                                                                                                                                                   │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Canonical Edge Storage: For any connection between NodeA and NodeB, store only ONE edge using lexicographically smaller node ID as the "owner":                                                 │ │
+│ │ - If NodeA < NodeB → Store edge in NodeA's partition: USER#userID#NODE#NodeA → EDGE#RELATES_TO#NodeB                                                                                            │ │
+│ │ - If NodeB < NodeA → Store edge in NodeB's partition: USER#userID#NODE#NodeB → EDGE#RELATES_TO#NodeA                                                                                            │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Implementation Steps                                                                                                                                                                            │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Step 1: Update Edge Creation Logic                                                                                                                                                              │ │
+│ │ - Modify CreateNodeWithEdges and UpdateNodeAndEdges methods                                                                                                                                     │ │
+│ │ - Add canonical edge key logic: min(nodeA, nodeB) as owner, max(nodeA, nodeB) as target                                                                                                         │ │
+│ │ - Remove the dual-edge creation (edge1Item + edge2Item → single edgeItem)                                                                                                                       │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Step 2: Update Edge Retrieval Logic                                                                                                                                                             │ │
+│ │ - Modify GetGraphDataPaginated to find edges for a user across all their nodes                                                                                                                  │ │
+│ │ - Current scan already finds all USER#userID#NODE#* items, so no query changes needed                                                                                                           │ │
+│ │ - Edge processing remains the same since we're just reducing duplicates                                                                                                                         │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Step 3: Update Edge Query Logic                                                                                                                                                                 │ │
+│ │ - Modify FindEdges method to look in both directions when finding connections for a specific node                                                                                               │ │
+│ │ - Need to check both: node as owner AND node as target in other nodes' partitions                                                                                                               │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Step 4: Update Delete Logic                                                                                                                                                                     │ │
+│ │ - Modify DeleteNode to find and delete edges where deleted node is either source or target                                                                                                      │ │
+│ │ - Use canonical logic to find the correct partition where edge is stored                                                                                                                        │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Key Benefits                                                                                                                                                                                    │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ - ✅ 50% reduction in edge storage (from 172 → 86 edges for current data)                                                                                                                        │ │
+│ │ - ✅ Faster scans (fewer items to process)                                                                                                                                                       │ │
+│ │ - ✅ Lower DynamoDB costs (less storage, fewer read capacity units)                                                                                                                              │ │
+│ │ - ✅ Cleaner graph visualization (no duplicate edges)                                                                                                                                            │ │
+│ │ - ✅ Better scalability for large graphs                                                                                                                                                         │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Technical Implementation Details                                                                                                                                                                │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ 1. Canonical Key Function: func getCanonicalEdge(nodeA, nodeB string) (owner, target string)                                                                                                    │ │
+│ │ 2. Edge Creation: Single transact item instead of two                                                                                                                                           │ │
+│ │ 3. Edge Finding: Query logic that checks both owner and target scenarios                                                                                                                        │ │
+│ │ 4. Backward Compatibility: Since we're wiping data, no migration needed                                                                                                                         │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Risk Assessment                                                                                                                                                                                 │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ - Low Risk: Core functionality remains the same, just storage optimization                                                                                                                      │ │
+│ │ - Testable: Can verify edge count reduction immediately                                                                                                                                         │ │
+│ │ - Rollback: Easy to revert if issues found                                                                                                                                                      │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Expected Outcome                                                                                                                                                                                │ │
+│ │                                                                                                                                                                                                 │ │
+│ │ Current: 32 nodes, 172 edges → After fix: 32 nodes, ~86 edges                                                                                                                                   │ │
+│ │ Much cleaner graph visualization with same connectivity information.          

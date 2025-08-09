@@ -92,6 +92,16 @@ func NewRepositoryWithConfig(dbClient *dynamodb.Client, config repository.Config
 	}
 }
 
+// getCanonicalEdge determines the canonical storage for a bi-directional edge.
+// Returns the owner node ID and target node ID based on lexicographic ordering.
+// This ensures each unique connection is stored exactly once.
+func getCanonicalEdge(nodeA, nodeB string) (owner, target string) {
+	if nodeA < nodeB {
+		return nodeA, nodeB
+	}
+	return nodeB, nodeA
+}
+
 // CreateNodeAndKeywords transactionally saves a node and its keyword indexes.
 func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node domain.Node) error {
 	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
@@ -159,18 +169,20 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: keywordItem}})
 	}
 
+	// Create canonical edges - only one edge per connection
 	for _, relatedNodeID := range relatedNodeIDs {
-		edge1Item, err := attributevalue.MarshalMap(ddbEdge{PK: pk, SK: fmt.Sprintf("EDGE#RELATES_TO#%s", relatedNodeID), TargetID: relatedNodeID})
-		if err != nil {
-			return appErrors.Wrap(err, "failed to marshal outgoing edge item")
-		}
-		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edge1Item}})
+		ownerID, targetID := getCanonicalEdge(node.ID, relatedNodeID)
+		ownerPK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, ownerID)
 
-		edge2Item, err := attributevalue.MarshalMap(ddbEdge{PK: fmt.Sprintf("USER#%s#NODE#%s", node.UserID, relatedNodeID), SK: fmt.Sprintf("EDGE#RELATES_TO#%s", node.ID), TargetID: node.ID})
+		edgeItem, err := attributevalue.MarshalMap(ddbEdge{
+			PK:       ownerPK,
+			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", targetID),
+			TargetID: targetID,
+		})
 		if err != nil {
-			return appErrors.Wrap(err, "failed to marshal incoming edge item")
+			return appErrors.Wrap(err, "failed to marshal canonical edge item")
 		}
-		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edge2Item}})
+		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edgeItem}})
 	}
 
 	_, err = r.dbClient.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: transactItems})
@@ -213,17 +225,20 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: keywordItem}})
 	}
 
+	// Create canonical edges - only one edge per connection
 	for _, relatedNodeID := range relatedNodeIDs {
-		edge1Item, err := attributevalue.MarshalMap(ddbEdge{PK: pk, SK: fmt.Sprintf("EDGE#RELATES_TO#%s", relatedNodeID), TargetID: relatedNodeID})
+		ownerID, targetID := getCanonicalEdge(node.ID, relatedNodeID)
+		ownerPK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, ownerID)
+
+		edgeItem, err := attributevalue.MarshalMap(ddbEdge{
+			PK:       ownerPK,
+			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", targetID),
+			TargetID: targetID,
+		})
 		if err != nil {
-			return appErrors.Wrap(err, "failed to marshal outgoing edge item for update")
+			return appErrors.Wrap(err, "failed to marshal canonical edge item for update")
 		}
-		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edge1Item}})
-		edge2Item, err := attributevalue.MarshalMap(ddbEdge{PK: fmt.Sprintf("USER#%s#NODE#%s", node.UserID, relatedNodeID), SK: fmt.Sprintf("EDGE#RELATES_TO#%s", node.ID), TargetID: node.ID})
-		if err != nil {
-			return appErrors.Wrap(err, "failed to marshal incoming edge item for update")
-		}
-		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edge2Item}})
+		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edgeItem}})
 	}
 
 	if len(transactItems) > 0 {
@@ -295,23 +310,73 @@ func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string)
 
 // FindEdgesByNode queries for all outgoing edges from a given node.
 func (r *ddbRepository) FindEdgesByNode(ctx context.Context, userID, nodeID string) ([]domain.Edge, error) {
+	var edges []domain.Edge
+
+	// With canonical edge storage, we need to look for edges in two ways:
+	// 1. Where this node is the "owner" (stored in this node's partition)
+	// 2. Where this node is the "target" (stored in other nodes' partitions)
+
+	// First, check edges where this node is the owner
 	pk := fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID)
 	result, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
-		TableName: aws.String(r.config.TableName), KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
+		TableName:              aws.String(r.config.TableName),
+		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: pk}, ":skPrefix": &types.AttributeValueMemberS{Value: "EDGE#RELATES_TO#"},
+			":pk":       &types.AttributeValueMemberS{Value: pk},
+			":skPrefix": &types.AttributeValueMemberS{Value: "EDGE#RELATES_TO#"},
 		},
 	})
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to query edges")
+		return nil, appErrors.Wrap(err, "failed to query edges where node is owner")
 	}
-	var edges []domain.Edge
+
+	// Process edges where this node is the owner
 	for _, item := range result.Items {
 		var ddbItem ddbEdge
 		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
 			edges = append(edges, domain.Edge{SourceID: nodeID, TargetID: ddbItem.TargetID})
 		}
 	}
+
+	// Second, scan for edges where this node is the target (stored in other nodes' partitions)
+	// This requires scanning all user's node partitions for edges pointing to this node
+	scanResult, err := r.dbClient.Scan(ctx, &dynamodb.ScanInput{
+		TableName:        aws.String(r.config.TableName),
+		FilterExpression: aws.String("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix) AND TargetID = :target_id"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk_prefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#NODE#", userID)},
+			":sk_prefix": &types.AttributeValueMemberS{Value: "EDGE#RELATES_TO#"},
+			":target_id": &types.AttributeValueMemberS{Value: nodeID},
+		},
+	})
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to scan for edges where node is target")
+	}
+
+	// Process edges where this node is the target
+	for _, item := range scanResult.Items {
+		var ddbItem ddbEdge
+		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
+			// Extract source node ID from PK
+			pkParts := strings.Split(ddbItem.PK, "#")
+			if len(pkParts) >= 4 {
+				sourceID := pkParts[3]
+				// Only add if not already added (avoid duplicates)
+				alreadyAdded := false
+				for _, existingEdge := range edges {
+					if (existingEdge.SourceID == sourceID && existingEdge.TargetID == nodeID) ||
+						(existingEdge.SourceID == nodeID && existingEdge.TargetID == sourceID) {
+						alreadyAdded = true
+						break
+					}
+				}
+				if !alreadyAdded {
+					edges = append(edges, domain.Edge{SourceID: sourceID, TargetID: nodeID})
+				}
+			}
+		}
+	}
+
 	return edges, nil
 }
 
@@ -398,27 +463,67 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 }
 
 func (r *ddbRepository) clearNodeConnections(ctx context.Context, userID, nodeID string) error {
+	var allWriteRequests []types.WriteRequest
+
+	// First, delete all items in this node's partition (node data, keywords, edges where this node is owner)
 	pk := fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID)
 	queryResult, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
-		TableName: aws.String(r.config.TableName), KeyConditionExpression: aws.String("PK = :pk"),
+		TableName:                 aws.String(r.config.TableName),
+		KeyConditionExpression:    aws.String("PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: pk}},
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to query items for deletion")
 	}
-	if len(queryResult.Items) == 0 {
-		return nil // Nothing to delete
-	}
-	var writeRequests []types.WriteRequest
+
 	for _, item := range queryResult.Items {
-		writeRequests = append(writeRequests, types.WriteRequest{DeleteRequest: &types.DeleteRequest{Key: map[string]types.AttributeValue{"PK": item["PK"], "SK": item["SK"]}}})
+		allWriteRequests = append(allWriteRequests, types.WriteRequest{
+			DeleteRequest: &types.DeleteRequest{
+				Key: map[string]types.AttributeValue{"PK": item["PK"], "SK": item["SK"]},
+			},
+		})
 	}
-	if len(writeRequests) > 0 {
-		_, err = r.dbClient.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{RequestItems: map[string][]types.WriteRequest{r.config.TableName: writeRequests}})
-		if err != nil {
-			return appErrors.Wrap(err, "failed to batch delete node items")
+
+	// Second, find and delete edges where this node is the target (stored in other nodes' partitions)
+	scanResult, err := r.dbClient.Scan(ctx, &dynamodb.ScanInput{
+		TableName:        aws.String(r.config.TableName),
+		FilterExpression: aws.String("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix) AND TargetID = :target_id"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk_prefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#NODE#", userID)},
+			":sk_prefix": &types.AttributeValueMemberS{Value: "EDGE#RELATES_TO#"},
+			":target_id": &types.AttributeValueMemberS{Value: nodeID},
+		},
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to scan for edges where node is target")
+	}
+
+	for _, item := range scanResult.Items {
+		allWriteRequests = append(allWriteRequests, types.WriteRequest{
+			DeleteRequest: &types.DeleteRequest{
+				Key: map[string]types.AttributeValue{"PK": item["PK"], "SK": item["SK"]},
+			},
+		})
+	}
+
+	// Batch delete all items (DynamoDB has a 25 item limit per batch)
+	if len(allWriteRequests) > 0 {
+		for i := 0; i < len(allWriteRequests); i += 25 {
+			end := i + 25
+			if end > len(allWriteRequests) {
+				end = len(allWriteRequests)
+			}
+
+			batchRequests := allWriteRequests[i:end]
+			_, err = r.dbClient.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+				RequestItems: map[string][]types.WriteRequest{r.config.TableName: batchRequests},
+			})
+			if err != nil {
+				return appErrors.Wrap(err, "failed to batch delete node items")
+			}
 		}
 	}
+
 	return nil
 }
 
@@ -1107,22 +1212,28 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 				skippedItems++
 				continue
 			}
-			edgeKey := fmt.Sprintf("%s->%s", ddbItem.PK, ddbItem.TargetID)
-			if !edgeMap[edgeKey] {
-				edgeMap[edgeKey] = true
 
-				// Extract source node ID from PK
-				pkParts := strings.Split(ddbItem.PK, "#")
-				if len(pkParts) >= 4 {
-					sourceID := pkParts[3]
+			// Extract source node ID from PK
+			pkParts := strings.Split(ddbItem.PK, "#")
+			if len(pkParts) >= 4 {
+				sourceID := pkParts[3]
+				
+				// Create canonical edge key for deduplication (since we're reading canonical storage)
+				ownerID, targetID := getCanonicalEdge(sourceID, ddbItem.TargetID)
+				canonicalKey := fmt.Sprintf("%s-%s", ownerID, targetID)
+				
+				if !edgeMap[canonicalKey] {
+					edgeMap[canonicalKey] = true
+					
+					// Create undirected edge using canonical ordering for consistent visualization
 					edges = append(edges, domain.Edge{
-						SourceID: sourceID,
-						TargetID: ddbItem.TargetID,
+						SourceID: ownerID,
+						TargetID: targetID,
 					})
 					edgeCount++
-				} else {
-					log.Printf("WARN: Invalid PK format for edge: %s", ddbItem.PK)
 				}
+			} else {
+				log.Printf("WARN: Invalid PK format for edge: %s", ddbItem.PK)
 			}
 		}
 	}
