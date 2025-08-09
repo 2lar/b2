@@ -157,7 +157,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                         'border-color': 'data(color)',
                         'border-opacity': 1,
                         'label': '', // No labels for cleaner look,
-                        'transition-property': 'background-color, border-width, border-color, width, height, opacity, shadow-blur',
+                        'transition-property': 'background-color, border-width, border-color, width, height, opacity',
                         'transition-duration': 300
                     }
                 },
@@ -169,13 +169,21 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                             const strength = ele.data('strength') || 0.5;
                             return Math.max(1.5, Math.min(strength * 7, 12));
                         },
-                        'line-color': 'data(color)',
+                        'line-color': '#cbd5e1',
+                        'target-arrow-color': '#cbd5e1',
                         'opacity': 0.7,
                         'curve-style': 'bezier',
-                        'transition-property': 'width, line-color, opacity, shadow-blur',
+                        'transition-property': 'width, line-color, opacity',
                         'transition-duration': 300,
                         'target-arrow-shape': 'none',
                         'z-index': 0
+                    }
+                },
+                {
+                    selector: 'edge[color]',
+                    style: {
+                        'line-color': 'data(color)',
+                        'target-arrow-color': 'data(color)'
                     }
                 },
                 {
