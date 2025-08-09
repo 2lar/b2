@@ -147,6 +147,8 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node domain.N
 
 // CreateNodeWithEdges saves a node, its keywords, and its connections in a single transaction.
 func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error {
+	log.Printf("DEBUG CreateNodeWithEdges: creating node ID=%s with keywords=%v and %d edges", node.ID, node.Keywords, len(relatedNodeIDs))
+	
 	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
 	transactItems := []types.TransactWriteItem{}
 
@@ -158,15 +160,20 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 		return appErrors.Wrap(err, "failed to marshal node item")
 	}
 	transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: nodeItem}})
+	log.Printf("DEBUG CreateNodeWithEdges: added node item with PK=%s", pk)
 
 	for _, keyword := range node.Keywords {
+		gsi1PK := fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID, keyword)
+		gsi1SK := fmt.Sprintf("NODE#%s", node.ID)
+		
 		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{
-			PK: pk, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID, keyword), GSI1SK: fmt.Sprintf("NODE#%s", node.ID),
+			PK: pk, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: gsi1PK, GSI1SK: gsi1SK,
 		})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal keyword item")
 		}
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: keywordItem}})
+		log.Printf("DEBUG CreateNodeWithEdges: added keyword item for '%s' with GSI1PK=%s, GSI1SK=%s", keyword, gsi1PK, gsi1SK)
 	}
 
 	// Create canonical edges - only one edge per connection
@@ -183,12 +190,17 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 			return appErrors.Wrap(err, "failed to marshal canonical edge item")
 		}
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edgeItem}})
+		log.Printf("DEBUG CreateNodeWithEdges: added edge from %s to %s (canonical: ownerPK=%s)", node.ID, relatedNodeID, ownerPK)
 	}
 
+	log.Printf("DEBUG CreateNodeWithEdges: executing transaction with %d items", len(transactItems))
 	_, err = r.dbClient.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: transactItems})
 	if err != nil {
+		log.Printf("ERROR CreateNodeWithEdges: transaction failed: %v", err)
 		return appErrors.Wrap(err, "transaction to create node with edges failed")
 	}
+	
+	log.Printf("DEBUG CreateNodeWithEdges: transaction completed successfully for node %s", node.ID)
 	return nil
 }
 
@@ -252,34 +264,50 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 
 // FindNodesByKeywords uses the GSI to find nodes with matching keywords.
 func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]domain.Node, error) {
+	log.Printf("DEBUG FindNodesByKeywords: called with userID=%s, keywords=%v", userID, keywords)
+	
 	nodeIdMap := make(map[string]bool)
 	var nodes []domain.Node
 	for _, keyword := range keywords {
 		gsiPK := fmt.Sprintf("USER#%s#KEYWORD#%s", userID, keyword)
+		log.Printf("DEBUG FindNodesByKeywords: querying GSI with gsiPK=%s", gsiPK)
+		
 		result, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
 			TableName: aws.String(r.config.TableName), IndexName: aws.String(r.config.IndexName), KeyConditionExpression: aws.String("GSI1PK = :gsiPK"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{":gsiPK": &types.AttributeValueMemberS{Value: gsiPK}},
 		})
 		if err != nil {
-			log.Printf("failed to query GSI for keyword %s: %v", keyword, err)
+			log.Printf("ERROR FindNodesByKeywords: failed to query GSI for keyword %s: %v", keyword, err)
 			continue
 		}
+		
+		log.Printf("DEBUG FindNodesByKeywords: GSI query for keyword '%s' returned %d items", keyword, len(result.Items))
+		
 		for _, item := range result.Items {
 			pkValue := item["PK"].(*types.AttributeValueMemberS).Value
 			nodeID := strings.Split(pkValue, "#")[3]
+			log.Printf("DEBUG FindNodesByKeywords: found nodeID=%s from keyword '%s' (PK=%s)", nodeID, keyword, pkValue)
+			
 			if _, exists := nodeIdMap[nodeID]; !exists {
 				nodeIdMap[nodeID] = true
 				node, err := r.FindNodeByID(ctx, userID, nodeID)
 				if err != nil {
-					log.Printf("failed to find node from keyword search: %v", err)
+					log.Printf("ERROR FindNodesByKeywords: failed to find node %s from keyword search: %v", nodeID, err)
 					continue
 				}
 				if node != nil {
+					log.Printf("DEBUG FindNodesByKeywords: successfully retrieved node ID=%s, content='%s'", node.ID, node.Content)
 					nodes = append(nodes, *node)
+				} else {
+					log.Printf("WARN FindNodesByKeywords: node %s was nil after FindNodeByID", nodeID)
 				}
+			} else {
+				log.Printf("DEBUG FindNodesByKeywords: nodeID=%s already processed, skipping", nodeID)
 			}
 		}
 	}
+	
+	log.Printf("DEBUG FindNodesByKeywords: returning %d unique nodes", len(nodes))
 	return nodes, nil
 }
 
@@ -531,12 +559,16 @@ func (r *ddbRepository) clearNodeConnections(ctx context.Context, userID, nodeID
 
 // FindNodes implements the enhanced node querying with NodeQuery.
 func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]domain.Node, error) {
+	log.Printf("DEBUG FindNodes: called with userID=%s, keywords=%v, nodeIDs=%v", query.UserID, query.Keywords, query.NodeIDs)
+	
 	if err := query.Validate(); err != nil {
+		log.Printf("ERROR FindNodes: query validation failed: %v", err)
 		return nil, err
 	}
 
 	// If specific node IDs are requested, fetch them directly
 	if query.HasNodeIDs() {
+		log.Printf("DEBUG FindNodes: using nodeID-based lookup for %d nodes", len(query.NodeIDs))
 		var nodes []domain.Node
 		for _, nodeID := range query.NodeIDs {
 			node, err := r.FindNodeByID(ctx, query.UserID, nodeID)
@@ -547,12 +579,16 @@ func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuer
 				nodes = append(nodes, *node)
 			}
 		}
+		log.Printf("DEBUG FindNodes: found %d nodes by nodeID lookup", len(nodes))
 		return nodes, nil
 	}
 
 	// If keywords are specified, use keyword search
 	if query.HasKeywords() {
-		return r.FindNodesByKeywords(ctx, query.UserID, query.Keywords)
+		log.Printf("DEBUG FindNodes: using keyword-based lookup with keywords=%v", query.Keywords)
+		nodes, err := r.FindNodesByKeywords(ctx, query.UserID, query.Keywords)
+		log.Printf("DEBUG FindNodes: keyword lookup returned %d nodes, error=%v", len(nodes), err)
+		return nodes, err
 	}
 
 	// Otherwise, get all nodes for the user (this could be expensive for large datasets)

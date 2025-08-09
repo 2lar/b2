@@ -26,13 +26,45 @@
  * - React Router for navigation
  */
 
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, AuthSection } from '../features/auth';
 import { webSocketClient } from '../services';
-import { Dashboard } from '../features/dashboard';
-import { CategoriesList, CategoryDetail } from '../features/categories';
 import { useGraphStore } from '../stores/graphStore';
+
+// Lazy load heavy components
+const Dashboard = lazy(() => import('../features/dashboard').then(module => ({ default: module.Dashboard })));
+const CategoriesList = lazy(() => import('../features/categories').then(module => ({ default: module.CategoriesList })));
+const CategoryDetail = lazy(() => import('../features/categories').then(module => ({ default: module.CategoryDetail })));
+
+function LoadingFallback() {
+    return (
+        <div className="loading-container" style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100vh',
+            flexDirection: 'column' 
+        }}>
+            <div className="loading-spinner" style={{ 
+                width: '40px', 
+                height: '40px', 
+                border: '4px solid #f3f3f3', 
+                borderTop: '4px solid #3498db', 
+                borderRadius: '50%', 
+                animation: 'spin 2s linear infinite',
+                marginBottom: '16px'
+            }}></div>
+            <div>Loading...</div>
+            <style>{`
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `}</style>
+        </div>
+    );
+}
 
 const App: React.FC = () => {
     const { session, loading, auth } = useAuth();
@@ -74,12 +106,14 @@ const App: React.FC = () => {
                 )}
                 <div style={{ flex: 1 }}>
                     {session && session.user?.email ? (
-                        <Routes>
-                            <Route path="/" element={<Dashboard user={session.user} onSignOut={handleSignOut} />} />
-                            <Route path="/categories" element={<CategoriesList />} />
-                            <Route path="/categories/:categoryId" element={<CategoryDetail />} />
-                            <Route path="*" element={<Navigate to="/" replace />} />
-                        </Routes>
+                        <Suspense fallback={<LoadingFallback />}>
+                            <Routes>
+                                <Route path="/" element={<Dashboard user={session.user} onSignOut={handleSignOut} />} />
+                                <Route path="/categories" element={<CategoriesList />} />
+                                <Route path="/categories/:categoryId" element={<CategoryDetail />} />
+                                <Route path="*" element={<Navigate to="/" replace />} />
+                            </Routes>
+                        </Suspense>
                     ) : (
                         <AuthSection />
                     )}

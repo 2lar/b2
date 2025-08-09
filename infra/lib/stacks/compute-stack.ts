@@ -68,7 +68,7 @@ export class ComputeStack extends Stack {
       timeout: Duration.seconds(30),
       environment: {
         TABLE_NAME: memoryTable.tableName,
-        INDEX_NAME: 'GSI1',
+        INDEX_NAME: 'KeywordIndex',
         EVENT_BUS_NAME: this.eventBus.eventBusName,
       },
     });
@@ -82,7 +82,7 @@ export class ComputeStack extends Stack {
       timeout: Duration.seconds(30),
       environment: {
         TABLE_NAME: memoryTable.tableName,
-        INDEX_NAME: 'GSI1',
+        INDEX_NAME: 'KeywordIndex',
         EVENT_BUS_NAME: this.eventBus.eventBusName,
       },
     });

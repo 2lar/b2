@@ -24,7 +24,7 @@ import (
 
 const (
 	testTableName = "brain2-test"
-	testIndexName = "GSI1"
+	testIndexName = "KeywordIndex"
 )
 
 // setupTestRepo creates a DynamoDB repository for testing.

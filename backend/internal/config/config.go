@@ -16,7 +16,7 @@ func LoadConfig() Config {
 	}
 	indexName := os.Getenv("INDEX_NAME")
 	if indexName == "" {
-		indexName = "GSI1" // Default for local development
+		indexName = "KeywordIndex" // Default for local development
 	}
 	return Config{
 		TableName: tableName,

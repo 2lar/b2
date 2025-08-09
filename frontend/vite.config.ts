@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv} from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import { resolve } from 'path'
 import react from '@vitejs/plugin-react'
 
@@ -25,7 +25,36 @@ export default defineConfig(({ mode }) => {
     root: 'src',
     // This sets the output directory for the build command
     build: {
-      outDir: '../dist'
+      outDir: '../dist',
+      // Add rollup options for code splitting
+      rollupOptions: {
+        output: {
+          // Manual chunks for vendor libraries
+          manualChunks: {
+            // React ecosystem
+            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+            // State management and data fetching
+            'state-vendor': ['zustand', '@tanstack/react-query'],
+            // Visualization libraries (the heaviest)
+            'graph-vendor': ['cytoscape', 'cytoscape-cola'],
+            // Utilities
+            'utils-vendor': ['lodash-es'],
+            // Authentication
+            'auth-vendor': ['@supabase/supabase-js']
+          },
+          // Dynamic imports for features
+          chunkFileNames: (chunkInfo) => {
+            const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split('/').pop() : 'chunk'
+            return `assets/[name]-${facadeModuleId}-[hash].js`
+          }
+        }
+      },
+      // Increase chunk size warning limit since we're manually chunking
+      chunkSizeWarningLimit: 600,
+      // Enable source maps for production debugging
+      sourcemap: true,
+      // Basic minification without terser for now
+      minify: 'esbuild'
     },
     // Explicitly tell Vite where to find env files
     envDir: '../',  // This tells Vite to look in the parent directory (frontend/) for .env files
@@ -37,6 +66,11 @@ export default defineConfig(({ mode }) => {
         '@services': resolve(__dirname, './src/services'),
         '@types': resolve(__dirname, './src/types')
       }
+    },
+    // Optimize dependencies
+    optimizeDeps: {
+      include: ['cytoscape', 'cytoscape-cola', '@tanstack/react-query'],
+      exclude: ['@tanstack/react-query-devtools']
     }
   }
 })

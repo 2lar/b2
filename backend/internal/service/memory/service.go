@@ -47,7 +47,7 @@ type Service interface {
 	CreateNodeAndKeywords(ctx context.Context, node domain.Node) error
 
 	// CreateNodeWithEdges creates a new memory and immediately finds connections
-	CreateNodeWithEdges(ctx context.Context, userID, content string) (*domain.Node, error)
+	CreateNodeWithEdges(ctx context.Context, userID, content string, tags []string) (*domain.Node, []domain.Edge, error)
 
 	// UpdateNode modifies an existing memory and recalculates its connections
 	UpdateNode(ctx context.Context, userID, nodeID, content string, tags []string) (*domain.Node, error)
@@ -90,21 +90,25 @@ func (s *service) CreateNodeAndKeywords(ctx context.Context, node domain.Node) e
 }
 
 // CreateNodeWithEdges creates a new memory node and finds related connections synchronously.
-func (s *service) CreateNodeWithEdges(ctx context.Context, userID, content string) (*domain.Node, error) {
+func (s *service) CreateNodeWithEdges(ctx context.Context, userID, content string, tags []string) (*domain.Node, []domain.Edge, error) {
 	if content == "" {
-		return nil, appErrors.NewValidation("content cannot be empty")
+		return nil, nil, appErrors.NewValidation("content cannot be empty")
 	}
 
 	keywords := ExtractKeywords(content)
+	log.Printf("DEBUG CreateNodeWithEdges: content='%s', extracted keywords=%v", content, keywords)
 
 	node := domain.Node{
 		ID:        uuid.New().String(),
 		UserID:    userID,
 		Content:   content,
 		Keywords:  keywords,
+		Tags:      tags,
 		CreatedAt: time.Now(),
 		Version:   0,
 	}
+
+	log.Printf("DEBUG CreateNodeWithEdges: created node ID=%s, searching for related nodes with keywords=%v", node.ID, keywords)
 
 	query := repository.NodeQuery{
 		UserID:   userID,
@@ -113,19 +117,35 @@ func (s *service) CreateNodeWithEdges(ctx context.Context, userID, content strin
 
 	relatedNodes, err := s.repo.FindNodes(ctx, query)
 	if err != nil {
-		log.Printf("Non-critical error finding related nodes for new node: %v", err)
+		log.Printf("ERROR finding related nodes for new node %s: %v", node.ID, err)
 	}
+
+	log.Printf("DEBUG CreateNodeWithEdges: found %d related nodes for node %s", len(relatedNodes), node.ID)
 
 	var relatedNodeIDs []string
 	for _, rn := range relatedNodes {
+		log.Printf("DEBUG CreateNodeWithEdges: related node found: ID=%s, content='%s', keywords=%v", rn.ID, rn.Content, rn.Keywords)
 		relatedNodeIDs = append(relatedNodeIDs, rn.ID)
 	}
 
+	log.Printf("DEBUG CreateNodeWithEdges: creating node %s with %d edges to nodes: %v", node.ID, len(relatedNodeIDs), relatedNodeIDs)
+
 	if err := s.repo.CreateNodeWithEdges(ctx, node, relatedNodeIDs); err != nil {
-		return nil, appErrors.Wrap(err, "failed to create node in repository")
+		return nil, nil, appErrors.Wrap(err, "failed to create node in repository")
 	}
 
-	return &node, nil
+	// Create edges to return with the response
+	var edges []domain.Edge
+	for _, relatedID := range relatedNodeIDs {
+		edge := domain.Edge{
+			SourceID: node.ID,
+			TargetID: relatedID,
+		}
+		edges = append(edges, edge)
+	}
+
+	log.Printf("DEBUG CreateNodeWithEdges: successfully created node %s with %d edges", node.ID, len(edges))
+	return &node, edges, nil
 }
 
 // UpdateNode orchestrates updating a node's content and reconnecting it.

@@ -53,7 +53,23 @@ async function connect() {
         try {
             const message = JSON.parse(event.data);
             
-            if (message.action === 'graphUpdated') {
+            if (message.type === 'nodeCreated') {
+                // Handle complete graph update with both node and edges
+                document.dispatchEvent(new CustomEvent('graph-update-event', {
+                    detail: {
+                        type: 'nodeCreated',
+                        node: {
+                            id: message.nodeId,
+                            content: message.content,
+                            label: message.content?.substring(0, 50) || '',
+                            keywords: message.keywords
+                        },
+                        edges: message.edges || [],
+                        timestamp: message.timestamp
+                    }
+                }));
+            } else if (message.action === 'graphUpdated') {
+                // Legacy support for existing events
                 if (message.nodeId) {
                     document.dispatchEvent(new CustomEvent('graph-update-event', {
                         detail: { nodeId: message.nodeId }

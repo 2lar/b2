@@ -20,7 +20,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 // MemoryHandler handles memory-related HTTP requests with injected dependencies.
@@ -59,27 +58,23 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	if req.Tags != nil {
 		tags = *req.Tags
 	}
-	node := domain.Node{
-		ID:        uuid.New().String(),
-		UserID:    userID,
-		Content:   req.Content,
-		Keywords:  memory.ExtractKeywords(req.Content),
-		Tags:      tags,
-		CreatedAt: time.Now(),
-		Version:   0,
-	}
 
-	if err := h.memoryService.CreateNodeAndKeywords(r.Context(), node); err != nil {
+	// Use the enhanced service method that returns both node and edges
+	createdNode, edges, err := h.memoryService.CreateNodeWithEdges(r.Context(), userID, req.Content, tags)
+	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
 
-	// Publish "NodeCreated" event to EventBridge
-	eventDetail, err := json.Marshal(map[string]interface{}{
-		"userId":   node.UserID,
-		"nodeId":   node.ID,
-		"content":  node.Content,
-		"keywords": node.Keywords,
+	// Publish "NodeCreated" event to EventBridge with complete graph update
+	eventDetail, err := json.Marshal(map[string]any{
+		"type":      "nodeCreated",
+		"userId":    createdNode.UserID,
+		"nodeId":    createdNode.ID,
+		"content":   createdNode.Content,
+		"keywords":  createdNode.Keywords,
+		"edges":     edges,
+		"timestamp": time.Now(),
 	})
 	if err != nil {
 		handleServiceError(w, err)
@@ -90,7 +85,7 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		Entries: []types.PutEventsRequestEntry{
 			{
 				Source:       aws.String("brain2.api"),
-				DetailType:   aws.String("NodeCreated"),
+				DetailType:   aws.String("GraphUpdate"),
 				Detail:       aws.String(string(eventDetail)),
 				EventBusName: aws.String("B2EventBus"),
 			},
@@ -102,11 +97,11 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.Success(w, http.StatusCreated, api.NodeResponse{
-		NodeID:    node.ID,
-		Content:   node.Content,
-		Tags:      node.Tags,
-		Timestamp: node.CreatedAt.Format(time.RFC3339),
-		Version:   node.Version,
+		NodeID:    createdNode.ID,
+		Content:   createdNode.Content,
+		Tags:      createdNode.Tags,
+		Timestamp: createdNode.CreatedAt.Format(time.RFC3339),
+		Version:   createdNode.Version,
 	})
 }
 
