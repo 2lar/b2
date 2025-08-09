@@ -98,7 +98,7 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated }) => {
                 await nodesApi.categorizeNode(newNode.nodeId);
             } catch (categorizationError) {
                 // Don't fail the whole operation if categorization fails
-                console.warn('Auto-categorization failed:', categorizationError);
+                console.warn('Auto-categorization failed');
             }
             
             showStatus('Memory saved successfully!', 'success');

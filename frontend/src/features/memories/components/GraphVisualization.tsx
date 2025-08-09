@@ -111,7 +111,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             const node = cy.getElementById(nodeId);
             
             if (node.length === 0) {
-                console.warn(`Node with ID ${nodeId} not found in graph`);
+                console.warn('Node not found in graph');
                 return false;
             }
             

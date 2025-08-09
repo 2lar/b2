@@ -256,7 +256,7 @@ func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, 
 				nodeIdMap[nodeID] = true
 				node, err := r.FindNodeByID(ctx, userID, nodeID)
 				if err != nil {
-					log.Printf("failed to find node by ID %s found from keyword search: %v", nodeID, err)
+					log.Printf("failed to find node from keyword search: %v", err)
 					continue
 				}
 				if node != nil {
@@ -322,7 +322,7 @@ func (r *ddbRepository) DeleteNode(ctx context.Context, userID, nodeID string) e
 
 // GetAllGraphData retrieves all nodes and edges for a user.
 func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*domain.Graph, error) {
-	log.Printf("Starting GetAllGraphData for userID: %s", userID)
+	log.Println("Starting GetAllGraphData")
 
 	scanInput := &dynamodb.ScanInput{
 		TableName:        aws.String(r.config.TableName),
@@ -341,7 +341,7 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			log.Printf("ERROR: failed to scan graph data page for user %s: %v", userID, err)
+			log.Printf("ERROR: failed to scan graph data page: %v", err)
 			return nil, appErrors.Wrap(err, "failed to scan graph data page")
 		}
 
@@ -392,7 +392,7 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 		}
 	}
 
-	log.Printf("Finished GetAllGraphData for userID: %s. Scanned %d total items, found %d nodes and %d unique edges.", userID, totalItemsScanned, len(nodes), len(edges))
+	log.Printf("Finished GetAllGraphData. Scanned %d total items, found %d nodes and %d unique edges.", totalItemsScanned, len(nodes), len(edges))
 
 	return &domain.Graph{Nodes: nodes, Edges: edges}, nil
 }
@@ -863,7 +863,7 @@ func (r *ddbRepository) FindMemoriesInCategory(ctx context.Context, userID, cate
 			// Get the actual memory node
 			memory, err := r.FindNodeByID(ctx, userID, ddbItem.MemoryID)
 			if err != nil {
-				log.Printf("failed to find memory %s in category %s: %v", ddbItem.MemoryID, categoryID, err)
+				log.Printf("failed to find memory in category: %v", err)
 				continue
 			}
 			if memory != nil {
@@ -901,7 +901,7 @@ func (r *ddbRepository) FindCategoriesForMemory(ctx context.Context, userID, mem
 				// Get the actual category
 				category, err := r.FindCategoryByID(ctx, userID, ddbItem.CategoryID)
 				if err != nil {
-					log.Printf("failed to find category %s for memory %s: %v", ddbItem.CategoryID, memoryID, err)
+					log.Printf("failed to find category for memory: %v", err)
 					continue
 				}
 				if category != nil {

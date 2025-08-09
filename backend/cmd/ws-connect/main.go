@@ -87,7 +87,7 @@ func handler(ctx context.Context, req events.APIGatewayWebsocketProxyRequest) (e
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
-	log.Printf("Successfully connected user %s with connection ID %s", userID, connectionID)
+	log.Println("WebSocket connection established successfully")
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK}, nil
 }
 

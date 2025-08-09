@@ -20,7 +20,6 @@ const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL;
 async function connect() {
     // Check if connection already exists
     if (socket && socket.readyState === WebSocket.OPEN) {
-        console.log('WebSocket is already open.');
         return;
     }
 
@@ -43,7 +42,6 @@ async function connect() {
 
     // Handle successful connection
     socket.onopen = () => {
-        console.log('WebSocket connection established.');
         if (reconnectTimer) {
             clearTimeout(reconnectTimer);
             reconnectTimer = null;
@@ -53,28 +51,25 @@ async function connect() {
     // Handle incoming messages
     socket.onmessage = (event) => {
         try {
-            console.log('[WebSocket] Raw message received:', event.data);
             const message = JSON.parse(event.data);
-            console.log('[WebSocket] Parsed message:', message);
             
             if (message.action === 'graphUpdated') {
                 if (message.nodeId) {
-                    console.log('[WebSocket] Dispatching graph-update-event with nodeId:', message.nodeId);
                     document.dispatchEvent(new CustomEvent('graph-update-event', {
                         detail: { nodeId: message.nodeId }
                     }));
                 } else {
-                    console.warn('[WebSocket] graphUpdated event missing nodeId:', message);
+                    console.warn('WebSocket graphUpdated event missing nodeId');
                 }
             }
         } catch (err) {
-            console.error('[WebSocket] Error parsing message:', err);
+            console.error('WebSocket message parsing error:', err);
         }
     };
 
     // Handle connection closure and automatic reconnection
     socket.onclose = (event) => {
-        console.warn(`WebSocket closed. Code: ${event.code}. Reconnecting in 3 seconds...`);
+        console.warn('WebSocket closed. Reconnecting in 3 seconds...');
         if (!reconnectTimer) {
             reconnectTimer = setTimeout(connect, 3000);
         }

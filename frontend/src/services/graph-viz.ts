@@ -106,7 +106,6 @@ export function destroyGraph(): void {
         cy.destroy();
         cy = null;
         window.cy = undefined; // Use undefined to clear from global scope
-        console.log("Graph instance destroyed.");
     }
     // Also hide the details panel as it may contain old data
     hideNodeDetails();
@@ -153,26 +152,23 @@ export async function refreshGraph(): Promise<void> {
         currentLayout = cy.layout(layoutOptions);
         currentLayout.run();
     } catch (error) {
-        console.error('Error refreshing graph:', error);
+        console.error('Graph refresh error:', error);
     }
 }
 
 export async function addNodeAndAnimate(nodeDetails: NodeDetails): Promise<void> {
-    console.log("[Graph-Viz] Starting addNodeAndAnimate for node:", nodeDetails.nodeId);
     
     if (!cy) {
-        console.error("[Graph-Viz] Cytoscape instance is null");
+        console.error('Graph visualization not initialized');
         return;
     }
     
     if (cy.getElementById(nodeDetails.nodeId!).length > 0) {
-        console.log("[Graph-Viz] Node already exists, skipping animation:", nodeDetails.nodeId);
         return;
     }
 
     const existingNodes = cy.nodes();
     try {
-        console.log("[Graph-Viz] Locking existing nodes");
         existingNodes.lock();
         
         // Calculate base position and radius based on viewport or neighbors
@@ -180,17 +176,14 @@ export async function addNodeAndAnimate(nodeDetails: NodeDetails): Promise<void>
         let baseRadius = Math.min(cy.width(), cy.height()) * 0.2; // 20% of viewport size
         
         const connectedNodeIds = (nodeDetails.edges || []);
-        console.log("[Graph-Viz] Connected node IDs:", connectedNodeIds);
         
         if (connectedNodeIds.length > 0) {
             const neighborNodes = cy.nodes().filter(node => connectedNodeIds.includes(node.id()));
-            console.log("[Graph-Viz] Found neighbor nodes:", neighborNodes.length);
             if (neighborNodes.length > 0) {
                 const bb = neighborNodes.boundingBox();
                 basePosition = { x: bb.x1 + bb.w / 2, y: bb.y1 + bb.h / 2 };
                 // Use smaller radius when adding to existing cluster
                 baseRadius = Math.max(bb.w, bb.h) * 0.75;
-                console.log("[Graph-Viz] Calculated base position:", basePosition);
             }
         }
         
@@ -203,7 +196,6 @@ export async function addNodeAndAnimate(nodeDetails: NodeDetails): Promise<void>
             x: basePosition.x + radius * Math.cos(angle),
             y: basePosition.y + radius * Math.sin(angle)
         };
-        console.log("[Graph-Viz] Final position with offset:", initialPosition);
         
         const label = nodeDetails.content ? (nodeDetails.content.length > 50 ? nodeDetails.content.substring(0, 47) + '...' : nodeDetails.content) : '';
         const newNodeElement: ElementDefinition = {
@@ -212,24 +204,19 @@ export async function addNodeAndAnimate(nodeDetails: NodeDetails): Promise<void>
             position: initialPosition, classes: 'newly-added'
         };
         
-        console.log("[Graph-Viz] Creating new node element:", newNodeElement);
         const addedNode = cy.add(newNodeElement);
         
-        console.log("[Graph-Viz] Starting node animation");
         await addedNode.animation({
             style: { 'opacity': 1, 'width': 50, 'height': 50 },
             duration: 800, easing: 'ease-out-cubic'
         } as any).play().promise();
-        console.log("[Graph-Viz] Node animation completed");
 
         const newEdgeElements: ElementDefinition[] = (nodeDetails.edges || []).map(targetId => ({
             group: 'edges', data: { id: `edge-${nodeDetails.nodeId}-${targetId}`, source: nodeDetails.nodeId!, target: targetId },
             style: { 'opacity': 0 }
         }));
         
-        console.log("[Graph-Viz] Adding edges:", newEdgeElements.length);
         for (const edgeDef of newEdgeElements) {
-            console.log("[Graph-Viz] Adding edge:", edgeDef.data.id);
             cy.add(edgeDef).animation({
                 style: { 'opacity': 0.7 },
                 duration: 600
@@ -237,7 +224,6 @@ export async function addNodeAndAnimate(nodeDetails: NodeDetails): Promise<void>
             await new Promise(resolve => setTimeout(resolve, 150));
         }
         
-        console.log("[Graph-Viz] Running layout");
         const layout = cy.layout({
             name: 'cose',
             eles: addedNode.union(addedNode.neighborhood()),
@@ -266,16 +252,13 @@ export async function addNodeAndAnimate(nodeDetails: NodeDetails): Promise<void>
         layout.run();
         
         setTimeout(() => {
-            console.log("[Graph-Viz] Cleanup: removing newly-added class and unlocking nodes");
             addedNode.removeClass('newly-added');
             existingNodes.unlock();
         }, 2500);
         
-        console.log("[Graph-Viz] Node addition and animation completed successfully");
     } catch (error) {
-        console.error('[Graph-Viz] Error adding and animating node:', error);
+        console.error('Graph node animation error:', error);
         existingNodes.unlock();
-        console.log("[Graph-Viz] Falling back to full graph refresh");
         await refreshGraph();
     }
 }
@@ -355,7 +338,7 @@ async function showNodeDetails(nodeId: string): Promise<void> {
         cy.elements().unselect();
         cy.getElementById(nodeId).select();
     } catch (error) {
-        console.error('Error loading node details:', error);
+        console.error('Node details loading error:', error);
     }
 }
 

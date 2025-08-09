@@ -92,7 +92,7 @@ func handler(ctx context.Context, event events.EventBridgeEvent) error {
 		if err != nil {
 			var goneErr *apigwTypes.GoneException
 			if errors.As(err, &goneErr) {
-				log.Printf("Found stale connection, deleting: %s", connectionID)
+				log.Println("Found stale connection, cleaning up")
 				dbClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 					TableName: aws.String(connectionsTable),
 					Key: map[string]types.AttributeValue{
@@ -101,7 +101,7 @@ func handler(ctx context.Context, event events.EventBridgeEvent) error {
 					},
 				})
 			} else {
-				log.Printf("ERROR: Failed to post to connection %s: %v", connectionID, err)
+				log.Printf("ERROR: Failed to post to connection: %v", err)
 			}
 		}
 	}

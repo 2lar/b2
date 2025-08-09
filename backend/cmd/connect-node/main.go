@@ -88,7 +88,7 @@ func handler(ctx context.Context, event events.EventBridgeEvent) error {
 		return err
 	}
 
-	log.Printf("Successfully processed node %s for user %s, created %d edges.", detail.NodeID, detail.UserID, len(relatedNodeIDs))
+	log.Printf("Successfully processed node, created %d edges.", len(relatedNodeIDs))
 	return nil
 }
 

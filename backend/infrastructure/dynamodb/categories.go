@@ -179,7 +179,7 @@ func (r *ddbRepository) FindChildCategories(ctx context.Context, userID, parentI
 	for _, childID := range childIDs {
 		category, err := r.FindCategoryByID(ctx, userID, childID)
 		if err != nil {
-			log.Printf("Failed to fetch child category %s: %v", childID, err)
+			log.Printf("Failed to fetch child category: %v", err)
 			continue
 		}
 		if category != nil {
@@ -321,7 +321,7 @@ func (r *ddbRepository) FindNodesByCategory(ctx context.Context, userID, categor
 	for _, nodeID := range nodeIDs {
 		node, err := r.FindNodeByID(ctx, userID, nodeID)
 		if err != nil {
-			log.Printf("Failed to fetch node %s: %v", nodeID, err)
+			log.Printf("Failed to fetch node: %v", err)
 			continue
 		}
 		if node != nil {
@@ -367,7 +367,7 @@ func (r *ddbRepository) FindCategoriesForNode(ctx context.Context, userID, nodeI
 	for _, categoryID := range categoryIDs {
 		category, err := r.FindCategoryByID(ctx, userID, categoryID)
 		if err != nil {
-			log.Printf("Failed to fetch category %s: %v", categoryID, err)
+			log.Printf("Failed to fetch category: %v", err)
 			continue
 		}
 		if category != nil {
@@ -449,7 +449,7 @@ func (r *ddbRepository) UpdateCategoryNoteCounts(ctx context.Context, userID str
 	for categoryID, count := range categoryCounts {
 		err := r.updateSingleCategoryNoteCount(ctx, userID, categoryID, count)
 		if err != nil {
-			log.Printf("Failed to update note count for category %s: %v", categoryID, err)
+			log.Printf("Failed to update note count for category: %v", err)
 		}
 	}
 

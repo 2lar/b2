@@ -56,7 +56,7 @@ func handler(ctx context.Context, req events.APIGatewayWebsocketProxyRequest) (e
 	}
 
 	if len(result.Items) == 0 {
-		log.Printf("WARN: Connection ID %s not found for disconnect.", connectionID)
+		log.Println("WARN: Connection not found for disconnect")
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusOK}, nil
 	}
 
@@ -83,7 +83,7 @@ func handler(ctx context.Context, req events.APIGatewayWebsocketProxyRequest) (e
 		return events.APIGatewayProxyResponse{StatusCode: http.StatusInternalServerError}, nil
 	}
 
-	log.Printf("Successfully cleaned up connection %s", connectionID)
+	log.Println("WebSocket connection cleaned up successfully")
 	return events.APIGatewayProxyResponse{StatusCode: http.StatusOK}, nil
 }
 

@@ -126,7 +126,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
         if (graphRef.current) {
             const success = graphRef.current.selectAndCenterNode(nodeId);
             if (!success) {
-                console.warn(`Could not find node ${nodeId} in graph. The graph may still be loading.`);
+                console.warn('Could not find node in graph. The graph may still be loading.');
             }
         }
     };
