@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"brain2-backend/infrastructure/dynamodb"
 	"brain2-backend/internal/config"
@@ -29,7 +30,8 @@ type Container struct {
 	EventBridgeClient *awsEventbridge.Client
 
 	// Repository Layer
-	Repository repository.Repository
+	Repository       repository.Repository
+	IdempotencyStore repository.IdempotencyStore
 
 	// Service Layer  
 	MemoryService   memoryService.Service
@@ -122,12 +124,15 @@ func (c *Container) initializeRepository() error {
 
 	c.Repository = dynamodb.NewRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
 
+	// Initialize idempotency store with 24-hour TTL
+	c.IdempotencyStore = dynamodb.NewIdempotencyStore(c.DynamoDBClient, c.Config.TableName, 24*time.Hour)
+
 	return nil
 }
 
 // initializeServices sets up the service layer.
 func (c *Container) initializeServices() {
-	c.MemoryService = memoryService.NewService(c.Repository)
+	c.MemoryService = memoryService.NewServiceWithIdempotency(c.Repository, c.IdempotencyStore)
 	c.CategoryService = categoryService.NewService(c.Repository)
 }
 

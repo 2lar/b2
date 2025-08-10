@@ -3,6 +3,8 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -59,8 +61,11 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		tags = *req.Tags
 	}
 
-	// Use the enhanced service method that returns both node and edges
-	createdNode, edges, err := h.memoryService.CreateNodeWithEdges(r.Context(), userID, req.Content, tags)
+	// Get idempotency key from header or generate one
+	idempotencyKey := getIdempotencyKey(r, userID, "CREATE_NODE", req)
+
+	// Use the idempotent service method
+	createdNode, edges, err := h.memoryService.CreateNodeWithEdgesIdempotent(r.Context(), userID, idempotencyKey, req.Content, tags)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -199,8 +204,16 @@ func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 	if req.Tags != nil {
 		tags = *req.Tags
 	}
-	// Use safe update with optimistic locking for race condition prevention
-	_, err = h.memoryService.SafeUpdateNode(r.Context(), userID, nodeID, req.Content, tags)
+
+	// Get idempotency key from header or generate one
+	idempotencyKey := getIdempotencyKey(r, userID, "UPDATE_NODE", map[string]interface{}{
+		"nodeID":  nodeID,
+		"content": req.Content,
+		"tags":    tags,
+	})
+
+	// Use idempotent update method
+	_, err = h.memoryService.UpdateNodeIdempotent(r.Context(), userID, nodeID, idempotencyKey, req.Content, tags)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -256,7 +269,10 @@ func (h *MemoryHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	deletedCount, failedNodeIds, err := h.memoryService.BulkDeleteNodes(r.Context(), userID, req.NodeIds)
+	// Get idempotency key from header or generate one
+	idempotencyKey := getIdempotencyKey(r, userID, "BULK_DELETE_NODES", req)
+
+	deletedCount, failedNodeIds, err := h.memoryService.BulkDeleteNodesIdempotent(r.Context(), userID, idempotencyKey, req.NodeIds)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -520,4 +536,34 @@ func (h *MemoryHandler) GetNodeNeighborhood(w http.ResponseWriter, r *http.Reque
 	}
 
 	api.Success(w, http.StatusOK, response)
+}
+
+// generateIdempotencyKey creates an idempotency key from request data if not provided
+func generateIdempotencyKey(userID, operation string, payload interface{}) string {
+	hasher := sha256.New()
+	
+	// Include user ID and operation in the hash
+	hasher.Write([]byte(userID))
+	hasher.Write([]byte(operation))
+	
+	// Include payload in the hash
+	if payload != nil {
+		payloadBytes, err := json.Marshal(payload)
+		if err == nil {
+			hasher.Write(payloadBytes)
+		}
+	}
+	
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// getIdempotencyKey extracts idempotency key from header or generates one
+func getIdempotencyKey(r *http.Request, userID, operation string, payload interface{}) string {
+	// Check for client-provided idempotency key
+	if key := r.Header.Get("Idempotency-Key"); key != "" {
+		return key
+	}
+	
+	// Generate automatic key based on operation and payload
+	return generateIdempotencyKey(userID, operation, payload)
 }

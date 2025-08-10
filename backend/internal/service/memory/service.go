@@ -74,16 +74,30 @@ type Service interface {
 	UpdateNodeWithEdgesRetry(ctx context.Context, userID, nodeID string, relatedNodeIDs []string, updateFn func(*domain.Node) error) (*domain.Node, error)
 	SafeUpdateNode(ctx context.Context, userID, nodeID, newContent string, newTags []string) (*domain.Node, error)
 	SafeUpdateNodeWithConnections(ctx context.Context, userID, nodeID, newContent string, newTags []string, relatedNodeIDs []string) (*domain.Node, error)
+
+	// Idempotent operation methods
+	CreateNodeWithEdgesIdempotent(ctx context.Context, userID, idempotencyKey, content string, tags []string) (*domain.Node, []domain.Edge, error)
+	UpdateNodeIdempotent(ctx context.Context, userID, nodeID, idempotencyKey, content string, tags []string) (*domain.Node, error)
+	BulkDeleteNodesIdempotent(ctx context.Context, userID, idempotencyKey string, nodeIDs []string) (int, []string, error)
 }
 
 // service implements the Service interface with concrete business logic.
 type service struct {
-	repo repository.Repository
+	repo             repository.Repository
+	idempotencyStore repository.IdempotencyStore
 }
 
 // NewService creates a new memory service with the provided repository.
 func NewService(repo repository.Repository) Service {
 	return &service{repo: repo}
+}
+
+// NewServiceWithIdempotency creates a new memory service with idempotency support.
+func NewServiceWithIdempotency(repo repository.Repository, idempotencyStore repository.IdempotencyStore) Service {
+	return &service{
+		repo:             repo,
+		idempotencyStore: idempotencyStore,
+	}
 }
 
 // CreateNodeAndKeywords stores a memory node with pre-extracted keywords.
@@ -358,4 +372,119 @@ func ExtractKeywords(content string) []string {
 	}
 
 	return keywords
+}
+
+// CreateNodeWithEdgesIdempotent creates a new memory node with idempotency support
+func (s *service) CreateNodeWithEdgesIdempotent(ctx context.Context, userID, idempotencyKey, content string, tags []string) (*domain.Node, []domain.Edge, error) {
+	if s.idempotencyStore == nil {
+		// Fall back to non-idempotent version if store not available
+		return s.CreateNodeWithEdges(ctx, userID, content, tags)
+	}
+
+	// Create idempotency key
+	key := repository.IdempotencyKey{
+		UserID:    userID,
+		Operation: "CREATE_NODE_WITH_EDGES",
+		Hash:      idempotencyKey,
+		CreatedAt: time.Now(),
+	}
+
+	// Create the idempotent operation
+	operation := repository.NewIdempotentOperation(s.idempotencyStore, key, func() (interface{}, error) {
+		node, edges, err := s.CreateNodeWithEdges(ctx, userID, content, tags)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Return a serializable result
+		return map[string]interface{}{
+			"node":  node,
+			"edges": edges,
+		}, nil
+	})
+
+	// Execute the idempotent operation
+	result, err := operation.Execute(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Cast the result back to the expected types
+	resultMap := result.(map[string]interface{})
+	node := resultMap["node"].(*domain.Node)
+	edges := resultMap["edges"].([]domain.Edge)
+
+	return node, edges, nil
+}
+
+// UpdateNodeIdempotent updates a node with idempotency support
+func (s *service) UpdateNodeIdempotent(ctx context.Context, userID, nodeID, idempotencyKey, content string, tags []string) (*domain.Node, error) {
+	if s.idempotencyStore == nil {
+		// Fall back to non-idempotent version if store not available
+		return s.UpdateNode(ctx, userID, nodeID, content, tags)
+	}
+
+	// Create idempotency key
+	key := repository.IdempotencyKey{
+		UserID:    userID,
+		Operation: "UPDATE_NODE",
+		Hash:      idempotencyKey,
+		CreatedAt: time.Now(),
+	}
+
+	// Create the idempotent operation
+	operation := repository.NewIdempotentOperation(s.idempotencyStore, key, func() (interface{}, error) {
+		return s.UpdateNode(ctx, userID, nodeID, content, tags)
+	})
+
+	// Execute the idempotent operation
+	result, err := operation.Execute(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return result.(*domain.Node), nil
+}
+
+// BulkDeleteNodesIdempotent deletes multiple nodes with idempotency support
+func (s *service) BulkDeleteNodesIdempotent(ctx context.Context, userID, idempotencyKey string, nodeIDs []string) (int, []string, error) {
+	if s.idempotencyStore == nil {
+		// Fall back to non-idempotent version if store not available
+		return s.BulkDeleteNodes(ctx, userID, nodeIDs)
+	}
+
+	// Create idempotency key
+	key := repository.IdempotencyKey{
+		UserID:    userID,
+		Operation: "BULK_DELETE_NODES",
+		Hash:      idempotencyKey,
+		CreatedAt: time.Now(),
+	}
+
+	// Create the idempotent operation
+	operation := repository.NewIdempotentOperation(s.idempotencyStore, key, func() (interface{}, error) {
+		deletedCount, failedNodeIds, err := s.BulkDeleteNodes(ctx, userID, nodeIDs)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Return a serializable result
+		return map[string]interface{}{
+			"deletedCount":  deletedCount,
+			"failedNodeIds": failedNodeIds,
+		}, nil
+	})
+
+	// Execute the idempotent operation
+	result, err := operation.Execute(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	// Cast the result back to the expected types
+	resultMap := result.(map[string]interface{})
+	deletedCount := resultMap["deletedCount"].(int)
+	failedNodeIds := resultMap["failedNodeIds"].([]string)
+
+	return deletedCount, failedNodeIds, nil
 }
