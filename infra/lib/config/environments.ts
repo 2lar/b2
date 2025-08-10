@@ -45,8 +45,8 @@ export interface EnvironmentConfig {
 
 const commonConfig = {
   lambda: {
-    memorySize: 128,
-    timeout: 30,
+    memorySize: 512, // Increased from 128MB for faster cold starts
+    timeout: 60, // Increased from 30s to handle cold start initialization
     logRetention: 14,
   },
   cors: {
@@ -109,8 +109,8 @@ export const environments: Record<string, EnvironmentConfig> = {
     stackName: 'b2-prod',
     resourcePrefix: 'b2-prod',
     lambda: {
-      memorySize: 256,
-      timeout: 30,
+      memorySize: 1024, // Increased from 256MB for production performance
+      timeout: 60, // Increased from 30s to handle cold start initialization
       logRetention: 30,
     },
     dynamodb: {

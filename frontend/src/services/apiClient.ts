@@ -48,12 +48,8 @@ type NodeDetails = components['schemas']['NodeDetails'];
 
 // Category Types
 type Category = components['schemas']['Category'];
-type CreateCategoryRequest = components['schemas']['CreateCategoryRequest'];
-type UpdateCategoryRequest = components['schemas']['UpdateCategoryRequest'];
-type AssignNodeToCategoryRequest = components['schemas']['AssignNodeToCategoryRequest'];
 
 // Request/Response Types for Bulk Operations
-type BulkDeleteRequest = components['schemas']['BulkDeleteRequest'];
 type BulkDeleteResponse = components['schemas']['BulkDeleteResponse'];
 
 // Graph Visualization Types
@@ -76,9 +72,10 @@ class ApiClient {
      * @param method HTTP verb (GET, POST, PUT, DELETE)
      * @param path API endpoint path
      * @param body Request payload for POST/PUT operations
+     * @param retryCount Number of retries attempted (internal use)
      * @returns Promise resolving to typed response data
      */
-    private async request<T>(method: string, path: string, body: unknown = null): Promise<T> {
+    private async request<T>(method: string, path: string, body: unknown = null, retryCount = 0): Promise<T> {
         // Get authentication token
         const token = await auth.getJwtToken();
 
@@ -117,17 +114,62 @@ class ApiClient {
                 console.error('API request failed:', {
                     status: response.status,
                     path,
-                    error: errorData.error
+                    error: errorData.error || errorText,
+                    retryCount,
+                    coldStart: response.headers.get('X-Cold-Start'),
+                    coldStartAge: response.headers.get('X-Cold-Start-Age')
                 });
+
+                // Check if this is a retryable error (503 Service Unavailable or 500 Internal Server Error)
+                const isRetryable = response.status === 503 || response.status === 500;
+                const isColdStartError = response.headers.get('X-Cold-Start') === 'true';
+                
+                // Be more patient with cold start errors
+                const maxRetries = isColdStartError ? 4 : (method === 'GET' ? 3 : 1);
+                
+                if (isRetryable && retryCount < maxRetries) {
+                    // Use longer delays for cold start errors
+                    const baseDelay = isColdStartError ? 2000 : 1000;
+                    const maxDelay = isColdStartError ? 8000 : 5000;
+                    const retryDelay = Math.min(baseDelay * Math.pow(2, retryCount), maxDelay);
+                    
+                    const retryReason = isColdStartError ? 'cold start detected' : 'service unavailable';
+                    console.log(`Retrying request in ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries + 1}) - ${retryReason}`);
+                    
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    return this.request<T>(method, path, body, retryCount + 1);
+                }
                 
                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+            
+            // Log cold start information for successful requests
+            const coldStart = response.headers.get('X-Cold-Start');
+            const coldStartAge = response.headers.get('X-Cold-Start-Age');
+            if (coldStart === 'true') {
+                console.log(`Request served after cold start: ${path} (cold start age: ${coldStartAge})`);
             }
             
             // Parse and return response
             const data = await response.json() as T;
             return data;
         } catch (error) {
-            console.error('API request error:', (error as Error).message);
+            // Handle network errors (timeouts, connection issues)
+            const errorMessage = (error as Error).message;
+            const isNetworkError = errorMessage.includes('fetch') || 
+                                 errorMessage.includes('timeout') || 
+                                 errorMessage.includes('network') ||
+                                 errorMessage.includes('Failed to fetch');
+            
+            if (isNetworkError && retryCount < 2 && method === 'GET') {
+                const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 3000);
+                console.log(`Network error, retrying in ${retryDelay}ms (attempt ${retryCount + 1}/3): ${errorMessage}`);
+                
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                return this.request<T>(method, path, body, retryCount + 1);
+            }
+            
+            console.error('API request error:', errorMessage);
             throw error;
         }
     }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"strings"
 
 	"brain2-backend/internal/repository"
 	"brain2-backend/pkg/api"
@@ -41,12 +42,43 @@ func handleServiceError(w http.ResponseWriter, err error) {
 	} else if repository.IsConflict(err) {
 		log.Printf("CONFLICT ERROR: %v", err)
 		api.Error(w, http.StatusConflict, "The resource has been modified by another request. Please retry with the latest version.")
+	} else if isTimeoutError(err) {
+		log.Printf("TIMEOUT ERROR: %v", err)
+		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable")
+	} else if isConnectionError(err) {
+		log.Printf("CONNECTION ERROR: %v", err)
+		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable")
 	} else {
 		// Log the full error details for debugging while hiding sensitive info from client
 		log.Printf("INTERNAL ERROR (full): %+v", err)
 		log.Printf("INTERNAL ERROR (type): %T", err)
 		api.Error(w, http.StatusInternalServerError, "An internal error occurred")
 	}
+}
+
+// isTimeoutError checks if the error is related to timeouts
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	errStr := err.Error()
+	return strings.Contains(errStr, "timeout") ||
+		   strings.Contains(errStr, "context deadline exceeded") ||
+		   strings.Contains(errStr, "i/o timeout")
+}
+
+// isConnectionError checks if the error is related to connection issues
+func isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	errStr := err.Error()
+	return strings.Contains(errStr, "connection refused") ||
+		   strings.Contains(errStr, "connection reset") ||
+		   strings.Contains(errStr, "no such host") ||
+		   strings.Contains(errStr, "network is unreachable")
 }
 
 // Authenticator middleware extracts user ID from Lambda authorizer context

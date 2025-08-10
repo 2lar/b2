@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
 	"brain2-backend/internal/di"
 
@@ -13,8 +14,16 @@ import (
 
 var chiLambda *chiadapter.ChiLambdaV2
 var container *di.Container
+var coldStart = true
+var coldStartTime time.Time
 
 func init() {
+	if coldStart {
+		coldStartTime = time.Now()
+		log.Println("Cold start detected - starting Lambda function initialization...")
+	}
+	
+	initStart := time.Now()
 	var err error
 	container, err = di.InitializeContainer()
 	if err != nil {
@@ -26,11 +35,34 @@ func init() {
 		log.Fatalf("Container validation failed: %v", err)
 	}
 
+	// Set cold start information in container for other components to use
+	container.SetColdStartInfo(coldStartTime, coldStart)
+	
 	// Get the router from the container
 	router := container.GetRouter()
 	chiLambda = chiadapter.NewV2(router)
 	
-	log.Println("Service initialized successfully with centralized DI container")
+	initDuration := time.Since(initStart)
+	
+	if coldStart {
+		totalColdStartDuration := time.Since(coldStartTime)
+		log.Printf("Cold start completed: initialization took %v (total cold start: %v)", initDuration, totalColdStartDuration)
+		
+		// Log warning for slow cold starts
+		if totalColdStartDuration > 15*time.Second {
+			log.Printf("WARNING: Cold start took %v, which may cause timeout issues", totalColdStartDuration)
+		}
+		
+		coldStart = false // Mark that we're no longer in cold start
+		container.IsColdStart = false // Update container state too
+	} else {
+		log.Printf("Service initialized successfully with centralized DI container in %v", initDuration)
+		
+		// Log initialization warning if it took too long
+		if initDuration > 10*time.Second {
+			log.Printf("WARNING: Initialization took %v, which may cause cold start timeouts", initDuration)
+		}
+	}
 }
 
 func main() {
@@ -45,6 +77,55 @@ func main() {
 	}()
 
 	lambda.Start(func(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
-		return chiLambda.ProxyWithContextV2(ctx, req)
+		requestStart := time.Now()
+		
+		// Check if this request is happening shortly after cold start
+		timeSinceColdStart := time.Since(coldStartTime)
+		isPostColdStartRequest := timeSinceColdStart < 30*time.Second && !coldStart
+		
+		if isPostColdStartRequest {
+			log.Printf("Processing POST-COLD-START request (%v after cold start): %s %s", 
+				timeSinceColdStart, req.RequestContext.HTTP.Method, req.RequestContext.HTTP.Path)
+		} else {
+			log.Printf("Processing request: %s %s", req.RequestContext.HTTP.Method, req.RequestContext.HTTP.Path)
+		}
+		
+		response, err := chiLambda.ProxyWithContextV2(ctx, req)
+		
+		// Add cold start indicator to response headers
+		if isPostColdStartRequest {
+			if response.Headers == nil {
+				response.Headers = make(map[string]string)
+			}
+			response.Headers["X-Cold-Start"] = "true"
+			response.Headers["X-Cold-Start-Age"] = timeSinceColdStart.String()
+		}
+		
+		duration := time.Since(requestStart)
+		
+		if isPostColdStartRequest {
+			log.Printf("Post-cold-start request completed in %v: %s %s -> %d (cold start age: %v)", 
+				duration, 
+				req.RequestContext.HTTP.Method, 
+				req.RequestContext.HTTP.Path,
+				response.StatusCode,
+				timeSinceColdStart)
+		} else {
+			log.Printf("Request completed in %v: %s %s -> %d", 
+				duration, 
+				req.RequestContext.HTTP.Method, 
+				req.RequestContext.HTTP.Path,
+				response.StatusCode)
+		}
+		
+		// Log slow requests for monitoring
+		if duration > 5*time.Second {
+			log.Printf("SLOW REQUEST WARNING: %s %s took %v", 
+				req.RequestContext.HTTP.Method, 
+				req.RequestContext.HTTP.Path, 
+				duration)
+		}
+		
+		return response, err
 	})
 }

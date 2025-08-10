@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"brain2-backend/infrastructure/dynamodb"
@@ -24,6 +25,10 @@ import (
 type Container struct {
 	// Configuration
 	Config *config.Config
+	
+	// Cold start tracking
+	ColdStartTime *time.Time
+	IsColdStart   bool
 
 	// AWS Clients
 	DynamoDBClient    *awsDynamodb.Client
@@ -105,24 +110,45 @@ func (c *Container) initialize() error {
 	return nil
 }
 
-// initializeAWSClients sets up AWS service clients.
+// initializeAWSClients sets up AWS service clients with optimized timeouts.
 func (c *Container) initializeAWSClients() error {
-	awsCfg, err := awsConfig.LoadDefaultConfig(context.TODO())
+	log.Println("Initializing AWS clients...")
+	startTime := time.Now()
+
+	// Create context with timeout for AWS config loading
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	awsCfg, err := awsConfig.LoadDefaultConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	// DynamoDB client
-	c.DynamoDBClient = awsDynamodb.NewFromConfig(awsCfg)
+	// DynamoDB client with custom timeouts
+	c.DynamoDBClient = awsDynamodb.NewFromConfig(awsCfg, func(o *awsDynamodb.Options) {
+		// Set reasonable timeouts for DynamoDB operations
+		o.HTTPClient = &http.Client{
+			Timeout: 15 * time.Second,
+		}
+	})
 
-	// EventBridge client
-	c.EventBridgeClient = awsEventbridge.NewFromConfig(awsCfg)
+	// EventBridge client with custom timeouts
+	c.EventBridgeClient = awsEventbridge.NewFromConfig(awsCfg, func(o *awsEventbridge.Options) {
+		// Set reasonable timeouts for EventBridge operations
+		o.HTTPClient = &http.Client{
+			Timeout: 10 * time.Second,
+		}
+	})
 
+	log.Printf("AWS clients initialized in %v", time.Since(startTime))
 	return nil
 }
 
 // initializeRepository sets up the repository layer.
 func (c *Container) initializeRepository() error {
+	log.Println("Initializing repository layer...")
+	startTime := time.Now()
+
 	if c.DynamoDBClient == nil {
 		return fmt.Errorf("DynamoDB client not initialized")
 	}
@@ -144,6 +170,7 @@ func (c *Container) initializeRepository() error {
 	// Initialize idempotency store with 24-hour TTL
 	c.IdempotencyStore = dynamodb.NewIdempotencyStore(c.DynamoDBClient, c.Config.TableName, 24*time.Hour)
 
+	log.Printf("Repository layer initialized in %v", time.Since(startTime))
 	return nil
 }
 
@@ -165,7 +192,7 @@ func (c *Container) initializeServices() {
 
 // initializeHandlers sets up the handler layer.
 func (c *Container) initializeHandlers() {
-	c.MemoryHandler = handlers.NewMemoryHandler(c.MemoryService, c.EventBridgeClient)
+	c.MemoryHandler = handlers.NewMemoryHandler(c.MemoryService, c.EventBridgeClient, c)
 	c.CategoryHandler = handlers.NewCategoryHandler(c.CategoryService)
 }
 
@@ -232,6 +259,29 @@ func (c *Container) Shutdown(ctx context.Context) error {
 // AddShutdownFunction adds a function to be called during container shutdown.
 func (c *Container) AddShutdownFunction(fn func() error) {
 	c.shutdownFunctions = append(c.shutdownFunctions, fn)
+}
+
+// SetColdStartInfo sets cold start tracking information
+func (c *Container) SetColdStartInfo(coldStartTime time.Time, isColdStart bool) {
+	c.ColdStartTime = &coldStartTime
+	c.IsColdStart = isColdStart
+}
+
+// GetTimeSinceColdStart returns the duration since cold start, or zero if not available
+func (c *Container) GetTimeSinceColdStart() time.Duration {
+	if c.ColdStartTime == nil {
+		return 0
+	}
+	return time.Since(*c.ColdStartTime)
+}
+
+// IsPostColdStartRequest returns true if this is a request happening shortly after cold start
+func (c *Container) IsPostColdStartRequest() bool {
+	if c.ColdStartTime == nil {
+		return false
+	}
+	timeSince := time.Since(*c.ColdStartTime)
+	return timeSince < 30*time.Second && !c.IsColdStart
 }
 
 // Validate ensures all critical dependencies are properly initialized.

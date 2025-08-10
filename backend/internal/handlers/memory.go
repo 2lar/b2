@@ -28,13 +28,24 @@ import (
 type MemoryHandler struct {
 	memoryService     memory.Service
 	eventBridgeClient *eventbridge.Client
+	container         interface {
+		IsPostColdStartRequest() bool
+		GetTimeSinceColdStart() time.Duration
+	}
+}
+
+// ColdStartContainer interface for cold start detection
+type ColdStartContainer interface {
+	IsPostColdStartRequest() bool
+	GetTimeSinceColdStart() time.Duration
 }
 
 // NewMemoryHandler creates a new memory handler with dependency injection.
-func NewMemoryHandler(memoryService memory.Service, eventBridgeClient *eventbridge.Client) *MemoryHandler {
+func NewMemoryHandler(memoryService memory.Service, eventBridgeClient *eventbridge.Client, container ColdStartContainer) *MemoryHandler {
 	return &MemoryHandler{
 		memoryService:     memoryService,
 		eventBridgeClient: eventBridgeClient,
+		container:         container,
 	}
 }
 
@@ -151,8 +162,22 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	}
 	nodeID := chi.URLParam(r, "nodeId")
 
+	// Check if this is a post-cold-start request for conditional behavior
+	isPostColdStart := h.container.IsPostColdStartRequest()
+	if isPostColdStart {
+		timeSince := h.container.GetTimeSinceColdStart()
+		log.Printf("GetNode: Processing post-cold-start request (%v after cold start) for node %s", timeSince, nodeID)
+		
+		// Add cold start headers to response
+		w.Header().Set("X-Cold-Start", "true")
+		w.Header().Set("X-Cold-Start-Age", timeSince.String())
+	}
+
 	node, edges, err := h.memoryService.GetNodeDetails(r.Context(), userID, nodeID)
 	if err != nil {
+		if isPostColdStart {
+			log.Printf("GetNode: Error during post-cold-start request for node %s: %v", nodeID, err)
+		}
 		handleServiceError(w, err)
 		return
 	}
@@ -162,14 +187,20 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 		edgeIDs[i] = edge.TargetID
 	}
 
-	api.Success(w, http.StatusOK, api.NodeDetailsResponse{
+	response := api.NodeDetailsResponse{
 		NodeID:    node.ID,
 		Content:   node.Content,
 		Tags:      node.Tags,
 		Timestamp: node.CreatedAt.Format(time.RFC3339),
 		Version:   node.Version,
 		Edges:     edgeIDs,
-	})
+	}
+
+	if isPostColdStart {
+		log.Printf("GetNode: Successfully completed post-cold-start request for node %s", nodeID)
+	}
+
+	api.Success(w, http.StatusOK, response)
 }
 
 // UpdateNode handles PUT /api/nodes/{nodeId}
