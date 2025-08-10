@@ -29,7 +29,15 @@ type Container struct {
 	DynamoDBClient    *awsDynamodb.Client
 	EventBridgeClient *awsEventbridge.Client
 
-	// Repository Layer
+	// Repository Layer - Segregated interfaces for better dependency management
+	NodeRepository         repository.NodeRepository
+	EdgeRepository         repository.EdgeRepository
+	KeywordRepository      repository.KeywordRepository
+	TransactionalRepository repository.TransactionalRepository
+	CategoryRepository     repository.CategoryRepository
+	GraphRepository        repository.GraphRepository
+	
+	// Composed repository for backward compatibility
 	Repository       repository.Repository
 	IdempotencyStore repository.IdempotencyStore
 
@@ -122,6 +130,15 @@ func (c *Container) initializeRepository() error {
 		return fmt.Errorf("config not loaded")
 	}
 
+	// Initialize segregated repositories
+	c.NodeRepository = dynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	c.EdgeRepository = dynamodb.NewEdgeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	c.KeywordRepository = dynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	c.TransactionalRepository = dynamodb.NewTransactionalRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	c.CategoryRepository = dynamodb.NewCategoryRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	c.GraphRepository = dynamodb.NewGraphRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+
+	// Initialize composed repository for backward compatibility
 	c.Repository = dynamodb.NewRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
 
 	// Initialize idempotency store with 24-hour TTL
@@ -132,8 +149,18 @@ func (c *Container) initializeRepository() error {
 
 // initializeServices sets up the service layer.
 func (c *Container) initializeServices() {
-	c.MemoryService = memoryService.NewServiceWithIdempotency(c.Repository, c.IdempotencyStore)
-	c.CategoryService = categoryService.NewService(c.Repository)
+	// Initialize memory service with segregated repositories
+	c.MemoryService = memoryService.NewServiceWithIdempotency(
+		c.NodeRepository,
+		c.EdgeRepository,
+		c.KeywordRepository,
+		c.TransactionalRepository,
+		c.GraphRepository,
+		c.IdempotencyStore,
+	)
+	
+	// Initialize category service with segregated repositories
+	c.CategoryService = categoryService.NewService(c.CategoryRepository, c.NodeRepository)
 }
 
 // initializeHandlers sets up the handler layer.
@@ -218,9 +245,35 @@ func (c *Container) Validate() error {
 	if c.EventBridgeClient == nil {
 		return fmt.Errorf("EventBridge client not initialized")
 	}
-	if c.Repository == nil {
-		return fmt.Errorf("repository not initialized")
+	
+	// Validate segregated repositories
+	if c.NodeRepository == nil {
+		return fmt.Errorf("node repository not initialized")
 	}
+	if c.EdgeRepository == nil {
+		return fmt.Errorf("edge repository not initialized")
+	}
+	if c.KeywordRepository == nil {
+		return fmt.Errorf("keyword repository not initialized")
+	}
+	if c.TransactionalRepository == nil {
+		return fmt.Errorf("transactional repository not initialized")
+	}
+	if c.CategoryRepository == nil {
+		return fmt.Errorf("category repository not initialized")
+	}
+	if c.GraphRepository == nil {
+		return fmt.Errorf("graph repository not initialized")
+	}
+	
+	// Validate composed repository (backward compatibility)
+	if c.Repository == nil {
+		return fmt.Errorf("composed repository not initialized")
+	}
+	if c.IdempotencyStore == nil {
+		return fmt.Errorf("idempotency store not initialized")
+	}
+	
 	if c.MemoryService == nil {
 		return fmt.Errorf("memory service not initialized")
 	}

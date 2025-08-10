@@ -81,21 +81,59 @@ type Service interface {
 	BulkDeleteNodesIdempotent(ctx context.Context, userID, idempotencyKey string, nodeIDs []string) (int, []string, error)
 }
 
-// service implements the Service interface with concrete business logic.
+// service implements the Service interface with concrete business logic using segregated repositories.
 type service struct {
-	repo             repository.Repository
+	// Segregated repository dependencies - only what this service needs
+	nodeRepo         repository.NodeRepository
+	edgeRepo         repository.EdgeRepository
+	keywordRepo      repository.KeywordRepository
+	transactionRepo  repository.TransactionalRepository
+	graphRepo        repository.GraphRepository
 	idempotencyStore repository.IdempotencyStore
 }
 
-// NewService creates a new memory service with the provided repository.
-func NewService(repo repository.Repository) Service {
-	return &service{repo: repo}
+// NewService creates a new memory service with segregated repositories.
+func NewService(nodeRepo repository.NodeRepository, edgeRepo repository.EdgeRepository, keywordRepo repository.KeywordRepository, transactionRepo repository.TransactionalRepository, graphRepo repository.GraphRepository) Service {
+	return &service{
+		nodeRepo:        nodeRepo,
+		edgeRepo:        edgeRepo,
+		keywordRepo:     keywordRepo,
+		transactionRepo: transactionRepo,
+		graphRepo:       graphRepo,
+	}
 }
 
-// NewServiceWithIdempotency creates a new memory service with idempotency support.
-func NewServiceWithIdempotency(repo repository.Repository, idempotencyStore repository.IdempotencyStore) Service {
+// NewServiceWithIdempotency creates a new memory service with segregated repositories and idempotency support.
+func NewServiceWithIdempotency(nodeRepo repository.NodeRepository, edgeRepo repository.EdgeRepository, keywordRepo repository.KeywordRepository, transactionRepo repository.TransactionalRepository, graphRepo repository.GraphRepository, idempotencyStore repository.IdempotencyStore) Service {
 	return &service{
-		repo:             repo,
+		nodeRepo:         nodeRepo,
+		edgeRepo:         edgeRepo,
+		keywordRepo:      keywordRepo,
+		transactionRepo:  transactionRepo,
+		graphRepo:        graphRepo,
+		idempotencyStore: idempotencyStore,
+	}
+}
+
+// NewServiceFromRepository creates a memory service from a monolithic repository (for backward compatibility).
+func NewServiceFromRepository(repo repository.Repository) Service {
+	return &service{
+		nodeRepo:        repo,
+		edgeRepo:        repo,
+		keywordRepo:     repo,
+		transactionRepo: repo,
+		graphRepo:       repo,
+	}
+}
+
+// NewServiceFromRepositoryWithIdempotency creates a memory service from a monolithic repository with idempotency (for backward compatibility).
+func NewServiceFromRepositoryWithIdempotency(repo repository.Repository, idempotencyStore repository.IdempotencyStore) Service {
+	return &service{
+		nodeRepo:         repo,
+		edgeRepo:         repo,
+		keywordRepo:      repo,
+		transactionRepo:  repo,
+		graphRepo:        repo,
 		idempotencyStore: idempotencyStore,
 	}
 }
@@ -106,7 +144,7 @@ func (s *service) CreateNodeAndKeywords(ctx context.Context, node domain.Node) e
 		return appErrors.NewValidation("content cannot be empty")
 	}
 
-	return s.repo.CreateNodeAndKeywords(ctx, node)
+	return s.nodeRepo.CreateNodeAndKeywords(ctx, node)
 }
 
 // CreateNodeWithEdges creates a new memory node and finds related connections synchronously.
@@ -130,12 +168,7 @@ func (s *service) CreateNodeWithEdges(ctx context.Context, userID, content strin
 
 	log.Printf("DEBUG CreateNodeWithEdges: created node ID=%s, searching for related nodes with keywords=%v", node.ID, keywords)
 
-	query := repository.NodeQuery{
-		UserID:   userID,
-		Keywords: keywords,
-	}
-
-	relatedNodes, err := s.repo.FindNodes(ctx, query)
+	relatedNodes, err := s.keywordRepo.FindNodesByKeywords(ctx, userID, keywords)
 	if err != nil {
 		log.Printf("ERROR finding related nodes for new node %s: %v", node.ID, err)
 	}
@@ -150,7 +183,7 @@ func (s *service) CreateNodeWithEdges(ctx context.Context, userID, content strin
 
 	log.Printf("DEBUG CreateNodeWithEdges: creating node %s with %d edges to nodes: %v", node.ID, len(relatedNodeIDs), relatedNodeIDs)
 
-	if err := s.repo.CreateNodeWithEdges(ctx, node, relatedNodeIDs); err != nil {
+	if err := s.transactionRepo.CreateNodeWithEdges(ctx, node, relatedNodeIDs); err != nil {
 		return nil, nil, appErrors.Wrap(err, "failed to create node in repository")
 	}
 
@@ -174,7 +207,7 @@ func (s *service) UpdateNode(ctx context.Context, userID, nodeID, content string
 		return nil, appErrors.NewValidation("content cannot be empty")
 	}
 
-	existingNode, err := s.repo.FindNodeByID(ctx, userID, nodeID)
+	existingNode, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to check for existing node")
 	}
@@ -193,11 +226,7 @@ func (s *service) UpdateNode(ctx context.Context, userID, nodeID, content string
 		Version:   existingNode.Version + 1,
 	}
 
-	query := repository.NodeQuery{
-		UserID:   userID,
-		Keywords: keywords,
-	}
-	relatedNodes, err := s.repo.FindNodes(ctx, query)
+	relatedNodes, err := s.keywordRepo.FindNodesByKeywords(ctx, userID, keywords)
 	if err != nil {
 		log.Printf("Non-critical error finding related nodes for updated node %s: %v", nodeID, err)
 	}
@@ -209,7 +238,7 @@ func (s *service) UpdateNode(ctx context.Context, userID, nodeID, content string
 		}
 	}
 
-	if err := s.repo.UpdateNodeAndEdges(ctx, updatedNode, relatedNodeIDs); err != nil {
+	if err := s.transactionRepo.UpdateNodeAndEdges(ctx, updatedNode, relatedNodeIDs); err != nil {
 		return nil, appErrors.Wrap(err, "failed to update node in repository")
 	}
 
@@ -218,14 +247,14 @@ func (s *service) UpdateNode(ctx context.Context, userID, nodeID, content string
 
 // DeleteNode orchestrates deleting a node.
 func (s *service) DeleteNode(ctx context.Context, userID, nodeID string) error {
-	existingNode, err := s.repo.FindNodeByID(ctx, userID, nodeID)
+	existingNode, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
 	if err != nil {
 		return appErrors.Wrap(err, "failed to check for existing node before delete")
 	}
 	if existingNode == nil {
 		return appErrors.NewNotFound("node not found")
 	}
-	return s.repo.DeleteNode(ctx, userID, nodeID)
+	return s.nodeRepo.DeleteNode(ctx, userID, nodeID)
 }
 
 // BulkDeleteNodes orchestrates deleting multiple nodes.
@@ -243,7 +272,7 @@ func (s *service) BulkDeleteNodes(ctx context.Context, userID string, nodeIDs []
 
 	for _, nodeID := range nodeIDs {
 		// Check if node exists and belongs to user
-		existingNode, err := s.repo.FindNodeByID(ctx, userID, nodeID)
+		existingNode, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
 		if err != nil {
 			log.Printf("Error checking node %s for user %s: %v", nodeID, userID, err)
 			failedNodeIDs = append(failedNodeIDs, nodeID)
@@ -256,7 +285,7 @@ func (s *service) BulkDeleteNodes(ctx context.Context, userID string, nodeIDs []
 		}
 
 		// Delete the node
-		if err := s.repo.DeleteNode(ctx, userID, nodeID); err != nil {
+		if err := s.nodeRepo.DeleteNode(ctx, userID, nodeID); err != nil {
 			log.Printf("Error deleting node %s for user %s: %v", nodeID, userID, err)
 			failedNodeIDs = append(failedNodeIDs, nodeID)
 			continue
@@ -270,7 +299,7 @@ func (s *service) BulkDeleteNodes(ctx context.Context, userID string, nodeIDs []
 
 // GetNodeDetails retrieves a node and its direct connections.
 func (s *service) GetNodeDetails(ctx context.Context, userID, nodeID string) (*domain.Node, []domain.Edge, error) {
-	node, err := s.repo.FindNodeByID(ctx, userID, nodeID)
+	node, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
 	if err != nil {
 		return nil, nil, appErrors.Wrap(err, "failed to get node from repository")
 	}
@@ -282,7 +311,7 @@ func (s *service) GetNodeDetails(ctx context.Context, userID, nodeID string) (*d
 		UserID:   userID,
 		SourceID: nodeID,
 	}
-	edges, err := s.repo.FindEdges(ctx, edgeQuery)
+	edges, err := s.edgeRepo.FindEdges(ctx, edgeQuery)
 	if err != nil {
 		return nil, nil, appErrors.Wrap(err, "failed to get edges from repository")
 	}
@@ -296,7 +325,7 @@ func (s *service) GetGraphData(ctx context.Context, userID string) (*domain.Grap
 		UserID:       userID,
 		IncludeEdges: true,
 	}
-	graph, err := s.repo.GetGraphData(ctx, graphQuery)
+	graph, err := s.graphRepo.GetGraphData(ctx, graphQuery)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get all graph data from repository")
 	}
@@ -309,7 +338,7 @@ func (s *service) GetNodesPage(ctx context.Context, userID string, pagination re
 		UserID: userID,
 	}
 
-	page, err := s.repo.GetNodesPage(ctx, query, pagination)
+	page, err := s.nodeRepo.GetNodesPage(ctx, query, pagination)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get nodes page from repository")
 	}
@@ -320,7 +349,7 @@ func (s *service) GetNodesPage(ctx context.Context, userID string, pagination re
 // GetNodeNeighborhood retrieves a node's neighborhood with depth limiting for performance
 func (s *service) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error) {
 	// Validate that the node exists and belongs to the user
-	existingNode, err := s.repo.FindNodeByID(ctx, userID, nodeID)
+	existingNode, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to check for existing node")
 	}
@@ -329,7 +358,7 @@ func (s *service) GetNodeNeighborhood(ctx context.Context, userID, nodeID string
 	}
 
 	// Get the neighborhood
-	graph, err := s.repo.GetNodeNeighborhood(ctx, userID, nodeID, depth)
+	graph, err := s.nodeRepo.GetNodeNeighborhood(ctx, userID, nodeID, depth)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get node neighborhood from repository")
 	}
@@ -344,7 +373,7 @@ func (s *service) GetGraphDataPaginated(ctx context.Context, userID string, pagi
 		IncludeEdges: true,
 	}
 
-	graph, nextCursor, err := s.repo.GetGraphDataPaginated(ctx, graphQuery, pagination)
+	graph, nextCursor, err := s.graphRepo.GetGraphDataPaginated(ctx, graphQuery, pagination)
 	if err != nil {
 		return nil, "", appErrors.Wrap(err, "failed to get paginated graph data from repository")
 	}

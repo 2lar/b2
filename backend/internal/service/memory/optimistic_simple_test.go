@@ -16,7 +16,7 @@ import (
 
 func TestSafeUpdateNode_BasicFunctionality(t *testing.T) {
 	mockRepo := mocks.NewMockRepository()
-	service := NewService(mockRepo)
+	service := NewServiceFromRepository(mockRepo)
 	ctx := context.Background()
 
 	// Create a test node
@@ -58,7 +58,7 @@ func TestSafeUpdateNode_BasicFunctionality(t *testing.T) {
 
 func TestSafeUpdateNodeWithConnections_BasicFunctionality(t *testing.T) {
 	mockRepo := mocks.NewMockRepository()
-	service := NewService(mockRepo)
+	service := NewServiceFromRepository(mockRepo)
 	ctx := context.Background()
 
 	// Create test nodes
@@ -110,7 +110,7 @@ func TestSafeUpdateNodeWithConnections_BasicFunctionality(t *testing.T) {
 
 func TestUpdateNodeWithRetry_CustomFunction(t *testing.T) {
 	mockRepo := mocks.NewMockRepository()
-	service := NewService(mockRepo)
+	service := NewServiceFromRepository(mockRepo)
 	ctx := context.Background()
 
 	userID := "test-user"
@@ -159,7 +159,7 @@ func TestUpdateNodeWithRetry_CustomFunction(t *testing.T) {
 
 func TestOptimisticLocking_ErrorHandling(t *testing.T) {
 	mockRepo := mocks.NewMockRepository()
-	service := NewService(mockRepo)
+	service := NewServiceFromRepository(mockRepo)
 	ctx := context.Background()
 
 	userID := "test-user"
@@ -208,7 +208,7 @@ func TestOptimisticLocking_ErrorHandling(t *testing.T) {
 
 func TestVersionHandling(t *testing.T) {
 	mockRepo := mocks.NewMockRepository()
-	service := NewService(mockRepo)
+	service := NewServiceFromRepository(mockRepo)
 	ctx := context.Background()
 
 	userID := "test-user"

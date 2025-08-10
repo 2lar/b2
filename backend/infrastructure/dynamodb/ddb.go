@@ -93,6 +93,38 @@ func NewRepositoryWithConfig(dbClient *dynamodb.Client, config repository.Config
 	}
 }
 
+// Segregated repository factory functions for dependency injection
+
+// NewNodeRepository creates a new instance implementing NodeRepository interface.
+func NewNodeRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.NodeRepository {
+	return NewRepository(dbClient, tableName, indexName)
+}
+
+// NewEdgeRepository creates a new instance implementing EdgeRepository interface.
+func NewEdgeRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.EdgeRepository {
+	return NewRepository(dbClient, tableName, indexName)
+}
+
+// NewKeywordRepository creates a new instance implementing KeywordRepository interface.
+func NewKeywordRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.KeywordRepository {
+	return NewRepository(dbClient, tableName, indexName)
+}
+
+// NewTransactionalRepository creates a new instance implementing TransactionalRepository interface.
+func NewTransactionalRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.TransactionalRepository {
+	return NewRepository(dbClient, tableName, indexName)
+}
+
+// NewCategoryRepository creates a new instance implementing CategoryRepository interface.
+func NewCategoryRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.CategoryRepository {
+	return NewRepository(dbClient, tableName, indexName)
+}
+
+// NewGraphRepository creates a new instance implementing GraphRepository interface.
+func NewGraphRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.GraphRepository {
+	return NewRepository(dbClient, tableName, indexName)
+}
+
 
 // getCanonicalEdge determines the canonical storage for a bi-directional edge.
 // Returns the owner node ID and target node ID based on lexicographic ordering.

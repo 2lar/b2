@@ -17,7 +17,7 @@ const (
 func (s *service) UpdateNodeWithRetry(ctx context.Context, userID, nodeID string, updateFn func(*domain.Node) error) (*domain.Node, error) {
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// Fetch the latest version of the node
-		node, err := s.repo.FindNodeByID(ctx, userID, nodeID)
+		node, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
 		if err != nil {
 			return nil, err
 		}
@@ -32,7 +32,7 @@ func (s *service) UpdateNodeWithRetry(ctx context.Context, userID, nodeID string
 		}
 
 		// Try to save the updated node
-		err = s.repo.UpdateNodeAndEdges(ctx, *node, []string{}) // No edge updates in retry logic
+		err = s.transactionRepo.UpdateNodeAndEdges(ctx, *node, []string{}) // No edge updates in retry logic
 		if err == nil {
 			// Success - return the updated node
 			return node, nil
@@ -57,7 +57,7 @@ func (s *service) UpdateNodeWithRetry(ctx context.Context, userID, nodeID string
 func (s *service) UpdateNodeWithEdgesRetry(ctx context.Context, userID, nodeID string, relatedNodeIDs []string, updateFn func(*domain.Node) error) (*domain.Node, error) {
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// Fetch the latest version of the node
-		node, err := s.repo.FindNodeByID(ctx, userID, nodeID)
+		node, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +72,7 @@ func (s *service) UpdateNodeWithEdgesRetry(ctx context.Context, userID, nodeID s
 		}
 
 		// Try to save the updated node with edges
-		err = s.repo.UpdateNodeAndEdges(ctx, *node, relatedNodeIDs)
+		err = s.transactionRepo.UpdateNodeAndEdges(ctx, *node, relatedNodeIDs)
 		if err == nil {
 			// Success - return the updated node
 			return node, nil
