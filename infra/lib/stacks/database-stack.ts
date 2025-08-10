@@ -56,6 +56,20 @@ export class DatabaseStack extends Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // Global Secondary Index for efficient edge queries - New optimization
+    this.memoryTable.addGlobalSecondaryIndex({
+      indexName: RESOURCE_NAMES.EDGE_INDEX,
+      partitionKey: { 
+        name: DYNAMODB_CONFIG.GSI2_PARTITION_KEY, 
+        type: dynamodb.AttributeType.STRING 
+      }, // GSI2PK: USER#{userId}#EDGE
+      sortKey: { 
+        name: DYNAMODB_CONFIG.GSI2_SORT_KEY, 
+        type: dynamodb.AttributeType.STRING 
+      }, // GSI2SK: NODE#{sourceId}#TARGET#{targetId}
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // DynamoDB table for tracking WebSocket connections - Match original b2-stack
     this.connectionsTable = new dynamodb.Table(this, 'ConnectionsTable', {
       tableName: 'B2-Connections',

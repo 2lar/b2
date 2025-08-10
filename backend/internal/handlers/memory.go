@@ -454,6 +454,77 @@ func (h *MemoryHandler) GetNodesPage(w http.ResponseWriter, r *http.Request) {
 	api.Success(w, http.StatusOK, response)
 }
 
+// GetNodesPageOptimized handles GET /api/nodes/optimized with improved pagination using new types
+func (h *MemoryHandler) GetNodesPageOptimized(w http.ResponseWriter, r *http.Request) {
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	// Parse pagination parameters using new PageRequest type
+	query := r.URL.Query()
+	
+	// Parse limit parameter
+	limit := repository.DefaultPageSize
+	if limitStr := query.Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 && parsed <= repository.MaxPageSize {
+			limit = parsed
+		}
+	}
+
+	// Get next token for cursor-based pagination
+	nextToken := query.Get("nextToken")
+
+	pageReq := repository.NewPageRequest(limit, nextToken)
+	
+	// Add sort parameters if provided
+	if sortBy := query.Get("sortBy"); sortBy != "" {
+		pageReq.SortBy = sortBy
+	}
+	if sortOrder := query.Get("sortOrder"); sortOrder != "" && (sortOrder == "asc" || sortOrder == "desc") {
+		pageReq.SortOrder = sortOrder
+	}
+
+	// Call optimized service method
+	response, err := h.memoryService.GetNodesPageOptimized(r.Context(), userID, pageReq)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	// Convert nodes to API response format
+	if nodes, ok := response.Items.([]domain.Node); ok {
+		apiNodes := make([]api.EnhancedNode, len(nodes))
+		for i, node := range nodes {
+			createdAt := node.CreatedAt.Format(time.RFC3339)
+			apiNodes[i] = api.EnhancedNode{
+				Node: api.Node{
+					Content:   node.Content,
+					NodeId:    node.ID,
+					Tags:      &node.Tags,
+					Timestamp: node.CreatedAt,
+					Version:   node.Version,
+				},
+				Keywords:  &node.Keywords,
+				CreatedAt: &createdAt,
+			}
+		}
+
+		// Create optimized API response
+		apiResponse := api.OptimizedNodePageResponse{
+			Items:     &apiNodes,
+			HasMore:   &response.HasMore,
+			NextToken: &response.NextToken,
+		}
+
+		api.Success(w, http.StatusOK, apiResponse)
+		return
+	}
+
+	api.Error(w, http.StatusInternalServerError, "Invalid response format")
+}
+
 // GetNodeNeighborhood handles GET /api/nodes/{nodeId}/neighborhood with depth parameter
 func (h *MemoryHandler) GetNodeNeighborhood(w http.ResponseWriter, r *http.Request) {
 	userID, ok := getUserID(r)

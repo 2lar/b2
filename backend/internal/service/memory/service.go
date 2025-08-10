@@ -68,6 +68,9 @@ type Service interface {
 	GetNodesPage(ctx context.Context, userID string, pagination repository.Pagination) (*repository.NodePage, error)
 	GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error)
 	GetGraphDataPaginated(ctx context.Context, userID string, pagination repository.Pagination) (*domain.Graph, string, error)
+	
+	// Optimized pagination methods with new types
+	GetNodesPageOptimized(ctx context.Context, userID string, pageReq repository.PageRequest) (*repository.PageResponse, error)
 
 	// Optimistic locking methods for safe concurrent updates
 	UpdateNodeWithRetry(ctx context.Context, userID, nodeID string, updateFn func(*domain.Node) error) (*domain.Node, error)
@@ -516,4 +519,45 @@ func (s *service) BulkDeleteNodesIdempotent(ctx context.Context, userID, idempot
 	failedNodeIds := resultMap["failedNodeIds"].([]string)
 
 	return deletedCount, failedNodeIds, nil
+}
+
+// GetNodesPageOptimized retrieves a paginated list of nodes using the optimized PageRequest/PageResponse types
+func (s *service) GetNodesPageOptimized(ctx context.Context, userID string, pageReq repository.PageRequest) (*repository.PageResponse, error) {
+	// Basic validation of pagination parameters  
+	if pageReq.GetEffectiveLimit() <= 0 {
+		return nil, appErrors.NewValidation("limit must be greater than 0")
+	}
+
+	// Use the new optimized repository method if available
+	if optimizedRepo, ok := s.nodeRepo.(interface {
+		GetNodesPageOptimized(ctx context.Context, userID string, pageReq repository.PageRequest) (*repository.PageResponse, error)
+	}); ok {
+		response, err := optimizedRepo.GetNodesPageOptimized(ctx, userID, pageReq)
+		if err != nil {
+			return nil, appErrors.Wrap(err, "failed to get nodes page optimized from repository")
+		}
+		return response, nil
+	}
+
+	// Fallback to existing method with conversion
+	oldPagination := repository.Pagination{
+		Limit:  pageReq.GetEffectiveLimit(),
+		Cursor: pageReq.NextToken,
+	}
+	
+	query := repository.NodeQuery{
+		UserID: userID,
+	}
+
+	page, err := s.nodeRepo.GetNodesPage(ctx, query, oldPagination)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to get nodes page from repository")
+	}
+
+	// Convert old format to new format
+	return &repository.PageResponse{
+		Items:     page.Items,
+		NextToken: page.NextCursor,
+		HasMore:   page.HasMore,
+	}, nil
 }

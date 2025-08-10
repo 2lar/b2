@@ -130,3 +130,156 @@ func CreatePageInfo(pagination Pagination, itemCount int, hasMore bool) PageInfo
 		ItemsInPage: itemCount,
 	}
 }
+
+// PageRequest represents pagination parameters for queries - Enhanced for optimization
+type PageRequest struct {
+	Limit     int    `json:"limit"`
+	NextToken string `json:"nextToken,omitempty"`
+	SortBy    string `json:"sortBy,omitempty"`
+	SortOrder string `json:"sortOrder,omitempty"` // "asc" or "desc"
+}
+
+// PageResponse represents a paginated response - Enhanced for optimization
+type PageResponse struct {
+	Items     interface{} `json:"items"`
+	NextToken string      `json:"nextToken,omitempty"`
+	HasMore   bool        `json:"hasMore"`
+	Total     int         `json:"total,omitempty"`
+}
+
+// LastEvaluatedKey represents DynamoDB's last evaluated key for pagination with GSI support
+type LastEvaluatedKey struct {
+	PK      string `json:"pk"`
+	SK      string `json:"sk"`
+	GSI1PK  string `json:"gsi1pk,omitempty"`
+	GSI1SK  string `json:"gsi1sk,omitempty"`
+	GSI2PK  string `json:"gsi2pk,omitempty"`
+	GSI2SK  string `json:"gsi2sk,omitempty"`
+}
+
+// Constants for pagination
+const (
+	DefaultPageSize = 20
+	MaxPageSize     = 100
+)
+
+// NewPageRequest creates a new PageRequest with default values
+func NewPageRequest(limit int, nextToken string) PageRequest {
+	if limit <= 0 || limit > MaxPageSize {
+		limit = DefaultPageSize
+	}
+	return PageRequest{
+		Limit:     limit,
+		NextToken: nextToken,
+	}
+}
+
+// GetEffectiveLimit returns the effective limit for PageRequest, ensuring it's within bounds
+func (pr PageRequest) GetEffectiveLimit() int {
+	if pr.Limit <= 0 || pr.Limit > MaxPageSize {
+		return DefaultPageSize
+	}
+	return pr.Limit
+}
+
+// HasNextToken returns true if the request has a pagination token
+func (pr PageRequest) HasNextToken() bool {
+	return pr.NextToken != ""
+}
+
+// EncodeNextToken encodes a LastEvaluatedKey as a base64 token
+func EncodeNextToken(key LastEvaluatedKey) string {
+	data, err := json.Marshal(key)
+	if err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(data)
+}
+
+// DecodeNextToken decodes a base64 token back to LastEvaluatedKey
+func DecodeNextToken(token string) (*LastEvaluatedKey, error) {
+	if token == "" {
+		return nil, nil
+	}
+
+	data, err := base64.StdEncoding.DecodeString(token)
+	if err != nil {
+		return nil, err
+	}
+
+	var key LastEvaluatedKey
+	err = json.Unmarshal(data, &key)
+	if err != nil {
+		return nil, err
+	}
+
+	return &key, nil
+}
+
+// ToDynamoDBKey converts LastEvaluatedKey to DynamoDB exclusive start key format
+func (lek LastEvaluatedKey) ToDynamoDBKey() map[string]types.AttributeValue {
+	key := make(map[string]types.AttributeValue)
+	
+	if lek.PK != "" {
+		key["PK"] = &types.AttributeValueMemberS{Value: lek.PK}
+	}
+	if lek.SK != "" {
+		key["SK"] = &types.AttributeValueMemberS{Value: lek.SK}
+	}
+	if lek.GSI1PK != "" {
+		key["GSI1PK"] = &types.AttributeValueMemberS{Value: lek.GSI1PK}
+	}
+	if lek.GSI1SK != "" {
+		key["GSI1SK"] = &types.AttributeValueMemberS{Value: lek.GSI1SK}
+	}
+	if lek.GSI2PK != "" {
+		key["GSI2PK"] = &types.AttributeValueMemberS{Value: lek.GSI2PK}
+	}
+	if lek.GSI2SK != "" {
+		key["GSI2SK"] = &types.AttributeValueMemberS{Value: lek.GSI2SK}
+	}
+
+	return key
+}
+
+// FromDynamoDBKey creates LastEvaluatedKey from DynamoDB last evaluated key
+func FromDynamoDBKey(key map[string]types.AttributeValue) LastEvaluatedKey {
+	lek := LastEvaluatedKey{}
+	
+	if pk, ok := key["PK"].(*types.AttributeValueMemberS); ok {
+		lek.PK = pk.Value
+	}
+	if sk, ok := key["SK"].(*types.AttributeValueMemberS); ok {
+		lek.SK = sk.Value
+	}
+	if gsi1pk, ok := key["GSI1PK"].(*types.AttributeValueMemberS); ok {
+		lek.GSI1PK = gsi1pk.Value
+	}
+	if gsi1sk, ok := key["GSI1SK"].(*types.AttributeValueMemberS); ok {
+		lek.GSI1SK = gsi1sk.Value
+	}
+	if gsi2pk, ok := key["GSI2PK"].(*types.AttributeValueMemberS); ok {
+		lek.GSI2PK = gsi2pk.Value
+	}
+	if gsi2sk, ok := key["GSI2SK"].(*types.AttributeValueMemberS); ok {
+		lek.GSI2SK = gsi2sk.Value
+	}
+
+	return lek
+}
+
+// CreatePageResponse creates a paginated response with the given items and pagination info
+func CreatePageResponse(items interface{}, lastKey map[string]types.AttributeValue, hasMore bool) *PageResponse {
+	response := &PageResponse{
+		Items:   items,
+		HasMore: hasMore,
+	}
+
+	// Encode next token if there are more results
+	if hasMore && lastKey != nil {
+		lek := FromDynamoDBKey(lastKey)
+		response.NextToken = EncodeNextToken(lek)
+	}
+
+	return response
+}

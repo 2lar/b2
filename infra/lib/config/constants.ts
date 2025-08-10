@@ -7,6 +7,7 @@ export const RESOURCE_NAMES = {
   MEMORY_TABLE: 'brain2',
   CONNECTIONS_TABLE: 'B2-Connections',
   KEYWORD_INDEX: 'KeywordIndex',
+  EDGE_INDEX: 'EdgeIndex',
   CONNECTION_INDEX: 'connection-id-index',
   
   // EventBridge
@@ -58,6 +59,8 @@ export const DYNAMODB_CONFIG = {
   SORT_KEY: 'SK',
   GSI1_PARTITION_KEY: 'GSI1PK',
   GSI1_SORT_KEY: 'GSI1SK',
+  GSI2_PARTITION_KEY: 'GSI2PK',
+  GSI2_SORT_KEY: 'GSI2SK',
   TTL_ATTRIBUTE: 'expireAt',
 } as const;
 

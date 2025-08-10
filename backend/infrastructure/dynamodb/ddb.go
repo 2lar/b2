@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"golang.org/x/sync/errgroup"
 )
 
 // ddbNode represents the structure of a node item in DynamoDB.
@@ -47,6 +48,8 @@ type ddbEdge struct {
 	PK       string `dynamodbav:"PK"`
 	SK       string `dynamodbav:"SK"`
 	TargetID string `dynamodbav:"TargetID"`
+	GSI2PK   string `dynamodbav:"GSI2PK"`   // USER#{userId}#EDGE
+	GSI2SK   string `dynamodbav:"GSI2SK"`   // NODE#{sourceId}#TARGET#{targetId}
 }
 
 // ddbCategory represents a category item in DynamoDB.
@@ -219,6 +222,8 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 			PK:       ownerPK,
 			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", targetID),
 			TargetID: targetID,
+			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", node.UserID),
+			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", ownerID, targetID),
 		})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal canonical edge item")
@@ -288,6 +293,8 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 			PK:       ownerPK,
 			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", targetID),
 			TargetID: targetID,
+			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", node.UserID),
+			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", ownerID, targetID),
 		})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal canonical edge item for update")
@@ -380,72 +387,61 @@ func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string)
 	}, nil
 }
 
-// FindEdgesByNode queries for all outgoing edges from a given node.
+// FindEdgesByNode queries for all edges connected to a given node using optimized GSI2 query.
 func (r *ddbRepository) FindEdgesByNode(ctx context.Context, userID, nodeID string) ([]domain.Edge, error) {
 	var edges []domain.Edge
+	edgeMap := make(map[string]bool)
 
-	// With canonical edge storage, we need to look for edges in two ways:
-	// 1. Where this node is the "owner" (stored in this node's partition)
-	// 2. Where this node is the "target" (stored in other nodes' partitions)
+	// Use GSI2 to find all edges for this user, then filter for those involving the specific node
+	edgePrefix := fmt.Sprintf("USER#%s#EDGE", userID)
+	var lastEvaluatedKey map[string]types.AttributeValue
 
-	// First, check edges where this node is the owner
-	pk := fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID)
-	result, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String(r.config.TableName),
-		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk":       &types.AttributeValueMemberS{Value: pk},
-			":skPrefix": &types.AttributeValueMemberS{Value: "EDGE#RELATES_TO#"},
-		},
-	})
-	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to query edges where node is owner")
-	}
-
-	// Process edges where this node is the owner
-	for _, item := range result.Items {
-		var ddbItem ddbEdge
-		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
-			edges = append(edges, domain.Edge{SourceID: nodeID, TargetID: ddbItem.TargetID})
+	for {
+		queryInput := &dynamodb.QueryInput{
+			TableName:              aws.String(r.config.TableName),
+			IndexName:              aws.String("EdgeIndex"),
+			KeyConditionExpression: aws.String("GSI2PK = :gsi2pk"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":gsi2pk": &types.AttributeValueMemberS{Value: edgePrefix},
+			},
+			ExclusiveStartKey: lastEvaluatedKey,
 		}
-	}
 
-	// Second, scan for edges where this node is the target (stored in other nodes' partitions)
-	// This requires scanning all user's node partitions for edges pointing to this node
-	scanResult, err := r.dbClient.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String(r.config.TableName),
-		FilterExpression: aws.String("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix) AND TargetID = :target_id"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk_prefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#NODE#", userID)},
-			":sk_prefix": &types.AttributeValueMemberS{Value: "EDGE#RELATES_TO#"},
-			":target_id": &types.AttributeValueMemberS{Value: nodeID},
-		},
-	})
-	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to scan for edges where node is target")
-	}
+		result, err := r.dbClient.Query(ctx, queryInput)
+		if err != nil {
+			return nil, appErrors.Wrap(err, "failed to query edges using GSI2")
+		}
 
-	// Process edges where this node is the target
-	for _, item := range scanResult.Items {
-		var ddbItem ddbEdge
-		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
-			// Extract source node ID from PK
-			pkParts := strings.Split(ddbItem.PK, "#")
-			if len(pkParts) >= 4 {
-				sourceID := pkParts[3]
-				// Only add if not already added (avoid duplicates)
-				alreadyAdded := false
-				for _, existingEdge := range edges {
-					if (existingEdge.SourceID == sourceID && existingEdge.TargetID == nodeID) ||
-						(existingEdge.SourceID == nodeID && existingEdge.TargetID == sourceID) {
-						alreadyAdded = true
-						break
+		// Process edges - keep only those involving the specified node
+		for _, item := range result.Items {
+			var ddbItem ddbEdge
+			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
+				// Extract source node ID from PK pattern: USER#<userID>#NODE#<sourceID>
+				pkParts := strings.Split(ddbItem.PK, "#")
+				if len(pkParts) == 4 {
+					sourceID := pkParts[3]
+					targetID := ddbItem.TargetID
+					
+					// Check if this edge involves the requested node
+					if sourceID == nodeID || targetID == nodeID {
+						// Prevent duplicate edges
+						edgeKey := fmt.Sprintf("%s-%s", sourceID, targetID)
+						reverseKey := fmt.Sprintf("%s-%s", targetID, sourceID)
+						if !edgeMap[edgeKey] && !edgeMap[reverseKey] {
+							edgeMap[edgeKey] = true
+							edges = append(edges, domain.Edge{
+								SourceID: sourceID,
+								TargetID: targetID,
+							})
+						}
 					}
 				}
-				if !alreadyAdded {
-					edges = append(edges, domain.Edge{SourceID: sourceID, TargetID: nodeID})
-				}
 			}
+		}
+
+		lastEvaluatedKey = result.LastEvaluatedKey
+		if lastEvaluatedKey == nil {
+			break
 		}
 	}
 
@@ -457,81 +453,141 @@ func (r *ddbRepository) DeleteNode(ctx context.Context, userID, nodeID string) e
 	return r.clearNodeConnections(ctx, userID, nodeID)
 }
 
-// GetAllGraphData retrieves all nodes and edges for a user.
+// GetAllGraphData retrieves all nodes and edges for a user using optimized parallel queries.
 func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*domain.Graph, error) {
-	log.Println("Starting GetAllGraphData")
+	log.Println("Starting optimized GetAllGraphData with parallel queries")
 
-	scanInput := &dynamodb.ScanInput{
-		TableName:        aws.String(r.config.TableName),
-		FilterExpression: aws.String("begins_with(PK, :pkPrefix)"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pkPrefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#", userID)},
-		},
-	}
-
+	g, ctx := errgroup.WithContext(ctx)
+	
 	var nodes []domain.Node
 	var edges []domain.Edge
-	edgeMap := make(map[string]bool)
-	totalItemsScanned := 0
+	var nodeErr, edgeErr error
 
-	paginator := dynamodb.NewScanPaginator(r.dbClient, scanInput)
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			log.Printf("ERROR: failed to scan graph data page: %v", err)
-			return nil, appErrors.Wrap(err, "failed to scan graph data page")
+	// Fetch nodes in parallel using query instead of scan
+	g.Go(func() error {
+		nodes, nodeErr = r.fetchAllNodesOptimized(ctx, userID)
+		return nodeErr
+	})
+
+	// Fetch edges in parallel using GSI2 query instead of scan
+	g.Go(func() error {
+		edges, edgeErr = r.fetchAllEdgesOptimized(ctx, userID)
+		return edgeErr
+	})
+
+	// Wait for both operations to complete
+	if err := g.Wait(); err != nil {
+		log.Printf("ERROR: failed to fetch graph data: %v", err)
+		return nil, appErrors.Wrap(err, "failed to fetch graph data")
+	}
+
+	log.Printf("Finished optimized GetAllGraphData. Found %d nodes and %d edges.", len(nodes), len(edges))
+
+	return &domain.Graph{Nodes: nodes, Edges: edges}, nil
+}
+
+// fetchAllNodesOptimized retrieves all nodes for a user using efficient query
+func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID string) ([]domain.Node, error) {
+	var nodes []domain.Node
+	var lastEvaluatedKey map[string]types.AttributeValue
+
+	userPrefix := fmt.Sprintf("USER#%s", userID)
+
+	for {
+		queryInput := &dynamodb.QueryInput{
+			TableName:              aws.String(r.config.TableName),
+			KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":pk": &types.AttributeValueMemberS{Value: userPrefix},
+				":sk": &types.AttributeValueMemberS{Value: "METADATA#"},
+			},
+			ExclusiveStartKey: lastEvaluatedKey,
 		}
 
-		totalItemsScanned += len(page.Items)
+		result, err := r.dbClient.Query(ctx, queryInput)
+		if err != nil {
+			return nil, appErrors.Wrap(err, "failed to query nodes")
+		}
 
-		for _, item := range page.Items {
-			skValueAttr, ok := item["SK"].(*types.AttributeValueMemberS)
-			if !ok {
-				continue
+		// Process nodes
+		for _, item := range result.Items {
+			var ddbItem ddbNode
+			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
+				createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
+				nodes = append(nodes, domain.Node{
+					ID:        ddbItem.NodeID,
+					UserID:    ddbItem.UserID,
+					Content:   ddbItem.Content,
+					Keywords:  ddbItem.Keywords,
+					Tags:      ddbItem.Tags,
+					CreatedAt: createdAt,
+					Version:   ddbItem.Version,
+				})
 			}
-			skValue := skValueAttr.Value
+		}
 
-			pkValueAttr, ok := item["PK"].(*types.AttributeValueMemberS)
-			if !ok {
-				continue
-			}
-			pkValue := pkValueAttr.Value
+		lastEvaluatedKey = result.LastEvaluatedKey
+		if lastEvaluatedKey == nil {
+			break
+		}
+	}
 
-			if strings.HasPrefix(skValue, "METADATA#") {
-				var ddbItem ddbNode
-				if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
-					createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
-					nodes = append(nodes, domain.Node{
-						ID:        ddbItem.NodeID,
-						UserID:    ddbItem.UserID,
-						Content:   ddbItem.Content,
-						Keywords:  ddbItem.Keywords,
-						Tags:      ddbItem.Tags,
-						CreatedAt: createdAt,
-						Version:   ddbItem.Version,
-					})
-				}
-			} else if strings.HasPrefix(skValue, "EDGE#RELATES_TO#") {
-				var ddbItem ddbEdge
-				if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
-					pkParts := strings.Split(pkValue, "#")
-					if len(pkParts) == 4 {
-						sourceID := pkParts[3]
-						edgeKey := fmt.Sprintf("%s-%s", sourceID, ddbItem.TargetID)
-						reverseKey := fmt.Sprintf("%s-%s", ddbItem.TargetID, sourceID)
-						if !edgeMap[edgeKey] && !edgeMap[reverseKey] {
-							edgeMap[edgeKey] = true
-							edges = append(edges, domain.Edge{SourceID: sourceID, TargetID: ddbItem.TargetID})
-						}
+	return nodes, nil
+}
+
+// fetchAllEdgesOptimized retrieves all edges for a user using GSI2 query
+func (r *ddbRepository) fetchAllEdgesOptimized(ctx context.Context, userID string) ([]domain.Edge, error) {
+	var edges []domain.Edge
+	var lastEvaluatedKey map[string]types.AttributeValue
+	edgeMap := make(map[string]bool)
+
+	edgePrefix := fmt.Sprintf("USER#%s#EDGE", userID)
+
+	for {
+		queryInput := &dynamodb.QueryInput{
+			TableName:              aws.String(r.config.TableName),
+			IndexName:              aws.String("EdgeIndex"),
+			KeyConditionExpression: aws.String("GSI2PK = :gsi2pk"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":gsi2pk": &types.AttributeValueMemberS{Value: edgePrefix},
+			},
+			ExclusiveStartKey: lastEvaluatedKey,
+		}
+
+		result, err := r.dbClient.Query(ctx, queryInput)
+		if err != nil {
+			return nil, appErrors.Wrap(err, "failed to query edges")
+		}
+
+		// Process edges
+		for _, item := range result.Items {
+			var ddbItem ddbEdge
+			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
+				// Extract source ID from PK pattern: USER#<userID>#NODE#<sourceID>
+				pkParts := strings.Split(ddbItem.PK, "#")
+				if len(pkParts) == 4 {
+					sourceID := pkParts[3]
+					// Prevent duplicate edges
+					edgeKey := fmt.Sprintf("%s-%s", sourceID, ddbItem.TargetID)
+					reverseKey := fmt.Sprintf("%s-%s", ddbItem.TargetID, sourceID)
+					if !edgeMap[edgeKey] && !edgeMap[reverseKey] {
+						edgeMap[edgeKey] = true
+						edges = append(edges, domain.Edge{
+							SourceID: sourceID, 
+							TargetID: ddbItem.TargetID,
+						})
 					}
 				}
 			}
 		}
+
+		lastEvaluatedKey = result.LastEvaluatedKey
+		if lastEvaluatedKey == nil {
+			break
+		}
 	}
 
-	log.Printf("Finished GetAllGraphData. Scanned %d total items, found %d nodes and %d unique edges.", totalItemsScanned, len(nodes), len(edges))
-
-	return &domain.Graph{Nodes: nodes, Edges: edges}, nil
+	return edges, nil
 }
 
 func (r *ddbRepository) clearNodeConnections(ctx context.Context, userID, nodeID string) error {
@@ -806,6 +862,8 @@ func (r *ddbRepository) CreateEdges(ctx context.Context, userID, sourceNodeID st
 			PK:       pkSource,
 			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", relatedNodeID),
 			TargetID: relatedNodeID,
+			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", userID),
+			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", sourceNodeID, relatedNodeID),
 		})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal outgoing edge")
@@ -818,6 +876,8 @@ func (r *ddbRepository) CreateEdges(ctx context.Context, userID, sourceNodeID st
 			PK:       pkRelated,
 			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", sourceNodeID),
 			TargetID: sourceNodeID,
+			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", userID),
+			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", relatedNodeID, sourceNodeID),
 		})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal incoming edge")
@@ -935,30 +995,40 @@ func (r *ddbRepository) FindCategories(ctx context.Context, query repository.Cat
 		return nil, err
 	}
 
-	// Scan for all categories for the user using enhanced format
-	scanInput := &dynamodb.ScanInput{
-		TableName:        aws.String(r.config.TableName),
-		FilterExpression: aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk":       &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", query.UserID)},
-			":skPrefix": &types.AttributeValueMemberS{Value: "CATEGORY#"},
-		},
-	}
-
+	// Use Query instead of Scan for better performance
 	var categories []domain.Category
-	paginator := dynamodb.NewScanPaginator(r.dbClient, scanInput)
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to scan categories")
+	var lastEvaluatedKey map[string]types.AttributeValue
+
+	userPK := fmt.Sprintf("USER#%s", query.UserID)
+
+	for {
+		queryInput := &dynamodb.QueryInput{
+			TableName:              aws.String(r.config.TableName),
+			KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":pk":       &types.AttributeValueMemberS{Value: userPK},
+				":skPrefix": &types.AttributeValueMemberS{Value: "CATEGORY#"},
+			},
+			ExclusiveStartKey: lastEvaluatedKey,
 		}
 
-		for _, item := range page.Items {
+		result, err := r.dbClient.Query(ctx, queryInput)
+		if err != nil {
+			return nil, appErrors.Wrap(err, "failed to query categories")
+		}
+
+		// Process categories
+		for _, item := range result.Items {
 			var ddbItem ddbEnhancedCategory
 			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
 				category := r.toDomainCategory(ddbItem)
 				categories = append(categories, category)
 			}
+		}
+
+		lastEvaluatedKey = result.LastEvaluatedKey
+		if lastEvaluatedKey == nil {
+			break
 		}
 	}
 
@@ -980,7 +1050,7 @@ func (r *ddbRepository) FindCategories(ctx context.Context, query repository.Cat
 	return categories, nil
 }
 
-// GetNodesPage retrieves a paginated list of nodes for a user
+// GetNodesPage retrieves a paginated list of nodes for a user using optimized query
 func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination) (*repository.NodePage, error) {
 	if err := query.Validate(); err != nil {
 		return nil, err
@@ -989,12 +1059,14 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 		return nil, err
 	}
 
-	// Use Scan with filter to find nodes - nodes are stored with PK pattern USER#<userID>#NODE#<nodeID>
-	scanInput := &dynamodb.ScanInput{
-		TableName:        aws.String(r.config.TableName),
-		FilterExpression: aws.String("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix)"),
+	// Use Query instead of Scan for better performance
+	userPrefix := fmt.Sprintf("USER#%s", query.UserID)
+	
+	queryInput := &dynamodb.QueryInput{
+		TableName:              aws.String(r.config.TableName),
+		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk_prefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk_prefix": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#NODE#", query.UserID)},
+			":pk":        &types.AttributeValueMemberS{Value: userPrefix},
 			":sk_prefix": &types.AttributeValueMemberS{Value: "METADATA#"},
 		},
 		Limit: aws.Int32(int32(pagination.GetEffectiveLimit())),
@@ -1004,13 +1076,13 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 	if pagination.HasCursor() {
 		startKey, err := repository.DecodeCursor(pagination.Cursor)
 		if err == nil && startKey != nil {
-			scanInput.ExclusiveStartKey = startKey
+			queryInput.ExclusiveStartKey = startKey
 		}
 	}
 
-	result, err := r.dbClient.Scan(ctx, scanInput)
+	result, err := r.dbClient.Query(ctx, queryInput)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to scan nodes page")
+		return nil, appErrors.Wrap(err, "failed to query nodes page")
 	}
 
 	// Convert DynamoDB items to domain nodes
@@ -1039,6 +1111,57 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 		NextCursor: repository.EncodeCursor(result.LastEvaluatedKey),
 		PageInfo:   repository.CreatePageInfo(pagination, len(nodes), result.LastEvaluatedKey != nil),
 	}, nil
+}
+
+// GetNodesPageOptimized retrieves a paginated list of nodes using the new PageRequest/PageResponse types
+func (r *ddbRepository) GetNodesPageOptimized(ctx context.Context, userID string, pageReq repository.PageRequest) (*repository.PageResponse, error) {
+	userPrefix := fmt.Sprintf("USER#%s", userID)
+	
+	queryInput := &dynamodb.QueryInput{
+		TableName:              aws.String(r.config.TableName),
+		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk_prefix)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk":        &types.AttributeValueMemberS{Value: userPrefix},
+			":sk_prefix": &types.AttributeValueMemberS{Value: "METADATA#"},
+		},
+		Limit: aws.Int32(int32(pageReq.GetEffectiveLimit())),
+	}
+
+	// Handle cursor-based pagination with new PageRequest
+	if pageReq.HasNextToken() {
+		lastKey, err := repository.DecodeNextToken(pageReq.NextToken)
+		if err == nil && lastKey != nil {
+			queryInput.ExclusiveStartKey = lastKey.ToDynamoDBKey()
+		}
+	}
+
+	result, err := r.dbClient.Query(ctx, queryInput)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to query nodes page optimized")
+	}
+
+	// Convert DynamoDB items to domain nodes
+	nodes := make([]domain.Node, 0, len(result.Items))
+	for _, item := range result.Items {
+		var ddbItem ddbNode
+		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
+			if ddbItem.IsLatest { // Only return latest versions
+				createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
+				nodes = append(nodes, domain.Node{
+					ID:        ddbItem.NodeID,
+					UserID:    ddbItem.UserID,
+					Content:   ddbItem.Content,
+					Keywords:  ddbItem.Keywords,
+					Tags:      ddbItem.Tags,
+					CreatedAt: createdAt,
+					Version:   ddbItem.Version,
+				})
+			}
+		}
+	}
+
+	// Create paginated response
+	return repository.CreatePageResponse(nodes, result.LastEvaluatedKey, result.LastEvaluatedKey != nil), nil
 }
 
 // GetNodeNeighborhood retrieves nodes and edges within a specified depth from a target node

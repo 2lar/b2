@@ -31,3 +31,10 @@ type EnhancedNode struct {
 	Keywords  *[]string `json:"keywords,omitempty"`
 	CreatedAt *string   `json:"created_at,omitempty"`
 }
+
+// OptimizedNodePageResponse represents an optimized paginated list of nodes using cursor-based pagination
+type OptimizedNodePageResponse struct {
+	Items     *[]EnhancedNode `json:"items,omitempty"`
+	HasMore   *bool           `json:"hasMore,omitempty"`
+	NextToken *string         `json:"nextToken,omitempty"`
+}
