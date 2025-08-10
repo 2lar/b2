@@ -4,6 +4,7 @@ package dynamodb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -111,7 +112,7 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node domain.N
 	// 1. Add the main node metadata to the transaction
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
 		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
-		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
+		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: node.Version, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
@@ -155,7 +156,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
 		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
-		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
+		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: node.Version, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
@@ -214,19 +215,27 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
 	transactItems := []types.TransactWriteItem{}
 
+	// Optimistic locking: check that the version matches before updating
 	_, err := r.dbClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName:        aws.String(r.config.TableName),
-		Key:              map[string]types.AttributeValue{"PK": &types.AttributeValueMemberS{Value: pk}, "SK": &types.AttributeValueMemberS{Value: "METADATA#v0"}},
-		UpdateExpression: aws.String("SET Content = :c, Keywords = :k, Tags = :tg, Timestamp = :t, Version = :v"),
+		TableName:           aws.String(r.config.TableName),
+		Key:                 map[string]types.AttributeValue{"PK": &types.AttributeValueMemberS{Value: pk}, "SK": &types.AttributeValueMemberS{Value: "METADATA#v0"}},
+		UpdateExpression:    aws.String("SET Content = :c, Keywords = :k, Tags = :tg, Timestamp = :t, Version = Version + :inc"),
+		ConditionExpression: aws.String("Version = :expected_version"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":c":  &types.AttributeValueMemberS{Value: node.Content},
-			":k":  &types.AttributeValueMemberL{Value: toAttributeValueList(node.Keywords)},
-			":tg": &types.AttributeValueMemberL{Value: toAttributeValueList(node.Tags)},
-			":t":  &types.AttributeValueMemberS{Value: node.CreatedAt.Format(time.RFC3339)},
-			":v":  &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version)},
+			":c":                &types.AttributeValueMemberS{Value: node.Content},
+			":k":                &types.AttributeValueMemberL{Value: toAttributeValueList(node.Keywords)},
+			":tg":               &types.AttributeValueMemberL{Value: toAttributeValueList(node.Tags)},
+			":t":                &types.AttributeValueMemberS{Value: time.Now().Format(time.RFC3339)},
+			":expected_version": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version)},
+			":inc":              &types.AttributeValueMemberN{Value: "1"},
 		},
 	})
 	if err != nil {
+		// Check for optimistic lock conflicts
+		var ccf *types.ConditionalCheckFailedException
+		if errors.As(err, &ccf) {
+			return repository.NewOptimisticLockError(node.ID, node.Version, node.Version+1)
+		}
 		return appErrors.Wrap(err, "failed to update node metadata")
 	}
 

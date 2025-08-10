@@ -822,3 +822,89 @@ func (m *MockRepository) UpdateCategoryNoteCounts(ctx context.Context, userID st
 
 	return nil
 }
+
+// GetEdgesPage returns paginated edges based on query and pagination parameters
+func (m *MockRepository) GetEdgesPage(ctx context.Context, query repository.EdgeQuery, pagination repository.Pagination) (*repository.EdgePage, error) {
+	if err := m.checkError("GetEdgesPage"); err != nil {
+		return nil, err
+	}
+
+	// For the mock, just return all edges matching the query
+	edges, err := m.FindEdges(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	return &repository.EdgePage{
+		Items:      edges,
+		TotalCount: len(edges),
+		HasMore:    false,
+		NextCursor: "",
+	}, nil
+}
+
+// GetGraphDataPaginated returns paginated graph data
+func (m *MockRepository) GetGraphDataPaginated(ctx context.Context, query repository.GraphQuery, pagination repository.Pagination) (*domain.Graph, string, error) {
+	if err := m.checkError("GetGraphDataPaginated"); err != nil {
+		return nil, "", err
+	}
+
+	// For the mock, just return the full graph data
+	graph, err := m.GetGraphData(ctx, query)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return graph, "", nil
+}
+
+// GetNodeNeighborhood returns the neighborhood graph for a specific node within a given depth
+func (m *MockRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error) {
+	if err := m.checkError("GetNodeNeighborhood"); err != nil {
+		return nil, err
+	}
+
+	// For the mock, just return a simplified neighborhood (node + its direct edges)
+	node, err := m.FindNodeByID(ctx, userID, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	if node == nil {
+		return nil, repository.NewNotFoundError("node", nodeID, userID)
+	}
+
+	// Get edges for this node
+	edgeQuery := repository.EdgeQuery{
+		UserID:   userID,
+		SourceID: nodeID,
+	}
+	edges, err := m.FindEdges(ctx, edgeQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.Graph{
+		Nodes: []domain.Node{*node},
+		Edges: edges,
+	}, nil
+}
+
+// GetNodesPage returns paginated nodes based on query and pagination parameters
+func (m *MockRepository) GetNodesPage(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination) (*repository.NodePage, error) {
+	if err := m.checkError("GetNodesPage"); err != nil {
+		return nil, err
+	}
+
+	// For the mock, just return all nodes matching the query
+	nodes, err := m.FindNodes(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	return &repository.NodePage{
+		Items:      nodes,
+		TotalCount: len(nodes),
+		HasMore:    false,
+		NextCursor: "",
+	}, nil
+}

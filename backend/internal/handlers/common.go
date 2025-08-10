@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"brain2-backend/internal/repository"
 	"brain2-backend/pkg/api"
 	appErrors "brain2-backend/pkg/errors"
 
@@ -37,6 +38,9 @@ func handleServiceError(w http.ResponseWriter, err error) {
 	} else if appErrors.IsNotFound(err) {
 		log.Printf("NOT FOUND ERROR: %v", err)
 		api.Error(w, http.StatusNotFound, err.Error())
+	} else if repository.IsConflict(err) {
+		log.Printf("CONFLICT ERROR: %v", err)
+		api.Error(w, http.StatusConflict, "The resource has been modified by another request. Please retry with the latest version.")
 	} else {
 		// Log the full error details for debugging while hiding sensitive info from client
 		log.Printf("INTERNAL ERROR (full): %+v", err)

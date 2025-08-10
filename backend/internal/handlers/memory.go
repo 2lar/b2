@@ -199,7 +199,8 @@ func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 	if req.Tags != nil {
 		tags = *req.Tags
 	}
-	_, err = h.memoryService.UpdateNode(r.Context(), userID, nodeID, req.Content, tags)
+	// Use safe update with optimistic locking for race condition prevention
+	_, err = h.memoryService.SafeUpdateNode(r.Context(), userID, nodeID, req.Content, tags)
 	if err != nil {
 		handleServiceError(w, err)
 		return

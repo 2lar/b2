@@ -68,6 +68,12 @@ type Service interface {
 	GetNodesPage(ctx context.Context, userID string, pagination repository.Pagination) (*repository.NodePage, error)
 	GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error)
 	GetGraphDataPaginated(ctx context.Context, userID string, pagination repository.Pagination) (*domain.Graph, string, error)
+
+	// Optimistic locking methods for safe concurrent updates
+	UpdateNodeWithRetry(ctx context.Context, userID, nodeID string, updateFn func(*domain.Node) error) (*domain.Node, error)
+	UpdateNodeWithEdgesRetry(ctx context.Context, userID, nodeID string, relatedNodeIDs []string, updateFn func(*domain.Node) error) (*domain.Node, error)
+	SafeUpdateNode(ctx context.Context, userID, nodeID, newContent string, newTags []string) (*domain.Node, error)
+	SafeUpdateNodeWithConnections(ctx context.Context, userID, nodeID, newContent string, newTags []string, relatedNodeIDs []string) (*domain.Node, error)
 }
 
 // service implements the Service interface with concrete business logic.
@@ -105,7 +111,7 @@ func (s *service) CreateNodeWithEdges(ctx context.Context, userID, content strin
 		Keywords:  keywords,
 		Tags:      tags,
 		CreatedAt: time.Now(),
-		Version:   0,
+		Version:   1,
 	}
 
 	log.Printf("DEBUG CreateNodeWithEdges: created node ID=%s, searching for related nodes with keywords=%v", node.ID, keywords)
