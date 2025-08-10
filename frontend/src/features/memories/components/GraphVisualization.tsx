@@ -98,6 +98,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
     const cyRef = useRef<Core | null>(null);
     const [selectedNode, setSelectedNode] = useState<DisplayNode | null>(null);
     const [connectedMemories, setConnectedMemories] = useState<ConnectedMemory[]>([]);
+    const [currentElementCount, setCurrentElementCount] = useState(0);
     
     // Fullscreen functionality
     const { isFullscreen, toggleFullscreen } = useFullscreen(graphContainerRef);
@@ -426,63 +427,79 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         try {
             const graphData = await nodesApi.getGraphData();
             const elements = graphData.elements || [];
-
-            if (elements.length === 0) return;
-
             const cy = cyRef.current;
-            const processedElements = preprocessGraphData(elements);
-
+            
+            // Check if we actually need to update
+            const newCount = elements.length;
+            
+            // If both current and new are 0, no update needed
+            if (currentElementCount === 0 && newCount === 0) {
+                return;
+            }
+            
+            // Always clear existing elements (handles transition to empty state)
             cy.batch(() => {
                 cy.elements().remove();
-                cy.add(processedElements as ElementDefinition[]);
-            });
-
-            // Apply cola layout with advanced physics parameters
-            const layout = cy.layout({
-                name: 'cola',
-                animate: true,
-                refresh: 1,
-                maxSimulationTime: 7000,
-                nodeSpacing: function() { return 50; },
-                edgeLength: function(edge: any) {
-                    // Dynamic edge length based on connection strength if available
-                    const strength = edge.data('strength') || 0.5;
-                    return 80 + (1 - strength) * 150;
-                },
-                // Physics parameters for interactive feel
-                gravity: 0.3,
-                padding: 30,
-                avoidOverlap: true,
-                randomize: false,
-                unconstrIter: 10,
-                userConstIter: 15,
-                allConstIter: 20,
-                // Key physics parameters for dragging
-                handleDisconnected: true,
-                convergenceThreshold: 0.001,
-                flow: {
-                    enabled: true,          
-                    friction: 0.6
-                },
-                infinite: true, // Keep physics simulation running - CRITICAL for interactive feel
-                stop: () => {
-                    cy.animate({
-                        fit: { eles: cy.elements(), padding: 30 },
-                        duration: 300
-                    } as any);
+                
+                // Only add new elements if we have any
+                if (elements.length > 0) {
+                    const processedElements = preprocessGraphData(elements);
+                    cy.add(processedElements as ElementDefinition[]);
                 }
-            } as any);
-
-            layout.run();
-
-            // Add background effects
-            addBackgroundEffects();
+            });
             
-            // Setup interactive drag behavior
-            setupDragBehavior(cy);
+            // Update our state tracking
+            setCurrentElementCount(newCount);
             
-            // Add continuous node animations
-            animateNodes();
+            // Only apply layout and effects if we have elements
+            if (elements.length > 0) {
+                // Apply cola layout with advanced physics parameters
+                const layout = cy.layout({
+                    name: 'cola',
+                    animate: true,
+                    refresh: 1,
+                    maxSimulationTime: 7000,
+                    nodeSpacing: function() { return 50; },
+                    edgeLength: function(edge: any) {
+                        // Dynamic edge length based on connection strength if available
+                        const strength = edge.data('strength') || 0.5;
+                        return 80 + (1 - strength) * 150;
+                    },
+                    // Physics parameters for interactive feel
+                    gravity: 0.3,
+                    padding: 30,
+                    avoidOverlap: true,
+                    randomize: false,
+                    unconstrIter: 10,
+                    userConstIter: 15,
+                    allConstIter: 20,
+                    // Key physics parameters for dragging
+                    handleDisconnected: true,
+                    convergenceThreshold: 0.001,
+                    flow: {
+                        enabled: true,          
+                        friction: 0.6
+                    },
+                    infinite: true, // Keep physics simulation running - CRITICAL for interactive feel
+                    stop: () => {
+                        cy.animate({
+                            fit: { eles: cy.elements(), padding: 30 },
+                            duration: 300
+                        } as any);
+                    }
+                } as any);
+
+                layout.run();
+
+                // Add background effects
+                addBackgroundEffects();
+                
+                // Setup interactive drag behavior
+                setupDragBehavior(cy);
+                
+                // Add continuous node animations
+                animateNodes();
+            }
 
         } catch (error) {
             console.error('Error loading graph data:', error);
@@ -796,7 +813,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
 
     const formatDate = (dateString: string): string => {
         if (!dateString) return '';
-        
+
         try {
             const date = new Date(dateString);
             return date.toLocaleDateString(undefined, {
