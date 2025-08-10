@@ -17,6 +17,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.1.1
+	github.com/sony/gobreaker v1.0.0
 	github.com/stretchr/testify v1.9.0
 	github.com/supabase-community/supabase-go v0.0.4
 )

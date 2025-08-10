@@ -42,6 +42,9 @@ type Container struct {
 	// HTTP Router
 	Router *chi.Mux
 
+	// Middleware components (for monitoring/observability)
+	middlewareConfig map[string]any
+
 	// Lifecycle management
 	shutdownFunctions []func() error
 }
@@ -50,6 +53,7 @@ type Container struct {
 func NewContainer() (*Container, error) {
 	container := &Container{
 		shutdownFunctions: make([]func() error, 0),
+		middlewareConfig:  make(map[string]any),
 	}
 
 	if err := container.initialize(); err != nil {
@@ -81,7 +85,10 @@ func (c *Container) initialize() error {
 	// 5. Initialize handler layer
 	c.initializeHandlers()
 
-	// 6. Initialize HTTP router
+	// 6. Initialize middleware configuration
+	c.initializeMiddleware()
+
+	// 7. Initialize HTTP router
 	c.initializeRouter()
 
 	log.Println("Dependency injection container initialized successfully")
@@ -128,6 +135,39 @@ func (c *Container) initializeServices() {
 func (c *Container) initializeHandlers() {
 	c.MemoryHandler = handlers.NewMemoryHandler(c.MemoryService, c.EventBridgeClient)
 	c.CategoryHandler = handlers.NewCategoryHandler(c.CategoryService)
+}
+
+// initializeMiddleware sets up middleware configuration.
+func (c *Container) initializeMiddleware() {
+	// Store middleware configuration for monitoring/observability
+	c.middlewareConfig["request_id"] = map[string]any{
+		"enabled": true,
+		"header_name": "X-Request-ID",
+	}
+	
+	c.middlewareConfig["circuit_breaker"] = map[string]any{
+		"enabled": true,
+		"api_routes": map[string]any{
+			"name": "api-routes",
+			"max_requests": 3,
+			"interval_seconds": 10,
+			"timeout_seconds": 30,
+			"failure_threshold": 0.6,
+			"min_requests": 3,
+		},
+	}
+	
+	c.middlewareConfig["timeout"] = map[string]any{
+		"enabled": true,
+		"default_timeout_seconds": 30,
+	}
+	
+	c.middlewareConfig["recovery"] = map[string]any{
+		"enabled": true,
+		"log_stack_trace": true,
+	}
+	
+	log.Println("Middleware configuration initialized")
 }
 
 // initializeRouter sets up the HTTP router with all routes.
@@ -200,6 +240,11 @@ func (c *Container) GetRouter() *chi.Mux {
 	return c.Router
 }
 
+// GetMiddlewareConfig returns the middleware configuration for monitoring
+func (c *Container) GetMiddlewareConfig() map[string]any {
+	return c.middlewareConfig
+}
+
 // Health returns the health status of all components.
 func (c *Container) Health(ctx context.Context) map[string]string {
 	health := make(map[string]string)
@@ -218,6 +263,13 @@ func (c *Container) Health(ctx context.Context) map[string]string {
 		health["eventbridge"] = "connected"
 	} else {
 		health["eventbridge"] = "not_connected"
+	}
+	
+	// Add middleware status
+	if len(c.middlewareConfig) > 0 {
+		health["middleware"] = "configured"
+	} else {
+		health["middleware"] = "not_configured"
 	}
 
 	return health

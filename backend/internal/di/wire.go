@@ -2,9 +2,11 @@ package di
 
 import (
 	"net/http"
+	"time"
 
 	"brain2-backend/pkg/api"
 	"brain2-backend/internal/handlers"
+	"brain2-backend/internal/middleware"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -12,6 +14,11 @@ import (
 // This is used internally by the container system.
 func setupRouter(memoryHandler *handlers.MemoryHandler, categoryHandler *handlers.CategoryHandler) *chi.Mux {
 	r := chi.NewRouter()
+
+	// Global middleware - applied to all routes
+	r.Use(middleware.RequestID)           // Generate/extract request IDs
+	r.Use(middleware.Recovery)            // Handle panics gracefully
+	r.Use(middleware.Timeout(30 * time.Second)) // 30 second timeout for all requests
 
 	// Public routes
 	r.Group(func(r chi.Router) {
@@ -22,6 +29,11 @@ func setupRouter(memoryHandler *handlers.MemoryHandler, categoryHandler *handler
 
 	// Protected routes (require authentication)
 	r.Group(func(r chi.Router) {
+		// Apply circuit breaker for API routes (protects against cascading failures)
+		apiCircuitBreaker := middleware.CircuitBreaker(
+			middleware.DefaultCircuitBreakerConfig("api-routes"))
+		r.Use(apiCircuitBreaker)
+
 		r.Use(handlers.Authenticator) // Apply authentication middleware
 
 		r.Post("/api/nodes", memoryHandler.CreateNode)
