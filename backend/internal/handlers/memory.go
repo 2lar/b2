@@ -139,7 +139,11 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 
 // GetNode handles GET /api/nodes/{nodeId}
 func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	nodeID := chi.URLParam(r, "nodeId")
 
 	node, edges, err := h.memoryService.GetNodeDetails(r.Context(), userID, nodeID)
@@ -165,11 +169,15 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 
 // UpdateNode handles PUT /api/nodes/{nodeId}
 func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	nodeID := chi.URLParam(r, "nodeId")
 
 	// Verify ownership before proceeding
-	_, err := h.checkOwnership(r.Context(), nodeID)
+	_, err := h.checkOwnership(r.Context(), userID, nodeID)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -202,10 +210,14 @@ func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 
 // DeleteNode handles DELETE /api/nodes/{nodeId}
 func (h *MemoryHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	nodeID := chi.URLParam(r, "nodeId")
 
-	_, err := h.checkOwnership(r.Context(), nodeID)
+	_, err := h.checkOwnership(r.Context(), userID, nodeID)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -216,12 +228,16 @@ func (h *MemoryHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	api.Success(w, http.StatusOK, map[string]string{"message": "Node deleted successfully"})
 }
 
 // BulkDeleteNodes handles POST /api/nodes/bulk-delete
 func (h *MemoryHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 
 	var req api.BulkDeleteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -338,8 +354,7 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 }
 
 // Helper method for ownership check
-func (h *MemoryHandler) checkOwnership(ctx context.Context, nodeID string) (*domain.Node, error) {
-	userID := ctx.Value(userIDKey).(string)
+func (h *MemoryHandler) checkOwnership(ctx context.Context, userID, nodeID string) (*domain.Node, error) {
 	node, _, err := h.memoryService.GetNodeDetails(ctx, userID, nodeID)
 	if err != nil {
 		if appErrors.IsNotFound(err) {

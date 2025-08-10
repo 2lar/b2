@@ -56,6 +56,7 @@ interface GraphState {
   addNode: (content: string, tags?: string[], optimistic?: boolean) => Promise<Node>;
   updateNode: (nodeId: string, content: string, tags?: string[]) => Promise<void>;
   deleteNodes: (nodeIds: string[]) => Promise<void>;
+  deleteNode: (nodeId: string) => Promise<void>;
   selectNode: (nodeId: string, multiSelect?: boolean) => void;
   focusNode: (nodeId: string) => void;
   clearSelection: () => void;
@@ -431,6 +432,10 @@ export const useGraphStore = create<GraphState>()(
             });
             throw error;
           }
+        },
+
+        deleteNode: async (nodeId: string) => {
+          return get().deleteNodes([nodeId]);
         },
 
         // UI actions

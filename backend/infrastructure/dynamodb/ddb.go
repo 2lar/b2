@@ -92,6 +92,7 @@ func NewRepositoryWithConfig(dbClient *dynamodb.Client, config repository.Config
 	}
 }
 
+
 // getCanonicalEdge determines the canonical storage for a bi-directional edge.
 // Returns the owner node ID and target node ID based on lexicographic ordering.
 // This ensures each unique connection is stored exactly once.
@@ -315,10 +316,12 @@ func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, 
 func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string) (*domain.Node, error) {
 	pk := fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID)
 	sk := "METADATA#v0"
+	
 	result, err := r.dbClient.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(r.config.TableName),
 		Key:       map[string]types.AttributeValue{"PK": &types.AttributeValueMemberS{Value: pk}, "SK": &types.AttributeValueMemberS{Value: sk}},
 	})
+	
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get item from dynamodb")
 	}

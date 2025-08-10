@@ -9,10 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInitializeAPI(t *testing.T) {
-	router, err := InitializeAPI()
+func TestInitializeContainerIntegration(t *testing.T) {
+	container, err := InitializeContainer()
 
 	require.NoError(t, err)
+	require.NotNil(t, container)
+	
+	router := container.GetRouter()
 	require.NotNil(t, router)
 
 	// Create a new HTTP request to the /health endpoint
@@ -30,4 +33,7 @@ func TestInitializeAPI(t *testing.T) {
 
 	// Check the response body is what we expect
 	assert.JSONEq(t, `{"status":"ok"}`, rr.Body.String())
+	
+	// Clean up
+	container.Shutdown(req.Context())
 }
