@@ -164,3 +164,49 @@ Designed for AWS free tier:
 ## License
 
 MIT License
+
+### Development and Build Commands
+
+This section outlines the essential commands and scripts for developing, building, and deploying the Brain2 application components.
+
+#### Root Project Commands
+
+*   `chmod +x build.sh && ./build.sh`: This script orchestrates the build process for both the backend Go Lambdas and the frontend application. It's typically run from the project root.
+
+#### Frontend (`frontend/` directory)
+
+Navigate to the `frontend/` directory to run these commands.
+
+*   `npm install`: Installs all necessary Node.js dependencies.
+*   `npm run dev`: Starts the development server with hot-reloading for local development.
+*   `npm run build`: Cleans the `dist` directory, reinstalls dependencies, generates API types from `openapi.yaml`, performs TypeScript type checking, and then builds the production-ready frontend assets.
+*   `npm run preview`: Serves the production build locally for testing.
+*   `npm run generate-api-types`: Generates TypeScript types for the API client based on `openapi.yaml`. This ensures type safety between the frontend and backend.
+*   `npm test`: Runs TypeScript type checking (`tsc --noEmit`) to catch type-related errors. (Note: This project currently lacks comprehensive unit/integration tests for the frontend beyond type checking.)
+*   `npm run clean`: Removes `node_modules` and `dist` directories.
+
+#### Backend (`backend/` directory)
+
+Navigate to the `backend/` directory to run these commands.
+
+*   `./build.sh`: This script cleans, installs dependencies, runs tests, generates dependency injection code, and builds all Go Lambda functions.
+*   **Wire (Dependency Injection) Commands:**
+    *   `go install github.com/google/wire/cmd/wire@latest`: Installs the Wire code generation tool.
+    *   `go generate ./internal/di`: Generates dependency injection code based on `wire` directives. This is also run by `./build.sh`.
+*   **OpenAPI Code Generation (Inferred):**
+    *   `oapi-codegen -package api -generate types,server -o pkg/api/api.gen.go ../openapi.yaml`: This command is inferred for generating Go server-side API code from `openapi.yaml`. Its explicit usage is not found in existing scripts, but it's a common pattern for `oapi-codegen`.
+*   `go mod tidy`: Cleans up unused dependencies and adds missing ones in `go.mod` and `go.sum`.
+*   `go build ./cmd/main`: Compiles the main backend Lambda function executable. You might need to specify `GOOS=linux GOARCH=amd64` for AWS Lambda compatibility.
+*   `go test ./...`: Runs all unit and integration tests within the backend project.
+*   `go run ./cmd/main`: Runs the main backend application locally (useful for local development and debugging outside of a Lambda environment).
+
+#### Infrastructure (`infra/` directory)
+
+Navigate to the `infra/` directory to run these commands.
+
+*   `npm install`: Installs all necessary Node.js dependencies for the AWS CDK project.
+*   `npx cdk deploy [STACK_NAME]`: Deploys the specified CDK stack (e.g., `npx cdk deploy Brain2Stack`). Use `--all` to deploy all stacks.
+*   `npx cdk synth [STACK_NAME]`: Synthesizes the CDK application into CloudFormation templates. This shows you what AWS resources will be created.
+*   `npx cdk diff [STACK_NAME]`: Compares the current CDK stack definition with the already deployed CloudFormation stack, showing proposed changes.
+*   `npx cdk destroy [STACK_NAME]`: Destroys the specified deployed CDK stack and all its resources. **Use with extreme caution!**
+*   `npm test`: Runs Jest tests for the infrastructure code.
