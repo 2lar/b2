@@ -156,7 +156,13 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.Success(w, http.StatusOK, response)
+	// Convert PageResponse to the format expected by the frontend
+	// The OpenAPI spec expects { nodes: Node[] } but we're returning { items: interface{} }
+	nodesResponse := map[string]interface{}{
+		"nodes": response.Items,
+	}
+
+	api.Success(w, http.StatusOK, nodesResponse)
 }
 
 // GetNode handles GET /api/nodes/{nodeId}
