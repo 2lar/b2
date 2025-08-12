@@ -72,11 +72,18 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		tags = *req.Tags
 	}
 
-	// Get idempotency key from header or generate one
-	idempotencyKey := getIdempotencyKey(r, userID, "CREATE_NODE", req)
+	// Add idempotency key to context
+	ctx := r.Context()
+	if idempotencyKey := r.Header.Get("Idempotency-Key"); idempotencyKey != "" {
+		ctx = memory.WithIdempotencyKey(ctx, idempotencyKey)
+	} else {
+		// Generate automatic key
+		key := generateIdempotencyKey(userID, "CREATE_NODE", req)
+		ctx = memory.WithIdempotencyKey(ctx, key)
+	}
 
-	// Use the idempotent service method
-	createdNode, edges, err := h.memoryService.CreateNodeWithEdgesIdempotent(r.Context(), userID, idempotencyKey, req.Content, tags)
+	// Call simplified service method
+	createdNode, edges, err := h.memoryService.CreateNode(ctx, userID, req.Content, tags)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -129,28 +136,54 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use paginated version for better performance
-	pagination := repository.Pagination{
-		Limit:  1000, // Reasonable limit for node listing
-		Offset: 0,
+	// Parse query parameters
+	query := r.URL.Query()
+	limit := 20
+	if l := query.Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
 	}
 
-	graph, _, err := h.memoryService.GetGraphDataPaginated(r.Context(), userID, pagination)
+	pageReq := repository.PageRequest{
+		Limit:     limit,
+		NextToken: query.Get("nextToken"),
+	}
+
+	response, err := h.memoryService.GetNodes(r.Context(), userID, pageReq)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	var nodesResponse []api.NodeResponse
-	for _, node := range graph.Nodes {
-		nodesResponse = append(nodesResponse, api.NodeResponse{
-			NodeID:    node.ID,
-			Content:   node.Content,
-			Tags:      node.Tags,
-			Timestamp: node.CreatedAt.Format(time.RFC3339),
-			Version:   node.Version,
-		})
+
+	// Convert PageResponse to the format expected by the frontend
+	// Transform raw domain objects to properly formatted API response objects
+	nodes, ok := response.Items.([]domain.Node)
+	if !ok {
+		api.Error(w, http.StatusInternalServerError, "Invalid data format")
+		return
 	}
-	api.Success(w, http.StatusOK, map[string][]api.NodeResponse{"nodes": nodesResponse})
+
+	// Convert each domain.Node to API response format matching CreateNode/GetNode endpoints
+	apiNodes := make([]api.Node, len(nodes))
+	for i, node := range nodes {
+		apiNodes[i] = api.Node{
+			NodeId:    node.ID,        // id → nodeId 
+			Content:   node.Content,
+			Tags:      &node.Tags,
+			Timestamp: node.CreatedAt, // created_at → timestamp
+			Version:   node.Version,
+		}
+	}
+
+	nodesResponse := map[string]interface{}{
+		"nodes":     apiNodes,
+		"total":     response.Total,
+		"hasMore":   response.HasMore,
+		"nextToken": response.NextToken,
+	}
+
+	api.Success(w, http.StatusOK, nodesResponse)
 }
 
 // GetNode handles GET /api/nodes/{nodeId}
@@ -236,15 +269,20 @@ func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 		tags = *req.Tags
 	}
 
-	// Get idempotency key from header or generate one
-	idempotencyKey := getIdempotencyKey(r, userID, "UPDATE_NODE", map[string]interface{}{
-		"nodeID":  nodeID,
-		"content": req.Content,
-		"tags":    tags,
-	})
+	// Add idempotency key to context
+	ctx := r.Context()
+	if idempotencyKey := r.Header.Get("Idempotency-Key"); idempotencyKey != "" {
+		ctx = memory.WithIdempotencyKey(ctx, idempotencyKey)
+	} else {
+		key := generateIdempotencyKey(userID, "UPDATE_NODE", map[string]interface{}{
+			"nodeId": nodeID,
+			"content": req.Content,
+			"tags": tags,
+		})
+		ctx = memory.WithIdempotencyKey(ctx, key)
+	}
 
-	// Use idempotent update method
-	_, err = h.memoryService.UpdateNodeIdempotent(r.Context(), userID, nodeID, idempotencyKey, req.Content, tags)
+	_, err = h.memoryService.UpdateNode(ctx, userID, nodeID, req.Content, tags)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -300,10 +338,16 @@ func (h *MemoryHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Get idempotency key from header or generate one
-	idempotencyKey := getIdempotencyKey(r, userID, "BULK_DELETE_NODES", req)
+	// Add idempotency key to context
+	ctx := r.Context()
+	if idempotencyKey := r.Header.Get("Idempotency-Key"); idempotencyKey != "" {
+		ctx = memory.WithIdempotencyKey(ctx, idempotencyKey)
+	} else {
+		key := generateIdempotencyKey(userID, "BULK_DELETE", req)
+		ctx = memory.WithIdempotencyKey(ctx, key)
+	}
 
-	deletedCount, failedNodeIds, err := h.memoryService.BulkDeleteNodesIdempotent(r.Context(), userID, idempotencyKey, req.NodeIds)
+	deletedCount, failedNodeIds, err := h.memoryService.BulkDeleteNodes(ctx, userID, req.NodeIds)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -332,15 +376,8 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("DEBUG: GetGraphData called for userID: %s", userID)
 
-	// Use paginated version for better performance, but maintain backward compatibility
-	// For existing API, we'll load a large page by default to maintain compatibility
-	pagination := repository.Pagination{
-		Limit:  1000, // Maximum allowed limit for graph data
-		Offset: 0,
-	}
-
-	log.Printf("DEBUG: Calling memoryService.GetGraphDataPaginated with pagination limit: %d", pagination.Limit)
-	graph, _, err := h.memoryService.GetGraphDataPaginated(r.Context(), userID, pagination)
+	log.Printf("DEBUG: Calling memoryService.GetGraphData")
+	graph, err := h.memoryService.GetGraphData(r.Context(), userID)
 	if err != nil {
 		log.Printf("ERROR: GetGraphDataPaginated failed: %v", err)
 		handleServiceError(w, err)
@@ -418,227 +455,7 @@ func (h *MemoryHandler) checkOwnership(ctx context.Context, userID, nodeID strin
 	return node, nil
 }
 
-// GetNodesPage handles GET /api/nodes/page with pagination support
-func (h *MemoryHandler) GetNodesPage(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r)
-	if !ok {
-		api.Error(w, http.StatusUnauthorized, "Authentication required")
-		return
-	}
 
-	// Parse pagination parameters
-	pagination := repository.Pagination{
-		Limit:  50, // Default limit
-		Offset: 0,  // Default offset
-	}
-
-	// Parse query parameters for pagination
-	query := r.URL.Query()
-	if limitStr := query.Get("limit"); limitStr != "" {
-		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && limit <= 1000 {
-			pagination.Limit = limit
-		}
-	}
-	if offsetStr := query.Get("offset"); offsetStr != "" {
-		if offset, err := strconv.Atoi(offsetStr); err == nil && offset >= 0 {
-			pagination.Offset = offset
-		}
-	}
-	if cursor := query.Get("cursor"); cursor != "" {
-		pagination.Cursor = cursor
-	}
-
-	page, err := h.memoryService.GetNodesPage(r.Context(), userID, pagination)
-	if err != nil {
-		handleServiceError(w, err)
-		return
-	}
-
-	// Convert nodes to API response format
-	nodes := make([]api.EnhancedNode, len(page.Items))
-	for i, node := range page.Items {
-		createdAt := node.CreatedAt.Format(time.RFC3339)
-		nodes[i] = api.EnhancedNode{
-			Node: api.Node{
-				Content:   node.Content,
-				NodeId:    node.ID,
-				Tags:      &node.Tags,
-				Timestamp: node.CreatedAt,
-				Version:   node.Version,
-			},
-			Keywords:  &node.Keywords,
-			CreatedAt: &createdAt,
-		}
-	}
-
-	response := api.NodePageResponse{
-		Items:      &nodes,
-		HasMore:    &page.HasMore,
-		NextCursor: &page.NextCursor,
-		PageInfo: &api.PageInfo{
-			CurrentPage: &page.PageInfo.CurrentPage,
-			PageSize:    &page.PageInfo.PageSize,
-			ItemsInPage: &page.PageInfo.ItemsInPage,
-		},
-	}
-
-	api.Success(w, http.StatusOK, response)
-}
-
-// GetNodesPageOptimized handles GET /api/nodes/optimized with improved pagination using new types
-func (h *MemoryHandler) GetNodesPageOptimized(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r)
-	if !ok {
-		api.Error(w, http.StatusUnauthorized, "Authentication required")
-		return
-	}
-
-	// Parse pagination parameters using new PageRequest type
-	query := r.URL.Query()
-	
-	// Parse limit parameter
-	limit := repository.DefaultPageSize
-	if limitStr := query.Get("limit"); limitStr != "" {
-		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 && parsed <= repository.MaxPageSize {
-			limit = parsed
-		}
-	}
-
-	// Get next token for cursor-based pagination
-	nextToken := query.Get("nextToken")
-
-	pageReq := repository.NewPageRequest(limit, nextToken)
-	
-	// Add sort parameters if provided
-	if sortBy := query.Get("sortBy"); sortBy != "" {
-		pageReq.SortBy = sortBy
-	}
-	if sortOrder := query.Get("sortOrder"); sortOrder != "" && (sortOrder == "asc" || sortOrder == "desc") {
-		pageReq.SortOrder = sortOrder
-	}
-
-	// Call optimized service method
-	response, err := h.memoryService.GetNodesPageOptimized(r.Context(), userID, pageReq)
-	if err != nil {
-		handleServiceError(w, err)
-		return
-	}
-
-	// Convert nodes to API response format
-	if nodes, ok := response.Items.([]domain.Node); ok {
-		apiNodes := make([]api.EnhancedNode, len(nodes))
-		for i, node := range nodes {
-			createdAt := node.CreatedAt.Format(time.RFC3339)
-			apiNodes[i] = api.EnhancedNode{
-				Node: api.Node{
-					Content:   node.Content,
-					NodeId:    node.ID,
-					Tags:      &node.Tags,
-					Timestamp: node.CreatedAt,
-					Version:   node.Version,
-				},
-				Keywords:  &node.Keywords,
-				CreatedAt: &createdAt,
-			}
-		}
-
-		// Create optimized API response
-		apiResponse := api.OptimizedNodePageResponse{
-			Items:     &apiNodes,
-			HasMore:   &response.HasMore,
-			NextToken: &response.NextToken,
-		}
-
-		api.Success(w, http.StatusOK, apiResponse)
-		return
-	}
-
-	api.Error(w, http.StatusInternalServerError, "Invalid response format")
-}
-
-// GetNodeNeighborhood handles GET /api/nodes/{nodeId}/neighborhood with depth parameter
-func (h *MemoryHandler) GetNodeNeighborhood(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r)
-	if !ok {
-		api.Error(w, http.StatusUnauthorized, "Authentication required")
-		return
-	}
-
-	nodeID := chi.URLParam(r, "nodeId")
-	if nodeID == "" {
-		api.Error(w, http.StatusBadRequest, "Node ID is required")
-		return
-	}
-
-	// Parse depth parameter (default: 2, max: 3)
-	depth := 2
-	if depthStr := r.URL.Query().Get("depth"); depthStr != "" {
-		if d, err := strconv.Atoi(depthStr); err == nil && d >= 1 && d <= 3 {
-			depth = d
-		}
-	}
-
-	graph, err := h.memoryService.GetNodeNeighborhood(r.Context(), userID, nodeID, depth)
-	if err != nil {
-		handleServiceError(w, err)
-		return
-	}
-
-	// Convert to graph data response format (reuse existing logic)
-	var elements []api.GraphDataResponse_Elements_Item
-
-	for _, node := range graph.Nodes {
-		label := node.Content
-		if len(label) > 50 {
-			label = label[:47] + "..."
-		}
-
-		graphNode := api.GraphNode{
-			Data: &api.NodeData{
-				Id:    node.ID,
-				Label: label,
-			},
-		}
-
-		var element api.GraphDataResponse_Elements_Item
-		if err := element.FromGraphNode(graphNode); err != nil {
-			log.Printf("WARN: Failed to convert node to GraphDataResponse element: %v", err)
-			continue
-		}
-		elements = append(elements, element)
-	}
-
-	for _, edge := range graph.Edges {
-		edgeID := fmt.Sprintf("%s-%s", edge.SourceID, edge.TargetID)
-		graphEdge := api.GraphEdge{
-			Data: &api.EdgeData{
-				Id:     edgeID,
-				Source: edge.SourceID,
-				Target: edge.TargetID,
-			},
-		}
-
-		var element api.GraphDataResponse_Elements_Item
-		if err := element.FromGraphEdge(graphEdge); err != nil {
-			log.Printf("WARN: Failed to convert edge to GraphDataResponse element: %v", err)
-			continue
-		}
-		elements = append(elements, element)
-	}
-
-	response := api.NodeNeighborhoodResponse{
-		Elements: &elements,
-		Depth:    &depth,
-		CenterNode: &api.Node{
-			NodeId:    nodeID,
-			Content:   "", // Will be filled from the graph data
-			Timestamp: time.Now(),
-			Version:   0,
-		},
-	}
-
-	api.Success(w, http.StatusOK, response)
-}
 
 // generateIdempotencyKey creates an idempotency key from request data if not provided
 func generateIdempotencyKey(userID, operation string, payload interface{}) string {

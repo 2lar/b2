@@ -57,7 +57,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     const [categories, setCategories] = useState<Category[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
+    const [totalMemories, setTotalMemories] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
+    const [nextToken, setNextToken] = useState<string | undefined>(undefined);
     const [refreshGraph, setRefreshGraph] = useState(0);
     const [refreshSidebar, setRefreshSidebar] = useState(0);
     const graphRef = useRef<GraphVisualizationRef>(null);
@@ -65,25 +67,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     const MEMORIES_PER_PAGE = 50;
 
     useEffect(() => {
-        loadMemories();
+        loadMemories(1);
         loadCategories();
     }, []);
 
-    const loadMemories = async () => {
+    const loadMemories = async (page: number, token?: string) => {
         setIsLoading(true);
         try {
-            const data = await nodesApi.listNodes();
-            const allNodes = data.nodes || [];
+            const data = await nodesApi.listNodes(MEMORIES_PER_PAGE, token);
+            const pageNodes = data.nodes || [];
             
-            // Sort by timestamp (newest first)
-            allNodes.sort((a, b) => 
+            // Sort by timestamp (newest first) - backend should handle this eventually
+            pageNodes.sort((a, b) => 
                 new Date(b.timestamp || '').getTime() - new Date(a.timestamp || '').getTime()
             );
 
-            setMemories(allNodes);
-            setTotalPages(Math.ceil(allNodes.length / MEMORIES_PER_PAGE));
+            setMemories(pageNodes);
+            setTotalMemories(data.total || 0);
+            setTotalPages(Math.ceil((data.total || 0) / MEMORIES_PER_PAGE));
+            setNextToken(data.nextToken);
+            setCurrentPage(page);
         } catch (error) {
             console.error('Error loading memories:', error);
+            
+            const errorMessage = (error as Error).message;
+            if (errorMessage.includes('Authentication') || errorMessage.includes('expired') || errorMessage.includes('sign in')) {
+                // Show user-friendly authentication error
+                alert('Your session has expired. Please refresh the page or sign in again.');
+            }
         } finally {
             setIsLoading(false);
         }
@@ -99,7 +110,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     };
 
     const handleMemoryCreated = () => {
-        loadMemories();
+        loadMemories(1); // Go to first page to see new memory
         loadCategories(); // Refresh categories as new memories might be auto-categorized
         // Trigger graph and sidebar refresh
         setRefreshGraph(prev => prev + 1);
@@ -107,7 +118,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     };
 
     const handleMemoryDeleted = () => {
-        loadMemories();
+        loadMemories(currentPage); // Stay on current page, but reload to update counts
         loadCategories(); // Refresh categories as counts might change
         // Trigger graph and sidebar refresh
         setRefreshGraph(prev => prev + 1);
@@ -115,11 +126,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     };
 
     const handleMemoryUpdated = () => {
-        loadMemories();
+        loadMemories(currentPage); // Stay on current page and reload
         loadCategories(); // Refresh categories as content might affect categorization
         // Trigger graph and sidebar refresh
         setRefreshGraph(prev => prev + 1);
         setRefreshSidebar(prev => prev + 1);
+    };
+
+    const handlePageChange = (newPage: number) => {
+        // For now, we'll implement simple pagination by reloading
+        // In the future, we could cache pages for better UX
+        loadMemories(newPage);
     };
 
     const handleViewInGraph = (nodeId: string) => {
@@ -131,10 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
         }
     };
 
-    // Get current page memories
-    const startIndex = (currentPage - 1) * MEMORIES_PER_PAGE;
-    const endIndex = startIndex + MEMORIES_PER_PAGE;
-    const currentPageMemories = memories.slice(startIndex, endIndex);
+    // memories already contains the current page data from server
 
     return (
         <div className="app-container">
@@ -171,12 +185,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
 
                     {/* Bottom Right - Memory List */}
                     <MemoryList 
-                        memories={currentPageMemories}
-                        totalMemories={memories.length}
+                        memories={memories}
+                        totalMemories={totalMemories}
                         currentPage={currentPage}
                         totalPages={totalPages}
                         isLoading={isLoading}
-                        onPageChange={setCurrentPage}
+                        onPageChange={handlePageChange}
                         onMemoryDeleted={handleMemoryDeleted}
                         onMemoryUpdated={handleMemoryUpdated}
                         onMemoryViewInGraph={handleViewInGraph}

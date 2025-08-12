@@ -58,7 +58,13 @@ type GraphDataResponse = components['schemas']['GraphDataResponse'];
 // Request types are used inline for simplicity
 
 // Operation Response Types - Extract specific response shapes
-type ListNodesResponse = operations['listNodes']['responses']['200']['content']['application/json'];
+// Custom type for ListNodes with pagination metadata
+type ListNodesResponse = {
+    nodes?: Node[];
+    total?: number;
+    hasMore?: boolean;
+    nextToken?: string;
+};
 type ListCategoriesResponse = operations['listCategories']['responses']['200']['content']['application/json'];
 type GetNodesInCategoryResponse = operations['getNodesInCategory']['responses']['200']['content']['application/json'];
 
@@ -80,7 +86,15 @@ class ApiClient {
         const token = await auth.getJwtToken();
 
         if (!token) {
-            throw new Error('Not authenticated - please sign in to continue');
+            console.error('API request failed: No valid authentication token available');
+            
+            // Check if user has a session at all
+            const session = await auth.getSession();
+            if (!session) {
+                throw new Error('Authentication required - please sign in to continue');
+            } else {
+                throw new Error('Authentication token expired - please refresh the page or sign in again');
+            }
         }
 
         // Configure request with authentication headers
@@ -119,6 +133,15 @@ class ApiClient {
                     coldStart: response.headers.get('X-Cold-Start'),
                     coldStartAge: response.headers.get('X-Cold-Start-Age')
                 });
+
+                // Handle authentication errors specifically
+                if (response.status === 401) {
+                    throw new Error('Authentication failed - your session has expired. Please sign in again.');
+                }
+                
+                if (response.status === 403) {
+                    throw new Error('Access denied - you do not have permission to perform this action.');
+                }
 
                 // Check if this is a retryable error (503 Service Unavailable or 500 Internal Server Error)
                 const isRetryable = response.status === 503 || response.status === 500;
@@ -187,11 +210,20 @@ class ApiClient {
     }
 
     /**
-     * List all user's memory nodes
-     * @returns Promise resolving to array of memory nodes
+     * List user's memory nodes with pagination
+     * @param limit Number of nodes per page (default: 20, max: 100)
+     * @param nextToken Token for next page (for pagination)
+     * @returns Promise resolving to paginated nodes response
      */
-    public listNodes(): Promise<ListNodesResponse> {
-        return this.request<ListNodesResponse>('GET', '/api/nodes');
+    public listNodes(limit?: number, nextToken?: string): Promise<ListNodesResponse> {
+        const params = new URLSearchParams();
+        if (limit) params.append('limit', limit.toString());
+        if (nextToken) params.append('nextToken', nextToken);
+        
+        const queryString = params.toString();
+        const path = queryString ? `/api/nodes?${queryString}` : '/api/nodes';
+        
+        return this.request<ListNodesResponse>('GET', path);
     }
 
     /**

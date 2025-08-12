@@ -97,9 +97,16 @@ func Authenticator(next http.Handler) http.Handler {
 			return
 		}
 
-		userID, ok := proxyCtx.Authorizer.Lambda["sub"].(string)
+		subValue := proxyCtx.Authorizer.Lambda["sub"]
+		if subValue == nil {
+			log.Println("Error: missing user ID in authorizer context")
+			api.Error(w, http.StatusUnauthorized, "Invalid authentication")
+			return
+		}
+		
+		userID, ok := subValue.(string)
 		if !ok || userID == "" {
-			log.Println("Error: missing or invalid user ID in authorizer context")
+			log.Printf("Error: invalid user ID in authorizer context - expected string, got %T", subValue)
 			api.Error(w, http.StatusUnauthorized, "Invalid authentication")
 			return
 		}

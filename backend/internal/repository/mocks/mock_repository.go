@@ -908,3 +908,20 @@ func (m *MockRepository) GetNodesPage(ctx context.Context, query repository.Node
 		NextCursor: "",
 	}, nil
 }
+
+// CountNodes returns the total number of nodes for a user
+func (m *MockRepository) CountNodes(ctx context.Context, userID string) (int, error) {
+	if err := m.checkError("CountNodes"); err != nil {
+		return 0, err
+	}
+	
+	// Count nodes for the specific user
+	count := 0
+	for _, node := range m.nodes {
+		if node != nil && node.UserID == userID {
+			count++
+		}
+	}
+	
+	return count, nil
+}

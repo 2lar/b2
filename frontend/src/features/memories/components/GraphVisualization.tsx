@@ -510,9 +510,25 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         const nodes = elements.filter(el => el.data && !el.data.source);
         const edges = elements.filter(el => el.data && el.data.source);
         
-        // Create adjacency map for clustering
+        // Create a set of all node IDs for quick lookup
+        const nodeIdSet = new Set(nodes.map(node => node.data.id));
+
+        // Filter out invalid edges (edges with non-existent source or target nodes)
+        const validEdges = edges.filter(edge => {
+            const sourceExists = nodeIdSet.has(edge.data.source);
+            const targetExists = nodeIdSet.has(edge.data.target);
+            if (!sourceExists) {
+                console.warn(`Edge ${edge.data.id} has non-existent source node: ${edge.data.source}`);
+            }
+            if (!targetExists) {
+                console.warn(`Edge ${edge.data.id} has non-existent target node: ${edge.data.target}`);
+            }
+            return sourceExists && targetExists;
+        });
+
+        // Create adjacency map for clustering (using only valid edges)
         const adjacency = new Map<string, Set<string>>();
-        edges.forEach(edge => {
+        validEdges.forEach(edge => { // Use validEdges here
             if (!adjacency.has(edge.data.source)) {
                 adjacency.set(edge.data.source, new Set());
             }
@@ -552,7 +568,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             };
         });
         
-        return [...processedNodes, ...edges];
+        return [...processedNodes, ...validEdges];
     }
 
     const setupDragBehavior = (cy: Core) => {

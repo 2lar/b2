@@ -42,7 +42,7 @@ export const auth = {
     },
 
     async getJwtToken(): Promise<string | null> {
-        const session = await this.getSession();
+        let session = await this.getSession();
         
         if (!session) {
             return null;
@@ -52,9 +52,29 @@ export const auth = {
             return null;
         }
         
-        // Check if token is expired
-        if (session.expires_at && Date.now() / 1000 > session.expires_at) {
-            return null;
+        // Check if token is expired or will expire soon (5 minutes buffer)
+        const currentTime = Date.now() / 1000;
+        const bufferTime = 5 * 60; // 5 minutes in seconds
+        const tokenExpiration = session.expires_at || 0;
+        
+        if (tokenExpiration > 0 && currentTime > (tokenExpiration - bufferTime)) {
+            console.log('Token expired or expiring soon, attempting refresh...');
+            
+            // Try to refresh the session
+            const { data, error } = await supabase.auth.refreshSession();
+            
+            if (error) {
+                console.error('Token refresh failed:', error.message);
+                return null;
+            }
+            
+            if (data.session) {
+                session = data.session;
+                console.log('Token refreshed successfully');
+            } else {
+                console.error('Token refresh returned no session');
+                return null;
+            }
         }
         
         return session.access_token;
