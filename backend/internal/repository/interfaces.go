@@ -16,6 +16,7 @@ type NodeRepository interface {
 	// Enhanced node operations with pagination
 	GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error)
 	GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error)
+	CountNodes(ctx context.Context, userID string) (int, error)
 }
 
 // EdgeRepository handles edge-specific operations

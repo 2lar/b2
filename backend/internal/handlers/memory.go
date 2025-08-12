@@ -157,9 +157,30 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert PageResponse to the format expected by the frontend
-	// The OpenAPI spec expects { nodes: Node[] } but we're returning { items: interface{} }
+	// Transform raw domain objects to properly formatted API response objects
+	nodes, ok := response.Items.([]domain.Node)
+	if !ok {
+		api.Error(w, http.StatusInternalServerError, "Invalid data format")
+		return
+	}
+
+	// Convert each domain.Node to API response format matching CreateNode/GetNode endpoints
+	apiNodes := make([]api.Node, len(nodes))
+	for i, node := range nodes {
+		apiNodes[i] = api.Node{
+			NodeId:    node.ID,        // id → nodeId 
+			Content:   node.Content,
+			Tags:      &node.Tags,
+			Timestamp: node.CreatedAt, // created_at → timestamp
+			Version:   node.Version,
+		}
+	}
+
 	nodesResponse := map[string]interface{}{
-		"nodes": response.Items,
+		"nodes":     apiNodes,
+		"total":     response.Total,
+		"hasMore":   response.HasMore,
+		"nextToken": response.NextToken,
 	}
 
 	api.Success(w, http.StatusOK, nodesResponse)

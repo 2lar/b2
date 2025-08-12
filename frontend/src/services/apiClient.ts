@@ -58,7 +58,13 @@ type GraphDataResponse = components['schemas']['GraphDataResponse'];
 // Request types are used inline for simplicity
 
 // Operation Response Types - Extract specific response shapes
-type ListNodesResponse = operations['listNodes']['responses']['200']['content']['application/json'];
+// Custom type for ListNodes with pagination metadata
+type ListNodesResponse = {
+    nodes?: Node[];
+    total?: number;
+    hasMore?: boolean;
+    nextToken?: string;
+};
 type ListCategoriesResponse = operations['listCategories']['responses']['200']['content']['application/json'];
 type GetNodesInCategoryResponse = operations['getNodesInCategory']['responses']['200']['content']['application/json'];
 
@@ -204,11 +210,20 @@ class ApiClient {
     }
 
     /**
-     * List all user's memory nodes
-     * @returns Promise resolving to array of memory nodes
+     * List user's memory nodes with pagination
+     * @param limit Number of nodes per page (default: 20, max: 100)
+     * @param nextToken Token for next page (for pagination)
+     * @returns Promise resolving to paginated nodes response
      */
-    public listNodes(): Promise<ListNodesResponse> {
-        return this.request<ListNodesResponse>('GET', '/api/nodes');
+    public listNodes(limit?: number, nextToken?: string): Promise<ListNodesResponse> {
+        const params = new URLSearchParams();
+        if (limit) params.append('limit', limit.toString());
+        if (nextToken) params.append('nextToken', nextToken);
+        
+        const queryString = params.toString();
+        const path = queryString ? `/api/nodes?${queryString}` : '/api/nodes';
+        
+        return this.request<ListNodesResponse>('GET', path);
     }
 
     /**

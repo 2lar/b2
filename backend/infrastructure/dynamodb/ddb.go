@@ -1065,38 +1065,55 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 		return nil, err
 	}
 
-	// Use Scan with filter to find nodes (same pattern as fetchAllNodesOptimized)
 	userNodePrefix := fmt.Sprintf("USER#%s#NODE#", query.UserID)
+	requestedLimit := pagination.GetEffectiveLimit()
+	nodes := make([]domain.Node, 0, requestedLimit)
 	
-	scanInput := &dynamodb.ScanInput{
-		TableName:        aws.String(r.config.TableName),
-		FilterExpression: aws.String("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix)"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk_prefix": &types.AttributeValueMemberS{Value: userNodePrefix},
-			":sk_prefix": &types.AttributeValueMemberS{Value: "METADATA#"},
-		},
-		Limit: aws.Int32(int32(pagination.GetEffectiveLimit())),
-	}
-
-	// Handle cursor-based pagination
+	var lastEvaluatedKey map[string]types.AttributeValue
+	
+	// Handle cursor-based pagination for starting point
 	if pagination.HasCursor() {
 		startKey, err := repository.DecodeCursor(pagination.Cursor)
 		if err == nil && startKey != nil {
-			scanInput.ExclusiveStartKey = startKey
+			lastEvaluatedKey = startKey
 		}
 	}
+	
+	scanIterations := 0
+	
+	// Continue scanning until we have enough nodes or no more items exist
+	for len(nodes) < requestedLimit {
+		scanIterations++
+		
+		scanInput := &dynamodb.ScanInput{
+			TableName:        aws.String(r.config.TableName),
+			FilterExpression: aws.String("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix)"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":pk_prefix": &types.AttributeValueMemberS{Value: userNodePrefix},
+				":sk_prefix": &types.AttributeValueMemberS{Value: "METADATA#"},
+			},
+			// Use a reasonable scan limit to avoid timeouts
+			Limit:             aws.Int32(100),
+			ExclusiveStartKey: lastEvaluatedKey,
+		}
 
-	result, err := r.dbClient.Scan(ctx, scanInput)
-	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to scan nodes page")
-	}
+		result, err := r.dbClient.Scan(ctx, scanInput)
+		if err != nil {
+			return nil, appErrors.Wrap(err, "failed to scan nodes page")
+		}
 
-	// Convert DynamoDB items to domain nodes
-	nodes := make([]domain.Node, 0, len(result.Items))
-	for _, item := range result.Items {
-		var ddbItem ddbNode
-		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
-			if ddbItem.IsLatest { // Only return latest versions
+		// Process items from this scan segment
+		itemsProcessedThisIteration := 0
+		for _, item := range result.Items {
+			var ddbItem ddbNode
+			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
+				// Log nodes with IsLatest=false for debugging
+				if !ddbItem.IsLatest {
+					log.Printf("DEBUG: GetNodesPage found node with IsLatest=false: NodeID=%s, UserID=%s, Version=%d", 
+						ddbItem.NodeID, ddbItem.UserID, ddbItem.Version)
+				}
+				
+				// Include ALL valid nodes (removing IsLatest filter to match graph behavior)
 				createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
 				nodes = append(nodes, domain.Node{
 					ID:        ddbItem.NodeID,
@@ -1107,16 +1124,80 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 					CreatedAt: createdAt,
 					Version:   ddbItem.Version,
 				})
+				itemsProcessedThisIteration++
+				
+				// Stop if we've reached our limit
+				if len(nodes) >= requestedLimit {
+					break
+				}
+			} else {
+				// Log unmarshaling errors for debugging
+				log.Printf("WARN: GetNodesPage failed to unmarshal node: %v", err)
 			}
 		}
+		
+		// Update pagination state
+		lastEvaluatedKey = result.LastEvaluatedKey
+		
+		// Log scan continuation for debugging
+		if scanIterations > 1 {
+			log.Printf("INFO: GetNodesPage scan continuation - iteration %d, items found: %d, total collected: %d/%d", 
+				scanIterations, itemsProcessedThisIteration, len(nodes), requestedLimit)
+		}
+		
+		// Break if no more items available
+		if result.LastEvaluatedKey == nil {
+			break
+		}
+		
+		// Safety check to prevent infinite loops
+		if scanIterations > 10 {
+			log.Printf("WARN: GetNodesPage exceeded maximum scan iterations (%d), returning %d nodes", 
+				scanIterations, len(nodes))
+			break
+		}
+	}
+	
+	// Final logging
+	if scanIterations > 1 {
+		log.Printf("INFO: GetNodesPage completed with %d scan iterations, returned %d/%d nodes", 
+			scanIterations, len(nodes), requestedLimit)
 	}
 
 	return &repository.NodePage{
 		Items:      nodes,
-		HasMore:    result.LastEvaluatedKey != nil,
-		NextCursor: repository.EncodeCursor(result.LastEvaluatedKey),
-		PageInfo:   repository.CreatePageInfo(pagination, len(nodes), result.LastEvaluatedKey != nil),
+		HasMore:    lastEvaluatedKey != nil && len(nodes) >= requestedLimit,
+		NextCursor: repository.EncodeCursor(lastEvaluatedKey),
+		PageInfo:   repository.CreatePageInfo(pagination, len(nodes), lastEvaluatedKey != nil),
 	}, nil
+}
+
+// CountNodes returns the total number of nodes for a user
+func (r *ddbRepository) CountNodes(ctx context.Context, userID string) (int, error) {
+	userNodePrefix := fmt.Sprintf("USER#%s#NODE#", userID)
+	
+	scanInput := &dynamodb.ScanInput{
+		TableName:        aws.String(r.config.TableName),
+		FilterExpression: aws.String("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk_prefix": &types.AttributeValueMemberS{Value: userNodePrefix},
+			":sk_prefix": &types.AttributeValueMemberS{Value: "METADATA#"},
+		},
+		Select: types.SelectCount,  // Only count items, don't return data
+	}
+
+	count := 0
+	paginator := dynamodb.NewScanPaginator(r.dbClient, scanInput)
+	
+	for paginator.HasMorePages() {
+		result, err := paginator.NextPage(ctx)
+		if err != nil {
+			return 0, appErrors.Wrap(err, "failed to count nodes")
+		}
+		count += int(result.Count)
+	}
+
+	return count, nil
 }
 
 // GetNodesPageOptimized retrieves a paginated list of nodes using the new PageRequest/PageResponse types

@@ -260,10 +260,17 @@ func (s *service) GetNodes(ctx context.Context, userID string, pageReq repositor
 		return nil, appErrors.Wrap(err, "failed to get nodes page")
 	}
 	
+	// Get total count for pagination metadata
+	total, err := s.nodeRepo.CountNodes(ctx, userID)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to count total nodes")
+	}
+	
 	return &repository.PageResponse{
 		Items:     page.Items,
 		NextToken: page.NextCursor,
 		HasMore:   page.HasMore,
+		Total:     total,
 	}, nil
 }
 
