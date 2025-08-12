@@ -133,7 +133,11 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 
 // GetCategory handles GET /api/categories/{categoryId}
 func (h *CategoryHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	categoryID := chi.URLParam(r, "categoryId")
 
 	category, err := h.categoryService.GetCategory(r.Context(), userID, categoryID)
@@ -173,7 +177,11 @@ func (h *CategoryHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
 
 // UpdateCategory handles PUT /api/categories/{categoryId}
 func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	categoryID := chi.URLParam(r, "categoryId")
 
 	type UpdateCategoryRequest struct {
@@ -206,7 +214,11 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 
 // DeleteCategory handles DELETE /api/categories/{categoryId}
 func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	categoryID := chi.URLParam(r, "categoryId")
 
 	if err := h.categoryService.DeleteCategory(r.Context(), userID, categoryID); err != nil {
@@ -219,7 +231,11 @@ func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request)
 
 // AssignNodeToCategory handles POST /api/categories/{categoryId}/nodes
 func (h *CategoryHandler) AssignNodeToCategory(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	categoryID := chi.URLParam(r, "categoryId")
 
 	type AssignNodeRequest struct {
@@ -247,7 +263,11 @@ func (h *CategoryHandler) AssignNodeToCategory(w http.ResponseWriter, r *http.Re
 
 // GetNodesInCategory handles GET /api/categories/{categoryId}/nodes
 func (h *CategoryHandler) GetNodesInCategory(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	categoryID := chi.URLParam(r, "categoryId")
 
 	nodes, err := h.categoryService.GetNodesInCategory(r.Context(), userID, categoryID)
@@ -280,7 +300,11 @@ func (h *CategoryHandler) GetNodesInCategory(w http.ResponseWriter, r *http.Requ
 
 // RemoveNodeFromCategory handles DELETE /api/categories/{categoryId}/nodes/{nodeId}
 func (h *CategoryHandler) RemoveNodeFromCategory(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	categoryID := chi.URLParam(r, "categoryId")
 	nodeID := chi.URLParam(r, "nodeId")
 
@@ -294,7 +318,11 @@ func (h *CategoryHandler) RemoveNodeFromCategory(w http.ResponseWriter, r *http.
 
 // GetNodeCategories handles GET /api/nodes/{nodeId}/categories
 func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	nodeID := chi.URLParam(r, "nodeId")
 
 	if nodeID == "" {
@@ -345,7 +373,11 @@ func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Reque
 
 // CategorizeNode handles POST /api/nodes/{nodeId}/categories
 func (h *CategoryHandler) CategorizeNode(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(userIDKey).(string)
+	userID, ok := getUserID(r)
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 	nodeID := chi.URLParam(r, "nodeId")
 
 	if nodeID == "" {

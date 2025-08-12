@@ -186,12 +186,15 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node domain.N
 func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error {
 	log.Printf("DEBUG CreateNodeWithEdges: creating node ID=%s with keywords=%v and %d edges", node.ID, node.Keywords, len(relatedNodeIDs))
 	
+	// Ensure node starts with version 0
+	node.Version = 0
+	
 	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
 	transactItems := []types.TransactWriteItem{}
 
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
 		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
-		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: node.Version, Timestamp: node.CreatedAt.Format(time.RFC3339),
+		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
@@ -486,27 +489,27 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 	return &domain.Graph{Nodes: nodes, Edges: edges}, nil
 }
 
-// fetchAllNodesOptimized retrieves all nodes for a user using efficient query
+// fetchAllNodesOptimized retrieves all nodes for a user using scan with filter
 func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID string) ([]domain.Node, error) {
 	var nodes []domain.Node
 	var lastEvaluatedKey map[string]types.AttributeValue
 
-	userPrefix := fmt.Sprintf("USER#%s", userID)
+	userNodePrefix := fmt.Sprintf("USER#%s#NODE#", userID)
 
 	for {
-		queryInput := &dynamodb.QueryInput{
-			TableName:              aws.String(r.config.TableName),
-			KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
+		scanInput := &dynamodb.ScanInput{
+			TableName:        aws.String(r.config.TableName),
+			FilterExpression: aws.String("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix)"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":pk": &types.AttributeValueMemberS{Value: userPrefix},
-				":sk": &types.AttributeValueMemberS{Value: "METADATA#"},
+				":pk_prefix": &types.AttributeValueMemberS{Value: userNodePrefix},
+				":sk_prefix": &types.AttributeValueMemberS{Value: "METADATA#"},
 			},
 			ExclusiveStartKey: lastEvaluatedKey,
 		}
 
-		result, err := r.dbClient.Query(ctx, queryInput)
+		result, err := r.dbClient.Scan(ctx, scanInput)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to query nodes")
+			return nil, appErrors.Wrap(err, "failed to scan nodes")
 		}
 
 		// Process nodes
@@ -828,6 +831,9 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 
 // CreateNode saves only the metadata for a node.
 func (r *ddbRepository) CreateNode(ctx context.Context, node domain.Node) error {
+	// Ensure node starts with version 0
+	node.Version = 0
+	
 	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
 		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
@@ -1059,14 +1065,14 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 		return nil, err
 	}
 
-	// Use Query instead of Scan for better performance
-	userPrefix := fmt.Sprintf("USER#%s", query.UserID)
+	// Use Scan with filter to find nodes (same pattern as fetchAllNodesOptimized)
+	userNodePrefix := fmt.Sprintf("USER#%s#NODE#", query.UserID)
 	
-	queryInput := &dynamodb.QueryInput{
-		TableName:              aws.String(r.config.TableName),
-		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk_prefix)"),
+	scanInput := &dynamodb.ScanInput{
+		TableName:        aws.String(r.config.TableName),
+		FilterExpression: aws.String("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk":        &types.AttributeValueMemberS{Value: userPrefix},
+			":pk_prefix": &types.AttributeValueMemberS{Value: userNodePrefix},
 			":sk_prefix": &types.AttributeValueMemberS{Value: "METADATA#"},
 		},
 		Limit: aws.Int32(int32(pagination.GetEffectiveLimit())),
@@ -1076,13 +1082,13 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 	if pagination.HasCursor() {
 		startKey, err := repository.DecodeCursor(pagination.Cursor)
 		if err == nil && startKey != nil {
-			queryInput.ExclusiveStartKey = startKey
+			scanInput.ExclusiveStartKey = startKey
 		}
 	}
 
-	result, err := r.dbClient.Query(ctx, queryInput)
+	result, err := r.dbClient.Scan(ctx, scanInput)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to query nodes page")
+		return nil, appErrors.Wrap(err, "failed to scan nodes page")
 	}
 
 	// Convert DynamoDB items to domain nodes

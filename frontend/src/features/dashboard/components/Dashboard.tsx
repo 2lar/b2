@@ -84,6 +84,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
             setTotalPages(Math.ceil(allNodes.length / MEMORIES_PER_PAGE));
         } catch (error) {
             console.error('Error loading memories:', error);
+            
+            const errorMessage = (error as Error).message;
+            if (errorMessage.includes('Authentication') || errorMessage.includes('expired') || errorMessage.includes('sign in')) {
+                // Show user-friendly authentication error
+                alert('Your session has expired. Please refresh the page or sign in again.');
+            }
         } finally {
             setIsLoading(false);
         }
