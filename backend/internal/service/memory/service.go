@@ -41,13 +41,13 @@ var stopWords = map[string]bool{
 // Service defines the consolidated interface for memory-related business operations.
 type Service interface {
 	// Core operations - simplified interface with built-in idempotency and retry
-	CreateNode(ctx context.Context, userID, content string, tags []string) (*domain.Node, []domain.Edge, error)
+	CreateNode(ctx context.Context, userID, content string, tags []string) (*domain.Node, []*domain.Edge, error)
 	UpdateNode(ctx context.Context, userID, nodeID, content string, tags []string) (*domain.Node, error)
 	DeleteNode(ctx context.Context, userID, nodeID string) error
 	BulkDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (int, []string, error)
 	
 	// Query operations
-	GetNodeDetails(ctx context.Context, userID, nodeID string) (*domain.Node, []domain.Edge, error)
+	GetNodeDetails(ctx context.Context, userID, nodeID string) (*domain.Node, []*domain.Edge, error)
 	GetNodes(ctx context.Context, userID string, pageReq repository.PageRequest) (*repository.PageResponse, error)
 	GetGraphData(ctx context.Context, userID string) (*domain.Graph, error)
 }
@@ -110,7 +110,7 @@ func NewServiceFromRepositoryWithIdempotency(repo repository.Repository, idempot
 }
 
 // CreateNode creates a new node with automatic edge discovery and idempotency
-func (s *service) CreateNode(ctx context.Context, userID, content string, tags []string) (*domain.Node, []domain.Edge, error) {
+func (s *service) CreateNode(ctx context.Context, userID, content string, tags []string) (*domain.Node, []*domain.Edge, error) {
 	// Check for idempotency key in context
 	if idempotencyKey := GetIdempotencyKeyFromContext(ctx); idempotencyKey != "" && s.idempotencyStore != nil {
 		key := repository.IdempotencyKey{
@@ -126,7 +126,7 @@ func (s *service) CreateNode(ctx context.Context, userID, content string, tags [
 				// Return cached result
 				edges, _ := s.edgeRepo.FindEdges(ctx, repository.EdgeQuery{
 					UserID:   userID,
-					SourceID: nodeResult.ID,
+					SourceID: nodeResult.ID().String(),
 				})
 				return nodeResult, edges, nil
 			}
@@ -222,7 +222,7 @@ func (s *service) BulkDeleteNodes(ctx context.Context, userID string, nodeIDs []
 }
 
 // GetNodeDetails retrieves a node and its direct connections.
-func (s *service) GetNodeDetails(ctx context.Context, userID, nodeID string) (*domain.Node, []domain.Edge, error) {
+func (s *service) GetNodeDetails(ctx context.Context, userID, nodeID string) (*domain.Node, []*domain.Edge, error) {
 	node, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
 	if err != nil {
 		return nil, nil, appErrors.Wrap(err, "failed to get node from repository")
@@ -245,6 +245,15 @@ func (s *service) GetNodeDetails(ctx context.Context, userID, nodeID string) (*d
 
 // GetNodes retrieves paginated nodes (single pagination method)
 func (s *service) GetNodes(ctx context.Context, userID string, pageReq repository.PageRequest) (*repository.PageResponse, error) {
+	// Validate input parameters
+	if userID == "" {
+		return nil, appErrors.NewValidation("userID cannot be empty")
+	}
+	
+	if pageReq.Limit <= 0 || pageReq.Limit > 100 {
+		pageReq.Limit = 20 // Set default limit
+	}
+
 	query := repository.NodeQuery{
 		UserID: userID,
 	}
@@ -258,6 +267,11 @@ func (s *service) GetNodes(ctx context.Context, userID string, pageReq repositor
 	page, err := s.nodeRepo.GetNodesPage(ctx, query, pagination)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get nodes page")
+	}
+	
+	// Validate page response
+	if page == nil {
+		return nil, appErrors.NewInternal("repository returned nil page", nil)
 	}
 	
 	// Get total count for pagination metadata
@@ -276,10 +290,29 @@ func (s *service) GetNodes(ctx context.Context, userID string, pageReq repositor
 
 // GetGraphData retrieves the complete graph
 func (s *service) GetGraphData(ctx context.Context, userID string) (*domain.Graph, error) {
-	return s.graphRepo.GetGraphData(ctx, repository.GraphQuery{
+	// Validate input parameters
+	if userID == "" {
+		return nil, appErrors.NewValidation("userID cannot be empty")
+	}
+	
+	graph, err := s.graphRepo.GetGraphData(ctx, repository.GraphQuery{
 		UserID:       userID,
 		IncludeEdges: true,
 	})
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to get graph data")
+	}
+	
+	// Validate graph response
+	if graph == nil {
+		// Return empty graph instead of nil to prevent nil pointer errors
+		return &domain.Graph{
+			Nodes: []*domain.Node{},
+			Edges: []*domain.Edge{},
+		}, nil
+	}
+	
+	return graph, nil
 }
 
 

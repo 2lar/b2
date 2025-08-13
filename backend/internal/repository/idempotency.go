@@ -96,7 +96,7 @@ func GenerateIdempotencyKey(userID, operation string, node domain.Node) Idempote
 	// Create a hash of the node data to ensure uniqueness
 	hasher := sha256.New()
 	hasher.Write([]byte(fmt.Sprintf("%s:%s:%s:%v:%d",
-		node.ID, node.UserID, node.Content, node.Keywords, node.Version)))
+		node.ID().String(), node.UserID().String(), node.Content().String(), node.Keywords().ToSlice(), node.Version().Int())))
 	hash := fmt.Sprintf("%x", hasher.Sum(nil))
 
 	return IdempotencyKey{
@@ -171,9 +171,20 @@ type LastWriteWinsResolver struct{}
 
 // ResolveConflict implements ConflictResolver
 func (r *LastWriteWinsResolver) ResolveConflict(ctx context.Context, current, incoming domain.Node) (domain.Node, error) {
-	// Simple last-write-wins: return the incoming node with incremented version
-	incoming.Version = current.Version + 1
-	return incoming, nil
+	// Simple last-write-wins: we need to create a new node with incremented version
+	// since nodes are immutable value objects
+	newNode := domain.ReconstructNode(
+		incoming.ID(),
+		incoming.UserID(),
+		incoming.Content(),
+		incoming.Keywords(),
+		incoming.Tags(),
+		incoming.CreatedAt(),
+		incoming.UpdatedAt(),
+		current.Version().Next(), // Increment the current version
+		incoming.IsArchived(),
+	)
+	return *newNode, nil
 }
 
 // MergeResolver implements a merge-based conflict resolution
@@ -182,25 +193,54 @@ type MergeResolver struct{}
 // ResolveConflict implements ConflictResolver
 func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming domain.Node) (domain.Node, error) {
 	// Merge strategy: combine keywords and use incoming content
-	merged := incoming
-	merged.Version = current.Version + 1
-
-	// Merge keywords
+	// Merge keywords from both current and incoming nodes
 	keywordSet := make(map[string]bool)
-	for _, keyword := range current.Keywords {
+	
+	// Add current keywords
+	for _, keyword := range current.Keywords().ToSlice() {
 		keywordSet[keyword] = true
 	}
-	for _, keyword := range incoming.Keywords {
+	// Add incoming keywords
+	for _, keyword := range incoming.Keywords().ToSlice() {
 		keywordSet[keyword] = true
 	}
 
-	var mergedKeywords []string
+	var mergedKeywordSlice []string
 	for keyword := range keywordSet {
-		mergedKeywords = append(mergedKeywords, keyword)
+		mergedKeywordSlice = append(mergedKeywordSlice, keyword)
 	}
-	merged.Keywords = mergedKeywords
+	
+	// Create merged keywords and tags
+	mergedKeywords := domain.NewKeywords(mergedKeywordSlice)
+	
+	// Merge tags too
+	tagSet := make(map[string]bool)
+	for _, tag := range current.Tags().ToSlice() {
+		tagSet[tag] = true
+	}
+	for _, tag := range incoming.Tags().ToSlice() {
+		tagSet[tag] = true
+	}
+	var mergedTagSlice []string
+	for tag := range tagSet {
+		mergedTagSlice = append(mergedTagSlice, tag)
+	}
+	mergedTags := domain.NewTags(mergedTagSlice...)
+	
+	// Create new merged node with incremented version
+	mergedNode := domain.ReconstructNode(
+		incoming.ID(),
+		incoming.UserID(),
+		incoming.Content(), // Use incoming content
+		mergedKeywords,     // Use merged keywords
+		mergedTags,         // Use merged tags
+		incoming.CreatedAt(),
+		incoming.UpdatedAt(),
+		current.Version().Next(), // Increment version
+		incoming.IsArchived(),
+	)
 
-	return merged, nil
+	return *mergedNode, nil
 }
 
 // IdempotentOperation represents an operation that can be made idempotent

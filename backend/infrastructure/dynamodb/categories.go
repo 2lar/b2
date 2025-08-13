@@ -287,7 +287,7 @@ func (r *ddbRepository) RemoveNodeFromCategory(ctx context.Context, userID, node
 }
 
 // FindNodesByCategory retrieves all nodes in a specific category
-func (r *ddbRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error) {
+func (r *ddbRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error) {
 	// Use GSI to find node-category mappings
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(r.config.TableName),
@@ -313,11 +313,11 @@ func (r *ddbRepository) FindNodesByCategory(ctx context.Context, userID, categor
 	}
 
 	if len(nodeIDs) == 0 {
-		return []domain.Node{}, nil
+		return []*domain.Node{}, nil
 	}
 
 	// Fetch the actual nodes
-	var nodes []domain.Node
+	var nodes []*domain.Node
 	for _, nodeID := range nodeIDs {
 		node, err := r.FindNodeByID(ctx, userID, nodeID)
 		if err != nil {
@@ -325,7 +325,7 @@ func (r *ddbRepository) FindNodesByCategory(ctx context.Context, userID, categor
 			continue
 		}
 		if node != nil {
-			nodes = append(nodes, *node)
+			nodes = append(nodes, node)
 		}
 	}
 

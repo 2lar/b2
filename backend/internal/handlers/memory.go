@@ -92,10 +92,10 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	// Publish "NodeCreated" event to EventBridge with complete graph update
 	eventDetail, err := json.Marshal(map[string]any{
 		"type":      "nodeCreated",
-		"userId":    createdNode.UserID,
-		"nodeId":    createdNode.ID,
-		"content":   createdNode.Content,
-		"keywords":  createdNode.Keywords,
+		"userId":    createdNode.UserID().String(),
+		"nodeId":    createdNode.ID().String(),
+		"content":   createdNode.Content().String(),
+		"keywords":  createdNode.Keywords().ToSlice(),
 		"edges":     edges,
 		"timestamp": time.Now(),
 	})
@@ -120,11 +120,11 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.Success(w, http.StatusCreated, api.NodeResponse{
-		NodeID:    createdNode.ID,
-		Content:   createdNode.Content,
-		Tags:      createdNode.Tags,
-		Timestamp: createdNode.CreatedAt.Format(time.RFC3339),
-		Version:   createdNode.Version,
+		NodeID:    createdNode.ID().String(),
+		Content:   createdNode.Content().String(),
+		Tags:      createdNode.Tags().ToSlice(),
+		Timestamp: createdNode.CreatedAt().Format(time.RFC3339),
+		Version:   createdNode.Version().Int(),
 	})
 }
 
@@ -132,6 +132,7 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 	userID, ok := getUserID(r)
 	if !ok {
+		log.Printf("ERROR: ListNodes - Authentication failed, getUserID returned false")
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
@@ -150,16 +151,45 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		NextToken: query.Get("nextToken"),
 	}
 
+	log.Printf("DEBUG: ListNodes called for userID: %s, limit: %d, nextToken: %s", userID, limit, pageReq.NextToken)
+
 	response, err := h.memoryService.GetNodes(r.Context(), userID, pageReq)
 	if err != nil {
+		log.Printf("ERROR: ListNodes - memoryService.GetNodes failed: %v", err)
 		handleServiceError(w, err)
 		return
 	}
 
+	if response == nil {
+		log.Printf("ERROR: ListNodes - received nil response from service")
+		api.Error(w, http.StatusInternalServerError, "Service returned no data")
+		return
+	}
+
+	log.Printf("DEBUG: ListNodes - received response with %d total items, hasMore: %v", response.Total, response.HasMore)
+
 	// Convert PageResponse to the format expected by the frontend
 	// Transform raw domain objects to properly formatted API response objects
-	nodes, ok := response.Items.([]domain.Node)
-	if !ok {
+	var nodes []domain.Node
+	
+	// Handle both []*domain.Node (pointers) and []domain.Node (values)
+	if nodePointers, ok := response.Items.([]*domain.Node); ok {
+		// Convert pointers to values, filtering out nil pointers
+		nodes = make([]domain.Node, 0, len(nodePointers))
+		for _, nodePtr := range nodePointers {
+			if nodePtr != nil {
+				nodes = append(nodes, *nodePtr)
+			} else {
+				log.Printf("WARN: ListNodes - found nil node pointer, skipping")
+			}
+		}
+		log.Printf("DEBUG: ListNodes - converted %d node pointers to %d node values", len(nodePointers), len(nodes))
+	} else if nodeValues, ok := response.Items.([]domain.Node); ok {
+		// Already the right type
+		nodes = nodeValues
+		log.Printf("DEBUG: ListNodes - using %d node values directly", len(nodes))
+	} else {
+		log.Printf("ERROR: ListNodes - unexpected items type: %T, items: %+v", response.Items, response.Items)
 		api.Error(w, http.StatusInternalServerError, "Invalid data format")
 		return
 	}
@@ -168,13 +198,15 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 	apiNodes := make([]api.Node, len(nodes))
 	for i, node := range nodes {
 		apiNodes[i] = api.Node{
-			NodeId:    node.ID,        // id → nodeId 
-			Content:   node.Content,
-			Tags:      &node.Tags,
-			Timestamp: node.CreatedAt, // created_at → timestamp
-			Version:   node.Version,
+			NodeId:    node.ID().String(),        // id → nodeId 
+			Content:   node.Content().String(),
+			Tags:      func() *[]string { tags := node.Tags().ToSlice(); return &tags }(),
+			Timestamp: node.CreatedAt(), // created_at → timestamp
+			Version:   node.Version().Int(),
 		}
 	}
+
+	log.Printf("DEBUG: ListNodes - successfully converted %d nodes to API format", len(apiNodes))
 
 	nodesResponse := map[string]interface{}{
 		"nodes":     apiNodes,
@@ -183,6 +215,7 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		"nextToken": response.NextToken,
 	}
 
+	log.Printf("DEBUG: ListNodes - returning response with %d nodes, total: %d, hasMore: %v", len(apiNodes), response.Total, response.HasMore)
 	api.Success(w, http.StatusOK, nodesResponse)
 }
 
@@ -217,15 +250,15 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 
 	edgeIDs := make([]string, len(edges))
 	for i, edge := range edges {
-		edgeIDs[i] = edge.TargetID
+		edgeIDs[i] = edge.TargetID().String()
 	}
 
 	response := api.NodeDetailsResponse{
-		NodeID:    node.ID,
-		Content:   node.Content,
-		Tags:      node.Tags,
-		Timestamp: node.CreatedAt.Format(time.RFC3339),
-		Version:   node.Version,
+		NodeID:    node.ID().String(),
+		Content:   node.Content().String(),
+		Tags:      node.Tags().ToSlice(),
+		Timestamp: node.CreatedAt().Format(time.RFC3339),
+		Version:   node.Version().Int(),
 		Edges:     edgeIDs,
 	}
 
@@ -396,14 +429,14 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, node := range graph.Nodes {
-		label := node.Content
+		label := node.Content().String()
 		if len(label) > 50 {
 			label = label[:47] + "..."
 		}
 
 		graphNode := api.GraphNode{
 			Data: &api.NodeData{
-				Id:    node.ID,
+				Id:    node.ID().String(),
 				Label: label,
 			},
 		}
@@ -417,12 +450,12 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, edge := range graph.Edges {
-		edgeID := fmt.Sprintf("%s-%s", edge.SourceID, edge.TargetID)
+		edgeID := fmt.Sprintf("%s-%s", edge.SourceID().String(), edge.TargetID().String())
 		graphEdge := api.GraphEdge{
 			Data: &api.EdgeData{
 				Id:     edgeID,
-				Source: edge.SourceID,
-				Target: edge.TargetID,
+				Source: edge.SourceID().String(),
+				Target: edge.TargetID().String(),
 			},
 		}
 
@@ -448,7 +481,7 @@ func (h *MemoryHandler) checkOwnership(ctx context.Context, userID, nodeID strin
 		return nil, appErrors.NewInternal("failed to verify node ownership", err)
 	}
 
-	if node.UserID != userID {
+	if node.UserID().String() != userID {
 		return nil, appErrors.NewNotFound("node not found") // Obscure the reason for security
 	}
 

@@ -67,10 +67,10 @@ type PageInfo struct {
 }
 
 // NodePage represents a paginated list of nodes
-type NodePage = PaginatedResult[domain.Node]
+type NodePage = PaginatedResult[*domain.Node]
 
 // EdgePage represents a paginated list of edges
-type EdgePage = PaginatedResult[domain.Edge]
+type EdgePage = PaginatedResult[*domain.Edge]
 
 // CategoryPage represents a paginated list of categories
 type CategoryPage = PaginatedResult[domain.Category]

@@ -24,11 +24,11 @@ type CircuitBreakerConfig struct {
 func DefaultCircuitBreakerConfig(name string) CircuitBreakerConfig {
 	return CircuitBreakerConfig{
 		Name:             name,
-		MaxRequests:      3,
-		Interval:         10 * time.Second,
-		Timeout:          30 * time.Second,
-		FailureThreshold: 0.6, // 60% failure rate
-		MinRequests:      3,    // Minimum requests before evaluating failure rate
+		MaxRequests:      5,                // Allow more requests in half-open state
+		Interval:         30 * time.Second, // Longer interval before resetting stats
+		Timeout:          60 * time.Second, // Longer timeout before trying half-open
+		FailureThreshold: 0.8,              // 80% failure rate (less aggressive)
+		MinRequests:      5,                // More requests before evaluating failure rate
 	}
 }
 
@@ -50,6 +50,15 @@ func CircuitBreaker(config CircuitBreakerConfig) func(http.Handler) http.Handler
 		},
 		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
 			log.Printf("Circuit breaker '%s' state changed from %v to %v", name, from, to)
+		},
+		// Add request callback for debugging
+		IsSuccessful: func(err error) bool {
+			// Log detailed error information for debugging
+			if err != nil {
+				log.Printf("Circuit breaker request failed: %v", err)
+				return false
+			}
+			return true
 		},
 	})
 
@@ -74,15 +83,18 @@ func CircuitBreaker(config CircuitBreakerConfig) func(http.Handler) http.Handler
 
 			if err != nil {
 				// Circuit breaker is open or half-open and request failed
-				log.Printf("Circuit breaker '%s' rejected request: %v", config.Name, err)
+				log.Printf("Circuit breaker '%s' rejected request to %s %s: %v", config.Name, r.Method, r.URL.Path, err)
 				
 				switch err {
 				case gobreaker.ErrOpenState:
+					log.Printf("Circuit breaker '%s' is OPEN - blocking request to %s", config.Name, r.URL.Path)
 					api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - too many failures")
 				case gobreaker.ErrTooManyRequests:
+					log.Printf("Circuit breaker '%s' is HALF-OPEN - too many requests to %s", config.Name, r.URL.Path)
 					api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - too many requests")
 				default:
 					// Internal error occurred
+					log.Printf("Circuit breaker '%s' internal error for %s: %v", config.Name, r.URL.Path, err)
 					api.Error(w, http.StatusInternalServerError, "Service error")
 				}
 			}

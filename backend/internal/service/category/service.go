@@ -279,11 +279,16 @@ func (s *service) GetNodesInCategory(ctx context.Context, userID, categoryID str
 		return nil, appErrors.NewNotFound("category not found")
 	}
 
-	nodes, err := s.categoryRepo.FindNodesByCategory(ctx, userID, categoryID)
+	nodePointers, err := s.categoryRepo.FindNodesByCategory(ctx, userID, categoryID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get nodes from repository")
 	}
-
+	
+	// Convert from []*domain.Node to []domain.Node
+	nodes := make([]domain.Node, len(nodePointers))
+	for i, nodePtr := range nodePointers {
+		nodes[i] = *nodePtr
+	}
 	return nodes, nil
 }
 

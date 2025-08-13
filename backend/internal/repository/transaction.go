@@ -363,13 +363,13 @@ func (cc *ConsistencyChecker) Validate(ctx context.Context) error {
 	return nil
 }
 
-func CreateNodeWithRollback(repo Repository, node domain.Node) (func(ctx context.Context) error, func(ctx context.Context) error) {
+func CreateNodeWithRollback(repo Repository, node *domain.Node) (func(ctx context.Context) error, func(ctx context.Context) error) {
 	execute := func(ctx context.Context) error {
 		return repo.CreateNodeAndKeywords(ctx, node)
 	}
 
 	rollback := func(ctx context.Context) error {
-		return repo.DeleteNode(ctx, node.UserID, node.ID)
+		return repo.DeleteNode(ctx, node.UserID().String(), node.ID().String())
 	}
 
 	return execute, rollback

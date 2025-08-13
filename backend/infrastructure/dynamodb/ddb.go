@@ -140,14 +140,14 @@ func getCanonicalEdge(nodeA, nodeB string) (owner, target string) {
 }
 
 // CreateNodeAndKeywords transactionally saves a node and its keyword indexes.
-func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node domain.Node) error {
-	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
+func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *domain.Node) error {
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
 	transactItems := []types.TransactWriteItem{}
 
 	// 1. Add the main node metadata to the transaction
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
-		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
-		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: node.Version, Timestamp: node.CreatedAt.Format(time.RFC3339),
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID().String(), UserID: node.UserID().String(), Content: node.Content().String(),
+		Keywords: node.Keywords().ToSlice(), Tags: node.Tags().ToSlice(), IsLatest: true, Version: node.Version().Int(), Timestamp: node.CreatedAt().Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
@@ -157,12 +157,12 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node domain.N
 	})
 
 	// 2. Add each keyword as a separate item for the GSI to index
-	for _, keyword := range node.Keywords {
+	for _, keyword := range node.Keywords().ToSlice() {
 		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{
 			PK:     pk,
 			SK:     fmt.Sprintf("KEYWORD#%s", keyword),
-			GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID, keyword),
-			GSI1SK: fmt.Sprintf("NODE#%s", node.ID),
+			GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID().String(), keyword),
+			GSI1SK: fmt.Sprintf("NODE#%s", node.ID().String()),
 		})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal keyword item")
@@ -183,18 +183,18 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node domain.N
 }
 
 // CreateNodeWithEdges saves a node, its keywords, and its connections in a single transaction.
-func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error {
-	log.Printf("DEBUG CreateNodeWithEdges: creating node ID=%s with keywords=%v and %d edges", node.ID, node.Keywords, len(relatedNodeIDs))
+func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error {
+	log.Printf("DEBUG CreateNodeWithEdges: creating node ID=%s with keywords=%v and %d edges", node.ID().String(), node.Keywords().ToSlice(), len(relatedNodeIDs))
 	
 	// Ensure node starts with version 0
-	node.Version = 0
+	// Note: Version is immutable in rich domain model, using Version().Int() for DDB
 	
-	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
 	transactItems := []types.TransactWriteItem{}
 
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
-		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
-		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID().String(), UserID: node.UserID().String(), Content: node.Content().String(),
+		Keywords: node.Keywords().ToSlice(), Tags: node.Tags().ToSlice(), IsLatest: true, Version: node.Version().Int(), Timestamp: node.CreatedAt().Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
@@ -202,9 +202,9 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 	transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: nodeItem}})
 	log.Printf("DEBUG CreateNodeWithEdges: added node item with PK=%s", pk)
 
-	for _, keyword := range node.Keywords {
-		gsi1PK := fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID, keyword)
-		gsi1SK := fmt.Sprintf("NODE#%s", node.ID)
+	for _, keyword := range node.Keywords().ToSlice() {
+		gsi1PK := fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID().String(), keyword)
+		gsi1SK := fmt.Sprintf("NODE#%s", node.ID().String())
 		
 		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{
 			PK: pk, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: gsi1PK, GSI1SK: gsi1SK,
@@ -218,21 +218,21 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 
 	// Create canonical edges - only one edge per connection
 	for _, relatedNodeID := range relatedNodeIDs {
-		ownerID, targetID := getCanonicalEdge(node.ID, relatedNodeID)
-		ownerPK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, ownerID)
+		ownerID, targetID := getCanonicalEdge(node.ID().String(), relatedNodeID)
+		ownerPK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), ownerID)
 
 		edgeItem, err := attributevalue.MarshalMap(ddbEdge{
 			PK:       ownerPK,
 			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", targetID),
 			TargetID: targetID,
-			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", node.UserID),
+			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", node.UserID().String()),
 			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", ownerID, targetID),
 		})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal canonical edge item")
 		}
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edgeItem}})
-		log.Printf("DEBUG CreateNodeWithEdges: added edge from %s to %s (canonical: ownerPK=%s)", node.ID, relatedNodeID, ownerPK)
+		log.Printf("DEBUG CreateNodeWithEdges: added edge from %s to %s (canonical: ownerPK=%s)", node.ID().String(), relatedNodeID, ownerPK)
 	}
 
 	log.Printf("DEBUG CreateNodeWithEdges: executing transaction with %d items", len(transactItems))
@@ -242,17 +242,17 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node domain.Nod
 		return appErrors.Wrap(err, "transaction to create node with edges failed")
 	}
 	
-	log.Printf("DEBUG CreateNodeWithEdges: transaction completed successfully for node %s", node.ID)
+	log.Printf("DEBUG CreateNodeWithEdges: transaction completed successfully for node %s", node.ID().String())
 	return nil
 }
 
 // UpdateNodeAndEdges transactionally updates a node and its connections.
-func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error {
-	if err := r.clearNodeConnections(ctx, node.UserID, node.ID); err != nil {
+func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error {
+	if err := r.clearNodeConnections(ctx, node.UserID().String(), node.ID().String()); err != nil {
 		return appErrors.Wrap(err, "failed to clear old connections for update")
 	}
 
-	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
 	transactItems := []types.TransactWriteItem{}
 
 	// Optimistic locking: check that the version matches before updating
@@ -262,11 +262,11 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 		UpdateExpression:    aws.String("SET Content = :c, Keywords = :k, Tags = :tg, Timestamp = :t, Version = Version + :inc"),
 		ConditionExpression: aws.String("Version = :expected_version"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":c":                &types.AttributeValueMemberS{Value: node.Content},
-			":k":                &types.AttributeValueMemberL{Value: toAttributeValueList(node.Keywords)},
-			":tg":               &types.AttributeValueMemberL{Value: toAttributeValueList(node.Tags)},
+			":c":                &types.AttributeValueMemberS{Value: node.Content().String()},
+			":k":                &types.AttributeValueMemberL{Value: toAttributeValueList(node.Keywords().ToSlice())},
+			":tg":               &types.AttributeValueMemberL{Value: toAttributeValueList(node.Tags().ToSlice())},
 			":t":                &types.AttributeValueMemberS{Value: time.Now().Format(time.RFC3339)},
-			":expected_version": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version)},
+			":expected_version": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version().Int())},
 			":inc":              &types.AttributeValueMemberN{Value: "1"},
 		},
 	})
@@ -274,13 +274,13 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 		// Check for optimistic lock conflicts
 		var ccf *types.ConditionalCheckFailedException
 		if errors.As(err, &ccf) {
-			return repository.NewOptimisticLockError(node.ID, node.Version, node.Version+1)
+			return repository.NewOptimisticLockError(node.ID().String(), node.Version().Int(), node.Version().Int()+1)
 		}
 		return appErrors.Wrap(err, "failed to update node metadata")
 	}
 
-	for _, keyword := range node.Keywords {
-		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{PK: pk, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID, keyword), GSI1SK: fmt.Sprintf("NODE#%s", node.ID)})
+	for _, keyword := range node.Keywords().ToSlice() {
+		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{PK: pk, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID().String(), keyword), GSI1SK: fmt.Sprintf("NODE#%s", node.ID().String())})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal keyword item for update")
 		}
@@ -289,14 +289,14 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 
 	// Create canonical edges - only one edge per connection
 	for _, relatedNodeID := range relatedNodeIDs {
-		ownerID, targetID := getCanonicalEdge(node.ID, relatedNodeID)
-		ownerPK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, ownerID)
+		ownerID, targetID := getCanonicalEdge(node.ID().String(), relatedNodeID)
+		ownerPK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), ownerID)
 
 		edgeItem, err := attributevalue.MarshalMap(ddbEdge{
 			PK:       ownerPK,
 			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", targetID),
 			TargetID: targetID,
-			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", node.UserID),
+			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", node.UserID().String()),
 			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", ownerID, targetID),
 		})
 		if err != nil {
@@ -314,12 +314,50 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node
 	return nil
 }
 
+// CreateEdge creates a single edge in DynamoDB using the canonical edge storage pattern.
+func (r *ddbRepository) CreateEdge(ctx context.Context, edge *domain.Edge) error {
+	if edge == nil {
+		return appErrors.NewValidation("edge cannot be nil")
+	}
+	
+	// Use canonical edge storage pattern (lexicographically ordered IDs)
+	sourceID := edge.SourceID().String()
+	targetID := edge.TargetID().String()
+	userID := edge.UserID().String()
+	
+	ownerID, canonicalTargetID := getCanonicalEdge(sourceID, targetID)
+	ownerPK := fmt.Sprintf("USER#%s#NODE#%s", userID, ownerID)
+	
+	edgeItem := ddbEdge{
+		PK:       ownerPK,
+		SK:       fmt.Sprintf("EDGE#%s", canonicalTargetID),
+		TargetID: canonicalTargetID,
+		GSI2PK:   fmt.Sprintf("USER#%s#EDGE", userID),
+		GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", ownerID, canonicalTargetID),
+	}
+	
+	item, err := attributevalue.MarshalMap(edgeItem)
+	if err != nil {
+		return appErrors.Wrap(err, "failed to marshal edge item")
+	}
+	
+	_, err = r.dbClient.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(r.config.TableName),
+		Item:      item,
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to create edge in DynamoDB")
+	}
+	
+	return nil
+}
+
 // FindNodesByKeywords uses the GSI to find nodes with matching keywords.
-func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]domain.Node, error) {
+func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]*domain.Node, error) {
 	log.Printf("DEBUG FindNodesByKeywords: called with userID=%s, keywords=%v", userID, keywords)
 	
 	nodeIdMap := make(map[string]bool)
-	var nodes []domain.Node
+	var nodes []*domain.Node
 	for _, keyword := range keywords {
 		gsiPK := fmt.Sprintf("USER#%s#KEYWORD#%s", userID, keyword)
 		log.Printf("DEBUG FindNodesByKeywords: querying GSI with gsiPK=%s", gsiPK)
@@ -348,8 +386,8 @@ func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, 
 					continue
 				}
 				if node != nil {
-					log.Printf("DEBUG FindNodesByKeywords: successfully retrieved node ID=%s, content='%s'", node.ID, node.Content)
-					nodes = append(nodes, *node)
+					log.Printf("DEBUG FindNodesByKeywords: successfully retrieved node ID=%s, content='%s'", node.ID().String(), node.Content().String())
+					nodes = append(nodes, node)
 				} else {
 					log.Printf("WARN FindNodesByKeywords: node %s was nil after FindNodeByID", nodeID)
 				}
@@ -384,10 +422,20 @@ func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string)
 		return nil, appErrors.Wrap(err, "failed to unmarshal node item")
 	}
 	createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
-	return &domain.Node{
-		ID: ddbItem.NodeID, UserID: ddbItem.UserID, Content: ddbItem.Content,
-		Keywords: ddbItem.Keywords, Tags: ddbItem.Tags, CreatedAt: createdAt, Version: ddbItem.Version,
-	}, nil
+	// Use domain factory method to reconstruct node from primitives
+	node, err := domain.ReconstructNodeFromPrimitives(
+		ddbItem.NodeID, 
+		ddbItem.UserID, 
+		ddbItem.Content,
+		ddbItem.Keywords, 
+		ddbItem.Tags,
+		createdAt,
+		ddbItem.Version,
+	)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to reconstruct node from DDB data")
+	}
+	return node, nil
 }
 
 // FindEdgesByNode queries for all edges connected to a given node using optimized GSI2 query.
@@ -432,10 +480,14 @@ func (r *ddbRepository) FindEdgesByNode(ctx context.Context, userID, nodeID stri
 						reverseKey := fmt.Sprintf("%s-%s", targetID, sourceID)
 						if !edgeMap[edgeKey] && !edgeMap[reverseKey] {
 							edgeMap[edgeKey] = true
-							edges = append(edges, domain.Edge{
-								SourceID: sourceID,
-								TargetID: targetID,
-							})
+							// Create rich domain edge using factory method
+							userIDVO, _ := domain.NewUserID(userID)
+							sourceNodeIDVO, _ := domain.ParseNodeID(sourceID)
+							targetNodeIDVO, _ := domain.ParseNodeID(targetID)
+							edge, err := domain.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
+							if err == nil {
+								edges = append(edges, *edge)
+							}
 						}
 					}
 				}
@@ -462,8 +514,8 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 
 	g, ctx := errgroup.WithContext(ctx)
 	
-	var nodes []domain.Node
-	var edges []domain.Edge
+	var nodes []*domain.Node
+	var edges []*domain.Edge
 	var nodeErr, edgeErr error
 
 	// Fetch nodes in parallel using query instead of scan
@@ -490,8 +542,8 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 }
 
 // fetchAllNodesOptimized retrieves all nodes for a user using scan with filter
-func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID string) ([]domain.Node, error) {
-	var nodes []domain.Node
+func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID string) ([]*domain.Node, error) {
+	var nodes []*domain.Node
 	var lastEvaluatedKey map[string]types.AttributeValue
 
 	userNodePrefix := fmt.Sprintf("USER#%s#NODE#", userID)
@@ -517,15 +569,19 @@ func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID strin
 			var ddbItem ddbNode
 			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
 				createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
-				nodes = append(nodes, domain.Node{
-					ID:        ddbItem.NodeID,
-					UserID:    ddbItem.UserID,
-					Content:   ddbItem.Content,
-					Keywords:  ddbItem.Keywords,
-					Tags:      ddbItem.Tags,
-					CreatedAt: createdAt,
-					Version:   ddbItem.Version,
-				})
+				// Use domain factory method to reconstruct node from primitives
+				node, err := domain.ReconstructNodeFromPrimitives(
+					ddbItem.NodeID, 
+					ddbItem.UserID, 
+					ddbItem.Content,
+					ddbItem.Keywords, 
+					ddbItem.Tags,
+					createdAt,
+					ddbItem.Version,
+				)
+				if err == nil && node != nil {
+					nodes = append(nodes, node)
+				}
 			}
 		}
 
@@ -539,8 +595,8 @@ func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID strin
 }
 
 // fetchAllEdgesOptimized retrieves all edges for a user using GSI2 query
-func (r *ddbRepository) fetchAllEdgesOptimized(ctx context.Context, userID string) ([]domain.Edge, error) {
-	var edges []domain.Edge
+func (r *ddbRepository) fetchAllEdgesOptimized(ctx context.Context, userID string) ([]*domain.Edge, error) {
+	var edges []*domain.Edge
 	var lastEvaluatedKey map[string]types.AttributeValue
 	edgeMap := make(map[string]bool)
 
@@ -575,10 +631,14 @@ func (r *ddbRepository) fetchAllEdgesOptimized(ctx context.Context, userID strin
 					reverseKey := fmt.Sprintf("%s-%s", ddbItem.TargetID, sourceID)
 					if !edgeMap[edgeKey] && !edgeMap[reverseKey] {
 						edgeMap[edgeKey] = true
-						edges = append(edges, domain.Edge{
-							SourceID: sourceID, 
-							TargetID: ddbItem.TargetID,
-						})
+						// Create rich domain edge using factory method
+						userIDVO, _ := domain.NewUserID(userID)
+						sourceNodeIDVO, _ := domain.ParseNodeID(sourceID)
+						targetNodeIDVO, _ := domain.ParseNodeID(ddbItem.TargetID)
+						edge, err := domain.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
+						if err == nil {
+							edges = append(edges, edge)
+						}
 					}
 				}
 			}
@@ -661,7 +721,7 @@ func (r *ddbRepository) clearNodeConnections(ctx context.Context, userID, nodeID
 // Enhanced query methods using new query types
 
 // FindNodes implements the enhanced node querying with NodeQuery.
-func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]domain.Node, error) {
+func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*domain.Node, error) {
 	log.Printf("DEBUG FindNodes: called with userID=%s, keywords=%v, nodeIDs=%v", query.UserID, query.Keywords, query.NodeIDs)
 	
 	if err := query.Validate(); err != nil {
@@ -672,14 +732,14 @@ func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuer
 	// If specific node IDs are requested, fetch them directly
 	if query.HasNodeIDs() {
 		log.Printf("DEBUG FindNodes: using nodeID-based lookup for %d nodes", len(query.NodeIDs))
-		var nodes []domain.Node
+		var nodes []*domain.Node
 		for _, nodeID := range query.NodeIDs {
 			node, err := r.FindNodeByID(ctx, query.UserID, nodeID)
 			if err != nil {
 				return nil, err
 			}
 			if node != nil {
-				nodes = append(nodes, *node)
+				nodes = append(nodes, node)
 			}
 		}
 		log.Printf("DEBUG FindNodes: found %d nodes by nodeID lookup", len(nodes))
@@ -706,7 +766,7 @@ func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuer
 	if query.HasPagination() {
 		start := query.Offset
 		if start >= len(nodes) {
-			return []domain.Node{}, nil
+			return []*domain.Node{}, nil
 		}
 
 		end := len(nodes)
@@ -721,12 +781,12 @@ func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuer
 }
 
 // FindEdges implements the enhanced edge querying with EdgeQuery.
-func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]domain.Edge, error) {
+func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*domain.Edge, error) {
 	if err := query.Validate(); err != nil {
 		return nil, err
 	}
 
-	var edges []domain.Edge
+	var edges []*domain.Edge
 
 	// If specific node IDs are requested, find edges for each
 	if query.HasNodeIDs() {
@@ -735,14 +795,26 @@ func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuer
 			if err != nil {
 				return nil, err
 			}
-			edges = append(edges, nodeEdges...)
+			// Convert []domain.Edge to []*domain.Edge
+			for i := range nodeEdges {
+				edges = append(edges, &nodeEdges[i])
+			}
 		}
 		return edges, nil
 	}
 
 	// If source node is specified, find outgoing edges
 	if query.HasSourceFilter() {
-		return r.FindEdgesByNode(ctx, query.UserID, query.SourceID)
+		nodeEdges, err := r.FindEdgesByNode(ctx, query.UserID, query.SourceID)
+		if err != nil {
+			return nil, err
+		}
+		// Convert []domain.Edge to []*domain.Edge
+		var edges []*domain.Edge
+		for i := range nodeEdges {
+			edges = append(edges, &nodeEdges[i])
+		}
+		return edges, nil
 	}
 
 	// If target node is specified, we need to scan for incoming edges
@@ -753,8 +825,9 @@ func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuer
 			return nil, err
 		}
 
+		var edges []*domain.Edge
 		for _, edge := range graph.Edges {
-			if edge.TargetID == query.TargetID {
+			if edge.TargetID().String() == query.TargetID {
 				edges = append(edges, edge)
 			}
 		}
@@ -773,7 +846,7 @@ func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuer
 	if query.HasPagination() {
 		start := query.Offset
 		if start >= len(edges) {
-			return []domain.Edge{}, nil
+			return []*domain.Edge{}, nil
 		}
 
 		end := len(edges)
@@ -797,8 +870,8 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 	// More complex depth-limiting would require additional graph traversal logic
 
 	if query.HasNodeFilter() {
-		var nodes []domain.Node
-		var edges []domain.Edge
+		var nodes []*domain.Node
+		var edges []*domain.Edge
 
 		// Get specific nodes
 		for _, nodeID := range query.NodeIDs {
@@ -807,7 +880,7 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 				return nil, err
 			}
 			if node != nil {
-				nodes = append(nodes, *node)
+				nodes = append(nodes, node)
 
 				// Include edges if requested
 				if query.IncludeEdges {
@@ -815,7 +888,10 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 					if err != nil {
 						return nil, err
 					}
-					edges = append(edges, nodeEdges...)
+					// Convert []domain.Edge to []*domain.Edge
+					for i := range nodeEdges {
+						edges = append(edges, &nodeEdges[i])
+					}
 				}
 			}
 		}
@@ -832,12 +908,12 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 // CreateNode saves only the metadata for a node.
 func (r *ddbRepository) CreateNode(ctx context.Context, node domain.Node) error {
 	// Ensure node starts with version 0
-	node.Version = 0
+	// Note: Version is immutable in rich domain model, using Version().Int() for DDB
 	
-	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID, node.ID)
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
-		PK: pk, SK: "METADATA#v0", NodeID: node.ID, UserID: node.UserID, Content: node.Content,
-		Keywords: node.Keywords, Tags: node.Tags, IsLatest: true, Version: 0, Timestamp: node.CreatedAt.Format(time.RFC3339),
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID().String(), UserID: node.UserID().String(), Content: node.Content().String(),
+		Keywords: node.Keywords().ToSlice(), Tags: node.Tags().ToSlice(), IsLatest: true, Version: node.Version().Int(), Timestamp: node.CreatedAt().Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
@@ -1067,7 +1143,7 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 
 	userNodePrefix := fmt.Sprintf("USER#%s#NODE#", query.UserID)
 	requestedLimit := pagination.GetEffectiveLimit()
-	nodes := make([]domain.Node, 0, requestedLimit)
+	nodes := make([]*domain.Node, 0, requestedLimit)
 	
 	var lastEvaluatedKey map[string]types.AttributeValue
 	
@@ -1115,15 +1191,20 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 				
 				// Include ALL valid nodes (removing IsLatest filter to match graph behavior)
 				createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
-				nodes = append(nodes, domain.Node{
-					ID:        ddbItem.NodeID,
-					UserID:    ddbItem.UserID,
-					Content:   ddbItem.Content,
-					Keywords:  ddbItem.Keywords,
-					Tags:      ddbItem.Tags,
-					CreatedAt: createdAt,
-					Version:   ddbItem.Version,
-				})
+				node, err := domain.ReconstructNodeFromPrimitives(
+					ddbItem.NodeID,
+					ddbItem.UserID,
+					ddbItem.Content,
+					ddbItem.Keywords,
+					ddbItem.Tags,
+					createdAt,
+					ddbItem.Version,
+				)
+				if err != nil {
+					log.Printf("Failed to reconstruct node: %v", err)
+					continue
+				}
+				nodes = append(nodes, node)
 				itemsProcessedThisIteration++
 				
 				// Stop if we've reached our limit
@@ -1228,21 +1309,26 @@ func (r *ddbRepository) GetNodesPageOptimized(ctx context.Context, userID string
 	}
 
 	// Convert DynamoDB items to domain nodes
-	nodes := make([]domain.Node, 0, len(result.Items))
+	nodes := make([]*domain.Node, 0, len(result.Items))
 	for _, item := range result.Items {
 		var ddbItem ddbNode
 		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
 			if ddbItem.IsLatest { // Only return latest versions
 				createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
-				nodes = append(nodes, domain.Node{
-					ID:        ddbItem.NodeID,
-					UserID:    ddbItem.UserID,
-					Content:   ddbItem.Content,
-					Keywords:  ddbItem.Keywords,
-					Tags:      ddbItem.Tags,
-					CreatedAt: createdAt,
-					Version:   ddbItem.Version,
-				})
+				node, err := domain.ReconstructNodeFromPrimitives(
+					ddbItem.NodeID,
+					ddbItem.UserID,
+					ddbItem.Content,
+					ddbItem.Keywords,
+					ddbItem.Tags,
+					createdAt,
+					ddbItem.Version,
+				)
+				if err != nil {
+					log.Printf("Failed to reconstruct node: %v", err)
+					continue
+				}
+				nodes = append(nodes, node)
 			}
 		}
 	}
@@ -1261,8 +1347,8 @@ func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID 
 	}
 
 	visited := make(map[string]bool)
-	nodes := make(map[string]domain.Node)
-	edges := make([]domain.Edge, 0)
+	nodes := make(map[string]*domain.Node)
+	edges := make([]*domain.Edge, 0)
 
 	// Start with the target node
 	currentLevel := []string{nodeID}
@@ -1275,7 +1361,7 @@ func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID 
 			// Get the node details
 			node, err := r.FindNodeByID(ctx, userID, currentNodeID)
 			if err == nil && node != nil {
-				nodes[currentNodeID] = *node
+				nodes[currentNodeID] = node
 			}
 
 			// Get edges from this node
@@ -1296,10 +1382,15 @@ func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID 
 			for _, item := range result.Items {
 				var ddbEdge ddbEdge
 				if err := attributevalue.UnmarshalMap(item, &ddbEdge); err == nil {
-					edges = append(edges, domain.Edge{
-						SourceID: currentNodeID,
-						TargetID: ddbEdge.TargetID,
-					})
+					sourceNodeID, _ := domain.ParseNodeID(currentNodeID)
+					targetNodeID, _ := domain.ParseNodeID(ddbEdge.TargetID)
+					userIDVO, _ := domain.NewUserID(userID)
+					edge, err := domain.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
+					if err != nil {
+						log.Printf("Failed to create edge: %v", err)
+						continue
+					}
+					edges = append(edges, edge)
 
 					// Add target node to next level if not visited
 					if !visited[ddbEdge.TargetID] {
@@ -1314,7 +1405,7 @@ func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID 
 	}
 
 	// Convert nodes map to slice
-	nodeSlice := make([]domain.Node, 0, len(nodes))
+	nodeSlice := make([]*domain.Node, 0, len(nodes))
 	for _, node := range nodes {
 		nodeSlice = append(nodeSlice, node)
 	}
@@ -1375,7 +1466,7 @@ func (r *ddbRepository) GetEdgesPage(ctx context.Context, query repository.EdgeQ
 	}
 
 	// Convert DynamoDB items to domain edges
-	edges := make([]domain.Edge, 0, len(result.Items))
+	edges := make([]*domain.Edge, 0, len(result.Items))
 	for _, item := range result.Items {
 		var ddbItem ddbEdge
 		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
@@ -1383,10 +1474,15 @@ func (r *ddbRepository) GetEdgesPage(ctx context.Context, query repository.EdgeQ
 			pkParts := strings.Split(ddbItem.PK, "#")
 			if len(pkParts) >= 4 {
 				sourceID := pkParts[3]
-				edges = append(edges, domain.Edge{
-					SourceID: sourceID,
-					TargetID: ddbItem.TargetID,
-				})
+				sourceNodeID, _ := domain.ParseNodeID(sourceID)
+				targetNodeID, _ := domain.ParseNodeID(ddbItem.TargetID)
+				userIDVO, _ := domain.NewUserID(query.UserID)
+				edge, err := domain.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
+				if err != nil {
+					log.Printf("Failed to create edge: %v", err)
+					continue
+				}
+				edges = append(edges, edge)
 			}
 		}
 	}
@@ -1454,8 +1550,8 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 
 	log.Printf("DEBUG: DynamoDB query successful - returned %d items, LastEvaluatedKey: %v", len(result.Items), result.LastEvaluatedKey != nil)
 
-	var nodes []domain.Node
-	var edges []domain.Edge
+	var nodes []*domain.Node
+	var edges []*domain.Edge
 	edgeMap := make(map[string]bool)
 
 	nodeCount := 0
@@ -1484,15 +1580,20 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 					log.Printf("WARN: Failed to parse timestamp %s: %v", ddbItem.Timestamp, parseErr)
 					createdAt = time.Now() // fallback
 				}
-				nodes = append(nodes, domain.Node{
-					ID:        ddbItem.NodeID,
-					UserID:    ddbItem.UserID,
-					Content:   ddbItem.Content,
-					Keywords:  ddbItem.Keywords,
-					Tags:      ddbItem.Tags,
-					CreatedAt: createdAt,
-					Version:   ddbItem.Version,
-				})
+				node, err := domain.ReconstructNodeFromPrimitives(
+					ddbItem.NodeID,
+					ddbItem.UserID,
+					ddbItem.Content,
+					ddbItem.Keywords,
+					ddbItem.Tags,
+					createdAt,
+					ddbItem.Version,
+				)
+				if err != nil {
+					log.Printf("Failed to reconstruct node: %v", err)
+					continue
+				}
+				nodes = append(nodes, node)
 				nodeCount++
 			}
 		} else if strings.HasPrefix(skValue, "EDGE#") && query.IncludeEdges {
@@ -1516,10 +1617,15 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 					edgeMap[canonicalKey] = true
 					
 					// Create undirected edge using canonical ordering for consistent visualization
-					edges = append(edges, domain.Edge{
-						SourceID: ownerID,
-						TargetID: targetID,
-					})
+					sourceNodeID, _ := domain.ParseNodeID(ownerID)
+					targetNodeID, _ := domain.ParseNodeID(targetID)
+					userIDVO, _ := domain.NewUserID(query.UserID)
+					edge, err := domain.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
+					if err != nil {
+						log.Printf("Failed to create edge: %v", err)
+						continue
+					}
+					edges = append(edges, edge)
 					edgeCount++
 				}
 			} else {

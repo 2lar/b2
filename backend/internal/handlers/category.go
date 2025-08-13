@@ -29,14 +29,21 @@ func NewCategoryHandler(categoryService category.Service) *CategoryHandler {
 func (h *CategoryHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
 	userID, ok := getUserID(r)
 	if !ok {
+		log.Printf("ERROR: ListCategories - Authentication failed, getUserID returned false")
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
+	
+	log.Printf("DEBUG: ListCategories called for userID: %s", userID)
+	
 	categories, err := h.categoryService.ListCategories(r.Context(), userID)
 	if err != nil {
+		log.Printf("ERROR: ListCategories - categoryService.ListCategories failed: %v", err)
 		handleServiceError(w, err)
 		return
 	}
+	
+	log.Printf("DEBUG: ListCategories - retrieved %d categories", len(categories))
 
 	type CategoryResponse struct {
 		ID          string  `json:"id"`
@@ -287,11 +294,11 @@ func (h *CategoryHandler) GetNodesInCategory(w http.ResponseWriter, r *http.Requ
 	var nodesResponse []NodeResponse
 	for _, node := range nodes {
 		nodesResponse = append(nodesResponse, NodeResponse{
-			NodeID:    node.ID,
-			Content:   node.Content,
-			Tags:      node.Tags,
-			Timestamp: node.CreatedAt.Format(time.RFC3339),
-			Version:   node.Version,
+			NodeID:    node.ID().String(),
+			Content:   node.Content().String(),
+			Tags:      node.Tags().ToSlice(),
+			Timestamp: node.CreatedAt().Format(time.RFC3339),
+			Version:   node.Version().Int(),
 		})
 	}
 

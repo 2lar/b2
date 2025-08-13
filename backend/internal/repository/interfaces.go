@@ -8,9 +8,9 @@ import (
 // NodeRepository handles node-specific operations
 type NodeRepository interface {
 	// Core node operations
-	CreateNodeAndKeywords(ctx context.Context, node domain.Node) error
+	CreateNodeAndKeywords(ctx context.Context, node *domain.Node) error
 	FindNodeByID(ctx context.Context, userID, nodeID string) (*domain.Node, error)
-	FindNodes(ctx context.Context, query NodeQuery) ([]domain.Node, error)
+	FindNodes(ctx context.Context, query NodeQuery) ([]*domain.Node, error)
 	DeleteNode(ctx context.Context, userID, nodeID string) error
 
 	// Enhanced node operations with pagination
@@ -23,7 +23,8 @@ type NodeRepository interface {
 type EdgeRepository interface {
 	// Core edge operations  
 	CreateEdges(ctx context.Context, userID, sourceNodeID string, relatedNodeIDs []string) error
-	FindEdges(ctx context.Context, query EdgeQuery) ([]domain.Edge, error)
+	CreateEdge(ctx context.Context, edge *domain.Edge) error
+	FindEdges(ctx context.Context, query EdgeQuery) ([]*domain.Edge, error)
 	
 	// Enhanced edge operations with pagination
 	GetEdgesPage(ctx context.Context, query EdgeQuery, pagination Pagination) (*EdgePage, error)
@@ -32,14 +33,14 @@ type EdgeRepository interface {
 // KeywordRepository handles keyword indexing and search
 type KeywordRepository interface {
 	// Keyword-based search operations
-	FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]domain.Node, error)
+	FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]*domain.Node, error)
 }
 
 // TransactionalRepository handles complex transactional operations
 type TransactionalRepository interface {
 	// Transactional operations that involve multiple entities
-	CreateNodeWithEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error
-	UpdateNodeAndEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error
+	CreateNodeWithEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error
+	UpdateNodeAndEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error
 }
 
 // CategoryRepository handles category-specific operations
@@ -62,7 +63,7 @@ type CategoryRepository interface {
 	// Node-Category mapping operations
 	AssignNodeToCategory(ctx context.Context, mapping domain.NodeCategory) error
 	RemoveNodeFromCategory(ctx context.Context, userID, nodeID, categoryID string) error
-	FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error)
+	FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error)
 	FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error)
 
 	// Batch operations for performance

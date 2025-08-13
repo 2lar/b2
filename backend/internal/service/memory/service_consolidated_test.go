@@ -23,9 +23,9 @@ func TestConsolidatedServiceFlow(t *testing.T) {
 		// Verify
 		assert.NoError(t, err)
 		assert.NotNil(t, node)
-		assert.Equal(t, 0, node.Version) // Should start at version 0
-		assert.Equal(t, "Test content", node.Content)
-		assert.NotNil(t, edges)
+		assert.Equal(t, 0, node.Version().Int()) // Should start at version 0
+		assert.Equal(t, "Test content", node.Content().String())
+		assert.NotNil(t, edges) // Should return empty slice, not nil
 	})
 
 	t.Run("UpdateNode should work with mock repository", func(t *testing.T) {
@@ -37,12 +37,12 @@ func TestConsolidatedServiceFlow(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Then update it
-		updatedNode, err := service2.UpdateNode(ctx, userID, node.ID, "New content", []string{"updated"})
+		updatedNode, err := service2.UpdateNode(ctx, userID, node.ID().String(), "New content", []string{"updated"})
 		
 		// Verify
 		assert.NoError(t, err)
 		assert.NotNil(t, updatedNode)
-		assert.Equal(t, "New content", updatedNode.Content)
+		assert.Equal(t, "New content", updatedNode.Content().String())
 	})
 
 	t.Run("DeleteNode should work", func(t *testing.T) {
@@ -54,7 +54,7 @@ func TestConsolidatedServiceFlow(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Then delete it
-		err = service3.DeleteNode(ctx, userID, node.ID)
+		err = service3.DeleteNode(ctx, userID, node.ID().String())
 		assert.NoError(t, err)
 	})
 

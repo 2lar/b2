@@ -70,7 +70,7 @@ func (m *MockRepository) checkError(method string) error {
 
 // Node operations
 
-func (m *MockRepository) CreateNodeAndKeywords(ctx context.Context, node domain.Node) error {
+func (m *MockRepository) CreateNodeAndKeywords(ctx context.Context, node *domain.Node) error {
 	if err := m.checkError("CreateNodeAndKeywords"); err != nil {
 		return err
 	}
@@ -78,14 +78,8 @@ func (m *MockRepository) CreateNodeAndKeywords(ctx context.Context, node domain.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Check if node already exists
-	if _, exists := m.nodes[node.ID]; exists {
-		return appErrors.NewValidation("node already exists")
-	}
-
-	// Store the node
-	nodeCopy := node
-	m.nodes[node.ID] = &nodeCopy
+	// Store the node (create or update)
+	m.nodes[node.ID().String()] = node
 	return nil
 }
 
@@ -109,22 +103,51 @@ func (m *MockRepository) CreateEdges(ctx context.Context, userID, sourceNodeID s
 		}
 
 		// Add edge from source to target
-		m.edges[sourceNodeID] = append(m.edges[sourceNodeID], domain.Edge{
-			SourceID: sourceNodeID,
-			TargetID: targetID,
-		})
+		// Create rich domain edge using factory method
+		userIDVO, _ := domain.NewUserID(userID)
+		sourceNodeIDVO, _ := domain.ParseNodeID(sourceNodeID)
+		targetNodeIDVO, _ := domain.ParseNodeID(targetID)
+		edge, _ := domain.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
+		m.edges[sourceNodeID] = append(m.edges[sourceNodeID], *edge)
 
 		// Add edge from target to source (bidirectional)
-		m.edges[targetID] = append(m.edges[targetID], domain.Edge{
-			SourceID: targetID,
-			TargetID: sourceNodeID,
-		})
+		// Create reverse edge
+		reverseEdge, _ := domain.NewEdge(targetNodeIDVO, sourceNodeIDVO, userIDVO, 1.0)
+		m.edges[targetID] = append(m.edges[targetID], *reverseEdge)
 	}
 
 	return nil
 }
 
-func (m *MockRepository) CreateNodeWithEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error {
+// CreateEdge creates a single edge in the mock repository
+func (m *MockRepository) CreateEdge(ctx context.Context, edge *domain.Edge) error {
+	if err := m.checkError("CreateEdge"); err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Store edge in both directions (bidirectional)
+	sourceID := edge.SourceID().String()
+	targetID := edge.TargetID().String()
+	
+	m.edges[sourceID] = append(m.edges[sourceID], *edge)
+	
+	// Create reverse edge
+	userIDVO := edge.UserID()
+	sourceNodeIDVO := edge.SourceID()
+	targetNodeIDVO := edge.TargetID()
+	reverseEdge, err := domain.NewEdge(targetNodeIDVO, sourceNodeIDVO, userIDVO, edge.Weight())
+	if err != nil {
+		return err
+	}
+	m.edges[targetID] = append(m.edges[targetID], *reverseEdge)
+
+	return nil
+}
+
+func (m *MockRepository) CreateNodeWithEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error {
 	if err := m.checkError("CreateNodeWithEdges"); err != nil {
 		return err
 	}
@@ -136,13 +159,13 @@ func (m *MockRepository) CreateNodeWithEdges(ctx context.Context, node domain.No
 
 	// Then create the edges
 	if len(relatedNodeIDs) > 0 {
-		return m.CreateEdges(ctx, node.UserID, node.ID, relatedNodeIDs)
+		return m.CreateEdges(ctx, node.UserID().String(), node.ID().String(), relatedNodeIDs)
 	}
 
 	return nil
 }
 
-func (m *MockRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Node, relatedNodeIDs []string) error {
+func (m *MockRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error {
 	if err := m.checkError("UpdateNodeAndEdges"); err != nil {
 		return err
 	}
@@ -151,22 +174,21 @@ func (m *MockRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Nod
 	defer m.mu.Unlock()
 
 	// Check if node exists
-	if _, exists := m.nodes[node.ID]; !exists {
+	if _, exists := m.nodes[node.ID().String()]; !exists {
 		return appErrors.NewNotFound("node not found")
 	}
 
 	// Update the node
-	nodeCopy := node
-	m.nodes[node.ID] = &nodeCopy
+	m.nodes[node.ID().String()] = node
 
 	// Clear existing edges for this node
-	delete(m.edges, node.ID)
+	delete(m.edges, node.ID().String())
 
 	// Remove references to this node from other nodes' edges
 	for nodeID, edges := range m.edges {
 		var filteredEdges []domain.Edge
 		for _, edge := range edges {
-			if edge.TargetID != node.ID {
+			if edge.TargetID().String() != node.ID().String() {
 				filteredEdges = append(filteredEdges, edge)
 			}
 		}
@@ -180,16 +202,16 @@ func (m *MockRepository) UpdateNodeAndEdges(ctx context.Context, node domain.Nod
 		}
 
 		// Add edge from source to target
-		m.edges[node.ID] = append(m.edges[node.ID], domain.Edge{
-			SourceID: node.ID,
-			TargetID: targetID,
-		})
+		// Create rich domain edge using factory method
+		sourceNodeIDVO := node.ID()
+		targetNodeIDVO, _ := domain.ParseNodeID(targetID)
+		userIDVO := node.UserID()
+		edge, _ := domain.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
+		m.edges[node.ID().String()] = append(m.edges[node.ID().String()], *edge)
 
-		// Add edge from target to source
-		m.edges[targetID] = append(m.edges[targetID], domain.Edge{
-			SourceID: targetID,
-			TargetID: node.ID,
-		})
+		// Add edge from target to source (bidirectional)
+		reverseEdge, _ := domain.NewEdge(targetNodeIDVO, sourceNodeIDVO, userIDVO, 1.0)
+		m.edges[targetID] = append(m.edges[targetID], *reverseEdge)
 	}
 
 	return nil
@@ -206,7 +228,7 @@ func (m *MockRepository) DeleteNode(ctx context.Context, userID, nodeID string) 
 	// Check if node exists and belongs to user
 	if node, exists := m.nodes[nodeID]; !exists {
 		return appErrors.NewNotFound("node not found")
-	} else if node.UserID != userID {
+	} else if node.UserID().String() != userID {
 		return appErrors.NewNotFound("node not found")
 	}
 
@@ -218,7 +240,7 @@ func (m *MockRepository) DeleteNode(ctx context.Context, userID, nodeID string) 
 	for sourceID, edges := range m.edges {
 		var filteredEdges []domain.Edge
 		for _, edge := range edges {
-			if edge.TargetID != nodeID {
+			if edge.TargetID().String() != nodeID {
 				filteredEdges = append(filteredEdges, edge)
 			}
 		}
@@ -258,7 +280,7 @@ func (m *MockRepository) FindNodeByID(ctx context.Context, userID, nodeID string
 	}
 
 	// Verify ownership
-	if node.UserID != userID {
+	if node.UserID().String() != userID {
 		return nil, nil
 	}
 
@@ -267,7 +289,7 @@ func (m *MockRepository) FindNodeByID(ctx context.Context, userID, nodeID string
 	return &nodeCopy, nil
 }
 
-func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]domain.Node, error) {
+func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*domain.Node, error) {
 	if err := m.checkError("FindNodes"); err != nil {
 		return nil, err
 	}
@@ -275,13 +297,13 @@ func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQue
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var nodes []domain.Node
+	var nodes []*domain.Node
 
 	// If specific node IDs are requested
 	if query.HasNodeIDs() {
 		for _, nodeID := range query.NodeIDs {
-			if node, exists := m.nodes[nodeID]; exists && node.UserID == query.UserID {
-				nodes = append(nodes, *node)
+			if node, exists := m.nodes[nodeID]; exists && node.UserID().String() == query.UserID {
+				nodes = append(nodes, node)
 			}
 		}
 		return nodes, nil
@@ -289,12 +311,12 @@ func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQue
 
 	// Otherwise, return all nodes for the user
 	for _, node := range m.nodes {
-		if node.UserID == query.UserID {
+		if node.UserID().String() == query.UserID {
 			// Apply keyword filter if specified
 			if query.HasKeywords() {
 				hasKeyword := false
 				for _, keyword := range query.Keywords {
-					for _, nodeKeyword := range node.Keywords {
+					for _, nodeKeyword := range node.Keywords().ToSlice() {
 						if nodeKeyword == keyword {
 							hasKeyword = true
 							break
@@ -309,7 +331,7 @@ func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQue
 				}
 			}
 
-			nodes = append(nodes, *node)
+			nodes = append(nodes, node)
 		}
 	}
 
@@ -317,7 +339,7 @@ func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQue
 	if query.HasPagination() {
 		start := query.Offset
 		if start >= len(nodes) {
-			return []domain.Node{}, nil
+			return []*domain.Node{}, nil
 		}
 
 		end := len(nodes)
@@ -331,7 +353,7 @@ func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQue
 	return nodes, nil
 }
 
-func (m *MockRepository) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]domain.Edge, error) {
+func (m *MockRepository) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*domain.Edge, error) {
 	if err := m.checkError("FindEdges"); err != nil {
 		return nil, err
 	}
@@ -339,13 +361,16 @@ func (m *MockRepository) FindEdges(ctx context.Context, query repository.EdgeQue
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var edges []domain.Edge
+	var edges []*domain.Edge
 
 	// If specific node IDs are requested
 	if query.HasNodeIDs() {
 		for _, nodeID := range query.NodeIDs {
 			if nodeEdges, exists := m.edges[nodeID]; exists {
-				edges = append(edges, nodeEdges...)
+				// Convert []domain.Edge to []*domain.Edge
+				for i := range nodeEdges {
+					edges = append(edges, &nodeEdges[i])
+				}
 			}
 		}
 		return edges, nil
@@ -353,19 +378,19 @@ func (m *MockRepository) FindEdges(ctx context.Context, query repository.EdgeQue
 
 	// Return all edges for nodes belonging to the user
 	for nodeID, nodeEdges := range m.edges {
-		if node, exists := m.nodes[nodeID]; exists && node.UserID == query.UserID {
+		if node, exists := m.nodes[nodeID]; exists && node.UserID().String() == query.UserID {
 			for _, edge := range nodeEdges {
 				// Apply source filter if specified
-				if query.HasSourceFilter() && edge.SourceID != query.SourceID {
+				if query.HasSourceFilter() && edge.SourceID().String() != query.SourceID {
 					continue
 				}
 
 				// Apply target filter if specified
-				if query.HasTargetFilter() && edge.TargetID != query.TargetID {
+				if query.HasTargetFilter() && edge.TargetID().String() != query.TargetID {
 					continue
 				}
 
-				edges = append(edges, edge)
+				edges = append(edges, &edge)
 			}
 		}
 	}
@@ -388,7 +413,7 @@ func (m *MockRepository) GetGraphData(ctx context.Context, query repository.Grap
 		return nil, err
 	}
 
-	var edges []domain.Edge
+	var edges []*domain.Edge
 	if query.IncludeEdges {
 		edgeQuery := repository.EdgeQuery{UserID: query.UserID}
 		if query.HasNodeFilter() {
@@ -407,7 +432,7 @@ func (m *MockRepository) GetGraphData(ctx context.Context, query repository.Grap
 	}, nil
 }
 
-func (m *MockRepository) FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]domain.Node, error) {
+func (m *MockRepository) FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]*domain.Node, error) {
 	if err := m.checkError("FindNodesByKeywords"); err != nil {
 		return nil, err
 	}
@@ -748,7 +773,7 @@ func (m *MockRepository) RemoveNodeFromCategory(ctx context.Context, userID, nod
 	return nil
 }
 
-func (m *MockRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error) {
+func (m *MockRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error) {
 	if err := m.checkError("FindNodesByCategory"); err != nil {
 		return nil, err
 	}
@@ -756,12 +781,12 @@ func (m *MockRepository) FindNodesByCategory(ctx context.Context, userID, catego
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var nodes []domain.Node
+	var nodes []*domain.Node
 
 	if nodeIDs, exists := m.categoryNodes[categoryID]; exists {
 		for _, nodeID := range nodeIDs {
-			if node, exists := m.nodes[nodeID]; exists && node.UserID == userID {
-				nodes = append(nodes, *node)
+			if node, exists := m.nodes[nodeID]; exists && node.UserID().String() == userID {
+				nodes = append(nodes, node)
 			}
 		}
 	}
@@ -884,7 +909,7 @@ func (m *MockRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID
 	}
 
 	return &domain.Graph{
-		Nodes: []domain.Node{*node},
+		Nodes: []*domain.Node{node},
 		Edges: edges,
 	}, nil
 }
@@ -918,7 +943,7 @@ func (m *MockRepository) CountNodes(ctx context.Context, userID string) (int, er
 	// Count nodes for the specific user
 	count := 0
 	for _, node := range m.nodes {
-		if node != nil && node.UserID == userID {
+		if node != nil && node.UserID().String() == userID {
 			count++
 		}
 	}
