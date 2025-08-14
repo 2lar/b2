@@ -310,6 +310,11 @@ func WithPreloadEdges() QueryOption {
 	}
 }
 
+// ApplyQueryOptions applies functional options and returns configured QueryOptions
+func ApplyQueryOptions(opts ...QueryOption) *QueryOptions {
+	return buildQueryOptions(opts)
+}
+
 // buildQueryOptions applies functional options and returns configured QueryOptions
 func buildQueryOptions(opts []QueryOption) *QueryOptions {
 	options := &QueryOptions{

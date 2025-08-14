@@ -17,6 +17,13 @@ const (
 	MaxUserIDLength  = 100   // Maximum length of user ID
 	MinContentLength = 1     // Minimum content length
 	MinKeywordLength = 1     // Minimum keyword length
+
+	// Error codes for Unit of Work and transactions
+	ErrCodeTransactionActive           = "TRANSACTION_ACTIVE"
+	ErrCodeTransactionAlreadyCommitted = "TRANSACTION_ALREADY_COMMITTED"
+	ErrCodeTransactionRolledBack       = "TRANSACTION_ROLLED_BACK"
+	ErrCodeCommitFailed                = "COMMIT_FAILED"
+	ErrCodeRollbackFailed              = "ROLLBACK_FAILED"
 )
 
 var (
@@ -41,6 +48,23 @@ func (e ValidationError) Error() string {
 func IsValidationError(err error) bool {
 	_, ok := err.(ValidationError)
 	return ok
+}
+
+// Error helper functions for repository operations
+func IsNotFoundError(err error) bool {
+	return strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "NotFound")
+}
+
+func IsConflictError(err error) bool {
+	return strings.Contains(err.Error(), "conflict") || strings.Contains(err.Error(), "already exists")
+}
+
+func IsTimeoutError(err error) bool {
+	return strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline exceeded")
+}
+
+func IsConnectionError(err error) bool {
+	return strings.Contains(err.Error(), "connection") || strings.Contains(err.Error(), "network")
 }
 
 // ValidateNode validates a domain node for repository operations

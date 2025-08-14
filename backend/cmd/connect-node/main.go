@@ -6,6 +6,7 @@ import (
 	"log"
 
 	infraDynamoDB "brain2-backend/infrastructure/dynamodb"
+	"brain2-backend/internal/domain"
 	"brain2-backend/internal/repository"
 	"brain2-backend/pkg/config"
 
@@ -46,11 +47,15 @@ func handler(ctx context.Context, event events.EventBridgeEvent) error {
 	}
 
 	// Find related nodes
-	query := repository.NodeQuery{
-		UserID:   detail.UserID,
-		Keywords: detail.Keywords,
+	// Convert to use segregated interfaces
+	domainUserID, err := domain.NewUserID(detail.UserID)
+	if err != nil {
+		log.Printf("ERROR: invalid user ID: %v", err)
+		return err
 	}
-	relatedNodes, err := repo.FindNodes(ctx, query)
+	
+	// Use keyword search to find related nodes
+	relatedNodes, err := repo.Keywords().SearchNodes(ctx, domainUserID, detail.Keywords)
 	if err != nil {
 		log.Printf("ERROR: could not find related nodes: %v", err)
 		return err // Returning an error will allow EventBridge to retry
@@ -65,9 +70,30 @@ func handler(ctx context.Context, event events.EventBridgeEvent) error {
 
 	// Create edges if related nodes were found
 	if len(relatedNodeIDs) > 0 {
-		if err := repo.CreateEdges(ctx, detail.UserID, detail.NodeID, relatedNodeIDs); err != nil {
-			log.Printf("ERROR: could not create edges: %v", err)
+		// Create edges using segregated interface
+		sourceNodeID, err := domain.ParseNodeID(detail.NodeID)
+		if err != nil {
+			log.Printf("ERROR: invalid source node ID: %v", err)
 			return err
+		}
+		
+		for _, relatedNodeID := range relatedNodeIDs {
+			targetNodeID, err := domain.ParseNodeID(relatedNodeID)
+			if err != nil {
+				log.Printf("WARN: invalid target node ID %s: %v", relatedNodeID, err)
+				continue
+			}
+			
+			edge, err := domain.NewEdge(sourceNodeID, targetNodeID, domainUserID, 0.5)
+			if err != nil {
+				log.Printf("WARN: could not create edge %s->%s: %v", detail.NodeID, relatedNodeID, err)
+				continue
+			}
+			
+			if err := repo.Edges().Save(ctx, edge); err != nil {
+				log.Printf("WARN: could not save edge %s->%s: %v", detail.NodeID, relatedNodeID, err)
+				continue
+			}
 		}
 	}
 

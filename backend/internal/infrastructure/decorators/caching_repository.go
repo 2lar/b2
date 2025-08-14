@@ -436,7 +436,7 @@ func (r *CachingEdgeRepository) Save(ctx context.Context, edge *domain.Edge) err
 	}
 	
 	// Invalidate related caches
-	r.invalidateEdgeCache(edge.SourceNodeID(), edge.TargetNodeID())
+	r.invalidateEdgeCache(edge.SourceID(), edge.TargetID())
 	return nil
 }
 

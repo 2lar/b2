@@ -49,14 +49,6 @@ func (p Pagination) HasCursor() bool {
 	return p.Cursor != ""
 }
 
-// PaginatedResult represents a paginated response with metadata
-type PaginatedResult[T any] struct {
-	Items      []T      `json:"items"`
-	TotalCount int      `json:"total_count,omitempty"`
-	HasMore    bool     `json:"has_more"`
-	NextCursor string   `json:"next_cursor,omitempty"`
-	PageInfo   PageInfo `json:"page_info"`
-}
 
 // PageInfo contains pagination metadata
 type PageInfo struct {
@@ -66,14 +58,6 @@ type PageInfo struct {
 	ItemsInPage int `json:"items_in_page"`
 }
 
-// NodePage represents a paginated list of nodes
-type NodePage = PaginatedResult[*domain.Node]
-
-// EdgePage represents a paginated list of edges
-type EdgePage = PaginatedResult[*domain.Edge]
-
-// CategoryPage represents a paginated list of categories
-type CategoryPage = PaginatedResult[domain.Category]
 
 // CursorData represents the data stored in a pagination cursor
 type CursorData struct {
@@ -100,24 +84,6 @@ func EncodeCursor(lastEvaluatedKey map[string]types.AttributeValue) string {
 	return base64.URLEncoding.EncodeToString(jsonData)
 }
 
-// DecodeCursor decodes a base64 cursor back to DynamoDB's LastEvaluatedKey format
-func DecodeCursor(cursor string) (map[string]types.AttributeValue, error) {
-	if cursor == "" {
-		return nil, nil
-	}
-
-	jsonData, err := base64.URLEncoding.DecodeString(cursor)
-	if err != nil {
-		return nil, fmt.Errorf("invalid cursor format: %w", err)
-	}
-
-	var cursorData CursorData
-	if err := json.Unmarshal(jsonData, &cursorData); err != nil {
-		return nil, fmt.Errorf("invalid cursor data: %w", err)
-	}
-
-	return cursorData.LastEvaluatedKey, nil
-}
 
 // CreatePageInfo creates pagination metadata for a result set
 func CreatePageInfo(pagination Pagination, itemCount int, hasMore bool) PageInfo {
@@ -283,3 +249,35 @@ func CreatePageResponse(items interface{}, lastKey map[string]types.AttributeVal
 
 	return response
 }
+
+// PaginatedResult represents a paginated response with metadata
+type PaginatedResult[T any] struct {
+	Items      []T      `json:"items"`
+	TotalCount int      `json:"total_count,omitempty"`
+	HasMore    bool     `json:"has_more"`
+	NextCursor string   `json:"next_cursor,omitempty"`
+	PageInfo   PageInfo `json:"page_info"`
+}
+
+// DecodeCursor decodes a base64 cursor back to DynamoDB's LastEvaluatedKey format
+func DecodeCursor(cursor string) (map[string]types.AttributeValue, error) {
+	if cursor == "" {
+		return nil, nil
+	}
+
+	jsonData, err := base64.URLEncoding.DecodeString(cursor)
+	if err != nil {
+		return nil, fmt.Errorf("invalid cursor format: %w", err)
+	}
+
+	var cursorData CursorData
+	if err := json.Unmarshal(jsonData, &cursorData); err != nil {
+		return nil, fmt.Errorf("invalid cursor data: %w", err)
+	}
+
+	return cursorData.LastEvaluatedKey, nil
+}
+
+// Type aliases for backward compatibility
+type NodePage = PaginatedResult[*domain.Node]
+type EdgePage = PaginatedResult[*domain.Edge]

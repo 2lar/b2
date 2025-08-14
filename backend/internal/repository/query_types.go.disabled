@@ -12,7 +12,6 @@
 package repository
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -36,8 +35,8 @@ type ResultSet interface {
 
 // ==== NODE QUERIES ====
 
-// NodeQuery represents a comprehensive query for nodes with all possible parameters
-type NodeQuery struct {
+// AdvancedAdvancedNodeQuery represents a comprehensive query for nodes with all possible parameters
+type AdvancedAdvancedNodeQuery struct {
 	// Required fields
 	userID domain.UserID
 
@@ -165,79 +164,79 @@ type OrderField struct {
 	Priority   int    `json:"priority,omitempty"` // For multi-field ordering
 }
 
-// NewNodeQuery creates a new node query with required parameters
-func NewNodeQuery(userID domain.UserID) *NodeQuery {
-	return &NodeQuery{
+// NewAdvancedNodeQuery creates a new node query with required parameters
+func NewAdvancedNodeQuery(userID domain.UserID) *AdvancedNodeQuery {
+	return &AdvancedNodeQuery{
 		userID:    userID,
 		queryID:   domain.NewNodeID().String(), // Reuse ID generation
 		createdAt: time.Now(),
 	}
 }
 
-// Builder methods for NodeQuery - demonstrating fluent interface pattern
+// Builder methods for AdvancedNodeQuery - demonstrating fluent interface pattern
 
-func (q *NodeQuery) WithNodeIDs(ids ...domain.NodeID) *NodeQuery {
+func (q *AdvancedNodeQuery) WithNodeIDs(ids ...domain.NodeID) *AdvancedNodeQuery {
 	q.nodeIDs = append(q.nodeIDs, ids...)
 	return q
 }
 
-func (q *NodeQuery) WithContentFilter(filter *ContentFilter) *NodeQuery {
+func (q *AdvancedNodeQuery) WithContentFilter(filter *ContentFilter) *AdvancedNodeQuery {
 	q.contentFilter = filter
 	return q
 }
 
-func (q *NodeQuery) WithKeywordFilter(filter *KeywordFilter) *NodeQuery {
+func (q *AdvancedNodeQuery) WithKeywordFilter(filter *KeywordFilter) *AdvancedNodeQuery {
 	q.keywordFilter = filter
 	return q
 }
 
-func (q *NodeQuery) WithTagFilter(filter *TagFilter) *NodeQuery {
+func (q *AdvancedNodeQuery) WithTagFilter(filter *TagFilter) *AdvancedNodeQuery {
 	q.tagFilter = filter
 	return q
 }
 
-func (q *NodeQuery) WithDateFilter(filter *DateFilter) *NodeQuery {
+func (q *AdvancedNodeQuery) WithDateFilter(filter *DateFilter) *AdvancedNodeQuery {
 	q.dateFilter = filter
 	return q
 }
 
-func (q *NodeQuery) WithSearch(query *SearchQuery) *NodeQuery {
+func (q *AdvancedNodeQuery) WithSearch(query *SearchQuery) *AdvancedNodeQuery {
 	q.searchQuery = query
 	return q
 }
 
-func (q *NodeQuery) WithSimilarity(similarity *SimilarityQuery) *NodeQuery {
+func (q *AdvancedNodeQuery) WithSimilarity(similarity *SimilarityQuery) *AdvancedNodeQuery {
 	q.similarity = similarity
 	return q
 }
 
-func (q *NodeQuery) WithPagination(pagination *PaginationOptions) *NodeQuery {
+func (q *AdvancedNodeQuery) WithPagination(pagination *PaginationOptions) *AdvancedNodeQuery {
 	q.pagination = pagination
 	return q
 }
 
-func (q *NodeQuery) WithOrdering(ordering *OrderingOptions) *NodeQuery {
+func (q *AdvancedNodeQuery) WithOrdering(ordering *OrderingOptions) *AdvancedNodeQuery {
 	q.ordering = ordering
 	return q
 }
 
-func (q *NodeQuery) IncludeArchived() *NodeQuery {
+func (q *AdvancedNodeQuery) IncludeArchived() *AdvancedNodeQuery {
 	q.includeArchived = true
 	return q
 }
 
-func (q *NodeQuery) IncludeMetadata() *NodeQuery {
+func (q *AdvancedNodeQuery) IncludeMetadata() *AdvancedNodeQuery {
 	q.includeMetadata = true
 	return q
 }
 
-func (q *NodeQuery) PreloadEdges() *NodeQuery {
+func (q *AdvancedNodeQuery) PreloadEdges() *AdvancedNodeQuery {
 	q.preloadEdges = true
 	return q
 }
 
 // Query interface implementation
-func (q *NodeQuery) Validate() error {
+func (q *AdvancedNodeQuery) Validate() error {
 	if q.userID.String() == "" {
 		return NewRepositoryError(ErrCodeInvalidQuery, "userID is required", nil)
 	}
@@ -269,26 +268,26 @@ func (q *NodeQuery) Validate() error {
 	return nil
 }
 
-func (q *NodeQuery) GetUserID() domain.UserID {
+func (q *AdvancedNodeQuery) GetUserID() domain.UserID {
 	return q.userID
 }
 
-func (q *NodeQuery) GetQueryType() string {
-	return "NodeQuery"
+func (q *AdvancedNodeQuery) GetQueryType() string {
+	return "AdvancedNodeQuery"
 }
 
 // Query analysis methods
 
-func (q *NodeQuery) IsSimpleQuery() bool {
+func (q *AdvancedNodeQuery) IsSimpleQuery() bool {
 	return len(q.nodeIDs) > 0 && q.contentFilter == nil && q.keywordFilter == nil && 
 		   q.tagFilter == nil && q.searchQuery == nil && q.similarity == nil
 }
 
-func (q *NodeQuery) IsComplexQuery() bool {
+func (q *AdvancedNodeQuery) IsComplexQuery() bool {
 	return !q.IsSimpleQuery()
 }
 
-func (q *NodeQuery) GetComplexityScore() int {
+func (q *AdvancedNodeQuery) GetComplexityScore() int {
 	score := 0
 	
 	if len(q.nodeIDs) > 0 { score += 1 }
@@ -302,7 +301,7 @@ func (q *NodeQuery) GetComplexityScore() int {
 	return score
 }
 
-func (q *NodeQuery) GetEstimatedCost() int {
+func (q *AdvancedNodeQuery) GetEstimatedCost() int {
 	// Estimate query cost for optimization
 	cost := 1 // Base cost
 	
@@ -322,7 +321,7 @@ func (q *NodeQuery) GetEstimatedCost() int {
 }
 
 // Validation helper methods
-func (q *NodeQuery) validatePagination() error {
+func (q *AdvancedNodeQuery) validatePagination() error {
 	p := q.pagination
 	
 	if p.Limit < 0 || p.Offset < 0 {
@@ -340,7 +339,7 @@ func (q *NodeQuery) validatePagination() error {
 	return nil
 }
 
-func (q *NodeQuery) validateContentFilter() error {
+func (q *AdvancedNodeQuery) validateContentFilter() error {
 	c := q.contentFilter
 	
 	if c.MinLength < 0 || c.MaxLength < 0 {
@@ -354,7 +353,7 @@ func (q *NodeQuery) validateContentFilter() error {
 	return nil
 }
 
-func (q *NodeQuery) validateSearchQuery() error {
+func (q *AdvancedNodeQuery) validateSearchQuery() error {
 	s := q.searchQuery
 	
 	if strings.TrimSpace(s.Query) == "" {
@@ -368,7 +367,7 @@ func (q *NodeQuery) validateSearchQuery() error {
 	return nil
 }
 
-func (q *NodeQuery) validateSimilarityQuery() error {
+func (q *AdvancedNodeQuery) validateSimilarityQuery() error {
 	s := q.similarity
 	
 	if s.ReferenceNodeID.String() == "" {
@@ -384,8 +383,8 @@ func (q *NodeQuery) validateSimilarityQuery() error {
 
 // ==== QUERY RESULT TYPES ====
 
-// NodeQueryResult represents the result of a node query
-type NodeQueryResult struct {
+// AdvancedNodeQueryResult represents the result of a node query
+type AdvancedNodeQueryResult struct {
 	// Result data
 	Nodes []*domain.Node `json:"nodes"`
 	
@@ -427,9 +426,9 @@ type SearchMetadata struct {
 	TermFrequency map[string]int     `json:"term_frequency,omitempty"`
 }
 
-// NewNodeQueryResult creates a new result set
-func NewNodeQueryResult(queryID string) *NodeQueryResult {
-	return &NodeQueryResult{
+// NewAdvancedNodeQueryResult creates a new result set
+func NewAdvancedNodeQueryResult(queryID string) *AdvancedNodeQueryResult {
+	return &AdvancedNodeQueryResult{
 		Nodes:             make([]*domain.Node, 0),
 		QueryID:           queryID,
 		OptimizationHints: make([]string, 0),
@@ -437,35 +436,35 @@ func NewNodeQueryResult(queryID string) *NodeQueryResult {
 }
 
 // ResultSet interface implementation
-func (r *NodeQueryResult) GetTotalCount() int {
+func (r *AdvancedNodeQueryResult) GetTotalCount() int {
 	return r.TotalCount
 }
 
-func (r *NodeQueryResult) GetReturnedCount() int {
+func (r *AdvancedNodeQueryResult) GetReturnedCount() int {
 	return r.ReturnedCount
 }
 
-func (r *NodeQueryResult) GetExecutionTime() time.Duration {
+func (r *AdvancedNodeQueryResult) GetExecutionTime() time.Duration {
 	return r.ExecutionTime
 }
 
-func (r *NodeQueryResult) HasMore() bool {
+func (r *AdvancedNodeQueryResult) HasMoreResults() bool {
 	return r.HasMore
 }
 
 // Result analysis methods
-func (r *NodeQueryResult) IsEmpty() bool {
+func (r *AdvancedNodeQueryResult) IsEmpty() bool {
 	return len(r.Nodes) == 0
 }
 
-func (r *NodeQueryResult) GetEfficiencyRatio() float64 {
+func (r *AdvancedNodeQueryResult) GetEfficiencyRatio() float64 {
 	if r.TotalCount == 0 {
 		return 1.0
 	}
 	return float64(r.ReturnedCount) / float64(r.TotalCount)
 }
 
-func (r *NodeQueryResult) GetPerformanceScore() float64 {
+func (r *AdvancedNodeQueryResult) GetPerformanceScore() float64 {
 	// Simple performance scoring based on execution time
 	if r.ExecutionTime < 100*time.Millisecond {
 		return 1.0
@@ -478,7 +477,7 @@ func (r *NodeQueryResult) GetPerformanceScore() float64 {
 	}
 }
 
-func (r *NodeQueryResult) AddOptimizationHint(hint string) {
+func (r *AdvancedNodeQueryResult) AddOptimizationHint(hint string) {
 	r.OptimizationHints = append(r.OptimizationHints, hint)
 }
 
@@ -486,13 +485,13 @@ func (r *NodeQueryResult) AddOptimizationHint(hint string) {
 
 // QueryBuilder provides a fluent interface for building complex queries
 type QueryBuilder struct {
-	query *NodeQuery
+	query *AdvancedNodeQuery
 }
 
 // NewQueryBuilder creates a new query builder
 func NewQueryBuilder(userID domain.UserID) *QueryBuilder {
 	return &QueryBuilder{
-		query: NewNodeQuery(userID),
+		query: NewAdvancedNodeQuery(userID),
 	}
 }
 
@@ -574,7 +573,7 @@ func (b *QueryBuilder) Search(query string) *QueryBuilder {
 	return b
 }
 
-func (b *QueryBuilder) Build() (*NodeQuery, error) {
+func (b *QueryBuilder) Build() (*AdvancedNodeQuery, error) {
 	if err := b.query.Validate(); err != nil {
 		return nil, err
 	}

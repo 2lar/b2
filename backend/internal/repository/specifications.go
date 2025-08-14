@@ -48,6 +48,16 @@ type Specification interface {
 // to implement IsSatisfiedBy and ToSQL methods
 type BaseSpecification struct{}
 
+// IsSatisfiedBy is abstract and should be overridden by concrete implementations
+func (s BaseSpecification) IsSatisfiedBy(entity interface{}) bool {
+	panic("IsSatisfiedBy must be implemented by concrete specification")
+}
+
+// ToSQL is abstract and should be overridden by concrete implementations
+func (s BaseSpecification) ToSQL() (string, []interface{}) {
+	panic("ToSQL must be implemented by concrete specification")
+}
+
 func (s BaseSpecification) And(other Specification) Specification {
 	return &AndSpecification{left: s, right: other}
 }

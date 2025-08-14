@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"brain2-backend/internal/domain"
-	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -108,7 +107,7 @@ func (r *ddbRepository) FindCategoriesByLevel(ctx context.Context, userID string
 // Category hierarchy operations
 
 // CreateCategoryHierarchy creates a parent-child relationship between categories
-func (r *ddbRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy domain.CategoryHierarchy) error {
+func (r *ddbRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy *domain.CategoryHierarchy) error {
 	ddbHierarchy := ddbCategoryHierarchy{
 		PK:        fmt.Sprintf("USER#%s", hierarchy.UserID),
 		SK:        fmt.Sprintf("HIERARCHY#PARENT#%s#CHILD#%s", hierarchy.ParentID, hierarchy.ChildID),
@@ -224,7 +223,7 @@ func (r *ddbRepository) FindParentCategory(ctx context.Context, userID, childID 
 // GetCategoryTree retrieves the complete category hierarchy
 func (r *ddbRepository) GetCategoryTree(ctx context.Context, userID string) ([]domain.Category, error) {
 	// Get all categories for the user
-	categories, err := r.FindCategories(ctx, repository.CategoryQuery{UserID: userID})
+	categories, err := r.FindCategories(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +380,7 @@ func (r *ddbRepository) FindCategoriesForNode(ctx context.Context, userID, nodeI
 // Batch operations
 
 // BatchAssignCategories efficiently assigns multiple nodes to categories
-func (r *ddbRepository) BatchAssignCategories(ctx context.Context, mappings []domain.NodeCategory) error {
+func (r *ddbRepository) BatchAssignCategories(ctx context.Context, mappings []*domain.NodeCategory) error {
 	if len(mappings) == 0 {
 		return nil
 	}
@@ -405,7 +404,7 @@ func (r *ddbRepository) BatchAssignCategories(ctx context.Context, mappings []do
 }
 
 // batchWriteNodeCategories writes a batch of node-category mappings
-func (r *ddbRepository) batchWriteNodeCategories(ctx context.Context, mappings []domain.NodeCategory) error {
+func (r *ddbRepository) batchWriteNodeCategories(ctx context.Context, mappings []*domain.NodeCategory) error {
 	var writeRequests []types.WriteRequest
 
 	for _, mapping := range mappings {

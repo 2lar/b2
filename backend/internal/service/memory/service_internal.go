@@ -42,11 +42,20 @@ func (s *service) createNodeCore(ctx context.Context, userID, content string, ta
 		node.ID().String(), node.Keywords().ToSlice())
 
 	// Find related nodes using keywords from rich domain model
-	relatedNodes, err := s.keywordRepo.FindNodesByKeywords(ctx, userID, node.Keywords().ToSlice())
+	var relatedNodes []*domain.Node
+	
+	// Convert userID to domain.UserID
+	domainUserID, err := domain.NewUserID(userID)
 	if err != nil {
-		// Log but don't fail - connections are non-critical
-		log.Printf("WARN: Failed to find related nodes: %v", err)
+		log.Printf("WARN: Invalid userID: %v", err)
 		relatedNodes = []*domain.Node{}
+	} else {
+		relatedNodes, err = s.repo.Keywords().SearchNodes(ctx, domainUserID, node.Keywords().ToSlice())
+		if err != nil {
+			// Log but don't fail - connections are non-critical
+			log.Printf("WARN: Failed to find related nodes: %v", err)
+			relatedNodes = []*domain.Node{}
+		}
 	}
 
 	// Use domain service for connection analysis
@@ -76,14 +85,14 @@ func (s *service) createNodeCore(ctx context.Context, userID, content string, ta
 	log.Printf("DEBUG createNodeCore: creating node %s with %d edges to nodes: %v", 
 		node.ID().String(), len(relatedNodeIDs), relatedNodeIDs)
 
-	// Create node with edges in transaction
-	if err := s.transactionRepo.CreateNodeWithEdges(ctx, node, relatedNodeIDs); err != nil {
-		return nil, nil, appErrors.Wrap(err, "failed to create node with edges")
+	// Create node using unified repository interface
+	if err := s.repo.Nodes().Save(ctx, node); err != nil {
+		return nil, nil, appErrors.Wrap(err, "failed to create node")
 	}
 	
-	// Create individual edges in repository (if the repository supports it)
+	// Create individual edges in repository
 	for _, edge := range edges {
-		if err := s.edgeRepo.CreateEdge(ctx, edge); err != nil {
+		if err := s.repo.Edges().Save(ctx, edge); err != nil {
 			log.Printf("WARN: Failed to create edge: %v", err)
 			// Continue - don't fail entire operation for edge creation
 		}
@@ -100,10 +109,14 @@ func (s *service) createNodeCore(ctx context.Context, userID, content string, ta
 }
 
 // updateNodeCore handles the actual update logic with optimistic locking retry
-func (s *service) updateNodeCore(ctx context.Context, userID, nodeID, content string, tags []string) (*domain.Node, error) {
-	for attempt := 0; attempt < maxRetries; attempt++ {
+func (s *service) updateNodeCore(ctx context.Context, _userID, nodeID, content string, tags []string) (*domain.Node, error) {
+	for attempt := range maxRetries {
 		// Fetch current node
-		existingNode, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
+		nodeIDVO, err := domain.ParseNodeID(nodeID)
+		if err != nil {
+			return nil, appErrors.Wrap(err, "invalid node ID")
+		}
+		existingNode, err := s.repo.Nodes().FindByID(ctx, nodeIDVO)
 		if err != nil {
 			return nil, appErrors.Wrap(err, "failed to find node")
 		}
@@ -132,7 +145,7 @@ func (s *service) updateNodeCore(ctx context.Context, userID, nodeID, content st
 		}
 
 		// Try to save - this might fail due to optimistic locking
-		if err := s.nodeRepo.CreateNodeAndKeywords(ctx, existingNode); err != nil {
+		if err := s.repo.Nodes().Save(ctx, existingNode); err != nil {
 			if isConflictError(err) && attempt < maxRetries-1 {
 				// Wait and retry
 				time.Sleep(baseDelay * time.Duration(1<<attempt))
@@ -153,12 +166,19 @@ func (s *service) updateNodeCore(ctx context.Context, userID, nodeID, content st
 }
 
 // bulkDeleteCore handles the core bulk delete logic
-func (s *service) bulkDeleteCore(ctx context.Context, userID string, nodeIDs []string) (int, []string, error) {
+func (s *service) bulkDeleteCore(ctx context.Context, _userID string, nodeIDs []string) (int, []string, error) {
 	var failed []string
 	successCount := 0
 
 	for _, nodeID := range nodeIDs {
-		if err := s.nodeRepo.DeleteNode(ctx, userID, nodeID); err != nil {
+		nodeIDVO, err := domain.ParseNodeID(nodeID)
+		if err != nil {
+			log.Printf("WARN: Invalid node ID %s: %v", nodeID, err)
+			failed = append(failed, nodeID)
+			continue
+		}
+		
+		if err := s.repo.Nodes().Delete(ctx, nodeIDVO); err != nil {
 			log.Printf("WARN: Failed to delete node %s: %v", nodeID, err)
 			failed = append(failed, nodeID)
 		} else {
@@ -172,7 +192,7 @@ func (s *service) bulkDeleteCore(ctx context.Context, userID string, nodeIDs []s
 
 // Helper functions
 
-func isConflictError(err error) bool {
+func isConflictError(_err error) bool {
 	// Check if error is a version conflict/optimistic locking error
 	// This would depend on your specific error types
 	return false // Simplified for now

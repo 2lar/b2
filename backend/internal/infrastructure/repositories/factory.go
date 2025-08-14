@@ -192,9 +192,9 @@ func (f *RepositoryFactory) CreateEdgeRepository() repository.EdgeRepository {
 	
 	// Apply the same decoration pattern
 	if f.config.EnableMetrics && f.metrics != nil {
-		metricsTags := f.createMetricsTags("edge_repository")
 		// Note: We'd need to create MetricsEdgeRepository similar to MetricsNodeRepository
 		// For brevity, assuming it exists
+		// metricsTags := f.createMetricsTags("edge_repository")
 		// repo = decorators.NewMetricsEdgeRepository(repo, f.metrics, metricsTags)
 	}
 	

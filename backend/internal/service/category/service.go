@@ -45,8 +45,9 @@ type Service interface {
 // service implements the Service interface with concrete business logic using segregated repositories.
 type service struct {
 	// Segregated repository dependencies - only what this service needs  
-	categoryRepo repository.CategoryRepository
-	nodeRepo     repository.NodeRepository
+	categoryRepo    repository.CategoryRepository
+	nodeRepo        repository.NodeRepository
+	nodeCategoryMap repository.NodeCategoryMapper
 }
 
 // NewService creates a new category service with segregated repositories.
@@ -60,8 +61,9 @@ func NewService(categoryRepo repository.CategoryRepository, nodeRepo repository.
 // NewServiceFromRepository creates a category service from a monolithic repository (for backward compatibility).
 func NewServiceFromRepository(repo repository.Repository) Service {
 	return &service{
-		categoryRepo: repo,
-		nodeRepo:     repo,
+		categoryRepo:    repo.Categories(),
+		nodeRepo:        repo.Nodes(),
+		nodeCategoryMap: repo.NodeCategories(),
 	}
 }
 
@@ -88,7 +90,7 @@ func (s *service) CreateCategory(ctx context.Context, userID, title, description
 		CreatedAt:   time.Now(),
 	}
 
-	if err := s.categoryRepo.CreateCategory(ctx, category); err != nil {
+	if err := s.categoryRepo.Save(ctx, &category); err != nil {
 		return nil, appErrors.Wrap(err, "failed to create category in repository")
 	}
 
@@ -114,7 +116,11 @@ func (s *service) UpdateCategory(ctx context.Context, userID, categoryID, title,
 	}
 
 	// Check if category exists and belongs to user
-	existingCategory, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
+	domainUserID, err := domain.NewUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	existingCategory, err := s.categoryRepo.FindByID(ctx, domainUserID, categoryID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to check for existing category")
 	}
@@ -130,7 +136,7 @@ func (s *service) UpdateCategory(ctx context.Context, userID, categoryID, title,
 		CreatedAt:   time.Now(), // Update timestamp
 	}
 
-	if err := s.categoryRepo.UpdateCategory(ctx, updatedCategory); err != nil {
+	if err := s.categoryRepo.Save(ctx, &updatedCategory); err != nil {
 		return nil, appErrors.Wrap(err, "failed to update category in repository")
 	}
 
@@ -147,7 +153,11 @@ func (s *service) DeleteCategory(ctx context.Context, userID, categoryID string)
 	}
 
 	// Check if category exists and belongs to user
-	existingCategory, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
+	domainUserID, err := domain.NewUserID(userID)
+	if err != nil {
+		return err
+	}
+	existingCategory, err := s.categoryRepo.FindByID(ctx, domainUserID, categoryID)
 	if err != nil {
 		return appErrors.Wrap(err, "failed to check for existing category")
 	}
@@ -155,7 +165,7 @@ func (s *service) DeleteCategory(ctx context.Context, userID, categoryID string)
 		return appErrors.NewNotFound("category not found")
 	}
 
-	return s.categoryRepo.DeleteCategory(ctx, userID, categoryID)
+	return s.categoryRepo.Delete(ctx, domainUserID, categoryID)
 }
 
 // GetCategory retrieves a single category by ID.
@@ -167,7 +177,12 @@ func (s *service) GetCategory(ctx context.Context, userID, categoryID string) (*
 		return nil, appErrors.NewValidation("categoryID cannot be empty")
 	}
 
-	category, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
+	userIDVO, err := domain.NewUserID(userID)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "invalid user ID")
+	}
+	
+	category, err := s.categoryRepo.FindByID(ctx, userIDVO, categoryID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get category from repository")
 	}
@@ -184,11 +199,12 @@ func (s *service) ListCategories(ctx context.Context, userID string) ([]domain.C
 		return nil, appErrors.NewValidation("userID cannot be empty")
 	}
 
-	query := repository.CategoryQuery{
-		UserID: userID,
+	userIDVO, err := domain.NewUserID(userID)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "invalid user ID")
 	}
 
-	categories, err := s.categoryRepo.FindCategories(ctx, query)
+	categories, err := s.categoryRepo.FindByUser(ctx, userIDVO)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to list categories from repository")
 	}
@@ -209,7 +225,12 @@ func (s *service) AssignNodeToCategory(ctx context.Context, userID, categoryID, 
 	}
 
 	// Verify category exists and belongs to user
-	category, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
+	userIDVO, err := domain.NewUserID(userID)
+	if err != nil {
+		return appErrors.Wrap(err, "invalid user ID")
+	}
+	
+	category, err := s.categoryRepo.FindByID(ctx, userIDVO, categoryID)
 	if err != nil {
 		return appErrors.Wrap(err, "failed to verify category")
 	}
@@ -218,7 +239,12 @@ func (s *service) AssignNodeToCategory(ctx context.Context, userID, categoryID, 
 	}
 
 	// Verify node exists and belongs to user
-	node, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
+	nodeIDVO, err := domain.ParseNodeID(nodeID)
+	if err != nil {
+		return appErrors.Wrap(err, "invalid node ID")
+	}
+	
+	node, err := s.nodeRepo.FindByID(ctx, nodeIDVO)
 	if err != nil {
 		return appErrors.Wrap(err, "failed to verify node")
 	}
@@ -234,7 +260,7 @@ func (s *service) AssignNodeToCategory(ctx context.Context, userID, categoryID, 
 		Method:     "manual",
 		CreatedAt:  time.Now(),
 	}
-	return s.categoryRepo.AssignNodeToCategory(ctx, mapping)
+	return s.nodeCategoryMap.AssignNodeToCategory(ctx, &mapping)
 }
 
 // RemoveNodeFromCategory removes a node from a category with validation.
@@ -250,7 +276,12 @@ func (s *service) RemoveNodeFromCategory(ctx context.Context, userID, categoryID
 	}
 
 	// Verify category exists and belongs to user
-	category, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
+	userIDVO, err := domain.NewUserID(userID)
+	if err != nil {
+		return appErrors.Wrap(err, "invalid user ID")
+	}
+	
+	category, err := s.categoryRepo.FindByID(ctx, userIDVO, categoryID)
 	if err != nil {
 		return appErrors.Wrap(err, "failed to verify category")
 	}
@@ -258,7 +289,12 @@ func (s *service) RemoveNodeFromCategory(ctx context.Context, userID, categoryID
 		return appErrors.NewNotFound("category not found")
 	}
 
-	return s.categoryRepo.RemoveNodeFromCategory(ctx, userID, nodeID, categoryID)
+	userIDVO, err2 := domain.NewUserID(userID)
+	if err2 != nil {
+		return appErrors.Wrap(err2, "invalid user ID")
+	}
+	
+	return s.nodeCategoryMap.RemoveNodeFromCategory(ctx, userIDVO, nodeID, categoryID)
 }
 
 // GetNodesInCategory retrieves all nodes in a specific category.
@@ -271,7 +307,12 @@ func (s *service) GetNodesInCategory(ctx context.Context, userID, categoryID str
 	}
 
 	// Verify category exists and belongs to user
-	category, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
+	userIDVO, err := domain.NewUserID(userID)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "invalid user ID")
+	}
+	
+	category, err := s.categoryRepo.FindByID(ctx, userIDVO, categoryID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to verify category")
 	}
@@ -279,7 +320,12 @@ func (s *service) GetNodesInCategory(ctx context.Context, userID, categoryID str
 		return nil, appErrors.NewNotFound("category not found")
 	}
 
-	nodePointers, err := s.categoryRepo.FindNodesByCategory(ctx, userID, categoryID)
+	userIDVO, err2 := domain.NewUserID(userID)
+	if err2 != nil {
+		return nil, appErrors.Wrap(err2, "invalid user ID")
+	}
+	
+	nodePointers, err := s.nodeCategoryMap.FindNodesByCategory(ctx, userIDVO, categoryID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get nodes from repository")
 	}
@@ -302,7 +348,12 @@ func (s *service) GetCategoriesForNode(ctx context.Context, userID, nodeID strin
 	}
 
 	// Verify node exists and belongs to user
-	node, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
+	nodeIDVO, err := domain.ParseNodeID(nodeID)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "invalid node ID")
+	}
+	
+	node, err := s.nodeRepo.FindByID(ctx, nodeIDVO)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to verify node")
 	}
@@ -310,10 +361,21 @@ func (s *service) GetCategoriesForNode(ctx context.Context, userID, nodeID strin
 		return nil, appErrors.NewNotFound("node not found")
 	}
 
-	categories, err := s.categoryRepo.FindCategoriesForNode(ctx, userID, nodeID)
+	userIDVO, err := domain.NewUserID(userID)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "invalid user ID")
+	}
+	
+	categories, err := s.nodeCategoryMap.FindCategoriesForNode(ctx, userIDVO, nodeID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to get categories from repository")
 	}
 
-	return categories, nil
+	// Convert from []*domain.Category to []domain.Category
+	result := make([]domain.Category, len(categories))
+	for i, cat := range categories {
+		result[i] = *cat
+	}
+	
+	return result, nil
 }

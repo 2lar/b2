@@ -1,12 +1,28 @@
 package repository
 
-// NodeQuery represents query parameters for finding nodes.
+
+// Simple NodeQuery for backward compatibility with existing DynamoDB code
 type NodeQuery struct {
 	UserID   string   // Required: The user ID to query nodes for
 	Keywords []string // Optional: Keywords to search for
 	NodeIDs  []string // Optional: Specific node IDs to retrieve
 	Limit    int      // Optional: Maximum number of results (0 = no limit)
 	Offset   int      // Optional: Number of results to skip
+}
+
+// HasNodeIDs returns true if the query includes specific node IDs.
+func (q NodeQuery) HasNodeIDs() bool {
+	return len(q.NodeIDs) > 0
+}
+
+// HasKeywords returns true if the query includes keyword filtering.
+func (q NodeQuery) HasKeywords() bool {
+	return len(q.Keywords) > 0
+}
+
+// HasPagination returns true if the query includes pagination parameters.
+func (q NodeQuery) HasPagination() bool {
+	return q.Limit > 0 || q.Offset > 0
 }
 
 // Validate checks if the NodeQuery has valid parameters.
@@ -21,21 +37,6 @@ func (q NodeQuery) Validate() error {
 		return NewInvalidQuery("Offset", "cannot be negative")
 	}
 	return nil
-}
-
-// HasKeywords returns true if the query includes keyword filtering.
-func (q NodeQuery) HasKeywords() bool {
-	return len(q.Keywords) > 0
-}
-
-// HasNodeIDs returns true if the query includes specific node IDs.
-func (q NodeQuery) HasNodeIDs() bool {
-	return len(q.NodeIDs) > 0
-}
-
-// HasPagination returns true if the query includes pagination parameters.
-func (q NodeQuery) HasPagination() bool {
-	return q.Limit > 0 || q.Offset > 0
 }
 
 // EdgeQuery represents query parameters for finding edges.

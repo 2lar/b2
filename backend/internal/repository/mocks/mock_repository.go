@@ -447,7 +447,7 @@ func (m *MockRepository) FindNodesByKeywords(ctx context.Context, userID string,
 
 // Category operations
 
-func (m *MockRepository) CreateCategory(ctx context.Context, category domain.Category) error {
+func (m *MockRepository) CreateCategory(ctx context.Context, category *domain.Category) error {
 	if err := m.checkError("CreateCategory"); err != nil {
 		return err
 	}
@@ -461,8 +461,7 @@ func (m *MockRepository) CreateCategory(ctx context.Context, category domain.Cat
 	}
 
 	// Store the category
-	categoryCopy := category
-	m.categories[category.ID] = &categoryCopy
+	m.categories[category.ID] = category
 	return nil
 }
 
@@ -567,7 +566,7 @@ func (m *MockRepository) FindCategoryByID(ctx context.Context, userID, categoryI
 	return &categoryCopy, nil
 }
 
-func (m *MockRepository) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]domain.Category, error) {
+func (m *MockRepository) FindCategoriesWithQuery(ctx context.Context, query repository.CategoryQuery) ([]domain.Category, error) {
 	if err := m.checkError("FindCategories"); err != nil {
 		return nil, err
 	}
@@ -601,6 +600,25 @@ func (m *MockRepository) FindCategories(ctx context.Context, query repository.Ca
 	return categories, nil
 }
 
+// FindCategories returns categories for a user (Repository interface method)
+func (m *MockRepository) FindCategories(ctx context.Context, userID string) ([]domain.Category, error) {
+	if err := m.checkError("FindCategories"); err != nil {
+		return nil, err
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var categories []domain.Category
+	for _, category := range m.categories {
+		if category.UserID == userID {
+			categories = append(categories, *category)
+		}
+	}
+
+	return categories, nil
+}
+
 func (m *MockRepository) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]domain.Category, error) {
 	if err := m.checkError("FindCategoriesByLevel"); err != nil {
 		return nil, err
@@ -622,7 +640,7 @@ func (m *MockRepository) FindCategoriesByLevel(ctx context.Context, userID strin
 
 // Category hierarchy operations
 
-func (m *MockRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy domain.CategoryHierarchy) error {
+func (m *MockRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy *domain.CategoryHierarchy) error {
 	if err := m.checkError("CreateCategoryHierarchy"); err != nil {
 		return err
 	}
@@ -712,13 +730,12 @@ func (m *MockRepository) GetCategoryTree(ctx context.Context, userID string) ([]
 		return nil, err
 	}
 
-	query := repository.CategoryQuery{UserID: userID}
-	return m.FindCategories(ctx, query)
+	return m.FindCategories(ctx, userID)
 }
 
 // Node-Category operations
 
-func (m *MockRepository) AssignNodeToCategory(ctx context.Context, mapping domain.NodeCategory) error {
+func (m *MockRepository) AssignNodeToCategory(ctx context.Context, mapping *domain.NodeCategory) error {
 	if err := m.checkError("AssignNodeToCategory"); err != nil {
 		return err
 	}
@@ -817,7 +834,7 @@ func (m *MockRepository) FindCategoriesForNode(ctx context.Context, userID, node
 
 // Batch operations
 
-func (m *MockRepository) BatchAssignCategories(ctx context.Context, mappings []domain.NodeCategory) error {
+func (m *MockRepository) BatchAssignCategories(ctx context.Context, mappings []*domain.NodeCategory) error {
 	if err := m.checkError("BatchAssignCategories"); err != nil {
 		return err
 	}
@@ -949,4 +966,220 @@ func (m *MockRepository) CountNodes(ctx context.Context, userID string) (int, er
 	}
 	
 	return count, nil
+}
+
+// Save method for Repository interface
+func (m *MockRepository) Save(ctx context.Context, node *domain.Node) error {
+	if err := m.checkError("Save"); err != nil {
+		return err
+	}
+	
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	// Simple implementation - store the node
+	m.nodes[node.ID().String()] = node
+	return nil
+}
+
+// SearchNodes method for KeywordSearcher interface
+func (m *MockRepository) SearchNodes(ctx context.Context, userID domain.UserID, keywords []string, opts ...repository.QueryOption) ([]*domain.Node, error) {
+	if err := m.checkError("SearchNodes"); err != nil {
+		return nil, err
+	}
+	// Simple implementation for testing - return empty slice to avoid panics
+	return []*domain.Node{}, nil
+}
+
+// Additional missing methods for interface compliance
+
+// Count method for NodeRepository
+func (m *MockRepository) Count(ctx context.Context, userID domain.UserID, opts ...repository.QueryOption) (int, error) {
+	if err := m.checkError("Count"); err != nil {
+		return 0, err
+	}
+	return m.CountNodes(ctx, userID.String())
+}
+
+// Delete method for EdgeRepository  
+func (m *MockRepository) Delete(ctx context.Context, sourceID, targetID domain.NodeID) error {
+	if err := m.checkError("Delete"); err != nil {
+		return err
+	}
+	// Simple implementation for testing
+	return nil
+}
+
+// CreateHierarchy for CategoryRepository
+func (m *MockRepository) CreateHierarchy(ctx context.Context, hierarchy *domain.CategoryHierarchy) error {
+	if err := m.checkError("CreateHierarchy"); err != nil {
+		return err
+	}
+	// Simple implementation for testing
+	return nil
+}
+
+// FindRelatedByKeywords for KeywordSearcher
+func (m *MockRepository) FindRelatedByKeywords(ctx context.Context, userID domain.UserID, keywords []string, opts ...repository.QueryOption) ([]*domain.Node, error) {
+	if err := m.checkError("FindRelatedByKeywords"); err != nil {
+		return nil, err
+	}
+	// Simple implementation for testing
+	return []*domain.Node{}, nil
+}
+
+// AnalyzeConnectivity for GraphReader
+func (m *MockRepository) AnalyzeConnectivity(ctx context.Context, userID domain.UserID) (interface{}, error) {
+	if err := m.checkError("AnalyzeConnectivity"); err != nil {
+		return nil, err
+	}
+	// Simple implementation for testing - return empty interface
+	return struct{}{}, nil
+}
+
+// Simple stub implementations for interface compliance during testing
+
+type MockKeywordSearcher struct {
+	mock *MockRepository
+}
+
+func (mks *MockKeywordSearcher) SearchNodes(ctx context.Context, userID domain.UserID, keywords []string, opts ...repository.QueryOption) ([]*domain.Node, error) {
+	return []*domain.Node{}, nil
+}
+
+func (mks *MockKeywordSearcher) FindRelatedByKeywords(ctx context.Context, userID domain.UserID, node *domain.Node, opts ...repository.QueryOption) ([]*domain.Node, error) {
+	return []*domain.Node{}, nil
+}
+
+func (mks *MockKeywordSearcher) SuggestKeywords(ctx context.Context, userID domain.UserID, partial string, limit int) ([]string, error) {
+	return []string{}, nil
+}
+
+type MockNodeRepository struct {
+	mock *MockRepository
+}
+
+func (mnr *MockNodeRepository) FindByID(ctx context.Context, id domain.NodeID) (*domain.Node, error) {
+	// Look up the node in the mock's internal storage
+	mnr.mock.mu.RLock()
+	defer mnr.mock.mu.RUnlock()
+	
+	if node, exists := mnr.mock.nodes[id.String()]; exists {
+		return node, nil
+	}
+	return nil, nil // Not found
+}
+
+func (mnr *MockNodeRepository) FindByUser(ctx context.Context, userID domain.UserID, opts ...repository.QueryOption) ([]*domain.Node, error) {
+	return []*domain.Node{}, nil
+}
+
+func (mnr *MockNodeRepository) Exists(ctx context.Context, id domain.NodeID) (bool, error) {
+	return false, nil
+}
+
+func (mnr *MockNodeRepository) Count(ctx context.Context, userID domain.UserID, opts ...repository.QueryOption) (int, error) {
+	return 0, nil
+}
+
+func (mnr *MockNodeRepository) FindByKeywords(ctx context.Context, userID domain.UserID, keywords []string, opts ...repository.QueryOption) ([]*domain.Node, error) {
+	return []*domain.Node{}, nil
+}
+
+func (mnr *MockNodeRepository) Save(ctx context.Context, node *domain.Node) error {
+	return mnr.mock.Save(ctx, node)
+}
+
+func (mnr *MockNodeRepository) SaveBatch(ctx context.Context, nodes []*domain.Node) error {
+	return nil
+}
+
+func (mnr *MockNodeRepository) Delete(ctx context.Context, id domain.NodeID) error {
+	return mnr.mock.DeleteNode(ctx, "", id.String())
+}
+
+func (mnr *MockNodeRepository) DeleteBatch(ctx context.Context, ids []domain.NodeID) error {
+	return nil
+}
+
+func (mnr *MockNodeRepository) FindSimilar(ctx context.Context, node *domain.Node, opts ...repository.QueryOption) ([]*domain.Node, error) {
+	return []*domain.Node{}, nil
+}
+
+type MockEdgeRepository struct {
+	mock *MockRepository
+}
+
+func (mer *MockEdgeRepository) FindByNodes(ctx context.Context, sourceID, targetID domain.NodeID) (*domain.Edge, error) {
+	return nil, nil
+}
+
+func (mer *MockEdgeRepository) FindBySource(ctx context.Context, sourceID domain.NodeID, opts ...repository.QueryOption) ([]*domain.Edge, error) {
+	return []*domain.Edge{}, nil
+}
+
+func (mer *MockEdgeRepository) FindByTarget(ctx context.Context, targetID domain.NodeID, opts ...repository.QueryOption) ([]*domain.Edge, error) {
+	return []*domain.Edge{}, nil
+}
+
+func (mer *MockEdgeRepository) Save(ctx context.Context, edge *domain.Edge) error {
+	return nil
+}
+
+func (mer *MockEdgeRepository) SaveBatch(ctx context.Context, edges []*domain.Edge) error {
+	return nil
+}
+
+func (mer *MockEdgeRepository) Delete(ctx context.Context, sourceID, targetID domain.NodeID) error {
+	return nil
+}
+
+func (mer *MockEdgeRepository) DeleteByNode(ctx context.Context, nodeID domain.NodeID) error {
+	return nil
+}
+
+func (mer *MockEdgeRepository) FindByUser(ctx context.Context, userID domain.UserID, opts ...repository.QueryOption) ([]*domain.Edge, error) {
+	return []*domain.Edge{}, nil
+}
+
+func (mer *MockEdgeRepository) GetNeighborhood(ctx context.Context, nodeID domain.NodeID, depth int) ([]*domain.Edge, error) {
+	return []*domain.Edge{}, nil
+}
+
+// Repository interface implementation methods
+// These return nil to avoid complex interface compliance issues
+// Tests will need to handle nil gracefully
+
+func (m *MockRepository) Nodes() repository.NodeRepository {
+	return &MockNodeRepository{mock: m}
+}
+
+func (m *MockRepository) Edges() repository.EdgeRepository {
+	return &MockEdgeRepository{mock: m}
+}
+
+func (m *MockRepository) Categories() repository.CategoryRepository {
+	return nil // Return nil to avoid interface compliance issues
+}
+
+func (m *MockRepository) NodeCategories() repository.NodeCategoryMapper {
+	return nil // Return nil to avoid interface compliance issues
+}
+
+func (m *MockRepository) Keywords() repository.KeywordSearcher {
+	return &MockKeywordSearcher{mock: m}
+}
+
+func (m *MockRepository) Graph() repository.GraphReader {
+	return nil // Return nil to avoid interface compliance issues
+}
+
+func (m *MockRepository) UnitOfWork() repository.UnitOfWork {
+	// Return nil for testing
+	return nil
+}
+
+func (m *MockRepository) WithDecorators(decorators ...repository.RepositoryDecorator) repository.Repository {
+	// For testing, just return self
+	return m
 }
