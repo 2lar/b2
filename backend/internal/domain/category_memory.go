@@ -18,7 +18,7 @@ func (cm *CategoryMemory) ConvertToNodeCategory(userID string) *NodeCategory {
 		NodeID:     cm.MemoryID,
 		CategoryID: cm.CategoryID,
 		Confidence: 1.0, // Manual assignments have high confidence
-		Method:     "manual",
-		CreatedAt:  cm.AddedAt,
+		Source:     "manual",
+		AssignedAt: cm.AddedAt,
 	}
 }

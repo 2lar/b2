@@ -61,12 +61,18 @@ func (h *CategoryHandler) ListCategories(w http.ResponseWriter, r *http.Request)
 
 	var categoriesResponse []CategoryResponse
 	for _, cat := range categories {
+		var parentID *string
+		if cat.ParentID != nil {
+			parentIDStr := string(*cat.ParentID)
+			parentID = &parentIDStr
+		}
+		
 		categoriesResponse = append(categoriesResponse, CategoryResponse{
-			ID:          cat.ID,
+			ID:          string(cat.ID),
 			Title:       cat.Title,
 			Description: cat.Description,
 			Level:       cat.Level,
-			ParentID:    cat.ParentID,
+			ParentID:    parentID,
 			Color:       cat.Color,
 			Icon:        cat.Icon,
 			AIGenerated: cat.AIGenerated,
@@ -123,12 +129,18 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		UpdatedAt   string  `json:"updatedAt"`
 	}
 
+	var parentID *string
+	if cat.ParentID != nil {
+		parentIDStr := string(*cat.ParentID)
+		parentID = &parentIDStr
+	}
+	
 	api.Success(w, http.StatusCreated, CategoryResponse{
-		ID:          cat.ID,
+		ID:          string(cat.ID),
 		Title:       cat.Title,
 		Description: cat.Description,
 		Level:       cat.Level,
-		ParentID:    cat.ParentID,
+		ParentID:    parentID,
 		Color:       cat.Color,
 		Icon:        cat.Icon,
 		AIGenerated: cat.AIGenerated,
@@ -167,12 +179,18 @@ func (h *CategoryHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt   string  `json:"updatedAt"`
 	}
 
+	var parentID *string
+	if category.ParentID != nil {
+		parentIDStr := string(*category.ParentID)
+		parentID = &parentIDStr
+	}
+	
 	api.Success(w, http.StatusOK, CategoryResponse{
-		ID:          category.ID,
+		ID:          string(category.ID),
 		Title:       category.Title,
 		Description: category.Description,
 		Level:       category.Level,
-		ParentID:    category.ParentID,
+		ParentID:    parentID,
 		Color:       category.Color,
 		Icon:        category.Icon,
 		AIGenerated: category.AIGenerated,
@@ -215,7 +233,7 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 
 	api.Success(w, http.StatusOK, map[string]interface{}{
 		"message":    "Category updated successfully",
-		"categoryId": category.ID,
+		"categoryId": string(category.ID),
 	})
 }
 
@@ -360,12 +378,18 @@ func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Reque
 
 	var categoriesResponse []CategoryResponse
 	for _, cat := range categories {
+		var parentID *string
+		if cat.ParentID != nil {
+			parentIDStr := string(*cat.ParentID)
+			parentID = &parentIDStr
+		}
+		
 		categoriesResponse = append(categoriesResponse, CategoryResponse{
-			ID:          cat.ID,
+			ID:          string(cat.ID),
 			Title:       cat.Title,
 			Description: cat.Description,
 			Level:       cat.Level,
-			ParentID:    cat.ParentID,
+			ParentID:    parentID,
 			Color:       cat.Color,
 			Icon:        cat.Icon,
 			AIGenerated: cat.AIGenerated,

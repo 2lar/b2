@@ -456,13 +456,13 @@ func (m *MockRepository) CreateCategory(ctx context.Context, category domain.Cat
 	defer m.mu.Unlock()
 
 	// Check if category already exists
-	if _, exists := m.categories[category.ID]; exists {
+	if _, exists := m.categories[string(category.ID)]; exists {
 		return appErrors.NewValidation("category already exists")
 	}
 
 	// Store the category
 	categoryCopy := category
-	m.categories[category.ID] = &categoryCopy
+	m.categories[string(category.ID)] = &categoryCopy
 	return nil
 }
 
@@ -475,13 +475,13 @@ func (m *MockRepository) UpdateCategory(ctx context.Context, category domain.Cat
 	defer m.mu.Unlock()
 
 	// Check if category exists
-	if _, exists := m.categories[category.ID]; !exists {
+	if _, exists := m.categories[string(category.ID)]; !exists {
 		return appErrors.NewNotFound("category not found")
 	}
 
 	// Update the category
 	categoryCopy := category
-	m.categories[category.ID] = &categoryCopy
+	m.categories[string(category.ID)] = &categoryCopy
 	return nil
 }
 

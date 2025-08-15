@@ -1,88 +1,46 @@
 package domain
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
-// Category represents a user-defined category for organizing memories
+// CategoryID represents the unique identifier for a Category.
+type CategoryID string
+
+// Category represents a classification for a piece of memory or a node.
 type Category struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"user_id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Level       int       `json:"level"`        // 0 = top level, 1 = sub, 2 = sub-sub
-	ParentID    *string   `json:"parent_id"`    // ID of parent category (nil for root categories)
-	Color       *string   `json:"color"`        // Hex color code for UI
-	Icon        *string   `json:"icon"`         // Icon identifier for UI
-	AIGenerated bool      `json:"ai_generated"` // Whether this category was created by AI
-	NoteCount   int       `json:"note_count"`   // Number of memories in this category
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          CategoryID  `json:"id"`
+	UserID      string      `json:"user_id"`
+	Name        string      `json:"name"`
+	Title       string      `json:"title"`         // Alternative name field for compatibility
+	ParentID    *CategoryID `json:"parent_id,omitempty"`
+	Level       int         `json:"level"`         // Hierarchy level (0 = root)
+	NoteCount   int         `json:"note_count"`    // Number of notes in this category
+	AIGenerated bool        `json:"ai_generated"`  // Whether this category was AI-generated
+	Color       *string     `json:"color,omitempty"`      // Category color for UI
+	Icon        *string     `json:"icon,omitempty"`       // Category icon for UI
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+	Description string      `json:"description,omitempty"`
 }
 
-// CategoryHierarchy represents parent-child relationships between categories
-type CategoryHierarchy struct {
-	UserID    string    `json:"user_id"`
-	ParentID  string    `json:"parent_id"`
-	ChildID   string    `json:"child_id"`
-	CreatedAt time.Time `json:"created_at"`
-}
+// CategoryRepository defines the persistence methods required for a Category.
+// This interface is part of the domain layer and dictates the contract for
+// how category data is accessed, abstracting away the specific database implementation.
+type CategoryRepository interface {
+	// FindByID retrieves a single category by its unique ID for a given user.
+	FindByID(ctx context.Context, userID string, id CategoryID) (*Category, error)
 
-// NodeCategory represents the many-to-many relationship between nodes and categories
-type NodeCategory struct {
-	UserID     string    `json:"user_id"`
-	NodeID     string    `json:"node_id"`
-	CategoryID string    `json:"category_id"`
-	Confidence float64   `json:"confidence"` // AI confidence score (0.0-1.0)
-	Method     string    `json:"method"`     // "ai", "manual", "rule-based"
-	CreatedAt  time.Time `json:"created_at"`
-}
+	// ListByParentID retrieves all direct children of a given category for a user.
+	ListByParentID(ctx context.Context, userID string, parentID CategoryID) ([]*Category, error)
 
-// CategorySuggestion represents an AI suggestion for categorizing content
-type CategorySuggestion struct {
-	Name       string  `json:"name"`
-	Level      int     `json:"level"`
-	Confidence float64 `json:"confidence"`
-	Reason     string  `json:"reason"`
-	ParentID   *string `json:"parent_id,omitempty"`
-}
+	// ListRoot retrieves all categories that do not have a parent for a user.
+	ListRoot(ctx context.Context, userID string) ([]*Category, error)
 
-// CategoryInsights provides analytics and insights about category usage
-type CategoryInsights struct {
-	MostActiveCategories []CategoryActivity    `json:"most_active_categories"`
-	CategoryGrowthTrends []CategoryGrowthTrend `json:"category_growth_trends"`
-	SuggestedConnections []CategoryConnection  `json:"suggested_connections"`
-	KnowledgeGaps        []KnowledgeGap        `json:"knowledge_gaps"`
-}
+	// Save persists a Category. It handles both creation and updates.
+	Save(ctx context.Context, category *Category) error
 
-// CategoryActivity represents usage statistics for a category
-type CategoryActivity struct {
-	CategoryID   string `json:"category_id"`
-	CategoryName string `json:"category_name"`
-	MemoryCount  int    `json:"memory_count"`
-	RecentAdds   int    `json:"recent_adds"`
-}
-
-// CategoryGrowthTrend represents growth patterns over time
-type CategoryGrowthTrend struct {
-	CategoryID   string    `json:"category_id"`
-	CategoryName string    `json:"category_name"`
-	Date         time.Time `json:"date"`
-	MemoryCount  int       `json:"memory_count"`
-}
-
-// CategoryConnection suggests relationships between categories
-type CategoryConnection struct {
-	Category1ID   string  `json:"category1_id"`
-	Category1Name string  `json:"category1_name"`
-	Category2ID   string  `json:"category2_id"`
-	Category2Name string  `json:"category2_name"`
-	Strength      float64 `json:"strength"`
-	Reason        string  `json:"reason"`
-}
-
-// KnowledgeGap identifies potential areas for knowledge expansion
-type KnowledgeGap struct {
-	Topic               string   `json:"topic"`
-	Confidence          float64  `json:"confidence"`
-	SuggestedCategories []string `json:"suggested_categories"`
-	Reason              string   `json:"reason"`
+	// Delete removes a category by its ID for a given user.
+	Delete(ctx context.Context, userID string, id CategoryID) error
 }

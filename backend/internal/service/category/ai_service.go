@@ -38,13 +38,18 @@ type EnhancedService interface {
 
 // enhancedService implements the EnhancedService interface
 type enhancedService struct {
-	repo   repository.Repository
-	llmSvc *llm.Service
+	BasicService // Embed the basic service
+	repo         repository.Repository
+	llmSvc       *llm.Service
 }
 
 // NewEnhancedService creates a new enhanced category service
 func NewEnhancedService(repo repository.Repository, llmSvc *llm.Service) EnhancedService {
 	return &enhancedService{
+		BasicService: BasicService{
+			categoryRepo: nil, // Repository interface mismatch - will use repo field directly
+			aiService:    nil, // Could be populated if needed
+		},
 		repo:   repo,
 		llmSvc: llmSvc,
 	}
@@ -81,7 +86,7 @@ func (s *enhancedService) CategorizeNode(ctx context.Context, node domain.Node) 
 					mappings = append(mappings, domain.NodeCategory{
 						UserID:     node.UserID().String(),
 						NodeID:     node.ID().String(),
-						CategoryID: category.ID,
+						CategoryID: string(category.ID),
 						Confidence: suggestion.Confidence,
 						Method:     "ai",
 						CreatedAt:  time.Now(),
@@ -102,7 +107,7 @@ func (s *enhancedService) CategorizeNode(ctx context.Context, node domain.Node) 
 				mappings = append(mappings, domain.NodeCategory{
 					UserID:     node.UserID().String(),
 					NodeID:     node.ID().String(),
-					CategoryID: category.ID,
+					CategoryID: string(category.ID),
 					Confidence: 0.8, // Lower confidence for keyword matching
 					Method:     "rule-based",
 					CreatedAt:  time.Now(),
@@ -207,13 +212,19 @@ func (s *enhancedService) CreateCategoryWithParent(ctx context.Context, userID, 
 		level = parent.Level + 1
 	}
 
+	var parentCategoryID *domain.CategoryID
+	if parentID != nil {
+		categoryID := domain.CategoryID(*parentID)
+		parentCategoryID = &categoryID
+	}
+
 	category := domain.Category{
-		ID:          uuid.New().String(),
+		ID:          domain.CategoryID(uuid.New().String()),
 		UserID:      userID,
 		Title:       title,
 		Description: description,
 		Level:       level,
-		ParentID:    parentID,
+		ParentID:    parentCategoryID,
 		AIGenerated: false,
 		NoteCount:   0,
 		CreatedAt:   time.Now(),
@@ -229,7 +240,7 @@ func (s *enhancedService) CreateCategoryWithParent(ctx context.Context, userID, 
 		hierarchy := domain.CategoryHierarchy{
 			UserID:    userID,
 			ParentID:  *parentID,
-			ChildID:   category.ID,
+			ChildID:   string(category.ID),
 			CreatedAt: time.Now(),
 		}
 		if err := s.repo.CreateCategoryHierarchy(ctx, hierarchy); err != nil {
@@ -260,10 +271,10 @@ func (s *enhancedService) MergeSimilarCategories(ctx context.Context, userID str
 	}
 
 	for _, pair := range similarPairs {
-		err := s.mergeTwoCategories(ctx, userID, pair.Category1ID, pair.Category2ID)
+		err := s.mergeTwoCategories(ctx, userID, pair.SourceID, pair.TargetID)
 		if err != nil {
 			log.Printf("Failed to merge categories %s and %s: %v",
-				pair.Category1ID, pair.Category2ID, err)
+				pair.SourceID, pair.TargetID, err)
 		}
 	}
 
@@ -310,14 +321,21 @@ func (s *enhancedService) processAISuggestion(ctx context.Context, userID string
 		}
 	}
 
+	// Convert ParentID if needed
+	var parentCategoryID *domain.CategoryID
+	if suggestion.ParentID != nil {
+		categoryID := domain.CategoryID(*suggestion.ParentID)
+		parentCategoryID = &categoryID
+	}
+
 	// Create new category from suggestion
 	category := domain.Category{
-		ID:          uuid.New().String(),
+		ID:          domain.CategoryID(uuid.New().String()),
 		UserID:      userID,
 		Title:       suggestion.Name,
 		Description: suggestion.Reason,
 		Level:       suggestion.Level,
-		ParentID:    suggestion.ParentID,
+		ParentID:    parentCategoryID,
 		AIGenerated: true,
 		NoteCount:   0,
 		CreatedAt:   time.Now(),
@@ -408,7 +426,7 @@ func (s *enhancedService) findOrCreateGeneralCategory(ctx context.Context, userI
 
 	// Create new general category
 	category := domain.Category{
-		ID:          uuid.New().String(),
+		ID:          domain.CategoryID(uuid.New().String()),
 		UserID:      userID,
 		Title:       "General",
 		Description: "General uncategorized content",
@@ -461,11 +479,11 @@ func (s *enhancedService) mergeTwoCategories(ctx context.Context, userID, keepID
 func (s *enhancedService) updateCategoryCounts(ctx context.Context, userID string, categories []domain.Category) {
 	counts := make(map[string]int)
 	for _, category := range categories {
-		nodes, err := s.repo.FindNodesByCategory(ctx, userID, category.ID)
+		nodes, err := s.repo.FindNodesByCategory(ctx, userID, string(category.ID))
 		if err != nil {
 			continue
 		}
-		counts[category.ID] = len(nodes)
+		counts[string(category.ID)] = len(nodes)
 	}
 
 	if len(counts) > 0 {
@@ -475,7 +493,7 @@ func (s *enhancedService) updateCategoryCounts(ctx context.Context, userID strin
 	}
 }
 
-// Implement the basic Service interface by delegating to a basic service
+// CreateCategory implements the basic Service interface by delegating to CreateCategoryWithParent
 func (s *enhancedService) CreateCategory(ctx context.Context, userID, title, description string) (*domain.Category, error) {
 	return s.CreateCategoryWithParent(ctx, userID, title, description, nil)
 }

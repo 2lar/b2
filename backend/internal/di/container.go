@@ -238,14 +238,18 @@ func (c *Container) getRepositoryFactoryConfig() repository.FactoryConfig {
 		return repository.ProductionFactoryConfig()
 	case "testing":
 		// Create testing factory config directly 
-		return repository.NewFactoryBuilder().
-			WithLogging(false, repository.LoggingConfig{}). // Reduce test noise
-			WithCaching(false, repository.CachingConfig{}). // Predictable test behavior
-			WithMetrics(false, repository.MetricsConfig{}). // Faster tests
-			WithRetries(false, repository.DefaultRetryConfig()).               // Predictable test failures
-			StrictMode(true).                               // Fail fast in tests
-			WithValidation(true).
-			Build().config
+		return repository.FactoryConfig{
+			LoggingConfig:     repository.LoggingConfig{},
+			CachingConfig:     repository.CachingConfig{},
+			MetricsConfig:     repository.MetricsConfig{},
+			RetryConfig:       repository.DefaultRetryConfig(),
+			EnableLogging:     false,
+			EnableCaching:     false,
+			EnableMetrics:     false,
+			EnableRetries:     false,
+			StrictMode:        true,
+			EnableValidation:  true,
+		}
 	default:
 		return repository.DevelopmentFactoryConfig()
 	}
@@ -278,8 +282,8 @@ func (c *Container) initializeServices() {
 		c.IdempotencyStore,
 	)
 	
-	// Initialize category service with segregated repositories
-	c.CategoryService = categoryService.NewService(c.CategoryRepository, c.NodeRepository)
+	// Initialize enhanced category service with repository
+	c.CategoryService = categoryService.NewEnhancedService(c.Repository, nil) // LLM service can be nil for now
 }
 
 // initializeHandlers sets up the handler layer.
