@@ -154,7 +154,7 @@ func (s *Service) buildHierarchyPrompt(categories []domain.Category) string {
 	categoryList := make([]string, len(categories))
 	for i, cat := range categories {
 		categoryList[i] = fmt.Sprintf(`{"id": "%s", "name": "%s", "description": "%s"}`,
-			cat.ID, cat.Title, cat.Description)
+			cat.ID, cat.Name, cat.Description)
 	}
 
 	return fmt.Sprintf(`Analyze these categories and suggest parent-child relationships:
@@ -181,7 +181,7 @@ func (s *Service) buildSimilarityPrompt(categories []domain.Category, threshold 
 	categoryList := make([]string, len(categories))
 	for i, cat := range categories {
 		categoryList[i] = fmt.Sprintf(`{"id": "%s", "name": "%s", "description": "%s"}`,
-			cat.ID, cat.Title, cat.Description)
+			cat.ID, cat.Name, cat.Description)
 	}
 
 	return fmt.Sprintf(`Find categories that are very similar and might be duplicates or should be merged:
@@ -223,7 +223,7 @@ func (s *Service) formatExistingCategories(categories []domain.Category) string 
 		if desc == "" {
 			desc = "No description"
 		}
-		formatted = append(formatted, fmt.Sprintf("- %s (ID: %s): %s", cat.Title, cat.ID, desc))
+		formatted = append(formatted, fmt.Sprintf("- %s (ID: %s): %s", cat.Name, cat.ID, desc))
 	}
 
 	return strings.Join(formatted, "\n")

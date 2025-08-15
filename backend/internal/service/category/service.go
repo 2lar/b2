@@ -1,319 +1,99 @@
-// Package category provides business logic for category management and memory organization.
 package category
 
 import (
 	"context"
-	"time"
-
+	"fmt"
 	"brain2-backend/internal/domain"
-	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
-
-	"github.com/google/uuid"
 )
 
-// Service defines the interface for category-related business operations.
+// AIService defines the interface for AI-powered categorization features
+type AIService interface {
+	SuggestCategories(ctx context.Context, content string, userID string) ([]domain.CategorySuggestion, error)
+	CategorizeNode(ctx context.Context, node domain.Node) ([]domain.Category, error)
+}
+
+// Service defines the interface for basic category operations
 type Service interface {
-	// CreateCategory creates a new category with validation
+	GetCategoryDetails(ctx context.Context, userID string, id domain.CategoryID) (*domain.Category, error)
 	CreateCategory(ctx context.Context, userID, title, description string) (*domain.Category, error)
-
-	// UpdateCategory modifies an existing category
-	UpdateCategory(ctx context.Context, userID, categoryID, title, description string) (*domain.Category, error)
-
-	// DeleteCategory removes a category and all its memory associations
-	DeleteCategory(ctx context.Context, userID, categoryID string) error
-
-	// GetCategory retrieves a single category by ID
-	GetCategory(ctx context.Context, userID, categoryID string) (*domain.Category, error)
-
-	// ListCategories retrieves all categories for a user
 	ListCategories(ctx context.Context, userID string) ([]domain.Category, error)
-
-	// AssignNodeToCategory associates a node with a category
+	GetCategory(ctx context.Context, userID, categoryID string) (*domain.Category, error)
+	UpdateCategory(ctx context.Context, userID, categoryID, title, description string) (*domain.Category, error)
+	DeleteCategory(ctx context.Context, userID, categoryID string) error
 	AssignNodeToCategory(ctx context.Context, userID, categoryID, nodeID string) error
-
-	// RemoveNodeFromCategory removes a node from a category
-	RemoveNodeFromCategory(ctx context.Context, userID, categoryID, nodeID string) error
-
-	// GetNodesInCategory retrieves all nodes in a specific category
 	GetNodesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error)
-
-	// GetCategoriesForNode retrieves all categories that contain a specific node
+	RemoveNodeFromCategory(ctx context.Context, userID, categoryID, nodeID string) error
 	GetCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error)
 }
 
-// service implements the Service interface with concrete business logic using segregated repositories.
-type service struct {
-	// Segregated repository dependencies - only what this service needs  
-	categoryRepo repository.CategoryRepository
-	nodeRepo     repository.NodeRepository
+// BasicService encapsulates the business logic for categories.
+type BasicService struct {
+	// The service now depends on the specific, domain-defined interface.
+	// This makes the dependency explicit and clear.
+	categoryRepo domain.CategoryRepository
+	aiService    AIService // Assuming AIService is still needed
 }
 
-// NewService creates a new category service with segregated repositories.
-func NewService(categoryRepo repository.CategoryRepository, nodeRepo repository.NodeRepository) Service {
-	return &service{
-		categoryRepo: categoryRepo,
-		nodeRepo:     nodeRepo,
-	}
-}
-
-// NewServiceFromRepository creates a category service from a monolithic repository (for backward compatibility).
-func NewServiceFromRepository(repo repository.Repository) Service {
-	return &service{
+// NewService creates a new category service.
+func NewService(repo domain.CategoryRepository, aiSvc AIService) Service {
+	return &BasicService{
 		categoryRepo: repo,
-		nodeRepo:     repo,
+		aiService:    aiSvc,
 	}
 }
 
-// CreateCategory creates a new category with validation.
-func (s *service) CreateCategory(ctx context.Context, userID, title, description string) (*domain.Category, error) {
-	if userID == "" {
-		return nil, appErrors.NewValidation("userID cannot be empty")
-	}
-	if title == "" {
-		return nil, appErrors.NewValidation("title cannot be empty")
-	}
-	if len(title) > 100 {
-		return nil, appErrors.NewValidation("title cannot exceed 100 characters")
-	}
-	if len(description) > 500 {
-		return nil, appErrors.NewValidation("description cannot exceed 500 characters")
-	}
-
-	category := domain.Category{
-		ID:          uuid.New().String(),
-		UserID:      userID,
-		Title:       title,
-		Description: description,
-		CreatedAt:   time.Now(),
-	}
-
-	if err := s.categoryRepo.CreateCategory(ctx, category); err != nil {
-		return nil, appErrors.Wrap(err, "failed to create category in repository")
-	}
-
-	return &category, nil
+// GetCategoryDetails retrieves a category using the repository.
+// The service logic is now simpler and more focused on orchestration.
+func (s *BasicService) GetCategoryDetails(ctx context.Context, userID string, id domain.CategoryID) (*domain.Category, error) {
+	// The call is now simple, direct, and type-safe.
+	return s.categoryRepo.FindByID(ctx, userID, id)
 }
 
-// UpdateCategory modifies an existing category with validation.
-func (s *service) UpdateCategory(ctx context.Context, userID, categoryID, title, description string) (*domain.Category, error) {
-	if userID == "" {
-		return nil, appErrors.NewValidation("userID cannot be empty")
-	}
-	if categoryID == "" {
-		return nil, appErrors.NewValidation("categoryID cannot be empty")
-	}
-	if title == "" {
-		return nil, appErrors.NewValidation("title cannot be empty")
-	}
-	if len(title) > 100 {
-		return nil, appErrors.NewValidation("title cannot exceed 100 characters")
-	}
-	if len(description) > 500 {
-		return nil, appErrors.NewValidation("description cannot exceed 500 characters")
-	}
-
-	// Check if category exists and belongs to user
-	existingCategory, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
-	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to check for existing category")
-	}
-	if existingCategory == nil {
-		return nil, appErrors.NewNotFound("category not found")
-	}
-
-	updatedCategory := domain.Category{
-		ID:          categoryID,
-		UserID:      userID,
-		Title:       title,
-		Description: description,
-		CreatedAt:   time.Now(), // Update timestamp
-	}
-
-	if err := s.categoryRepo.UpdateCategory(ctx, updatedCategory); err != nil {
-		return nil, appErrors.Wrap(err, "failed to update category in repository")
-	}
-
-	return &updatedCategory, nil
+// CreateCategory creates a new category with the given details
+func (s *BasicService) CreateCategory(ctx context.Context, userID, title, description string) (*domain.Category, error) {
+	// For now, return an error since the basic service doesn't have a repository implementation
+	// that matches the expected methods. This will be handled by the enhanced service.
+	return nil, fmt.Errorf("CreateCategory not implemented in BasicService - use EnhancedService")
 }
 
-// DeleteCategory removes a category and all its memory associations.
-func (s *service) DeleteCategory(ctx context.Context, userID, categoryID string) error {
-	if userID == "" {
-		return appErrors.NewValidation("userID cannot be empty")
-	}
-	if categoryID == "" {
-		return appErrors.NewValidation("categoryID cannot be empty")
-	}
-
-	// Check if category exists and belongs to user
-	existingCategory, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
-	if err != nil {
-		return appErrors.Wrap(err, "failed to check for existing category")
-	}
-	if existingCategory == nil {
-		return appErrors.NewNotFound("category not found")
-	}
-
-	return s.categoryRepo.DeleteCategory(ctx, userID, categoryID)
+// ListCategories lists all categories for a user
+func (s *BasicService) ListCategories(ctx context.Context, userID string) ([]domain.Category, error) {
+	return nil, fmt.Errorf("ListCategories not implemented in BasicService - use EnhancedService")
 }
 
-// GetCategory retrieves a single category by ID.
-func (s *service) GetCategory(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
-	if userID == "" {
-		return nil, appErrors.NewValidation("userID cannot be empty")
-	}
-	if categoryID == "" {
-		return nil, appErrors.NewValidation("categoryID cannot be empty")
-	}
-
-	category, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
-	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to get category from repository")
-	}
-	if category == nil {
-		return nil, appErrors.NewNotFound("category not found")
-	}
-
-	return category, nil
+// GetCategory retrieves a category by ID
+func (s *BasicService) GetCategory(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+	categoryIDTyped := domain.CategoryID(categoryID)
+	return s.categoryRepo.FindByID(ctx, userID, categoryIDTyped)
 }
 
-// ListCategories retrieves all categories for a user.
-func (s *service) ListCategories(ctx context.Context, userID string) ([]domain.Category, error) {
-	if userID == "" {
-		return nil, appErrors.NewValidation("userID cannot be empty")
-	}
-
-	query := repository.CategoryQuery{
-		UserID: userID,
-	}
-
-	categories, err := s.categoryRepo.FindCategories(ctx, query)
-	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to list categories from repository")
-	}
-
-	return categories, nil
+// UpdateCategory updates an existing category
+func (s *BasicService) UpdateCategory(ctx context.Context, userID, categoryID, title, description string) (*domain.Category, error) {
+	return nil, fmt.Errorf("UpdateCategory not implemented in BasicService - use EnhancedService")
 }
 
-// AssignNodeToCategory associates a node with a category with validation.
-func (s *service) AssignNodeToCategory(ctx context.Context, userID, categoryID, nodeID string) error {
-	if userID == "" {
-		return appErrors.NewValidation("userID cannot be empty")
-	}
-	if categoryID == "" {
-		return appErrors.NewValidation("categoryID cannot be empty")
-	}
-	if nodeID == "" {
-		return appErrors.NewValidation("nodeID cannot be empty")
-	}
-
-	// Verify category exists and belongs to user
-	category, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
-	if err != nil {
-		return appErrors.Wrap(err, "failed to verify category")
-	}
-	if category == nil {
-		return appErrors.NewNotFound("category not found")
-	}
-
-	// Verify node exists and belongs to user
-	node, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
-	if err != nil {
-		return appErrors.Wrap(err, "failed to verify node")
-	}
-	if node == nil {
-		return appErrors.NewNotFound("node not found")
-	}
-
-	mapping := domain.NodeCategory{
-		UserID:     userID,
-		NodeID:     nodeID,
-		CategoryID: categoryID,
-		Confidence: 1.0,
-		Method:     "manual",
-		CreatedAt:  time.Now(),
-	}
-	return s.categoryRepo.AssignNodeToCategory(ctx, mapping)
+// DeleteCategory deletes a category
+func (s *BasicService) DeleteCategory(ctx context.Context, userID, categoryID string) error {
+	categoryIDTyped := domain.CategoryID(categoryID)
+	return s.categoryRepo.Delete(ctx, userID, categoryIDTyped)
 }
 
-// RemoveNodeFromCategory removes a node from a category with validation.
-func (s *service) RemoveNodeFromCategory(ctx context.Context, userID, categoryID, nodeID string) error {
-	if userID == "" {
-		return appErrors.NewValidation("userID cannot be empty")
-	}
-	if categoryID == "" {
-		return appErrors.NewValidation("categoryID cannot be empty")
-	}
-	if nodeID == "" {
-		return appErrors.NewValidation("nodeID cannot be empty")
-	}
-
-	// Verify category exists and belongs to user
-	category, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
-	if err != nil {
-		return appErrors.Wrap(err, "failed to verify category")
-	}
-	if category == nil {
-		return appErrors.NewNotFound("category not found")
-	}
-
-	return s.categoryRepo.RemoveNodeFromCategory(ctx, userID, nodeID, categoryID)
+// AssignNodeToCategory assigns a node to a category
+func (s *BasicService) AssignNodeToCategory(ctx context.Context, userID, categoryID, nodeID string) error {
+	return fmt.Errorf("AssignNodeToCategory not implemented in BasicService - use EnhancedService")
 }
 
-// GetNodesInCategory retrieves all nodes in a specific category.
-func (s *service) GetNodesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error) {
-	if userID == "" {
-		return nil, appErrors.NewValidation("userID cannot be empty")
-	}
-	if categoryID == "" {
-		return nil, appErrors.NewValidation("categoryID cannot be empty")
-	}
-
-	// Verify category exists and belongs to user
-	category, err := s.categoryRepo.FindCategoryByID(ctx, userID, categoryID)
-	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to verify category")
-	}
-	if category == nil {
-		return nil, appErrors.NewNotFound("category not found")
-	}
-
-	nodePointers, err := s.categoryRepo.FindNodesByCategory(ctx, userID, categoryID)
-	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to get nodes from repository")
-	}
-	
-	// Convert from []*domain.Node to []domain.Node
-	nodes := make([]domain.Node, len(nodePointers))
-	for i, nodePtr := range nodePointers {
-		nodes[i] = *nodePtr
-	}
-	return nodes, nil
+// GetNodesInCategory retrieves all nodes in a category
+func (s *BasicService) GetNodesInCategory(ctx context.Context, userID, categoryID string) ([]domain.Node, error) {
+	return nil, fmt.Errorf("GetNodesInCategory not implemented in BasicService - use EnhancedService")
 }
 
-// GetCategoriesForNode retrieves all categories that contain a specific node.
-func (s *service) GetCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error) {
-	if userID == "" {
-		return nil, appErrors.NewValidation("userID cannot be empty")
-	}
-	if nodeID == "" {
-		return nil, appErrors.NewValidation("nodeID cannot be empty")
-	}
+// RemoveNodeFromCategory removes a node from a category
+func (s *BasicService) RemoveNodeFromCategory(ctx context.Context, userID, categoryID, nodeID string) error {
+	return fmt.Errorf("RemoveNodeFromCategory not implemented in BasicService - use EnhancedService")
+}
 
-	// Verify node exists and belongs to user
-	node, err := s.nodeRepo.FindNodeByID(ctx, userID, nodeID)
-	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to verify node")
-	}
-	if node == nil {
-		return nil, appErrors.NewNotFound("node not found")
-	}
-
-	categories, err := s.categoryRepo.FindCategoriesForNode(ctx, userID, nodeID)
-	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to get categories from repository")
-	}
-
-	return categories, nil
+// GetCategoriesForNode retrieves all categories for a node
+func (s *BasicService) GetCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error) {
+	return nil, fmt.Errorf("GetCategoriesForNode not implemented in BasicService - use EnhancedService")
 }

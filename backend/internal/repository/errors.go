@@ -31,9 +31,15 @@ const (
 	ErrCodeInconsistentState ErrorCode = "INCONSISTENT_STATE"
 
 	// Infrastructure errors
-	ErrCodeUnavailable     ErrorCode = "SERVICE_UNAVAILABLE"
-	ErrCodeInternalError   ErrorCode = "INTERNAL_ERROR"
-	ErrCodeConnectionError ErrorCode = "CONNECTION_ERROR"
+	ErrCodeUnavailable       ErrorCode = "SERVICE_UNAVAILABLE"
+	ErrCodeInternalError     ErrorCode = "INTERNAL_ERROR"
+	ErrCodeConnectionError   ErrorCode = "CONNECTION_ERROR"
+	ErrCodeConnectionFailed  ErrorCode = "CONNECTION_FAILED"
+	
+	// Unit of Work specific errors
+	ErrCodeInvalidOperation         ErrorCode = "INVALID_OPERATION"
+	ErrCodeEventPublishingFailed    ErrorCode = "EVENT_PUBLISHING_FAILED"
+	ErrCodeTransactionConflict      ErrorCode = "TRANSACTION_CONFLICT"
 )
 
 // RepositoryError represents a standardized repository error

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"time"
 )
 
@@ -16,16 +17,16 @@ import (
 //   - Factory Pattern: Uses factory methods for complex construction
 type Node struct {
 	// Private fields ensure encapsulation - external code must use methods
-	id        NodeID      // Value object for type safety
-	content   Content     // Value object with business rules  
-	keywords  Keywords    // Value object with keyword logic
-	tags      Tags        // Value object for tag management
-	userID    UserID      // Value object for user identification
-	createdAt time.Time   // When the node was created
-	updatedAt time.Time   // When the node was last updated
-	version   Version     // For optimistic locking
-	archived  bool        // Whether the node is archived
-	
+	id        NodeID    // Value object for type safety
+	content   Content   // Value object with business rules
+	keywords  Keywords  // Value object with keyword logic
+	tags      Tags      // Value object for tag management
+	userID    UserID    // Value object for user identification
+	createdAt time.Time // When the node was created
+	updatedAt time.Time // When the node was last updated
+	version   Version   // For optimistic locking
+	archived  bool      // Whether the node is archived
+
 	// Domain events that occurred during this aggregate's lifetime
 	events []DomainEvent
 }
@@ -45,11 +46,11 @@ func NewNode(userID UserID, content Content, tags Tags) (*Node, error) {
 	if err := content.Validate(); err != nil {
 		return nil, NewDomainError("invalid_content", "node content validation failed", err)
 	}
-	
+
 	now := time.Now()
 	nodeID := NewNodeID()
 	keywords := content.ExtractKeywords()
-	
+
 	node := &Node{
 		id:        nodeID,
 		userID:    userID,
@@ -62,16 +63,16 @@ func NewNode(userID UserID, content Content, tags Tags) (*Node, error) {
 		archived:  false,
 		events:    []DomainEvent{},
 	}
-	
+
 	// Generate domain event for node creation
 	event := NewNodeCreatedEvent(nodeID, userID, content, keywords, tags, node.version)
 	node.addEvent(event)
-	
+
 	return node, nil
 }
 
 // Factory method for reconstructing nodes from persistence (no events generated)
-func ReconstructNode(id NodeID, userID UserID, content Content, keywords Keywords, tags Tags, 
+func ReconstructNode(id NodeID, userID UserID, content Content, keywords Keywords, tags Tags,
 	createdAt, updatedAt time.Time, version Version, archived bool) *Node {
 	return &Node{
 		id:        id,
@@ -93,22 +94,22 @@ func ReconstructNodeFromPrimitives(id, userID, content string, keywords, tags []
 	if err != nil {
 		return nil, err
 	}
-	
+
 	userIDVO, err := NewUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	contentVO, err := NewContent(content)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	keywordsVO := NewKeywords(keywords)
 	tagsVO := NewTags(tags...)
 	versionVO := ParseVersion(version)
-	
-	return ReconstructNode(nodeID, userIDVO, contentVO, keywordsVO, tagsVO, 
+
+	return ReconstructNode(nodeID, userIDVO, contentVO, keywordsVO, tagsVO,
 		createdAt, createdAt, versionVO, false), nil
 }
 
@@ -173,25 +174,25 @@ func (n *Node) UpdateContent(newContent Content) error {
 	if n.archived {
 		return ErrCannotUpdateArchivedNode
 	}
-	
+
 	if n.content.Equals(newContent) {
 		return nil // No change needed
 	}
-	
+
 	// Store old values for events
 	oldContent := n.content
 	oldKeywords := n.keywords
-	
+
 	// Apply changes
 	n.content = newContent
 	n.keywords = newContent.ExtractKeywords()
 	n.updatedAt = time.Now()
 	n.version = n.version.Next()
-	
+
 	// Generate domain event
 	event := NewNodeContentUpdatedEvent(n.id, n.userID, oldContent, newContent, oldKeywords, n.keywords, n.version)
 	n.addEvent(event)
-	
+
 	return nil
 }
 
@@ -206,24 +207,24 @@ func (n *Node) UpdateTags(newTags Tags) error {
 	if n.archived {
 		return ErrCannotUpdateArchivedNode
 	}
-	
+
 	// Check if tags actually changed (simple equality check)
 	if tagsEqual(n.tags, newTags) {
 		return nil // No change needed
 	}
-	
+
 	// Store old values for events
 	oldTags := n.tags
-	
+
 	// Apply changes
 	n.tags = newTags
 	n.updatedAt = time.Now()
 	n.version = n.version.Next()
-	
+
 	// Generate domain event
 	event := NewNodeTagsUpdatedEvent(n.id, n.userID, oldTags, newTags, n.version)
 	n.addEvent(event)
-	
+
 	return nil
 }
 
@@ -237,15 +238,15 @@ func (n *Node) Archive(reason string) error {
 	if n.archived {
 		return NewBusinessRuleError("archive_archived_node", "Node", "cannot archive already archived node")
 	}
-	
+
 	n.archived = true
 	n.updatedAt = time.Now()
 	n.version = n.version.Next()
-	
+
 	// Generate domain event
 	event := NewNodeArchivedEvent(n.id, n.userID, reason, n.version)
 	n.addEvent(event)
-	
+
 	return nil
 }
 
@@ -259,15 +260,15 @@ func (n *Node) CanConnectTo(target *Node) error {
 	if n.id.Equals(target.id) {
 		return ErrCannotConnectToSelf
 	}
-	
+
 	if !n.userID.Equals(target.userID) {
 		return ErrCrossUserConnection
 	}
-	
+
 	if n.archived || target.archived {
 		return ErrCannotConnectArchivedNodes
 	}
-	
+
 	return nil
 }
 
@@ -276,11 +277,11 @@ func (n *Node) CalculateSimilarityTo(other *Node) float64 {
 	if n.id.Equals(other.id) {
 		return 0 // Same node has no similarity for connection purposes
 	}
-	
+
 	// Weighted combination of keyword and tag similarity
 	keywordSimilarity := n.keywords.Overlap(other.keywords)
 	tagSimilarity := n.tags.Overlap(other.tags)
-	
+
 	// Weight keywords more heavily than tags
 	return keywordSimilarity*0.7 + tagSimilarity*0.3
 }
@@ -323,17 +324,26 @@ func (n *Node) addEvent(event DomainEvent) {
 func tagsEqual(tags1, tags2 Tags) bool {
 	slice1 := tags1.ToSlice()
 	slice2 := tags2.ToSlice()
-	
+
 	if len(slice1) != len(slice2) {
 		return false
 	}
-	
+
 	for i, tag := range slice1 {
 		if tag != slice2[i] {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
+// =====
+
+// NodeRepository defines the persistence methods for a Node.
+type NodeRepository interface {
+	FindByID(ctx context.Context, userID string, id NodeID) (*Node, error)
+	FindByGraphID(ctx context.Context, userID string, graphID GraphID) ([]*Node, error)
+	Save(ctx context.Context, node *Node) error
+	Delete(ctx context.Context, userID string, id NodeID) error
+}

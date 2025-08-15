@@ -11,6 +11,7 @@ import (
 	"brain2-backend/infrastructure/dynamodb"
 	"brain2-backend/internal/config"
 	"brain2-backend/internal/handlers"
+	"brain2-backend/internal/infrastructure/decorators"
 	"brain2-backend/internal/repository"
 	categoryService "brain2-backend/internal/service/category"
 	memoryService "brain2-backend/internal/service/memory"
@@ -19,9 +20,11 @@ import (
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
 // Container holds all application dependencies with lifecycle management.
+// Enhanced for Phase 2 repository pattern excellence
 type Container struct {
 	// Configuration
 	Config *config.Config
@@ -34,7 +37,7 @@ type Container struct {
 	DynamoDBClient    *awsDynamodb.Client
 	EventBridgeClient *awsEventbridge.Client
 
-	// Repository Layer - Segregated interfaces for better dependency management
+	// Repository Layer - Phase 2 Enhanced Architecture
 	NodeRepository         repository.NodeRepository
 	EdgeRepository         repository.EdgeRepository
 	KeywordRepository      repository.KeywordRepository
@@ -45,6 +48,17 @@ type Container struct {
 	// Composed repository for backward compatibility
 	Repository       repository.Repository
 	IdempotencyStore repository.IdempotencyStore
+	
+	// Phase 2 Repository Pattern Enhancements
+	RepositoryFactory    *repository.RepositoryFactory
+	UnitOfWorkProvider   repository.UnitOfWorkProvider
+	QueryExecutor        repository.QueryExecutor
+	RepositoryManager    repository.RepositoryManager
+	
+	// Cross-cutting concerns
+	Logger           *zap.Logger
+	Cache            decorators.Cache
+	MetricsCollector decorators.MetricsCollector
 
 	// Service Layer  
 	MemoryService   memoryService.Service
@@ -144,9 +158,9 @@ func (c *Container) initializeAWSClients() error {
 	return nil
 }
 
-// initializeRepository sets up the repository layer.
+// initializeRepository sets up the repository layer with Phase 2 enhancements.
 func (c *Container) initializeRepository() error {
-	log.Println("Initializing repository layer...")
+	log.Println("Initializing repository layer with Phase 2 enhancements...")
 	startTime := time.Now()
 
 	if c.DynamoDBClient == nil {
@@ -156,13 +170,30 @@ func (c *Container) initializeRepository() error {
 		return fmt.Errorf("config not loaded")
 	}
 
-	// Initialize segregated repositories
-	c.NodeRepository = dynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
-	c.EdgeRepository = dynamodb.NewEdgeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
-	c.KeywordRepository = dynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
-	c.TransactionalRepository = dynamodb.NewTransactionalRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
-	c.CategoryRepository = dynamodb.NewCategoryRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
-	c.GraphRepository = dynamodb.NewGraphRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	// Initialize cross-cutting concerns first
+	c.initializeCrossCuttingConcerns()
+
+	// Phase 2: Initialize repository factory with environment-specific configuration
+	factoryConfig := c.getRepositoryFactoryConfig()
+	c.RepositoryFactory = repository.NewRepositoryFactory(factoryConfig)
+
+	// Initialize base repositories (without decorators)
+	baseNodeRepo := dynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	baseEdgeRepo := dynamodb.NewEdgeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	baseKeywordRepo := dynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	baseTransactionalRepo := dynamodb.NewTransactionalRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	baseCategoryRepo := dynamodb.NewCategoryRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	baseGraphRepo := dynamodb.NewGraphRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+
+	// Phase 2: Apply decorators using the factory
+	c.NodeRepository = c.RepositoryFactory.CreateNodeRepository(baseNodeRepo, c.Logger, c.Cache, c.MetricsCollector)
+	c.EdgeRepository = c.RepositoryFactory.CreateEdgeRepository(baseEdgeRepo, c.Logger, c.Cache, c.MetricsCollector)
+	c.CategoryRepository = c.RepositoryFactory.CreateCategoryRepository(baseCategoryRepo, c.Logger, c.Cache, c.MetricsCollector)
+	
+	// Repositories that don't need decorators yet (can be enhanced later)
+	c.KeywordRepository = baseKeywordRepo
+	c.TransactionalRepository = baseTransactionalRepo
+	c.GraphRepository = baseGraphRepo
 
 	// Initialize composed repository for backward compatibility
 	c.Repository = dynamodb.NewRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
@@ -170,7 +201,72 @@ func (c *Container) initializeRepository() error {
 	// Initialize idempotency store with 24-hour TTL
 	c.IdempotencyStore = dynamodb.NewIdempotencyStore(c.DynamoDBClient, c.Config.TableName, 24*time.Hour)
 
-	log.Printf("Repository layer initialized in %v", time.Since(startTime))
+	// Phase 2: Initialize advanced repository components
+	if err := c.initializeAdvancedRepositoryComponents(); err != nil {
+		return fmt.Errorf("failed to initialize advanced repository components: %w", err)
+	}
+
+	log.Printf("Enhanced repository layer initialized in %v", time.Since(startTime))
+	return nil
+}
+
+// initializeCrossCuttingConcerns sets up logging, caching, and metrics
+func (c *Container) initializeCrossCuttingConcerns() {
+	// Initialize logger
+	var err error
+	c.Logger, err = zap.NewProduction()
+	if err != nil {
+		// Fallback to development logger
+		c.Logger, _ = zap.NewDevelopment()
+	}
+
+	// Initialize cache (placeholder - would be Redis/Memcached in production)
+	c.Cache = &NoOpCache{} // Placeholder implementation
+
+	// Initialize metrics collector (placeholder - would be Prometheus/StatsD in production)  
+	c.MetricsCollector = &NoOpMetricsCollector{} // Placeholder implementation
+}
+
+// getRepositoryFactoryConfig returns environment-appropriate factory configuration
+func (c *Container) getRepositoryFactoryConfig() repository.FactoryConfig {
+	// Determine environment and return appropriate config
+	// This would typically be based on environment variables or config
+	environment := "development" // Placeholder
+	
+	switch environment {
+	case "production":
+		return repository.ProductionFactoryConfig()
+	case "testing":
+		// Create testing factory config directly 
+		return repository.FactoryConfig{
+			LoggingConfig:     repository.LoggingConfig{},
+			CachingConfig:     repository.CachingConfig{},
+			MetricsConfig:     repository.MetricsConfig{},
+			RetryConfig:       repository.DefaultRetryConfig(),
+			EnableLogging:     false,
+			EnableCaching:     false,
+			EnableMetrics:     false,
+			EnableRetries:     false,
+			StrictMode:        true,
+			EnableValidation:  true,
+		}
+	default:
+		return repository.DevelopmentFactoryConfig()
+	}
+}
+
+// initializeAdvancedRepositoryComponents initializes Phase 2 advanced components
+func (c *Container) initializeAdvancedRepositoryComponents() error {
+	// Initialize Unit of Work provider (placeholder implementation)
+	// c.UnitOfWorkProvider = NewUnitOfWorkProvider(...)
+	
+	// Initialize Query Executor (placeholder implementation)
+	// c.QueryExecutor = NewQueryExecutor(...)
+	
+	// Initialize Repository Manager (placeholder implementation) 
+	// c.RepositoryManager = NewRepositoryManager(...)
+	
+	log.Println("Advanced repository components initialized (placeholder implementations)")
 	return nil
 }
 
@@ -186,8 +282,8 @@ func (c *Container) initializeServices() {
 		c.IdempotencyStore,
 	)
 	
-	// Initialize category service with segregated repositories
-	c.CategoryService = categoryService.NewService(c.CategoryRepository, c.NodeRepository)
+	// Initialize enhanced category service with repository
+	c.CategoryService = categoryService.NewEnhancedService(c.Repository, nil) // LLM service can be nil for now
 }
 
 // initializeHandlers sets up the handler layer.
@@ -388,3 +484,42 @@ func (c *Container) Health(ctx context.Context) map[string]string {
 func InitializeContainer() (*Container, error) {
 	return NewContainer()
 }
+
+// Placeholder implementations for Phase 2 components
+// These would be replaced with actual implementations in production
+
+// NoOpCache is a placeholder cache implementation that does nothing
+type NoOpCache struct{}
+
+func (c *NoOpCache) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	return nil, false, nil
+}
+
+func (c *NoOpCache) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	return nil
+}
+
+func (c *NoOpCache) Delete(ctx context.Context, key string) error {
+	return nil
+}
+
+func (c *NoOpCache) Clear(ctx context.Context, pattern string) error {
+	return nil
+}
+
+// NoOpMetricsCollector is a placeholder metrics collector that does nothing
+type NoOpMetricsCollector struct{}
+
+func (m *NoOpMetricsCollector) IncrementCounter(name string, tags map[string]string) {}
+
+func (m *NoOpMetricsCollector) IncrementCounterBy(name string, value float64, tags map[string]string) {}
+
+func (m *NoOpMetricsCollector) SetGauge(name string, value float64, tags map[string]string) {}
+
+func (m *NoOpMetricsCollector) IncrementGauge(name string, value float64, tags map[string]string) {}
+
+func (m *NoOpMetricsCollector) RecordDuration(name string, duration time.Duration, tags map[string]string) {}
+
+func (m *NoOpMetricsCollector) RecordValue(name string, value float64, tags map[string]string) {}
+
+func (m *NoOpMetricsCollector) RecordDistribution(name string, value float64, tags map[string]string) {}
