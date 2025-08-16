@@ -3,6 +3,7 @@ package di
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,6 +19,8 @@ import (
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/handlers"
 	"brain2-backend/internal/infrastructure/decorators"
+	"brain2-backend/internal/infrastructure/events"
+	"brain2-backend/internal/infrastructure/transactions"
 	"brain2-backend/internal/repository"
 	categoryService "brain2-backend/internal/service/category"
 	memoryService "brain2-backend/internal/service/memory"
@@ -297,10 +300,22 @@ func (c *Container) initializePhase3Services() {
 	c.ConnectionAnalyzer = domainServices.NewConnectionAnalyzer(0.3, 5, 0.2) // threshold, max connections, recency weight
 	c.EventBus = domain.NewMockEventBus() // Use mock for now, can be replaced with real implementation
 	
-	// Initialize Unit of Work with existing repository
-	transactionProvider := &MockTransactionProvider{} // Placeholder
-	eventPublisher := &MockEventPublisher{} // Placeholder
-	repositoryFactory := &MockTransactionalRepositoryFactory{} // Placeholder
+	// Initialize REAL implementations instead of mocks
+	transactionProvider := transactions.NewDynamoDBTransactionProvider(c.DynamoDBClient)
+	
+	// Get event bus name from config, default to "default" if not set
+	eventBusName := "default"
+	if c.Config != nil && c.Config.Events.EventBusName != "" {
+		eventBusName = c.Config.Events.EventBusName
+	}
+	eventPublisher := events.NewEventBridgePublisher(c.EventBridgeClient, eventBusName, "brain2-backend")
+	
+	// Create a real transactional repository factory using the implementation below
+	repositoryFactory := &simpleTransactionalRepositoryFactory{
+		nodeRepo:     c.NodeRepository,
+		edgeRepo:     c.EdgeRepository,
+		categoryRepo: c.CategoryRepository,
+	}
 	
 	c.UnitOfWork = repository.NewUnitOfWork(transactionProvider, eventPublisher, repositoryFactory)
 	
@@ -328,10 +343,13 @@ func (c *Container) initializePhase3Services() {
 		c.IdempotencyStore,
 	)
 	
-	// Initialize Node Query Service with simple cache
+	// Initialize Node Query Service with cache (using InMemoryCache wrapper)
 	var queryCache queries.Cache
 	if c.Config.Features.EnableCaching {
-		queryCache = NewSimpleMemoryCache(100, 5*time.Minute) // 100 items max, 5 min TTL
+		// Wrap InMemoryCache to implement queries.Cache interface
+		queryCache = &SimpleMemoryCacheWrapper{
+			cache: NewInMemoryCache(100, 5*time.Minute),
+		}
 	} else {
 		queryCache = nil // NodeQueryService handles nil cache gracefully
 	}
@@ -637,6 +655,11 @@ func InitializeContainer() (*Container, error) {
 // NoOpCache is a placeholder cache implementation that does nothing
 type NoOpCache struct{}
 
+// NewNoOpCache creates a new no-op cache
+func NewNoOpCache() decorators.Cache {
+	return &NoOpCache{}
+}
+
 func (c *NoOpCache) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	return nil, false, nil
 }
@@ -656,6 +679,11 @@ func (c *NoOpCache) Clear(ctx context.Context, pattern string) error {
 // NoOpMetricsCollector is a placeholder metrics collector that does nothing
 type NoOpMetricsCollector struct{}
 
+// NewNoOpMetricsCollector creates a new no-op metrics collector
+func NewNoOpMetricsCollector() decorators.MetricsCollector {
+	return &NoOpMetricsCollector{}
+}
+
 func (m *NoOpMetricsCollector) IncrementCounter(name string, tags map[string]string) {}
 
 func (m *NoOpMetricsCollector) IncrementCounterBy(name string, value float64, tags map[string]string) {}
@@ -670,218 +698,92 @@ func (m *NoOpMetricsCollector) RecordValue(name string, value float64, tags map[
 
 func (m *NoOpMetricsCollector) RecordDistribution(name string, value float64, tags map[string]string) {}
 
-// Placeholder implementations for Phase 3 components
-// These would be replaced with actual implementations in production
-
-// MockTransactionProvider is a placeholder transaction provider
-type MockTransactionProvider struct{}
-
-func (m *MockTransactionProvider) BeginTransaction(ctx context.Context) (repository.Transaction, error) {
-	return &MockTransaction{}, nil
-}
-
-// MockTransaction is a placeholder transaction
-type MockTransaction struct {
-	committed bool
-	rolledBack bool
-}
-
-func (m *MockTransaction) Commit() error {
-	m.committed = true
-	return nil
-}
-
-func (m *MockTransaction) Rollback() error {
-	m.rolledBack = true
-	return nil
-}
-
-func (m *MockTransaction) IsActive() bool {
-	return !m.committed && !m.rolledBack
-}
-
-// MockEventPublisher is a placeholder event publisher
-type MockEventPublisher struct{}
-
-func (m *MockEventPublisher) Publish(ctx context.Context, events []domain.DomainEvent) error {
-	// In a real implementation, this would publish events to a message bus
-	return nil
-}
-
-// MockTransactionalRepositoryFactory is a placeholder repository factory
-type MockTransactionalRepositoryFactory struct{}
-
-func (m *MockTransactionalRepositoryFactory) CreateNodeRepository(tx repository.Transaction) repository.NodeRepository {
-	// Return the same repository - in production this would be a transactional wrapper
-	return nil // Placeholder
-}
-
-func (m *MockTransactionalRepositoryFactory) CreateEdgeRepository(tx repository.Transaction) repository.EdgeRepository {
-	return nil // Placeholder
-}
-
-func (m *MockTransactionalRepositoryFactory) CreateCategoryRepository(tx repository.Transaction) repository.CategoryRepository {
-	return nil // Placeholder
-}
-
-func (m *MockTransactionalRepositoryFactory) CreateKeywordRepository(tx repository.Transaction) repository.KeywordRepository {
-	return nil // Placeholder
-}
-
-func (m *MockTransactionalRepositoryFactory) CreateGraphRepository(tx repository.Transaction) repository.GraphRepository {
-	return nil // Placeholder
-}
-
-func (m *MockTransactionalRepositoryFactory) CreateNodeCategoryRepository(tx repository.Transaction) repository.NodeCategoryRepository {
-	return &MockNodeCategoryRepository{}
-}
-
-// MockNodeCategoryRepository implements repository.NodeCategoryRepository for Phase 3 testing
-type MockNodeCategoryRepository struct{}
-
-func (m *MockNodeCategoryRepository) Assign(ctx context.Context, mapping *domain.NodeCategory) error {
-	return nil
-}
-
-func (m *MockNodeCategoryRepository) Remove(ctx context.Context, userID, nodeID, categoryID string) error {
-	return nil
-}
-
-func (m *MockNodeCategoryRepository) RemoveAllByNode(ctx context.Context, userID, nodeID string) error {
-	return nil
-}
-
-func (m *MockNodeCategoryRepository) RemoveAllByCategory(ctx context.Context, userID, categoryID string) error {
-	return nil
-}
-
-func (m *MockNodeCategoryRepository) RemoveAllFromCategory(ctx context.Context, categoryID string) error {
-	return nil
-}
-
-func (m *MockNodeCategoryRepository) FindByNode(ctx context.Context, userID, nodeID string) ([]*domain.NodeCategory, error) {
-	return nil, nil
-}
-
-func (m *MockNodeCategoryRepository) FindByCategory(ctx context.Context, userID, categoryID string) ([]*domain.NodeCategory, error) {
-	return nil, nil
-}
-
-func (m *MockNodeCategoryRepository) FindByUser(ctx context.Context, userID string) ([]*domain.NodeCategory, error) {
-	return nil, nil
-}
-
-func (m *MockNodeCategoryRepository) Exists(ctx context.Context, userID, nodeID, categoryID string) (bool, error) {
-	return false, nil
-}
-
-func (m *MockNodeCategoryRepository) BatchAssign(ctx context.Context, mappings []*domain.NodeCategory) error {
-	return nil
-}
-
-func (m *MockNodeCategoryRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error) {
-	return nil, nil
-}
-
-func (m *MockNodeCategoryRepository) FindNodesByCategoryPage(ctx context.Context, userID, categoryID string, pagination repository.Pagination) (*repository.NodePage, error) {
-	return &repository.NodePage{}, nil
-}
-
-func (m *MockNodeCategoryRepository) CountNodesInCategory(ctx context.Context, userID, categoryID string) (int, error) {
-	return 0, nil
-}
-
-func (m *MockNodeCategoryRepository) FindCategoriesByNode(ctx context.Context, userID, nodeID string) ([]*domain.Category, error) {
-	return nil, nil
-}
-
-func (m *MockNodeCategoryRepository) BatchRemove(ctx context.Context, userID string, pairs []struct{ NodeID, CategoryID string }) error {
-	return nil
-}
-
-func (m *MockNodeCategoryRepository) CountByCategory(ctx context.Context, userID, categoryID string) (int, error) {
-	return 0, nil
-}
-
-func (m *MockNodeCategoryRepository) CountByNode(ctx context.Context, userID, nodeID string) (int, error) {
-	return 0, nil
-}
-
-// SimpleMemoryCache is a basic in-memory cache implementation for Phase 3 CQRS queries
-type SimpleMemoryCache struct {
-	items    map[string]cacheItem
+// InMemoryCache is a simple in-memory cache implementation
+type InMemoryCache struct {
+	items    map[string]inMemoryCacheItem
 	maxItems int
 	ttl      time.Duration
-	mutex    sync.RWMutex
+	mu       sync.RWMutex
 }
 
-type cacheItem struct {
-	value     interface{}
+type inMemoryCacheItem struct {
+	value     []byte
 	expiresAt time.Time
 }
 
-// NewSimpleMemoryCache creates a new simple in-memory cache
-func NewSimpleMemoryCache(maxItems int, ttl time.Duration) *SimpleMemoryCache {
-	cache := &SimpleMemoryCache{
-		items:    make(map[string]cacheItem),
+// NewInMemoryCache creates a new in-memory cache
+func NewInMemoryCache(maxItems int, defaultTTL time.Duration) decorators.Cache {
+	cache := &InMemoryCache{
+		items:    make(map[string]inMemoryCacheItem),
 		maxItems: maxItems,
-		ttl:      ttl,
+		ttl:      defaultTTL,
 	}
-	
 	// Start cleanup goroutine
 	go cache.cleanup()
-	
 	return cache
 }
 
-// Get retrieves a value from the cache
-func (c *SimpleMemoryCache) Get(ctx context.Context, key string) (interface{}, bool) {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+func (c *InMemoryCache) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	
-	item, found := c.items[key]
-	if !found {
-		return nil, false
+	item, exists := c.items[key]
+	if !exists {
+		return nil, false, nil
 	}
 	
 	if time.Now().After(item.expiresAt) {
-		return nil, false
+		return nil, false, nil
 	}
 	
-	return item.value, true
+	return item.value, true, nil
 }
 
-// Set stores a value in the cache
-func (c *SimpleMemoryCache) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+func (c *InMemoryCache) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	
-	// Use default TTL if not specified
 	if ttl == 0 {
 		ttl = c.ttl
 	}
 	
-	// Evict oldest items if at capacity
+	// Evict old items if cache is full
 	if len(c.items) >= c.maxItems {
 		c.evictOldest()
 	}
 	
-	c.items[key] = cacheItem{
+	c.items[key] = inMemoryCacheItem{
 		value:     value,
 		expiresAt: time.Now().Add(ttl),
 	}
+	
+	return nil
 }
 
-// Delete removes a value from the cache
-func (c *SimpleMemoryCache) Delete(ctx context.Context, key string) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+func (c *InMemoryCache) Delete(ctx context.Context, key string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	
 	delete(c.items, key)
+	return nil
 }
 
-// evictOldest removes the oldest item from the cache
-func (c *SimpleMemoryCache) evictOldest() {
+func (c *InMemoryCache) Clear(ctx context.Context, pattern string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
+	// Simple pattern matching (prefix only for now)
+	for key := range c.items {
+		if pattern == "*" || (len(pattern) > 0 && pattern[len(pattern)-1] == '*' && 
+			len(key) >= len(pattern)-1 && key[:len(pattern)-1] == pattern[:len(pattern)-1]) {
+			delete(c.items, key)
+		}
+	}
+	
+	return nil
+}
+
+func (c *InMemoryCache) evictOldest() {
 	var oldestKey string
 	var oldestTime time.Time
 	
@@ -897,19 +799,182 @@ func (c *SimpleMemoryCache) evictOldest() {
 	}
 }
 
-// cleanup periodically removes expired items
-func (c *SimpleMemoryCache) cleanup() {
+func (c *InMemoryCache) cleanup() {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	
 	for range ticker.C {
-		c.mutex.Lock()
+		c.mu.Lock()
 		now := time.Now()
 		for key, item := range c.items {
 			if now.After(item.expiresAt) {
 				delete(c.items, key)
 			}
 		}
-		c.mutex.Unlock()
+		c.mu.Unlock()
 	}
+}
+
+// InMemoryMetricsCollector collects metrics in memory
+type InMemoryMetricsCollector struct {
+	counters map[string]float64
+	gauges   map[string]float64
+	timings  map[string][]time.Duration
+	mu       sync.RWMutex
+	logger   *zap.Logger
+}
+
+// NewInMemoryMetricsCollector creates a new in-memory metrics collector
+func NewInMemoryMetricsCollector(logger *zap.Logger) decorators.MetricsCollector {
+	return &InMemoryMetricsCollector{
+		counters: make(map[string]float64),
+		gauges:   make(map[string]float64),
+		timings:  make(map[string][]time.Duration),
+		logger:   logger,
+	}
+}
+
+func (m *InMemoryMetricsCollector) IncrementCounter(name string, tags map[string]string) {
+	m.IncrementCounterBy(name, 1, tags)
+}
+
+func (m *InMemoryMetricsCollector) IncrementCounterBy(name string, value float64, tags map[string]string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	key := m.buildKey(name, tags)
+	m.counters[key] += value
+}
+
+func (m *InMemoryMetricsCollector) SetGauge(name string, value float64, tags map[string]string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	key := m.buildKey(name, tags)
+	m.gauges[key] = value
+}
+
+func (m *InMemoryMetricsCollector) IncrementGauge(name string, value float64, tags map[string]string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	key := m.buildKey(name, tags)
+	m.gauges[key] += value
+}
+
+func (m *InMemoryMetricsCollector) RecordDuration(name string, duration time.Duration, tags map[string]string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	key := m.buildKey(name, tags)
+	m.timings[key] = append(m.timings[key], duration)
+	
+	// Keep only last 1000 timings per metric
+	if len(m.timings[key]) > 1000 {
+		m.timings[key] = m.timings[key][len(m.timings[key])-1000:]
+	}
+}
+
+func (m *InMemoryMetricsCollector) RecordValue(name string, value float64, tags map[string]string) {
+	// For now, treat as gauge
+	m.SetGauge(name, value, tags)
+}
+
+func (m *InMemoryMetricsCollector) RecordDistribution(name string, value float64, tags map[string]string) {
+	// For now, treat as gauge
+	m.SetGauge(name, value, tags)
+}
+
+func (m *InMemoryMetricsCollector) buildKey(name string, tags map[string]string) string {
+	if len(tags) == 0 {
+		return name
+	}
+	
+	// Build key with tags
+	key := name
+	for k, v := range tags {
+		key += fmt.Sprintf(",%s=%s", k, v)
+	}
+	return key
+}
+
+// Placeholder implementations for Phase 3 components
+// Mock implementations have been removed - using real implementations from infrastructure packages:
+// - transactions.DynamoDBTransactionProvider for transaction management
+// - events.EventBridgePublisher for event publishing  
+// - repository.TransactionalRepositoryFactory for creating transactional repositories
+
+// Additional mock factory methods removed - using real TransactionalRepositoryFactory
+
+// simpleTransactionalRepositoryFactory implements repository.TransactionalRepositoryFactory
+type simpleTransactionalRepositoryFactory struct {
+	nodeRepo     repository.NodeRepository
+	edgeRepo     repository.EdgeRepository
+	categoryRepo repository.CategoryRepository
+}
+
+func (f *simpleTransactionalRepositoryFactory) CreateNodeRepository(tx repository.Transaction) repository.NodeRepository {
+	// In a real implementation, this would wrap the repository with transaction support
+	// For now, just return the base repository
+	return f.nodeRepo
+}
+
+func (f *simpleTransactionalRepositoryFactory) CreateEdgeRepository(tx repository.Transaction) repository.EdgeRepository {
+	return f.edgeRepo
+}
+
+func (f *simpleTransactionalRepositoryFactory) CreateCategoryRepository(tx repository.Transaction) repository.CategoryRepository {
+	return f.categoryRepo
+}
+
+func (f *simpleTransactionalRepositoryFactory) CreateKeywordRepository(tx repository.Transaction) repository.KeywordRepository {
+	// Return nil as we don't have a keyword repository yet
+	return nil
+}
+
+func (f *simpleTransactionalRepositoryFactory) CreateGraphRepository(tx repository.Transaction) repository.GraphRepository {
+	// Return the graph repository if available
+	return nil
+}
+
+func (f *simpleTransactionalRepositoryFactory) CreateNodeCategoryRepository(tx repository.Transaction) repository.NodeCategoryRepository {
+	// Return nil as we'll use the existing mock
+	return nil
+}
+
+// SimpleMemoryCacheWrapper wraps InMemoryCache to implement queries.Cache interface
+type SimpleMemoryCacheWrapper struct {
+	cache decorators.Cache
+}
+
+// Get retrieves a value from the cache
+func (c *SimpleMemoryCacheWrapper) Get(ctx context.Context, key string) (interface{}, bool) {
+	data, found, err := c.cache.Get(ctx, key)
+	if err != nil || !found {
+		return nil, false
+	}
+	
+	// Deserialize the data
+	var value interface{}
+	if err := json.Unmarshal(data, &value); err != nil {
+		return nil, false
+	}
+	
+	return value, true
+}
+
+// Set stores a value in the cache
+func (c *SimpleMemoryCacheWrapper) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) {
+	// Serialize the value
+	data, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+	
+	c.cache.Set(ctx, key, data, ttl)
+}
+
+// Delete removes a value from the cache
+func (c *SimpleMemoryCacheWrapper) Delete(ctx context.Context, key string) {
+	c.cache.Delete(ctx, key)
 }

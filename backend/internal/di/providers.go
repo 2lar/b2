@@ -266,14 +266,26 @@ func provideCategoryRepository(
 
 // provideCache creates a cache implementation based on configuration.
 func provideCache(cfg *config.Config, logger *zap.Logger) decorators.Cache {
-	// No-op cache implementation
-	return &NoOpCache{}
+	// Create cache based on configuration
+	if !cfg.Features.EnableCaching {
+		return NewNoOpCache()
+	}
+	
+	// Use in-memory cache for now
+	// In production, this could be Redis, Memcached, etc.
+	return NewInMemoryCache(1000, 5*time.Minute)
 }
 
 // provideMetricsCollector creates a metrics collector based on configuration.
 func provideMetricsCollector(cfg *config.Config, logger *zap.Logger) decorators.MetricsCollector {
-	// No-op metrics implementation
-	return &NoOpMetricsCollector{}
+	// Create metrics collector based on configuration
+	if !cfg.Features.EnableMetrics {
+		return NewNoOpMetricsCollector()
+	}
+	
+	// Use in-memory metrics collector for now
+	// In production, this could be Prometheus, CloudWatch, StatsD, etc.
+	return NewInMemoryMetricsCollector(logger)
 }
 
 // ============================================================================
