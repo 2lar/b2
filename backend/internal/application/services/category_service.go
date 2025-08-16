@@ -338,7 +338,7 @@ func (s *CategoryService) AssignNodeToCategory(ctx context.Context, cmd *command
 	if node == nil {
 		return nil, appErrors.NewNotFound("node not found")
 	}
-	if !node.UserID().Equals(userID) {
+	if !node.UserID.Equals(userID) {
 		return nil, appErrors.NewUnauthorized("node belongs to different user")
 	}
 

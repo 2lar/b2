@@ -86,17 +86,17 @@ func (ca *ConnectionAnalyzer) FindPotentialConnections(node *domain.Node, candid
 func (ca *ConnectionAnalyzer) analyzeConnection(source, target *domain.Node) *ConnectionCandidate {
 	// Calculate similarity scores
 	keywordSimilarity := source.Keywords().Overlap(target.Keywords())
-	tagSimilarity := source.Tags().Overlap(target.Tags())
+	tagSimilarity := source.Tags.Overlap(target.Tags)
 	
 	// Find matching elements for explanation
 	matchingKeywords := ca.findMatchingKeywords(source.Keywords(), target.Keywords())
-	sharedTags := ca.findSharedTags(source.Tags(), target.Tags())
+	sharedTags := ca.findSharedTags(source.Tags, target.Tags)
 	
 	// Calculate base similarity (weighted combination)
 	baseSimilarity := keywordSimilarity*0.7 + tagSimilarity*0.3
 	
 	// Calculate recency factor (more recent content gets higher score)
-	recencyScore := ca.calculateRecencyScore(target.CreatedAt())
+	recencyScore := ca.calculateRecencyScore(target.CreatedAt)
 	
 	// Calculate final relevance score
 	relevanceScore := baseSimilarity*0.8 + recencyScore*ca.recencyWeight

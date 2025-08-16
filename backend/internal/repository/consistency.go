@@ -63,31 +63,31 @@ func (cv *ConsistencyValidator) ValidateGraphConsistency(ctx context.Context, us
 	// Create node index for fast lookup
 	nodeIndex := make(map[string]bool)
 	for _, node := range graph.Nodes {
-		nodeIndex[node.ID().String()] = true
+		nodeIndex[node.ID.String()] = true
 	}
 
 	// Validate all edges point to existing nodes
 	for _, edge := range graph.Edges {
-		if !nodeIndex[edge.SourceID().String()] {
+		if !nodeIndex[edge.SourceID.String()] {
 			return NewRepositoryErrorWithDetails(
 				ErrCodeDataCorruption,
 				"edge references non-existent source node",
 				map[string]interface{}{
-					"edge_source": edge.SourceID().String(),
-					"edge_target": edge.TargetID().String(),
+					"edge_source": edge.SourceID.String(),
+					"edge_target": edge.TargetID.String(),
 					"user_id":     userID,
 				},
 				nil,
 			)
 		}
 
-		if !nodeIndex[edge.TargetID().String()] {
+		if !nodeIndex[edge.TargetID.String()] {
 			return NewRepositoryErrorWithDetails(
 				ErrCodeDataCorruption,
 				"edge references non-existent target node",
 				map[string]interface{}{
-					"edge_source": edge.SourceID().String(),
-					"edge_target": edge.TargetID().String(),
+					"edge_source": edge.SourceID.String(),
+					"edge_target": edge.TargetID.String(),
 					"user_id":     userID,
 				},
 				nil,
@@ -131,20 +131,20 @@ func (cv *ConsistencyValidator) validateBidirectionalEdges(_ context.Context, us
 
 	// Build edge map
 	for _, edge := range edges {
-		key := fmt.Sprintf("%s->%s", edge.SourceID().String(), edge.TargetID().String())
+		key := fmt.Sprintf("%s->%s", edge.SourceID.String(), edge.TargetID.String())
 		edgeMap[key] = true
 	}
 
 	// Check for missing reverse edges
 	for _, edge := range edges {
-		reverseKey := fmt.Sprintf("%s->%s", edge.TargetID().String(), edge.SourceID().String())
+		reverseKey := fmt.Sprintf("%s->%s", edge.TargetID.String(), edge.SourceID.String())
 		if !edgeMap[reverseKey] {
 			return NewRepositoryErrorWithDetails(
 				ErrCodeDataCorruption,
 				"missing bidirectional edge",
 				map[string]interface{}{
-					"source_id":       edge.SourceID().String(),
-					"target_id":       edge.TargetID().String(),
+					"source_id":       edge.SourceID.String(),
+					"target_id":       edge.TargetID.String(),
 					"missing_reverse": reverseKey,
 					"user_id":         userID,
 				},
@@ -254,7 +254,7 @@ func (dcm *DataCleanupManager) CleanupUserData(ctx context.Context, userID strin
 func (dcm *DataCleanupManager) cleanupOrphanedEdges(_ context.Context, _ string, graph *domain.Graph, options CleanupOptions) (int, error) {
 	nodeIndex := make(map[string]bool)
 	for _, node := range graph.Nodes {
-		nodeIndex[node.ID().String()] = true
+		nodeIndex[node.ID.String()] = true
 	}
 
 	orphanedCount := 0
@@ -262,11 +262,11 @@ func (dcm *DataCleanupManager) cleanupOrphanedEdges(_ context.Context, _ string,
 	for _, edge := range graph.Edges {
 		isOrphaned := false
 
-		if !nodeIndex[edge.SourceID().String()] {
+		if !nodeIndex[edge.SourceID.String()] {
 			isOrphaned = true
 		}
 
-		if !nodeIndex[edge.TargetID().String()] {
+		if !nodeIndex[edge.TargetID.String()] {
 			isOrphaned = true
 		}
 
@@ -276,7 +276,7 @@ func (dcm *DataCleanupManager) cleanupOrphanedEdges(_ context.Context, _ string,
 			if !options.DryRun {
 				// Note: This would require a method to delete specific edges
 				// For now, we'll log the orphaned edge
-				fmt.Printf("Would remove orphaned edge: %s -> %s\n", edge.SourceID().String(), edge.TargetID().String())
+				fmt.Printf("Would remove orphaned edge: %s -> %s\n", edge.SourceID.String(), edge.TargetID.String())
 			}
 		}
 	}
@@ -293,8 +293,8 @@ func (dcm *DataCleanupManager) cleanupInvalidNodes(ctx context.Context, userID s
 			invalidCount++
 
 			if !options.DryRun {
-				if deleteErr := dcm.repo.DeleteNode(ctx, userID, node.ID().String()); deleteErr != nil {
-					return invalidCount, fmt.Errorf("failed to delete invalid node %s: %w", node.ID().String(), deleteErr)
+				if deleteErr := dcm.repo.DeleteNode(ctx, userID, node.ID.String()); deleteErr != nil {
+					return invalidCount, fmt.Errorf("failed to delete invalid node %s: %w", node.ID.String(), deleteErr)
 				}
 			}
 		}
@@ -371,19 +371,19 @@ func (ic *IntegrityChecker) CheckIntegrity(ctx context.Context, userID string) (
 	// Check node integrity
 	nodeIndex := make(map[string]bool)
 	for _, node := range graph.Nodes {
-		nodeIndex[node.ID().String()] = true
+		nodeIndex[node.ID.String()] = true
 
 		// Validate node data
 		if err := ValidateNode(node); err != nil {
 			report.CorruptedNodes++
-			report.Errors = append(report.Errors, fmt.Sprintf("Node %s validation failed: %v", node.ID().String(), err))
+			report.Errors = append(report.Errors, fmt.Sprintf("Node %s validation failed: %v", node.ID.String(), err))
 		}
 
 		// Check for invalid keywords
 		for _, keyword := range node.Keywords().ToSlice() {
 			if keyword == "" {
 				report.InvalidKeywords++
-				report.Errors = append(report.Errors, fmt.Sprintf("Node %s has empty keyword", node.ID().String()))
+				report.Errors = append(report.Errors, fmt.Sprintf("Node %s has empty keyword", node.ID.String()))
 			}
 		}
 	}
@@ -392,27 +392,27 @@ func (ic *IntegrityChecker) CheckIntegrity(ctx context.Context, userID string) (
 	edgeMap := make(map[string]bool)
 	for _, edge := range graph.Edges {
 		// Check for orphaned edges
-		if !nodeIndex[edge.SourceID().String()] {
+		if !nodeIndex[edge.SourceID.String()] {
 			report.OrphanedEdges++
-			report.Errors = append(report.Errors, fmt.Sprintf("Edge references non-existent source node: %s", edge.SourceID().String()))
+			report.Errors = append(report.Errors, fmt.Sprintf("Edge references non-existent source node: %s", edge.SourceID.String()))
 		}
 
-		if !nodeIndex[edge.TargetID().String()] {
+		if !nodeIndex[edge.TargetID.String()] {
 			report.OrphanedEdges++
-			report.Errors = append(report.Errors, fmt.Sprintf("Edge references non-existent target node: %s", edge.TargetID().String()))
+			report.Errors = append(report.Errors, fmt.Sprintf("Edge references non-existent target node: %s", edge.TargetID.String()))
 		}
 
 		// Build edge map for bidirectional check
-		key := fmt.Sprintf("%s->%s", edge.SourceID().String(), edge.TargetID().String())
+		key := fmt.Sprintf("%s->%s", edge.SourceID.String(), edge.TargetID.String())
 		edgeMap[key] = true
 	}
 
 	// Check for missing bidirectional edges
 	for _, edge := range graph.Edges {
-		reverseKey := fmt.Sprintf("%s->%s", edge.TargetID().String(), edge.SourceID().String())
+		reverseKey := fmt.Sprintf("%s->%s", edge.TargetID.String(), edge.SourceID.String())
 		if !edgeMap[reverseKey] {
 			report.MissingEdges++
-			report.Errors = append(report.Errors, fmt.Sprintf("Missing bidirectional edge: %s -> %s", edge.TargetID().String(), edge.SourceID().String()))
+			report.Errors = append(report.Errors, fmt.Sprintf("Missing bidirectional edge: %s -> %s", edge.TargetID.String(), edge.SourceID.String()))
 		}
 	}
 

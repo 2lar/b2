@@ -46,17 +46,17 @@ func IsValidationError(err error) bool {
 // ValidateNode validates a domain node for repository operations
 func ValidateNode(node *domain.Node) error {
 	// Validate node ID
-	if err := validateID(node.ID().String(), "NodeID"); err != nil {
+	if err := validateID(node.ID.String(), "NodeID"); err != nil {
 		return err
 	}
 
 	// Validate user ID
-	if err := validateID(node.UserID().String(), "UserID"); err != nil {
+	if err := validateID(node.UserID.String(), "UserID"); err != nil {
 		return err
 	}
 
 	// Validate content
-	if err := validateContent(node.Content().String()); err != nil {
+	if err := validateContent(node.Content.String()); err != nil {
 		return err
 	}
 
@@ -66,10 +66,10 @@ func ValidateNode(node *domain.Node) error {
 	}
 
 	// Validate version
-	if node.Version().Int() < 0 {
+	if node.Version < 0 {
 		return ValidationError{
 			Field:   "Version",
-			Value:   fmt.Sprintf("%d", node.Version().Int()),
+			Value:   fmt.Sprintf("%d", node.Version),
 			Message: "version cannot be negative",
 		}
 	}

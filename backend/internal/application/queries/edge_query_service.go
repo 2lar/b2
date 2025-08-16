@@ -218,8 +218,8 @@ func (s *EdgeQueryService) GetConnectionStatistics(ctx context.Context, query *G
 		totalWeight += weight
 
 		// Count connections per node
-		sourceID := edge.SourceID().String()
-		targetID := edge.TargetID().String()
+		sourceID := edge.SourceID.String()
+		targetID := edge.TargetID.String()
 		connectionCounts[sourceID]++
 		connectionCounts[targetID]++
 
@@ -388,13 +388,13 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 
 		for _, edge := range userEdges {
 			// Get source node data
-			if sourceNode, err := s.nodeReader.FindByID(ctx, edge.SourceID()); err == nil && sourceNode != nil {
-				nodeDataMap[edge.SourceID().String()] = dto.ToNodeView(sourceNode)
+			if sourceNode, err := s.nodeReader.FindByID(ctx, edge.SourceID); err == nil && sourceNode != nil {
+				nodeDataMap[edge.SourceID.String()] = dto.ToNodeView(sourceNode)
 			}
 
 			// Get target node data
-			if targetNode, err := s.nodeReader.FindByID(ctx, edge.TargetID()); err == nil && targetNode != nil {
-				nodeDataMap[edge.TargetID().String()] = dto.ToNodeView(targetNode)
+			if targetNode, err := s.nodeReader.FindByID(ctx, edge.TargetID); err == nil && targetNode != nil {
+				nodeDataMap[edge.TargetID.String()] = dto.ToNodeView(targetNode)
 			}
 		}
 

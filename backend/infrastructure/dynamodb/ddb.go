@@ -141,13 +141,13 @@ func getCanonicalEdge(nodeA, nodeB string) (owner, target string) {
 
 // CreateNodeAndKeywords transactionally saves a node and its keyword indexes.
 func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *domain.Node) error {
-	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID.String(), node.ID.String())
 	transactItems := []types.TransactWriteItem{}
 
 	// 1. Add the main node metadata to the transaction
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
-		PK: pk, SK: "METADATA#v0", NodeID: node.ID().String(), UserID: node.UserID().String(), Content: node.Content().String(),
-		Keywords: node.Keywords().ToSlice(), Tags: node.Tags().ToSlice(), IsLatest: true, Version: node.Version().Int(), Timestamp: node.CreatedAt().Format(time.RFC3339),
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID.String(), UserID: node.UserID.String(), Content: node.Content.String(),
+		Keywords: node.Keywords().ToSlice(), Tags: node.Tags.ToSlice(), IsLatest: true, Version: node.Version, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
@@ -161,8 +161,8 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *domain.
 		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{
 			PK:     pk,
 			SK:     fmt.Sprintf("KEYWORD#%s", keyword),
-			GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID().String(), keyword),
-			GSI1SK: fmt.Sprintf("NODE#%s", node.ID().String()),
+			GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID.String(), keyword),
+			GSI1SK: fmt.Sprintf("NODE#%s", node.ID.String()),
 		})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal keyword item")
@@ -184,17 +184,17 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *domain.
 
 // CreateNodeWithEdges saves a node, its keywords, and its connections in a single transaction.
 func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error {
-	log.Printf("DEBUG CreateNodeWithEdges: creating node ID=%s with keywords=%v and %d edges", node.ID().String(), node.Keywords().ToSlice(), len(relatedNodeIDs))
+	log.Printf("DEBUG CreateNodeWithEdges: creating node ID=%s with keywords=%v and %d edges", node.ID.String(), node.Keywords().ToSlice(), len(relatedNodeIDs))
 	
 	// Ensure node starts with version 0
 	// Note: Version is immutable in rich domain model, using Version().Int() for DDB
 	
-	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID.String(), node.ID.String())
 	transactItems := []types.TransactWriteItem{}
 
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
-		PK: pk, SK: "METADATA#v0", NodeID: node.ID().String(), UserID: node.UserID().String(), Content: node.Content().String(),
-		Keywords: node.Keywords().ToSlice(), Tags: node.Tags().ToSlice(), IsLatest: true, Version: node.Version().Int(), Timestamp: node.CreatedAt().Format(time.RFC3339),
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID.String(), UserID: node.UserID.String(), Content: node.Content.String(),
+		Keywords: node.Keywords().ToSlice(), Tags: node.Tags.ToSlice(), IsLatest: true, Version: node.Version, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
@@ -203,8 +203,8 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *domain.No
 	log.Printf("DEBUG CreateNodeWithEdges: added node item with PK=%s", pk)
 
 	for _, keyword := range node.Keywords().ToSlice() {
-		gsi1PK := fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID().String(), keyword)
-		gsi1SK := fmt.Sprintf("NODE#%s", node.ID().String())
+		gsi1PK := fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID.String(), keyword)
+		gsi1SK := fmt.Sprintf("NODE#%s", node.ID.String())
 		
 		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{
 			PK: pk, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: gsi1PK, GSI1SK: gsi1SK,
@@ -218,21 +218,21 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *domain.No
 
 	// Create canonical edges - only one edge per connection
 	for _, relatedNodeID := range relatedNodeIDs {
-		ownerID, targetID := getCanonicalEdge(node.ID().String(), relatedNodeID)
-		ownerPK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), ownerID)
+		ownerID, targetID := getCanonicalEdge(node.ID.String(), relatedNodeID)
+		ownerPK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID.String(), ownerID)
 
 		edgeItem, err := attributevalue.MarshalMap(ddbEdge{
 			PK:       ownerPK,
 			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", targetID),
 			TargetID: targetID,
-			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", node.UserID().String()),
+			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", node.UserID.String()),
 			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", ownerID, targetID),
 		})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal canonical edge item")
 		}
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edgeItem}})
-		log.Printf("DEBUG CreateNodeWithEdges: added edge from %s to %s (canonical: ownerPK=%s)", node.ID().String(), relatedNodeID, ownerPK)
+		log.Printf("DEBUG CreateNodeWithEdges: added edge from %s to %s (canonical: ownerPK=%s)", node.ID.String(), relatedNodeID, ownerPK)
 	}
 
 	log.Printf("DEBUG CreateNodeWithEdges: executing transaction with %d items", len(transactItems))
@@ -242,17 +242,17 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *domain.No
 		return appErrors.Wrap(err, "transaction to create node with edges failed")
 	}
 	
-	log.Printf("DEBUG CreateNodeWithEdges: transaction completed successfully for node %s", node.ID().String())
+	log.Printf("DEBUG CreateNodeWithEdges: transaction completed successfully for node %s", node.ID.String())
 	return nil
 }
 
 // UpdateNodeAndEdges transactionally updates a node and its connections.
 func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error {
-	if err := r.clearNodeConnections(ctx, node.UserID().String(), node.ID().String()); err != nil {
+	if err := r.clearNodeConnections(ctx, node.UserID.String(), node.ID.String()); err != nil {
 		return appErrors.Wrap(err, "failed to clear old connections for update")
 	}
 
-	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID.String(), node.ID.String())
 	transactItems := []types.TransactWriteItem{}
 
 	// Optimistic locking: check that the version matches before updating
@@ -262,11 +262,11 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.Nod
 		UpdateExpression:    aws.String("SET Content = :c, Keywords = :k, Tags = :tg, Timestamp = :t, Version = Version + :inc"),
 		ConditionExpression: aws.String("Version = :expected_version"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":c":                &types.AttributeValueMemberS{Value: node.Content().String()},
+			":c":                &types.AttributeValueMemberS{Value: node.Content.String()},
 			":k":                &types.AttributeValueMemberL{Value: toAttributeValueList(node.Keywords().ToSlice())},
-			":tg":               &types.AttributeValueMemberL{Value: toAttributeValueList(node.Tags().ToSlice())},
+			":tg":               &types.AttributeValueMemberL{Value: toAttributeValueList(node.Tags.ToSlice())},
 			":t":                &types.AttributeValueMemberS{Value: time.Now().Format(time.RFC3339)},
-			":expected_version": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version().Int())},
+			":expected_version": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version)},
 			":inc":              &types.AttributeValueMemberN{Value: "1"},
 		},
 	})
@@ -274,13 +274,13 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.Nod
 		// Check for optimistic lock conflicts
 		var ccf *types.ConditionalCheckFailedException
 		if errors.As(err, &ccf) {
-			return repository.NewOptimisticLockError(node.ID().String(), node.Version().Int(), node.Version().Int()+1)
+			return repository.NewOptimisticLockError(node.ID.String(), node.Version, node.Version+1)
 		}
 		return appErrors.Wrap(err, "failed to update node metadata")
 	}
 
 	for _, keyword := range node.Keywords().ToSlice() {
-		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{PK: pk, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID().String(), keyword), GSI1SK: fmt.Sprintf("NODE#%s", node.ID().String())})
+		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{PK: pk, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID.String(), keyword), GSI1SK: fmt.Sprintf("NODE#%s", node.ID.String())})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal keyword item for update")
 		}
@@ -289,14 +289,14 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.Nod
 
 	// Create canonical edges - only one edge per connection
 	for _, relatedNodeID := range relatedNodeIDs {
-		ownerID, targetID := getCanonicalEdge(node.ID().String(), relatedNodeID)
-		ownerPK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), ownerID)
+		ownerID, targetID := getCanonicalEdge(node.ID.String(), relatedNodeID)
+		ownerPK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID.String(), ownerID)
 
 		edgeItem, err := attributevalue.MarshalMap(ddbEdge{
 			PK:       ownerPK,
 			SK:       fmt.Sprintf("EDGE#RELATES_TO#%s", targetID),
 			TargetID: targetID,
-			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", node.UserID().String()),
+			GSI2PK:   fmt.Sprintf("USER#%s#EDGE", node.UserID.String()),
 			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", ownerID, targetID),
 		})
 		if err != nil {
@@ -321,8 +321,8 @@ func (r *ddbRepository) CreateEdge(ctx context.Context, edge *domain.Edge) error
 	}
 	
 	// Use canonical edge storage pattern (lexicographically ordered IDs)
-	sourceID := edge.SourceID().String()
-	targetID := edge.TargetID().String()
+	sourceID := edge.SourceID.String()
+	targetID := edge.TargetID.String()
 	userID := edge.UserID().String()
 	
 	ownerID, canonicalTargetID := getCanonicalEdge(sourceID, targetID)
@@ -386,7 +386,7 @@ func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, 
 					continue
 				}
 				if node != nil {
-					log.Printf("DEBUG FindNodesByKeywords: successfully retrieved node ID=%s, content='%s'", node.ID().String(), node.Content().String())
+					log.Printf("DEBUG FindNodesByKeywords: successfully retrieved node ID=%s, content='%s'", node.ID.String(), node.Content.String())
 					nodes = append(nodes, node)
 				} else {
 					log.Printf("WARN FindNodesByKeywords: node %s was nil after FindNodeByID", nodeID)
@@ -827,7 +827,7 @@ func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuer
 
 		var edges []*domain.Edge
 		for _, edge := range graph.Edges {
-			if edge.TargetID().String() == query.TargetID {
+			if edge.TargetID.String() == query.TargetID {
 				edges = append(edges, edge)
 			}
 		}
@@ -910,10 +910,10 @@ func (r *ddbRepository) CreateNode(ctx context.Context, node domain.Node) error 
 	// Ensure node starts with version 0
 	// Note: Version is immutable in rich domain model, using Version().Int() for DDB
 	
-	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
+	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID.String(), node.ID.String())
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
-		PK: pk, SK: "METADATA#v0", NodeID: node.ID().String(), UserID: node.UserID().String(), Content: node.Content().String(),
-		Keywords: node.Keywords().ToSlice(), Tags: node.Tags().ToSlice(), IsLatest: true, Version: node.Version().Int(), Timestamp: node.CreatedAt().Format(time.RFC3339),
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID.String(), UserID: node.UserID.String(), Content: node.Content.String(),
+		Keywords: node.Keywords().ToSlice(), Tags: node.Tags.ToSlice(), IsLatest: true, Version: node.Version, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")

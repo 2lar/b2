@@ -121,12 +121,12 @@ func (s *DemoNodeService) CreateNode(ctx context.Context, cmd CreateNodeCommand)
 
 	// 5. Convert domain object to response DTO (Domain -> Application boundary)
 	nodeView := &NodeView{
-		ID:        node.ID().String(),
-		Content:   node.Content().String(),
+		ID:        node.ID.String(),
+		Content:   node.Content.String(),
 		Keywords:  node.Keywords().ToSlice(),
-		Tags:      node.Tags().ToSlice(),
-		CreatedAt: node.CreatedAt(),
-		UpdatedAt: node.UpdatedAt(),
+		Tags:      node.Tags.ToSlice(),
+		CreatedAt: node.CreatedAt,
+		UpdatedAt: node.UpdatedAt,
 	}
 
 	// 6. Return command result
@@ -168,12 +168,12 @@ func (s *DemoNodeService) GetNode(ctx context.Context, query GetNodeQuery) (*Get
 
 	// 4. Convert domain object to view model (Domain -> Application boundary)
 	nodeView := &NodeView{
-		ID:        node.ID().String(),
-		Content:   node.Content().String(),
+		ID:        node.ID.String(),
+		Content:   node.Content.String(),
 		Keywords:  node.Keywords().ToSlice(),
-		Tags:      node.Tags().ToSlice(),
-		CreatedAt: node.CreatedAt(),
-		UpdatedAt: node.UpdatedAt(),
+		Tags:      node.Tags.ToSlice(),
+		CreatedAt: node.CreatedAt,
+		UpdatedAt: node.UpdatedAt,
 	}
 
 	// 5. Return query result
@@ -244,12 +244,12 @@ func (s *DemoQueryService) ListNodes(ctx context.Context, query ListNodesQuery) 
 		nodeViews = make([]*NodeView, len(page.Items))
 		for i, node := range page.Items {
 			nodeViews[i] = &NodeView{
-				ID:        node.ID().String(),
-				Content:   node.Content().String(),
+				ID:        node.ID.String(),
+				Content:   node.Content.String(),
 				Keywords:  node.Keywords().ToSlice(),
-				Tags:      node.Tags().ToSlice(),
-				CreatedAt: node.CreatedAt(),
-				UpdatedAt: node.UpdatedAt(),
+				Tags:      node.Tags.ToSlice(),
+				CreatedAt: node.CreatedAt,
+				UpdatedAt: node.UpdatedAt,
 			}
 		}
 	}

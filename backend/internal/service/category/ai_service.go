@@ -62,7 +62,7 @@ func NewEnhancedService(repo repository.Repository, llmSvc *llm.Service, cfg *co
 func (s *enhancedService) CategorizeNode(ctx context.Context, node domain.Node) ([]domain.Category, error) {
 	// 1. Get existing categories for context
 	existingCategories, err := s.repo.FindCategories(ctx, repository.CategoryQuery{
-		UserID: node.UserID().String(),
+		UserID: node.UserID.String(),
 	})
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to fetch existing categories")
@@ -73,13 +73,13 @@ func (s *enhancedService) CategorizeNode(ctx context.Context, node domain.Node) 
 
 	// 2. Check AI feature flag and try AI categorization first
 	if s.config != nil && s.config.Features.EnableAIProcessing && s.llmSvc != nil && s.llmSvc.IsAvailable() {
-		suggestions, err := s.llmSvc.SuggestCategories(ctx, node.Content().String(), existingCategories)
+		suggestions, err := s.llmSvc.SuggestCategories(ctx, node.Content.String(), existingCategories)
 		if err != nil {
-			log.Printf("AI categorization failed for node %s: %v", node.ID().String(), err)
+			log.Printf("AI categorization failed for node %s: %v", node.ID.String(), err)
 		} else {
 			// Process AI suggestions
 			for _, suggestion := range suggestions {
-				category, err := s.processAISuggestion(ctx, node.UserID().String(), suggestion, existingCategories)
+				category, err := s.processAISuggestion(ctx, node.UserID.String(), suggestion, existingCategories)
 				if err != nil {
 					log.Printf("Failed to process AI suggestion: %v", err)
 					continue
@@ -87,8 +87,8 @@ func (s *enhancedService) CategorizeNode(ctx context.Context, node domain.Node) 
 				if category != nil {
 					finalCategories = append(finalCategories, *category)
 					mappings = append(mappings, domain.NodeCategory{
-						UserID:     node.UserID().String(),
-						NodeID:     node.ID().String(),
+						UserID:     node.UserID.String(),
+						NodeID:     node.ID.String(),
 						CategoryID: string(category.ID),
 						Confidence: suggestion.Confidence,
 						Method:     "ai",
@@ -108,8 +108,8 @@ func (s *enhancedService) CategorizeNode(ctx context.Context, node domain.Node) 
 			finalCategories = keywordCategories
 			for _, category := range keywordCategories {
 				mappings = append(mappings, domain.NodeCategory{
-					UserID:     node.UserID().String(),
-					NodeID:     node.ID().String(),
+					UserID:     node.UserID.String(),
+					NodeID:     node.ID.String(),
 					CategoryID: string(category.ID),
 					Confidence: 0.8, // Lower confidence for keyword matching
 					Method:     "rule-based",
@@ -126,7 +126,7 @@ func (s *enhancedService) CategorizeNode(ctx context.Context, node domain.Node) 
 		}
 
 		// Update category note counts
-		s.updateCategoryCounts(ctx, node.UserID().String(), finalCategories)
+		s.updateCategoryCounts(ctx, node.UserID.String(), finalCategories)
 	}
 
 	return finalCategories, nil
@@ -359,7 +359,7 @@ func (s *enhancedService) processAISuggestion(ctx context.Context, userID string
 
 // categorizeByKeywords provides keyword-based categorization as fallback
 func (s *enhancedService) categorizeByKeywords(ctx context.Context, node domain.Node, existingCategories []domain.Category) ([]domain.Category, error) {
-	content := strings.ToLower(node.Content().String())
+	content := strings.ToLower(node.Content.String())
 	var matchedCategories []domain.Category
 
 	// Simple keyword matching against existing categories
@@ -374,7 +374,7 @@ func (s *enhancedService) categorizeByKeywords(ctx context.Context, node domain.
 
 	// If no existing categories match, create a general one
 	if len(matchedCategories) == 0 {
-		general, err := s.findOrCreateGeneralCategory(ctx, node.UserID().String())
+		general, err := s.findOrCreateGeneralCategory(ctx, node.UserID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -465,7 +465,7 @@ func (s *enhancedService) mergeTwoCategories(ctx context.Context, userID, keepID
 	for _, node := range nodes {
 		mappings = append(mappings, domain.NodeCategory{
 			UserID:     userID,
-			NodeID:     node.ID().String(),
+			NodeID:     node.ID.String(),
 			CategoryID: keepID,
 			Confidence: 0.9, // High confidence for manual merge
 			Method:     "manual",

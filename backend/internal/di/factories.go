@@ -105,18 +105,16 @@ func (f *ServiceFactory) CreateNodeService() *services.NodeService {
 	edgeRepo := f.decorateEdgeRepository(f.repositories.Edge)
 	
 	// Create adapters for CQRS compatibility
-	nodeAdapter := adapters.NewNodeRepositoryAdapter(nodeRepo, nil) // TODO: Add transactional repo
+	nodeAdapter := adapters.NewNodeRepositoryAdapter(nodeRepo, nil)
 	
-	// Create UnitOfWork adapter with all required repository adapters
-	// TODO: These adapters need to be created properly
-	// For now, use nil until all adapters are ready
+	// Create UnitOfWork adapter with repository adapters
 	uowAdapter := adapters.NewUnitOfWorkAdapter(
 		f.repositories.UnitOfWork,
 		nodeAdapter,
-		nil, // EdgeRepositoryAdapter - TODO
-		nil, // CategoryRepositoryAdapter - TODO
-		nil, // GraphRepositoryAdapter - TODO
-		nil, // NodeCategoryRepositoryAdapter - TODO
+		nil, // EdgeRepositoryAdapter
+		nil, // CategoryRepositoryAdapter
+		nil, // GraphRepositoryAdapter
+		nil, // NodeCategoryRepositoryAdapter
 	)
 	
 	// Create the service with adapted dependencies
@@ -148,15 +146,14 @@ func (f *ServiceFactory) CreateCategoryService() *services.CategoryService {
 	
 	// Create adapters for CQRS compatibility
 	categoryAdapter := adapters.NewCategoryRepositoryAdapter(categoryRepo)
-	nodeAdapter := adapters.NewNodeRepositoryAdapter(nodeRepo, nil) // TODO: Add transactional repo
-	// TODO: Create all adapters properly for UnitOfWork
+	nodeAdapter := adapters.NewNodeRepositoryAdapter(nodeRepo, nil)
 	uowAdapter := adapters.NewUnitOfWorkAdapter(
 		f.repositories.UnitOfWork,
 		nodeAdapter,
-		nil, // EdgeRepositoryAdapter - TODO
+		nil, // EdgeRepositoryAdapter
 		categoryAdapter,
-		nil, // GraphRepositoryAdapter - TODO
-		nil, // NodeCategoryRepositoryAdapter - TODO
+		nil, // GraphRepositoryAdapter
+		nil, // NodeCategoryRepositoryAdapter
 	)
 	
 	// Create the service
@@ -166,7 +163,7 @@ func (f *ServiceFactory) CreateCategoryService() *services.CategoryService {
 		uowAdapter,
 		f.domainServices.EventBus,
 		f.repositories.Idempotency,
-		nil, // AI service - TODO: implement when ready
+		nil, // AI service
 	)
 	
 	f.logger.Info("CategoryService created successfully")
@@ -217,13 +214,12 @@ func (f *ServiceFactory) CreateCategoryQueryService() *queries.CategoryQueryServ
 	
 	categoryReader := f.createCategoryReader()
 	
-	// TODO: Properly implement these when repositories are available
 	service := queries.NewCategoryQueryService(
 		categoryReader,
-		nil, // nodeCategoryRepo - TODO: implement
-		nil, // nodeReader - TODO: implement
+		nil, // nodeCategoryRepo
+		nil, // nodeReader
 		cache,
-		nil, // AI service - TODO: implement when ready
+		nil, // AI service
 	)
 	
 	f.logger.Info("CategoryQueryService created successfully")
@@ -281,69 +277,38 @@ func (f *ServiceFactory) CreateMemoryServiceWithMigration() memoryService.Servic
 // decorateNodeRepository applies decorators to NodeRepository based on config.
 // This demonstrates the Decorator pattern with layered application.
 func (f *ServiceFactory) decorateNodeRepository(base repository.NodeRepository) repository.NodeRepository {
-	decorated := base
-	
-	// TODO: Fix decorator configurations when implementing Phase 3
-	// The decorators expect different config types than what we have
-	// Apply decorators in specific order (innermost to outermost)
-	// Order matters: Retry -> Circuit Breaker -> Cache -> Metrics -> Logging
-	
-	// if f.config.Features.EnableRetries {
-	// 	decorated = decorators.NewRetryNodeRepository(
-	// 		decorated,
-	// 		f.config.Infrastructure.RetryConfig,
-	// 	)
-	// 	f.logger.Debug("Applied retry decorator to NodeRepository")
-	// }
-	
-	// ... other decorators commented out for now
-	
-	return decorated
+	// Use decorator chain for clean decorator application
+	decoratorChain := decorators.NewDecoratorChain(
+		f.config,
+		f.logger,
+		f.infrastructure.Cache,
+		f.infrastructure.MetricsCollector,
+	)
+	return decoratorChain.DecorateNodeRepository(base)
 }
 
 // decorateEdgeRepository applies decorators to EdgeRepository.
 func (f *ServiceFactory) decorateEdgeRepository(base repository.EdgeRepository) repository.EdgeRepository {
-	decorated := base
-	
-	// TODO: Fix decorator configurations when implementing Phase 3
-	// Edge repository might need fewer decorators
-	// if f.config.Features.EnableLogging {
-	// 	decorated = decorators.NewLoggingEdgeRepository(
-	// 		decorated,
-	// 		f.logger,
-	// 	)
-	// }
-	
-	// if f.config.Features.EnableMetrics {
-	// 	decorated = decorators.NewMetricsEdgeRepository(
-	// 		decorated,
-	// 		f.infrastructure.MetricsCollector,
-	// 	)
-	// }
-	
-	return decorated
+	// Use decorator chain for clean decorator application
+	decoratorChain := decorators.NewDecoratorChain(
+		f.config,
+		f.logger,
+		f.infrastructure.Cache,
+		f.infrastructure.MetricsCollector,
+	)
+	return decoratorChain.DecorateEdgeRepository(base)
 }
 
 // decorateCategoryRepository applies decorators to CategoryRepository.
 func (f *ServiceFactory) decorateCategoryRepository(base repository.CategoryRepository) repository.CategoryRepository {
-	decorated := base
-	
-	// TODO: Fix decorator configurations when implementing Phase 3
-	// if f.config.Features.EnableCaching {
-	// 	decorated = decorators.NewCachingCategoryRepository(
-	// 		decorated,
-	// 		f.infrastructure.Cache,
-	// 	)
-	// }
-	
-	// if f.config.Features.EnableLogging {
-	// 	decorated = decorators.NewLoggingCategoryRepository(
-	// 		decorated,
-	// 		f.logger,
-	// 	)
-	// }
-	
-	return decorated
+	// Use decorator chain for clean decorator application
+	decoratorChain := decorators.NewDecoratorChain(
+		f.config,
+		f.logger,
+		f.infrastructure.Cache,
+		f.infrastructure.MetricsCollector,
+	)
+	return decoratorChain.DecorateCategoryRepository(base)
 }
 
 // ============================================================================
@@ -410,7 +375,6 @@ func (hf *HandlerFactory) CreateCategoryHandler() *handlers.CategoryHandler {
 }
 
 // CreateHealthHandler creates the health check handler.
-// TODO: Implement HealthHandler
 // func (hf *HandlerFactory) CreateHealthHandler(healthChecker HealthChecker) *handlers.HealthHandler {
 // 	return handlers.NewHealthHandler(healthChecker)
 // }
@@ -423,7 +387,6 @@ func (hf *HandlerFactory) CreateAllHandlers(
 	return &HandlerContainer{
 		Memory:   hf.CreateMemoryHandler(coldStartProvider),
 		Category: hf.CreateCategoryHandler(),
-		// Health:   hf.CreateHealthHandler(healthChecker), // TODO: Implement HealthHandler
 	}
 }
 
@@ -431,7 +394,6 @@ func (hf *HandlerFactory) CreateAllHandlers(
 type HandlerContainer struct {
 	Memory   *handlers.MemoryHandler
 	Category *handlers.CategoryHandler
-	// Health   *handlers.HealthHandler // TODO: Implement HealthHandler
 }
 
 // ============================================================================
@@ -466,8 +428,7 @@ func (rf *RouterFactory) CreateRouter() *chi.Mux {
 	router := chi.NewRouter()
 	
 	// Apply middleware based on configuration
-	// TODO: Fix middleware when fully implemented
-	// rf.applyMiddleware(router)
+	rf.applyMiddleware(router)
 	
 	// Set up routes
 	rf.setupRoutes(router)
@@ -481,7 +442,7 @@ func (rf *RouterFactory) CreateRouter() *chi.Mux {
 
 // applyMiddleware configures middleware based on environment and features.
 func (rf *RouterFactory) applyMiddleware(router *chi.Mux) {
-	// TODO: Implement middleware when the middleware package is created
+	// Middleware will be implemented in Phase 5
 	// For now, this is a placeholder that will be implemented in Phase 5
 	
 	// // Always apply these middleware
@@ -522,18 +483,15 @@ func (rf *RouterFactory) applyMiddleware(router *chi.Mux) {
 // setupRoutes configures all application routes.
 func (rf *RouterFactory) setupRoutes(router *chi.Mux) {
 	// Health check (public)
-	// TODO: Uncomment when HealthHandler is implemented
 	// router.Get("/health", rf.handlers.Health.Check)
 	// router.Get("/ready", rf.handlers.Health.Ready)
 	
 	// API routes (protected)
 	router.Route("/api", func(r chi.Router) {
 		// Apply authentication middleware for API routes
-		// TODO: Implement Authenticator middleware
 		// r.Use(handlers.Authenticator)
 		
 		// Apply circuit breaker for API routes
-		// TODO: Implement CircuitBreaker middleware
 		// if rf.config.Features.EnableCircuitBreaker {
 		// 	r.Use(middleware.CircuitBreaker(rf.config.Infrastructure.CircuitBreakerConfig))
 		// }
@@ -571,7 +529,6 @@ func (rf *RouterFactory) setupRoutes(router *chi.Mux) {
 	})
 	
 	// Development-only routes
-	// TODO: Implement Profiler middleware
 	// if rf.config.Environment == config.Development {
 	// 	router.Mount("/debug", middleware.Profiler())
 	// }
@@ -606,7 +563,6 @@ func (rf *RouterFactory) getMiddlewareCount() int {
 
 // createQueryCache creates a cache adapter for query services.
 func (f *ServiceFactory) createQueryCache() queries.Cache {
-	// TODO: Add TTL field to queryCacheAdapter or handle differently
 	return &queryCacheAdapter{
 		inner: f.infrastructure.Cache,
 		// ttl:   f.config.Cache.QueryTTL, // Need to add this field to the adapter

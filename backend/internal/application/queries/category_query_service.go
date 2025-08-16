@@ -328,7 +328,7 @@ func (s *CategoryQueryService) GetCategoriesForNode(ctx context.Context, query *
 	if node == nil {
 		return nil, appErrors.NewNotFound("node not found")
 	}
-	if !node.UserID().Equals(userID) {
+	if !node.UserID.Equals(userID) {
 		return nil, appErrors.NewUnauthorized("node belongs to different user")
 	}
 

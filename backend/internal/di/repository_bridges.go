@@ -118,7 +118,7 @@ func (b *EdgeReaderBridge) FindByID(ctx context.Context, id domain.NodeID) (*dom
 		return nil, err
 	}
 	for _, edge := range edges {
-		if edge.ID().String() == id.String() {
+		if edge.ID.String() == id.String() {
 			return edge, nil
 		}
 	}
@@ -157,10 +157,10 @@ func (b *EdgeReaderBridge) FindByNode(ctx context.Context, nodeID domain.NodeID,
 	// Combine and deduplicate
 	edgeMap := make(map[string]*domain.Edge)
 	for _, e := range source {
-		edgeMap[e.ID().String()] = e
+		edgeMap[e.ID.String()] = e
 	}
 	for _, e := range target {
-		edgeMap[e.ID().String()] = e
+		edgeMap[e.ID.String()] = e
 	}
 	
 	result := make([]*domain.Edge, 0, len(edgeMap))

@@ -34,14 +34,14 @@ func ToNodeView(node *domain.Node) *NodeView {
 	}
 	
 	return &NodeView{
-		ID:        node.ID().String(),
-		Content:   node.Content().String(),
+		ID:        node.ID.String(),
+		Content:   node.Content.String(),
 		Keywords:  node.Keywords().ToSlice(),
-		Tags:      node.Tags().ToSlice(),
-		UserID:    node.UserID().String(),
-		CreatedAt: node.CreatedAt(),
-		UpdatedAt: node.UpdatedAt(),
-		Version:   node.Version().Int(),
+		Tags:      node.Tags.ToSlice(),
+		UserID:    node.UserID.String(),
+		CreatedAt: node.CreatedAt,
+		UpdatedAt: node.UpdatedAt,
+		Version:   node.Version,
 		Archived:  node.IsArchived(),
 	}
 }
@@ -71,11 +71,11 @@ func ToConnectionView(edge *domain.Edge) *ConnectionView {
 	}
 	
 	return &ConnectionView{
-		ID:           edge.ID().String(),
-		SourceNodeID: edge.SourceID().String(),
-		TargetNodeID: edge.TargetID().String(),
+		ID:           edge.ID.String(),
+		SourceNodeID: edge.SourceID.String(),
+		TargetNodeID: edge.TargetID.String(),
 		Strength:     edge.Weight(),
-		CreatedAt:    edge.CreatedAt(),
+		CreatedAt:    edge.CreatedAt,
 	}
 }
 

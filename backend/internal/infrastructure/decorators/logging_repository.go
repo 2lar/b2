@@ -88,15 +88,15 @@ func (r *LoggingNodeRepository) CreateNodeAndKeywords(ctx context.Context, node 
 	logFields := []zap.Field{
 		zap.String("operation", "create_node_and_keywords"),
 		zap.String("operation_id", operationID),
-		zap.String("user_id", node.UserID().String()),
-		zap.String("node_id", node.ID().String()),
+		zap.String("user_id", node.UserID.String()),
+		zap.String("node_id", node.ID.String()),
 	}
 	
 	if r.config.LogRequests {
 		logFields = append(logFields,
-			zap.Int("content_length", len(node.Content().String())),
+			zap.Int("content_length", len(node.Content.String())),
 			zap.Int("keyword_count", len(node.Keywords().ToSlice())),
-			zap.Int("tag_count", len(node.Tags().ToSlice())),
+			zap.Int("tag_count", len(node.Tags.ToSlice())),
 		)
 	}
 	
@@ -169,7 +169,7 @@ func (r *LoggingNodeRepository) FindNodeByID(ctx context.Context, userID, nodeID
 		
 		if r.config.LogResponses && node != nil {
 			logFields = append(logFields,
-				zap.Int("content_length", len(node.Content().String())),
+				zap.Int("content_length", len(node.Content.String())),
 				zap.Int("keyword_count", len(node.Keywords().ToSlice())),
 			)
 		}
@@ -519,8 +519,8 @@ func (r *LoggingEdgeRepository) CreateEdge(ctx context.Context, edge *domain.Edg
 		zap.String("operation", "create_edge"),
 		zap.String("operation_id", operationID),
 		zap.String("user_id", edge.UserID().String()),
-		zap.String("source_id", edge.SourceID().String()),
-		zap.String("target_id", edge.TargetID().String()),
+		zap.String("source_id", edge.SourceID.String()),
+		zap.String("target_id", edge.TargetID.String()),
 		zap.Float64("weight", edge.Weight()),
 	}
 	

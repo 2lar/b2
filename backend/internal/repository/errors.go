@@ -1,8 +1,16 @@
 package repository
 
 import (
+	"errors"
 	"fmt"
 	"time"
+)
+
+// Common repository errors
+var (
+	ErrNodeNotFound     = errors.New("node not found")
+	ErrEdgeNotFound     = errors.New("edge not found")
+	ErrCategoryNotFound = errors.New("category not found")
 )
 
 // ErrorCode represents standardized error codes for repository operations

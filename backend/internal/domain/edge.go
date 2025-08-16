@@ -4,6 +4,15 @@ import (
 	"time"
 )
 
+// EdgeType represents the type of relationship between nodes
+type EdgeType string
+
+const (
+	EdgeTypeRelated   EdgeType = "related"
+	EdgeTypeSimilar   EdgeType = "similar"
+	EdgeTypeReference EdgeType = "reference"
+)
+
 // Edge represents a directed relationship between two memory nodes.
 // This is a rich domain model that encapsulates business logic for node connections.
 //
@@ -22,6 +31,16 @@ type Edge struct {
 	weight   float64   // Strength of the connection (0.0 to 1.0)
 	createdAt time.Time // When the edge was created
 	version   Version   // For optimistic locking
+	
+	// Public fields for compatibility
+	ID        NodeID    `json:"id"`
+	SourceID  NodeID    `json:"source_id"`
+	TargetID  NodeID    `json:"target_id"`
+	EdgeType  EdgeType  `json:"edge_type"`
+	Strength  float64   `json:"strength"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Version   int       `json:"version"`
 	
 	// Domain events
 	events []DomainEvent
@@ -47,6 +66,7 @@ func NewEdge(sourceID, targetID NodeID, userID UserID, weight float64) (*Edge, e
 	edgeID := NewNodeID() // Reuse NodeID generator for edge IDs
 	
 	edge := &Edge{
+		// Private fields
 		id:        edgeID,
 		sourceID:  sourceID,
 		targetID:  targetID,
@@ -55,6 +75,14 @@ func NewEdge(sourceID, targetID NodeID, userID UserID, weight float64) (*Edge, e
 		createdAt: now,
 		version:   NewVersion(),
 		events:    []DomainEvent{},
+		// Public fields (for compatibility)
+		ID:        edgeID,
+		SourceID:  sourceID,
+		TargetID:  targetID,
+		Strength:  weight,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Version:   0,
 	}
 	
 	// Generate domain event
@@ -67,6 +95,7 @@ func NewEdge(sourceID, targetID NodeID, userID UserID, weight float64) (*Edge, e
 // ReconstructEdge creates an edge from persistence (no events generated)
 func ReconstructEdge(id, sourceID, targetID NodeID, userID UserID, weight float64, createdAt time.Time, version Version) *Edge {
 	return &Edge{
+		// Private fields
 		id:        id,
 		sourceID:  sourceID,
 		targetID:  targetID,
@@ -75,6 +104,14 @@ func ReconstructEdge(id, sourceID, targetID NodeID, userID UserID, weight float6
 		createdAt: createdAt,
 		version:   version,
 		events:    []DomainEvent{},
+		// Public fields (for compatibility)
+		ID:        id,
+		SourceID:  sourceID,
+		TargetID:  targetID,
+		Strength:  weight,
+		CreatedAt: createdAt,
+		UpdatedAt: createdAt,
+		Version:   version.Int(),
 	}
 }
 
@@ -100,21 +137,6 @@ func ReconstructEdgeFromPrimitives(sourceIDStr, targetIDStr, userIDStr string, w
 
 // Getters (read-only access to internal state)
 
-// ID returns the edge's unique identifier
-func (e *Edge) ID() NodeID {
-	return e.id
-}
-
-// SourceID returns the source node identifier
-func (e *Edge) SourceID() NodeID {
-	return e.sourceID
-}
-
-// TargetID returns the target node identifier
-func (e *Edge) TargetID() NodeID {
-	return e.targetID
-}
-
 // UserID returns the user who owns this edge
 func (e *Edge) UserID() UserID {
 	return e.userID
@@ -123,16 +145,6 @@ func (e *Edge) UserID() UserID {
 // Weight returns the connection strength
 func (e *Edge) Weight() float64 {
 	return e.weight
-}
-
-// CreatedAt returns when the edge was created
-func (e *Edge) CreatedAt() time.Time {
-	return e.createdAt
-}
-
-// Version returns the current version for optimistic locking
-func (e *Edge) Version() Version {
-	return e.version
 }
 
 // Business Methods
@@ -219,10 +231,10 @@ func NewEdgeWeightCalculator(keywordWeight, tagWeight, recencyWeight float64) Ed
 // CalculateWeight calculates the edge weight between two nodes
 func (calc EdgeWeightCalculator) CalculateWeight(source, target *Node) float64 {
 	keywordSimilarity := source.Keywords().Overlap(target.Keywords())
-	tagSimilarity := source.Tags().Overlap(target.Tags())
+	tagSimilarity := source.Tags.Overlap(target.Tags)
 	
 	// Calculate recency factor (more recent connections get higher weight)
-	timeDiff := source.CreatedAt().Sub(target.CreatedAt())
+	timeDiff := source.CreatedAt.Sub(target.CreatedAt)
 	if timeDiff < 0 {
 		timeDiff = -timeDiff
 	}

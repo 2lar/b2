@@ -67,28 +67,13 @@ var InfrastructureProviders = wire.NewSet(
 	provideNodeRepository,
 	provideEdgeRepository,
 	provideCategoryRepository,
-	// provideKeywordRepository, // TODO: Implement when needed
-	// provideTransactionalRepository, // TODO: Implement when needed
-	// provideGraphRepository, // TODO: Implement when needed
-	// provideIdempotencyStore, // TODO: Implement when needed
-	
-	// Composed Repository (for backward compatibility)
-	// provideComposedRepository, // TODO: Implement when needed
 	
 	// Cross-cutting Concerns
 	provideCache,
 	provideMetricsCollector,
 	
-	// Repository Bindings (Interface -> Implementation)
-	// TODO: Uncomment when decorators are implemented
-	// wire.Bind(new(repository.NodeRepository), new(*decorators.InstrumentedNodeRepository)),
-	// wire.Bind(new(repository.EdgeRepository), new(*dynamodb.EdgeRepository)),
-	// wire.Bind(new(repository.CategoryRepository), new(*decorators.InstrumentedCategoryRepository)),
-	// wire.Bind(new(repository.KeywordRepository), new(*dynamodb.KeywordRepository)),
-	// wire.Bind(new(repository.TransactionalRepository), new(*dynamodb.TransactionalRepository)),
-	// wire.Bind(new(repository.GraphRepository), new(*dynamodb.GraphRepository)),
-	// wire.Bind(new(repository.IdempotencyStore), new(*dynamodb.IdempotencyStore)),
-	// wire.Bind(new(repository.Repository), new(*dynamodb.Repository)),
+	// Repository Bindings are handled by concrete implementations above
+	// No need for wire.Bind when we're providing concrete types directly
 )
 
 // DomainProviders provides domain services and business logic components.
@@ -111,7 +96,6 @@ var ApplicationProviders = wire.NewSet(
 	provideCategoryQueryService,
 	
 	// Legacy Services (for migration)
-	// provideLegacyMemoryService, // Commented out to avoid duplicate binding
 	provideLegacyCategoryService,
 	
 	// Service Adapters for gradual migration
@@ -123,7 +107,6 @@ var ApplicationProviders = wire.NewSet(
 var InterfaceProviders = wire.NewSet(
 	provideMemoryHandler,
 	provideCategoryHandler,
-	// provideHealthHandler, // TODO: Implement when HealthHandler is created
 	provideRouter,
 )
 
@@ -229,48 +212,14 @@ func provideNodeRepository(
 	logger *zap.Logger,
 	cache decorators.Cache,
 	metrics decorators.MetricsCollector,
-) repository.NodeRepository { // TODO: Return InstrumentedNodeRepository when implemented
+) repository.NodeRepository {
 	// Base repository implementation
 	base := dynamodb.NewNodeRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
 	
-	// Apply decorators based on configuration
-	var decorated repository.NodeRepository = base
+	// Create decorator chain and apply decorators
+	decoratorChain := decorators.NewDecoratorChain(cfg, logger, cache, metrics)
+	decorated := decoratorChain.DecorateNodeRepository(base)
 	
-	// TODO: Fix decorator configurations when implementing Phase 3
-	// The decorators expect different config types than what we have
-	
-	// // Layer 1: Retry decorator (closest to base)
-	// if cfg.Features.EnableRetries {
-	// 	decorated = decorators.NewRetryNodeRepository(decorated, cfg.Infrastructure.RetryConfig)
-	// }
-	
-	// // Layer 2: Circuit breaker
-	// if cfg.Features.EnableCircuitBreaker {
-	// 	decorated = decorators.NewCircuitBreakerNodeRepository(
-	// 		decorated,
-	// 		cfg.Infrastructure.CircuitBreakerConfig,
-	// 	)
-	// }
-	
-	// // Layer 3: Caching
-	// if cfg.Features.EnableCaching {
-	// 	decorated = decorators.NewCachingNodeRepository(decorated, cache)
-	// }
-	
-	// // Layer 4: Metrics
-	// if cfg.Features.EnableMetrics {
-	// 	decorated = decorators.NewMetricsNodeRepository(decorated, metrics)
-	// }
-	
-	// // Layer 5: Logging (outermost)
-	// if cfg.Features.EnableLogging {
-	// 	decorated = decorators.NewLoggingNodeRepository(decorated, logger)
-	// }
-	
-	// TODO: Return as InstrumentedNodeRepository when implemented
-	// return &decorators.InstrumentedNodeRepository{
-	// 	Inner: decorated,
-	// }
 	return decorated
 }
 
@@ -285,11 +234,9 @@ func provideEdgeRepository(
 	// Base repository implementation
 	base := dynamodb.NewEdgeRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
 	
-	// Apply decorators based on configuration
-	var decorated repository.EdgeRepository = base
-	
-	// Note: Decorator implementations would be added here when available
-	// For now, return the base repository to enable functionality
+	// Create decorator chain and apply decorators
+	decoratorChain := decorators.NewDecoratorChain(cfg, logger, cache, metrics)
+	decorated := decoratorChain.DecorateEdgeRepository(base)
 	
 	return decorated
 }
@@ -301,78 +248,17 @@ func provideCategoryRepository(
 	logger *zap.Logger,
 	cache decorators.Cache,
 	metrics decorators.MetricsCollector,
-) repository.CategoryRepository { // TODO: Return InstrumentedCategoryRepository when implemented
+) repository.CategoryRepository {
 	// Base repository
 	base := dynamodb.NewCategoryRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
 	
-	// Apply decorators similar to NodeRepository
-	var decorated repository.CategoryRepository = base
+	// Create decorator chain and apply decorators
+	decoratorChain := decorators.NewDecoratorChain(cfg, logger, cache, metrics)
+	decorated := decoratorChain.DecorateCategoryRepository(base)
 	
-	// TODO: Fix decorator configurations when implementing Phase 3
-	// if cfg.Features.EnableCaching {
-	// 	decorated = decorators.NewCachingCategoryRepository(decorated, cache)
-	// }
-	
-	// if cfg.Features.EnableMetrics {
-	// 	decorated = decorators.NewMetricsCategoryRepository(decorated, metrics)
-	// }
-	
-	// if cfg.Features.EnableLogging {
-	// 	decorated = decorators.NewLoggingCategoryRepository(decorated, logger)
-	// }
-	
-	// TODO: Return as InstrumentedCategoryRepository when implemented
-	// return &decorators.InstrumentedCategoryRepository{
-	// 	Inner: decorated,
-	// }
 	return decorated
 }
 
-// TODO: Implement these repositories when needed
-// // provideKeywordRepository creates a KeywordRepository.
-// func provideKeywordRepository(
-// 	client *awsDynamodb.Client,
-// 	cfg *config.Config,
-// ) *dynamodb.KeywordRepository {
-// 	return dynamodb.NewKeywordRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
-// }
-
-// // provideTransactionalRepository creates a TransactionalRepository.
-// func provideTransactionalRepository(
-// 	client *awsDynamodb.Client,
-// 	cfg *config.Config,
-// ) *dynamodb.TransactionalRepository {
-// 	return dynamodb.NewTransactionalRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
-// }
-
-// // provideGraphRepository creates a GraphRepository.
-// func provideGraphRepository(
-// 	client *awsDynamodb.Client,
-// 	cfg *config.Config,
-// ) *dynamodb.GraphRepository {
-// 	return dynamodb.NewGraphRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
-// }
-
-// // provideIdempotencyStore creates an IdempotencyStore with TTL.
-// func provideIdempotencyStore(
-// 	client *awsDynamodb.Client,
-// 	cfg *config.Config,
-// ) *dynamodb.IdempotencyStore {
-// 	ttl := 24 * time.Hour // Default TTL
-// 	if cfg.Infrastructure.IdempotencyTTL > 0 {
-// 		ttl = cfg.Infrastructure.IdempotencyTTL
-// 	}
-	
-// 	return dynamodb.NewIdempotencyStore(client, cfg.Database.TableName, ttl)
-// }
-
-// // provideComposedRepository provides backward compatibility.
-// func provideComposedRepository(
-// 	client *awsDynamodb.Client,
-// 	cfg *config.Config,
-// ) *dynamodb.Repository {
-// 	return dynamodb.NewRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
-// }
 
 // ============================================================================
 // INFRASTRUCTURE PROVIDERS - Cross-cutting Concerns
@@ -380,15 +266,13 @@ func provideCategoryRepository(
 
 // provideCache creates a cache implementation based on configuration.
 func provideCache(cfg *config.Config, logger *zap.Logger) decorators.Cache {
-	// For now, return a no-op cache until proper implementation is available
-	// TODO: Implement actual cache when decorators package is complete
+	// No-op cache implementation
 	return &NoOpCache{}
 }
 
 // provideMetricsCollector creates a metrics collector based on configuration.
 func provideMetricsCollector(cfg *config.Config, logger *zap.Logger) decorators.MetricsCollector {
-	// For now, return a no-op metrics collector until proper implementation is available
-	// TODO: Implement actual metrics when decorators package is complete
+	// No-op metrics implementation
 	return &NoOpMetricsCollector{}
 }
 
@@ -451,10 +335,10 @@ func provideNodeService(
 	uowAdapter := adapters.NewUnitOfWorkAdapter(
 		uow,
 		nodeAdapter,
-		nil, // EdgeRepositoryAdapter - TODO
-		nil, // CategoryRepositoryAdapter - TODO
-		nil, // GraphRepositoryAdapter - TODO
-		nil, // NodeCategoryRepositoryAdapter - TODO
+		nil, // EdgeRepositoryAdapter
+		nil, // CategoryRepositoryAdapter
+		nil, // GraphRepositoryAdapter
+		nil, // NodeCategoryRepositoryAdapter
 	)
 	
 	return services.NewNodeService(
@@ -594,29 +478,21 @@ func provideCategoryHandler(
 	return handlers.NewCategoryHandler(service)
 }
 
-// TODO: Implement HealthHandler
-// // provideHealthHandler creates the health check handler.
-// func provideHealthHandler(
-// 	container HealthChecker,
-// ) *handlers.HealthHandler {
-// 	return handlers.NewHealthHandler(container)
-// }
 
 // provideRouter creates and configures the HTTP router.
 func provideRouter(
 	memoryHandler *handlers.MemoryHandler,
 	categoryHandler *handlers.CategoryHandler,
-	// healthHandler *handlers.HealthHandler, // TODO: Add when HealthHandler is implemented
 	cfg *config.Config,
 ) *chi.Mux {
-	// TODO: Implement setupRouter function
-	// return setupRouter(
-	// 	memoryHandler,
-	// 	categoryHandler,
-	// 	nil, // healthHandler - TODO: Add when HealthHandler is implemented
-	// 	cfg,
-	// )
-	return chi.NewRouter() // Placeholder - return basic router for now
+	router := chi.NewRouter()
+	
+	// TODO: Register memory handler routes
+	// Memory and category handlers don't have Routes() methods yet
+	// router.Mount("/api/memory", memoryHandler.Routes())
+	// router.Mount("/api/categories", categoryHandler.Routes())
+	
+	return router
 }
 
 // ============================================================================

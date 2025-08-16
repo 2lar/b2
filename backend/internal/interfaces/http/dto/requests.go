@@ -115,7 +115,11 @@ func (r *CreateNodeRequest) Sanitize() {
 
 // ToCommand converts the request to an application command
 func (r *CreateNodeRequest) ToCommand(userID string) (*commands.CreateNodeCommand, error) {
-	return commands.NewCreateNodeCommand(userID, r.Content, r.Tags)
+	return &commands.CreateNodeCommand{
+		UserID:  userID,
+		Content: r.Content,
+		Tags:    r.Tags,
+	}, nil
 }
 
 // UpdateNodeRequest supports partial updates with optional fields.
@@ -176,22 +180,18 @@ func (r *UpdateNodeRequest) Sanitize() {
 
 // ToCommand converts the request to an application command
 func (r *UpdateNodeRequest) ToCommand(userID, nodeID string) (*commands.UpdateNodeCommand, error) {
-	cmd, err := commands.NewUpdateNodeCommand(userID, nodeID)
-	if err != nil {
-		return nil, err
+	cmd := &commands.UpdateNodeCommand{
+		NodeID: nodeID,
+		UserID: userID,
+		Tags:   r.Tags,
 	}
 
 	if r.Content != nil {
-		cmd.WithContent(*r.Content)
-	}
-
-	if len(r.Tags) > 0 {
-		cmd.WithTags(r.Tags)
+		cmd.Content = *r.Content
 	}
 
 	if r.Version != nil {
 		cmd.Version = *r.Version
-		cmd.CheckVersion = true
 	}
 
 	return cmd, nil
@@ -252,7 +252,10 @@ func (r *BulkDeleteNodesRequest) Validate() error {
 
 // ToCommand converts the request to an application command
 func (r *BulkDeleteNodesRequest) ToCommand(userID string) (*commands.BulkDeleteNodesCommand, error) {
-	return commands.NewBulkDeleteNodesCommand(userID, r.NodeIDs)
+	return &commands.BulkDeleteNodesCommand{
+		UserID:  userID,
+		NodeIDs: r.NodeIDs,
+	}, nil
 }
 
 // ListNodesRequest handles pagination and filtering for node queries
@@ -528,7 +531,12 @@ func (r *ConnectNodesRequest) ToCommand(userID string) (*commands.ConnectNodesCo
 		weight = 1.0 // Default weight
 	}
 
-	return commands.NewConnectNodesCommand(userID, r.SourceNodeID, r.TargetNodeID, weight)
+	return &commands.ConnectNodesCommand{
+		UserID:       userID,
+		SourceNodeID: r.SourceNodeID,
+		TargetNodeID: r.TargetNodeID,
+		Weight:       weight,
+	}, nil
 }
 
 // Validation helper functions

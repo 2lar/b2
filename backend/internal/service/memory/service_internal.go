@@ -39,7 +39,7 @@ func (s *service) createNodeCore(ctx context.Context, userID, content string, ta
 	}
 
 	log.Printf("DEBUG createNodeCore: created node ID=%s, searching for related nodes with keywords=%v", 
-		node.ID().String(), node.Keywords().ToSlice())
+		node.ID.String(), node.Keywords().ToSlice())
 
 	// Find related nodes using keywords from rich domain model
 	relatedNodes, err := s.keywordRepo.FindNodesByKeywords(ctx, userID, node.Keywords().ToSlice())
@@ -63,18 +63,18 @@ func (s *service) createNodeCore(ctx context.Context, userID, content string, ta
 	
 	for _, connection := range potentialConnections {
 		// Create rich domain edge with calculated weight
-		edge, err := domain.NewEdge(node.ID(), connection.Node.ID(), userIDVO, connection.SimilarityScore)
+		edge, err := domain.NewEdge(node.ID, connection.Node.ID, userIDVO, connection.SimilarityScore)
 		if err != nil {
 			log.Printf("WARN: Failed to create edge: %v", err)
 			continue
 		}
 		
 		edges = append(edges, edge)
-		relatedNodeIDs = append(relatedNodeIDs, connection.Node.ID().String())
+		relatedNodeIDs = append(relatedNodeIDs, connection.Node.ID.String())
 	}
 
 	log.Printf("DEBUG createNodeCore: creating node %s with %d edges to nodes: %v", 
-		node.ID().String(), len(relatedNodeIDs), relatedNodeIDs)
+		node.ID.String(), len(relatedNodeIDs), relatedNodeIDs)
 
 	// Create node with edges in transaction
 	if err := s.transactionRepo.CreateNodeWithEdges(ctx, node, relatedNodeIDs); err != nil {
@@ -95,7 +95,7 @@ func (s *service) createNodeCore(ctx context.Context, userID, content string, ta
 		edge.MarkEventsAsCommitted()
 	}
 
-	log.Printf("DEBUG createNodeCore: created node %s with %d edges", node.ID().String(), len(edges))
+	log.Printf("DEBUG createNodeCore: created node %s with %d edges", node.ID.String(), len(edges))
 	return node, edges, nil
 }
 
@@ -145,7 +145,7 @@ func (s *service) updateNodeCore(ctx context.Context, userID, nodeID, content st
 		// Mark domain events as committed
 		existingNode.MarkEventsAsCommitted()
 
-		log.Printf("DEBUG updateNodeCore: updated node %s after %d attempts", existingNode.ID().String(), attempt+1)
+		log.Printf("DEBUG updateNodeCore: updated node %s after %d attempts", existingNode.ID.String(), attempt+1)
 		return existingNode, nil
 	}
 

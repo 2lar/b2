@@ -369,7 +369,7 @@ func CreateNodeWithRollback(repo Repository, node *domain.Node) (func(ctx contex
 	}
 
 	rollback := func(ctx context.Context) error {
-		return repo.DeleteNode(ctx, node.UserID().String(), node.ID().String())
+		return repo.DeleteNode(ctx, node.UserID.String(), node.ID.String())
 	}
 
 	return execute, rollback

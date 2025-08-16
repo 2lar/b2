@@ -126,7 +126,7 @@ func (s *service) CreateNode(ctx context.Context, userID, content string, tags [
 				// Return cached result
 				edges, _ := s.edgeRepo.FindEdges(ctx, repository.EdgeQuery{
 					UserID:   userID,
-					SourceID: nodeResult.ID().String(),
+					SourceID: nodeResult.ID.String(),
 				})
 				return nodeResult, edges, nil
 			}

@@ -96,12 +96,11 @@ func (a *MemoryServiceAdapter) CreateNode(ctx context.Context, userID, content s
 func (a *MemoryServiceAdapter) UpdateNode(ctx context.Context, userID, nodeID, content string, tags []string) (*domain.Node, error) {
 	// Create update command
 	cmd := &commands.UpdateNodeCommand{
-		UserID:        userID,
-		NodeID:        nodeID,
-		Content:       &content,
-		Tags:          tags,
-		UpdateContent: true,
-		UpdateTags:    true,
+		UserID:  userID,
+		NodeID:  nodeID,
+		Content: content,
+		Tags:    tags,
+		Version: 0, // Will be handled by optimistic locking
 	}
 
 	// Execute command through new service

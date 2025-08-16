@@ -73,8 +73,8 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	defer s.uow.Rollback() // Rollback if not committed
 
 	// 2. Handle idempotency if key is provided
-	if cmd.IdempotencyKey != nil {
-		if result, exists, err := s.checkIdempotency(ctx, *cmd.IdempotencyKey, "CREATE_NODE", cmd.UserID); err != nil {
+	if cmd.IdempotencyKey != "" {
+		if result, exists, err := s.checkIdempotency(ctx, cmd.IdempotencyKey, "CREATE_NODE", cmd.UserID); err != nil {
 			return nil, err
 		} else if exists {
 			return result.(*dto.CreateNodeResult), nil
@@ -131,7 +131,7 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 		// Use the similarity score from the candidate as the edge weight
 		weight := candidate.SimilarityScore
 		
-		edge, err := domain.NewEdge(node.ID(), targetNode.ID(), userID, weight)
+		edge, err := domain.NewEdge(node.ID, targetNode.ID, userID, weight)
 		if err != nil {
 			continue // Skip if edge creation fails
 		}
@@ -174,8 +174,8 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	}
 
 	// 11. Store idempotency result if key was provided
-	if cmd.IdempotencyKey != nil {
-		s.storeIdempotencyResult(ctx, *cmd.IdempotencyKey, "CREATE_NODE", cmd.UserID, result)
+	if cmd.IdempotencyKey != "" {
+		s.storeIdempotencyResult(ctx, cmd.IdempotencyKey, "CREATE_NODE", cmd.UserID, result)
 	}
 
 	return result, nil
@@ -193,14 +193,7 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 	}
 	defer s.uow.Rollback()
 
-	// 2. Handle idempotency if key is provided
-	if cmd.IdempotencyKey != nil {
-		if result, exists, err := s.checkIdempotency(ctx, *cmd.IdempotencyKey, "UPDATE_NODE", cmd.UserID); err != nil {
-			return nil, err
-		} else if exists {
-			return result.(*dto.UpdateNodeResult), nil
-		}
-	}
+	// 2. No idempotency for updates (they are idempotent by nature)
 
 	// 3. Parse domain identifiers
 	userID, err := domain.ParseUserID(cmd.UserID)
@@ -227,13 +220,13 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 	if node == nil {
 		return nil, appErrors.NewNotFound("node not found")
 	}
-	if !node.UserID().Equals(userID) {
+	if !node.UserID.Equals(userID) {
 		return nil, appErrors.NewUnauthorized("node belongs to different user")
 	}
 
 	// 6. Apply updates using domain methods
-	if cmd.UpdateContent && cmd.Content != nil {
-		newContent, err := domain.NewContent(*cmd.Content)
+	if cmd.Content != "" {
+		newContent, err := domain.NewContent(cmd.Content)
 		if err != nil {
 			return nil, appErrors.NewValidation("invalid content: " + err.Error())
 		}
@@ -243,7 +236,7 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 		}
 	}
 
-	if cmd.UpdateTags {
+	if len(cmd.Tags) > 0 {
 		newTags := domain.NewTags(cmd.Tags...)
 		if err := node.UpdateTags(newTags); err != nil {
 			return nil, appErrors.Wrap(err, "failed to update node tags")
@@ -275,10 +268,7 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 		Message: "Node updated successfully",
 	}
 
-	// 11. Store idempotency result if key was provided
-	if cmd.IdempotencyKey != nil {
-		s.storeIdempotencyResult(ctx, *cmd.IdempotencyKey, "UPDATE_NODE", cmd.UserID, result)
-	}
+	// 11. No idempotency storage for updates
 
 	return result, nil
 }
@@ -292,13 +282,7 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 	defer s.uow.Rollback()
 
 	// 2. Handle idempotency if key is provided
-	if cmd.IdempotencyKey != nil {
-		if result, exists, err := s.checkIdempotency(ctx, *cmd.IdempotencyKey, "DELETE_NODE", cmd.UserID); err != nil {
-			return nil, err
-		} else if exists {
-			return result.(*dto.DeleteNodeResult), nil
-		}
-	}
+	// No idempotency for deletes (they are idempotent by nature)
 
 	// 3. Parse domain identifiers
 	userID, err := domain.ParseUserID(cmd.UserID)
@@ -321,7 +305,7 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 		return nil, appErrors.NewNotFound("node not found")
 	}
 
-	if !node.UserID().Equals(userID) {
+	if !node.UserID.Equals(userID) {
 		return nil, appErrors.NewUnauthorized("node belongs to different user")
 	}
 
@@ -341,10 +325,10 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 	deletionEvent := domain.NewNodeDeletedEvent(
 		nodeID, 
 		userID, 
-		node.Content(), 
+		node.Content, 
 		node.Keywords(), 
-		node.Tags(), 
-		node.Version(),
+		node.Tags, 
+		domain.ParseVersion(node.Version),
 	)
 
 	if err := s.eventBus.Publish(ctx, deletionEvent); err != nil {
@@ -362,10 +346,7 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 		Message: "Node deleted successfully",
 	}
 
-	// 10. Store idempotency result if key was provided
-	if cmd.IdempotencyKey != nil {
-		s.storeIdempotencyResult(ctx, *cmd.IdempotencyKey, "DELETE_NODE", cmd.UserID, result)
-	}
+	// 10. No idempotency storage for deletes
 
 	return result, nil
 }
@@ -378,14 +359,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 	}
 	defer s.uow.Rollback()
 
-	// 2. Handle idempotency if key is provided
-	if cmd.IdempotencyKey != nil {
-		if result, exists, err := s.checkIdempotency(ctx, *cmd.IdempotencyKey, "BULK_DELETE", cmd.UserID); err != nil {
-			return nil, err
-		} else if exists {
-			return result.(*dto.BulkDeleteResult), nil
-		}
-	}
+	// 2. No idempotency for bulk deletes
 
 	// 3. Parse domain identifiers
 	userID, err := domain.ParseUserID(cmd.UserID)
@@ -413,7 +387,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 			continue
 		}
 
-		if !node.UserID().Equals(userID) {
+		if !node.UserID.Equals(userID) {
 			failedIDs = append(failedIDs, nodeIDStr)
 			continue
 		}
@@ -468,10 +442,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 		Message:      fmt.Sprintf("Successfully deleted %d of %d nodes", deletedCount, len(cmd.NodeIDs)),
 	}
 
-	// 9. Store idempotency result if key was provided
-	if cmd.IdempotencyKey != nil {
-		s.storeIdempotencyResult(ctx, *cmd.IdempotencyKey, "BULK_DELETE", cmd.UserID, result)
-	}
+	// 9. No idempotency storage for bulk deletes
 
 	return result, nil
 }
@@ -519,14 +490,7 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 	}
 	defer s.uow.Rollback()
 
-	// 2. Handle idempotency if key is provided
-	if cmd.IdempotencyKey != nil {
-		if result, exists, err := s.checkIdempotency(ctx, *cmd.IdempotencyKey, "BULK_CREATE_NODES", cmd.UserID); err != nil {
-			return nil, err
-		} else if exists {
-			return result.(*dto.BulkCreateResult), nil
-		}
-	}
+	// 2. No idempotency for bulk creates
 
 	// 3. Parse user ID
 	userID, err := domain.ParseUserID(cmd.UserID)
@@ -577,8 +541,8 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 		createdNodes = append(createdNodes, node)
 	}
 
-	// 5. Create connections if requested and we have multiple successful nodes
-	if cmd.CreateConnections && len(createdNodes) > 1 {
+	// 5. Create connections if we have multiple successful nodes
+	if len(createdNodes) > 1 {
 		// Analyze connections between all created nodes
 		for i, sourceNode := range createdNodes {
 			for j, targetNode := range createdNodes {
@@ -591,7 +555,7 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 				if err == nil && analysis.ShouldConnect {
 					// Create edge between nodes
 					weight := analysis.ForwardConnection.RelevanceScore
-					edge, err := domain.NewEdge(sourceNode.ID(), targetNode.ID(), userID, weight)
+					edge, err := domain.NewEdge(sourceNode.ID, targetNode.ID, userID, weight)
 					if err != nil {
 						// Log error but don't fail the entire operation
 						continue
@@ -638,14 +602,12 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 		result.Message = fmt.Sprintf("Created %d nodes with %d failures", len(createdNodes), len(errors))
 	}
 
-	if cmd.CreateConnections && len(connections) > 0 {
+	if len(connections) > 0 {
 		result.Message += fmt.Sprintf(" and %d connections", len(connections))
 	}
 
 	// 9. Store idempotency result if key was provided
-	if cmd.IdempotencyKey != nil {
-		s.storeIdempotencyResult(ctx, *cmd.IdempotencyKey, "BULK_CREATE_NODES", cmd.UserID, result)
-	}
+	// No idempotency storage for bulk creates
 
 	return result, nil
 }

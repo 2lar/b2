@@ -67,9 +67,9 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tags := []string{}
-	if req.Tags != nil {
-		tags = *req.Tags
+	tags := req.Tags
+	if tags == nil {
+		tags = []string{}
 	}
 
 	// Add idempotency key to context
@@ -92,9 +92,9 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	// Publish "NodeCreated" event to EventBridge with complete graph update
 	eventDetail, err := json.Marshal(map[string]any{
 		"type":      "nodeCreated",
-		"userId":    createdNode.UserID().String(),
-		"nodeId":    createdNode.ID().String(),
-		"content":   createdNode.Content().String(),
+		"userId":    createdNode.UserID.String(),
+		"nodeId":    createdNode.ID.String(),
+		"content":   createdNode.Content.String(),
 		"keywords":  createdNode.Keywords().ToSlice(),
 		"edges":     edges,
 		"timestamp": time.Now(),
@@ -120,11 +120,11 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.Success(w, http.StatusCreated, api.NodeResponse{
-		NodeID:    createdNode.ID().String(),
-		Content:   createdNode.Content().String(),
-		Tags:      createdNode.Tags().ToSlice(),
-		Timestamp: createdNode.CreatedAt().Format(time.RFC3339),
-		Version:   createdNode.Version().Int(),
+		NodeID:    createdNode.ID.String(),
+		Content:   createdNode.Content.String(),
+		Tags:      createdNode.Tags.ToSlice(),
+		Timestamp: createdNode.CreatedAt.Format(time.RFC3339),
+		Version:   createdNode.Version,
 	})
 }
 
@@ -198,11 +198,14 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 	apiNodes := make([]api.Node, len(nodes))
 	for i, node := range nodes {
 		apiNodes[i] = api.Node{
-			NodeId:    node.ID().String(),        // id → nodeId 
-			Content:   node.Content().String(),
-			Tags:      func() *[]string { tags := node.Tags().ToSlice(); return &tags }(),
-			Timestamp: node.CreatedAt(), // created_at → timestamp
-			Version:   node.Version().Int(),
+			NodeID:    node.ID.String(),
+			UserID:    node.UserID.String(),
+			Content:   node.Content.String(),
+			Tags:      node.Tags.ToSlice(),
+			Metadata:  node.Metadata,
+			Timestamp: node.CreatedAt.Format(time.RFC3339),
+			CreatedAt: node.CreatedAt.Format(time.RFC3339),
+			UpdatedAt: node.UpdatedAt.Format(time.RFC3339),
 		}
 	}
 
@@ -252,8 +255,8 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	// For each edge, we need to get the "other" node (not the current node)
 	connectedNodeIDs := make(map[string]bool) // Use map to avoid duplicates
 	for _, edge := range edges {
-		sourceID := edge.SourceID().String()
-		targetID := edge.TargetID().String()
+		sourceID := edge.SourceID.String()
+		targetID := edge.TargetID.String()
 		
 		// Add the "other" node ID
 		if sourceID == nodeID {
@@ -277,11 +280,11 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := api.NodeDetailsResponse{
-		NodeID:    node.ID().String(),
-		Content:   node.Content().String(),
-		Tags:      node.Tags().ToSlice(),
-		Timestamp: node.CreatedAt().Format(time.RFC3339),
-		Version:   node.Version().Int(),
+		NodeID:    node.ID.String(),
+		Content:   node.Content.String(),
+		Tags:      node.Tags.ToSlice(),
+		Timestamp: node.CreatedAt.Format(time.RFC3339),
+		Version:   node.Version,
 		Edges:     edgeIDs,
 	}
 
@@ -320,9 +323,9 @@ func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tags := []string{}
-	if req.Tags != nil {
-		tags = *req.Tags
+	tags := req.Tags
+	if tags == nil {
+		tags = []string{}
 	}
 
 	// Add idempotency key to context
@@ -384,12 +387,12 @@ func (h *MemoryHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if len(req.NodeIds) == 0 {
+	if len(req.NodeIDs) == 0 {
 		api.Error(w, http.StatusBadRequest, "NodeIds cannot be empty")
 		return
 	}
 
-	if len(req.NodeIds) > 100 {
+	if len(req.NodeIDs) > 100 {
 		api.Error(w, http.StatusBadRequest, "Cannot delete more than 100 nodes at once")
 		return
 	}
@@ -403,7 +406,7 @@ func (h *MemoryHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) 
 		ctx = memory.WithIdempotencyKey(ctx, key)
 	}
 
-	deletedCount, failedNodeIds, err := h.memoryService.BulkDeleteNodes(ctx, userID, req.NodeIds)
+	deletedCount, failedNodeIds, err := h.memoryService.BulkDeleteNodes(ctx, userID, req.NodeIDs)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -415,9 +418,8 @@ func (h *MemoryHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) 
 	}
 
 	api.Success(w, http.StatusOK, api.BulkDeleteResponse{
-		DeletedCount:  &deletedCount,
-		FailedNodeIds: &failedNodeIds,
-		Message:       &message,
+		DeletedCount: deletedCount,
+		FailedIDs:    failedNodeIds,
 	})
 }
 
@@ -452,14 +454,14 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, node := range graph.Nodes {
-		label := node.Content().String()
+		label := node.Content.String()
 		if len(label) > 50 {
 			label = label[:47] + "..."
 		}
 
 		graphNode := api.GraphNode{
 			Data: &api.NodeData{
-				Id:    node.ID().String(),
+				Id:    node.ID.String(),
 				Label: label,
 			},
 		}
@@ -473,12 +475,12 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, edge := range graph.Edges {
-		edgeID := fmt.Sprintf("%s-%s", edge.SourceID().String(), edge.TargetID().String())
+		edgeID := fmt.Sprintf("%s-%s", edge.SourceID.String(), edge.TargetID.String())
 		graphEdge := api.GraphEdge{
 			Data: &api.EdgeData{
 				Id:     edgeID,
-				Source: edge.SourceID().String(),
-				Target: edge.TargetID().String(),
+				Source: edge.SourceID.String(),
+				Target: edge.TargetID.String(),
 			},
 		}
 
@@ -504,7 +506,7 @@ func (h *MemoryHandler) checkOwnership(ctx context.Context, userID, nodeID strin
 		return nil, appErrors.NewInternal("failed to verify node ownership", err)
 	}
 
-	if node.UserID().String() != userID {
+	if node.UserID.String() != userID {
 		return nil, appErrors.NewNotFound("node not found") // Obscure the reason for security
 	}
 

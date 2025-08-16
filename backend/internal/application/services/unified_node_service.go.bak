@@ -1,0 +1,504 @@
+// Package services provides application services for the Brain2 backend.
+// This file implements a unified node service that consolidates the best
+// features from both legacy and new implementations.
+package services
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/services"
+	"brain2-backend/internal/repository"
+	"go.uber.org/zap"
+)
+
+// UnifiedNodeService combines the best of both legacy and new node service implementations.
+// This service handles all node operations with proper domain logic and transaction boundaries.
+type UnifiedNodeService struct {
+	// Core repositories
+	nodeRepo     repository.NodeRepository
+	edgeRepo     repository.EdgeRepository
+	categoryRepo repository.CategoryRepository
+	
+	// Advanced repositories
+	graphRepo    repository.GraphRepository
+	keywordRepo  repository.KeywordRepository
+	
+	// Cross-cutting concerns
+	uow              repository.UnitOfWork
+	eventBus         domain.EventBus
+	idempotencyStore repository.IdempotencyStore
+	
+	// Domain services
+	connectionAnalyzer *services.ConnectionAnalyzer
+	
+	// Configuration
+	logger              *zap.Logger
+	maxConnectionsPerNode int
+	similarityThreshold float64
+}
+
+// NewUnifiedNodeService creates a new unified node service with all dependencies.
+func NewUnifiedNodeService(
+	nodeRepo repository.NodeRepository,
+	edgeRepo repository.EdgeRepository,
+	categoryRepo repository.CategoryRepository,
+	graphRepo repository.GraphRepository,
+	keywordRepo repository.KeywordRepository,
+	uow repository.UnitOfWork,
+	eventBus domain.EventBus,
+	idempotencyStore repository.IdempotencyStore,
+	connectionAnalyzer *services.ConnectionAnalyzer,
+	logger *zap.Logger,
+) *UnifiedNodeService {
+	return &UnifiedNodeService{
+		nodeRepo:              nodeRepo,
+		edgeRepo:              edgeRepo,
+		categoryRepo:          categoryRepo,
+		graphRepo:             graphRepo,
+		keywordRepo:           keywordRepo,
+		uow:                   uow,
+		eventBus:              eventBus,
+		idempotencyStore:      idempotencyStore,
+		connectionAnalyzer:    connectionAnalyzer,
+		logger:                logger,
+		maxConnectionsPerNode: 100,
+		similarityThreshold:   0.7,
+	}
+}
+
+// ============================================================================
+// NODE OPERATIONS - COMMAND SIDE
+// ============================================================================
+
+// CreateNode creates a new node with idempotency support.
+func (s *UnifiedNodeService) CreateNode(ctx context.Context, cmd CreateNodeCommand) (*domain.Node, error) {
+	// Check idempotency
+	if cmd.IdempotencyKey != "" {
+		if exists, err := s.idempotencyStore.Exists(ctx, cmd.IdempotencyKey); err != nil {
+			return nil, fmt.Errorf("idempotency check failed: %w", err)
+		} else if exists {
+			// Return cached result
+			if result, err := s.idempotencyStore.GetResult(ctx, cmd.IdempotencyKey); err == nil {
+				if node, ok := result.(*domain.Node); ok {
+					return node, nil
+				}
+			}
+		}
+	}
+	
+	// Start transaction
+	return s.uow.Execute(ctx, func(ctx context.Context) (*domain.Node, error) {
+		// Create domain object
+		node, err := domain.NewNode(
+			domain.UserID(cmd.UserID),
+			domain.Content(cmd.Content),
+			domain.Tags(cmd.Tags),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("domain validation failed: %w", err)
+		}
+		
+		// Apply metadata
+		if cmd.Metadata != nil {
+			node.SetMetadata(cmd.Metadata)
+		}
+		
+		// Persist node
+		if err := s.nodeRepo.CreateNode(ctx, node); err != nil {
+			return nil, fmt.Errorf("failed to create node: %w", err)
+		}
+		
+		// Extract and store keywords
+		if s.keywordRepo != nil {
+			keywords := s.extractKeywords(cmd.Content)
+			for _, keyword := range keywords {
+				if err := s.keywordRepo.AddKeyword(ctx, node.ID, keyword); err != nil {
+					s.logger.Warn("Failed to add keyword",
+						zap.String("node_id", string(node.ID)),
+						zap.String("keyword", keyword),
+						zap.Error(err),
+					)
+				}
+			}
+		}
+		
+		// Create automatic connections based on similarity
+		if err := s.createAutomaticConnections(ctx, node); err != nil {
+			s.logger.Warn("Failed to create automatic connections",
+				zap.String("node_id", string(node.ID)),
+				zap.Error(err),
+			)
+		}
+		
+		// Publish domain events
+		for _, event := range node.Events() {
+			if err := s.eventBus.Publish(ctx, event); err != nil {
+				s.logger.Warn("Failed to publish event",
+					zap.String("event_type", event.EventType()),
+					zap.Error(err),
+				)
+			}
+		}
+		
+		// Store idempotency result
+		if cmd.IdempotencyKey != "" {
+			if err := s.idempotencyStore.Store(ctx, cmd.IdempotencyKey, node, 24*time.Hour); err != nil {
+				s.logger.Warn("Failed to store idempotency result",
+					zap.String("key", cmd.IdempotencyKey),
+					zap.Error(err),
+				)
+			}
+		}
+		
+		return node, nil
+	})
+}
+
+// UpdateNode updates an existing node with optimistic locking.
+func (s *UnifiedNodeService) UpdateNode(ctx context.Context, cmd UpdateNodeCommand) (*domain.Node, error) {
+	return s.uow.Execute(ctx, func(ctx context.Context) (*domain.Node, error) {
+		// Fetch existing node
+		node, err := s.nodeRepo.GetNodeByID(ctx, cmd.NodeID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch node: %w", err)
+		}
+		
+		// Check version for optimistic locking
+		if cmd.Version > 0 && node.Version != cmd.Version {
+			return nil, fmt.Errorf("node has been modified by another user")
+		}
+		
+		// Update fields
+		if cmd.Content != "" {
+			node.UpdateContent(domain.Content(cmd.Content))
+		}
+		
+		if cmd.Tags != nil {
+			node.SetTags(domain.Tags(cmd.Tags))
+		}
+		
+		if cmd.Metadata != nil {
+			node.SetMetadata(cmd.Metadata)
+		}
+		
+		// Update timestamp
+		node.UpdateTimestamp()
+		
+		// Persist changes
+		if err := s.nodeRepo.UpdateNode(ctx, node); err != nil {
+			return nil, fmt.Errorf("failed to update node: %w", err)
+		}
+		
+		// Update keywords if content changed
+		if cmd.Content != "" && s.keywordRepo != nil {
+			// Remove old keywords
+			if err := s.keywordRepo.RemoveAllKeywords(ctx, node.ID); err != nil {
+				s.logger.Warn("Failed to remove old keywords", zap.Error(err))
+			}
+			
+			// Add new keywords
+			keywords := s.extractKeywords(cmd.Content)
+			for _, keyword := range keywords {
+				if err := s.keywordRepo.AddKeyword(ctx, node.ID, keyword); err != nil {
+					s.logger.Warn("Failed to add keyword", zap.Error(err))
+				}
+			}
+		}
+		
+		// Publish update event
+		event := domain.NewNodeUpdatedEvent(node.ID, node.UserID)
+		if err := s.eventBus.Publish(ctx, event); err != nil {
+			s.logger.Warn("Failed to publish update event", zap.Error(err))
+		}
+		
+		return node, nil
+	})
+}
+
+// DeleteNode deletes a node and all its connections.
+func (s *UnifiedNodeService) DeleteNode(ctx context.Context, nodeID string) error {
+	return s.uow.ExecuteVoid(ctx, func(ctx context.Context) error {
+		// Delete all edges connected to this node
+		edges, err := s.edgeRepo.GetEdgesByNodeID(ctx, nodeID)
+		if err != nil {
+			return fmt.Errorf("failed to fetch edges: %w", err)
+		}
+		
+		for _, edge := range edges {
+			if err := s.edgeRepo.DeleteEdge(ctx, edge.ID); err != nil {
+				s.logger.Warn("Failed to delete edge",
+					zap.String("edge_id", string(edge.ID)),
+					zap.Error(err),
+				)
+			}
+		}
+		
+		// Remove from categories
+		if s.categoryRepo != nil {
+			categories, err := s.categoryRepo.GetCategoriesByNodeID(ctx, nodeID)
+			if err == nil {
+				for _, category := range categories {
+					if err := s.categoryRepo.RemoveNodeFromCategory(ctx, category.ID, domain.NodeID(nodeID)); err != nil {
+						s.logger.Warn("Failed to remove node from category",
+							zap.String("category_id", string(category.ID)),
+							zap.Error(err),
+						)
+					}
+				}
+			}
+		}
+		
+		// Remove keywords
+		if s.keywordRepo != nil {
+			if err := s.keywordRepo.RemoveAllKeywords(ctx, domain.NodeID(nodeID)); err != nil {
+				s.logger.Warn("Failed to remove keywords", zap.Error(err))
+			}
+		}
+		
+		// Delete the node
+		if err := s.nodeRepo.DeleteNode(ctx, nodeID); err != nil {
+			return fmt.Errorf("failed to delete node: %w", err)
+		}
+		
+		// Publish deletion event
+		event := domain.NewNodeDeletedEvent(domain.NodeID(nodeID), "")
+		if err := s.eventBus.Publish(ctx, event); err != nil {
+			s.logger.Warn("Failed to publish deletion event", zap.Error(err))
+		}
+		
+		return nil
+	})
+}
+
+// BulkDeleteNodes deletes multiple nodes efficiently.
+func (s *UnifiedNodeService) BulkDeleteNodes(ctx context.Context, nodeIDs []string) error {
+	// Use batch processing for efficiency
+	batchSize := 25
+	for i := 0; i < len(nodeIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(nodeIDs) {
+			end = len(nodeIDs)
+		}
+		
+		batch := nodeIDs[i:end]
+		
+		// Process batch in transaction
+		err := s.uow.ExecuteVoid(ctx, func(ctx context.Context) error {
+			for _, nodeID := range batch {
+				if err := s.DeleteNode(ctx, nodeID); err != nil {
+					return fmt.Errorf("failed to delete node %s: %w", nodeID, err)
+				}
+			}
+			return nil
+		})
+		
+		if err != nil {
+			return fmt.Errorf("batch deletion failed: %w", err)
+		}
+	}
+	
+	return nil
+}
+
+// ============================================================================
+// CONNECTION OPERATIONS
+// ============================================================================
+
+// CreateConnection creates a new edge between two nodes.
+func (s *UnifiedNodeService) CreateConnection(ctx context.Context, cmd CreateConnectionCommand) (*domain.Edge, error) {
+	return s.uow.Execute(ctx, func(ctx context.Context) (*domain.Edge, error) {
+		// Validate nodes exist
+		if _, err := s.nodeRepo.GetNodeByID(ctx, cmd.SourceID); err != nil {
+			return nil, fmt.Errorf("source node not found: %w", err)
+		}
+		
+		if _, err := s.nodeRepo.GetNodeByID(ctx, cmd.TargetID); err != nil {
+			return nil, fmt.Errorf("target node not found: %w", err)
+		}
+		
+		// Check for existing connection
+		edges, err := s.edgeRepo.GetEdgesBetweenNodes(ctx, cmd.SourceID, cmd.TargetID)
+		if err == nil && len(edges) > 0 {
+			// Update strength if connection exists
+			edge := edges[0]
+			edge.UpdateStrength(edge.Strength + 0.1)
+			if err := s.edgeRepo.UpdateEdge(ctx, edge); err != nil {
+				return nil, fmt.Errorf("failed to update edge: %w", err)
+			}
+			return edge, nil
+		}
+		
+		// Create new edge
+		edge := domain.NewEdge(
+			domain.NodeID(cmd.SourceID),
+			domain.NodeID(cmd.TargetID),
+			cmd.EdgeType,
+			cmd.Strength,
+		)
+		
+		if err := s.edgeRepo.CreateEdge(ctx, edge); err != nil {
+			return nil, fmt.Errorf("failed to create edge: %w", err)
+		}
+		
+		// Publish event
+		event := domain.NewEdgeCreatedEvent(edge.ID, edge.SourceID, edge.TargetID)
+		if err := s.eventBus.Publish(ctx, event); err != nil {
+			s.logger.Warn("Failed to publish edge created event", zap.Error(err))
+		}
+		
+		return edge, nil
+	})
+}
+
+// ============================================================================
+// HELPER METHODS
+// ============================================================================
+
+// createAutomaticConnections creates connections based on content similarity.
+func (s *UnifiedNodeService) createAutomaticConnections(ctx context.Context, node *domain.Node) error {
+	if s.connectionAnalyzer == nil {
+		return nil
+	}
+	
+	// Find similar nodes
+	allNodes, err := s.nodeRepo.ListNodesByUserID(ctx, string(node.UserID), 100, 0)
+	if err != nil {
+		return fmt.Errorf("failed to fetch nodes for comparison: %w", err)
+	}
+	
+	connections := 0
+	for _, existingNode := range allNodes {
+		if existingNode.ID == node.ID {
+			continue
+		}
+		
+		// Calculate similarity
+		similarity := s.connectionAnalyzer.CalculateSimilarity(
+			string(node.Content),
+			string(existingNode.Content),
+		)
+		
+		if similarity >= s.similarityThreshold {
+			// Create connection
+			edge := domain.NewEdge(
+				node.ID,
+				existingNode.ID,
+				domain.EdgeTypeSimilar,
+				similarity,
+			)
+			
+			if err := s.edgeRepo.CreateEdge(ctx, edge); err != nil {
+				s.logger.Warn("Failed to create automatic edge",
+					zap.String("source", string(node.ID)),
+					zap.String("target", string(existingNode.ID)),
+					zap.Error(err),
+				)
+			} else {
+				connections++
+				if connections >= s.maxConnectionsPerNode {
+					break
+				}
+			}
+		}
+	}
+	
+	return nil
+}
+
+// extractKeywords extracts keywords from content.
+func (s *UnifiedNodeService) extractKeywords(content string) []string {
+	// Simple keyword extraction - in production, use NLP
+	words := make(map[string]bool)
+	
+	// Extract hashtags
+	for _, match := range hashtagRegex.FindAllString(content, -1) {
+		words[match[1:]] = true // Remove # prefix
+	}
+	
+	// Extract mentioned users
+	for _, match := range mentionRegex.FindAllString(content, -1) {
+		words[match] = true
+	}
+	
+	// Convert to slice
+	keywords := make([]string, 0, len(words))
+	for word := range words {
+		keywords = append(keywords, word)
+	}
+	
+	return keywords
+}
+
+// ============================================================================
+// QUERY OPERATIONS - READ SIDE
+// ============================================================================
+
+// GetNode retrieves a node by ID.
+func (s *UnifiedNodeService) GetNode(ctx context.Context, nodeID string) (*domain.Node, error) {
+	return s.nodeRepo.GetNodeByID(ctx, nodeID)
+}
+
+// ListNodes lists nodes for a user with pagination.
+func (s *UnifiedNodeService) ListNodes(ctx context.Context, userID string, limit, offset int) ([]*domain.Node, error) {
+	return s.nodeRepo.ListNodesByUserID(ctx, userID, limit, offset)
+}
+
+// GetGraphData retrieves the complete graph structure for a user.
+func (s *UnifiedNodeService) GetGraphData(ctx context.Context, userID string) (*GraphData, error) {
+	// Fetch all nodes
+	nodes, err := s.nodeRepo.ListNodesByUserID(ctx, userID, 1000, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch nodes: %w", err)
+	}
+	
+	// Fetch all edges
+	edges := make([]*domain.Edge, 0)
+	for _, node := range nodes {
+		nodeEdges, err := s.edgeRepo.GetEdgesByNodeID(ctx, string(node.ID))
+		if err != nil {
+			s.logger.Warn("Failed to fetch edges for node",
+				zap.String("node_id", string(node.ID)),
+				zap.Error(err),
+			)
+			continue
+		}
+		edges = append(edges, nodeEdges...)
+	}
+	
+	// Remove duplicates
+	edgeMap := make(map[string]*domain.Edge)
+	for _, edge := range edges {
+		edgeMap[string(edge.ID)] = edge
+	}
+	
+	uniqueEdges := make([]*domain.Edge, 0, len(edgeMap))
+	for _, edge := range edgeMap {
+		uniqueEdges = append(uniqueEdges, edge)
+	}
+	
+	return &GraphData{
+		Nodes: nodes,
+		Edges: uniqueEdges,
+	}, nil
+}
+
+// SearchNodes searches nodes by content.
+func (s *UnifiedNodeService) SearchNodes(ctx context.Context, userID, query string) ([]*domain.Node, error) {
+	// Simple search implementation - in production, use full-text search
+	allNodes, err := s.nodeRepo.ListNodesByUserID(ctx, userID, 1000, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch nodes: %w", err)
+	}
+	
+	results := make([]*domain.Node, 0)
+	for _, node := range allNodes {
+		if containsQuery(string(node.Content), query) {
+			results = append(results, node)
+		}
+	}
+	
+	return results, nil
+}

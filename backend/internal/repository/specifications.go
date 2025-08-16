@@ -286,7 +286,7 @@ func NewUserOwnedSpec(userID domain.UserID) Specification {
 func (s UserOwnedSpec) IsSatisfiedBy(entity interface{}) bool {
 	switch e := entity.(type) {
 	case *domain.Node:
-		return e.UserID().Equals(s.userID)
+		return e.UserID.Equals(s.userID)
 	case *domain.Edge:
 		return e.UserID().Equals(s.userID)
 	case *domain.Category:
@@ -436,9 +436,9 @@ func NewCreatedAfterSpec(afterTime time.Time) Specification {
 func (s CreatedAfterSpec) IsSatisfiedBy(entity interface{}) bool {
 	switch e := entity.(type) {
 	case *domain.Node:
-		return e.CreatedAt().After(s.afterTime)
+		return e.CreatedAt.After(s.afterTime)
 	case *domain.Edge:
-		return e.CreatedAt().After(s.afterTime)
+		return e.CreatedAt.After(s.afterTime)
 	case *domain.Category:
 		return e.CreatedAt.After(s.afterTime)
 	default:
@@ -493,7 +493,7 @@ func NewContentContainsSpec(searchTerm string, fuzzy bool) Specification {
 
 func (s ContentContainsSpec) IsSatisfiedBy(entity interface{}) bool {
 	if node, ok := entity.(*domain.Node); ok {
-		content := strings.ToLower(node.Content().String())
+		content := strings.ToLower(node.Content.String())
 		searchTerm := strings.ToLower(s.searchTerm)
 		
 		if s.fuzzy {

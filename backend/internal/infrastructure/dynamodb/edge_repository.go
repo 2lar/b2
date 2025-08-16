@@ -108,11 +108,11 @@ func (r *EdgeRepository) CreateEdge(ctx context.Context, edge *domain.Edge) erro
 	}
 
 	log.Printf("DEBUG EdgeRepository.CreateEdge: creating edge %s -> %s", 
-		edge.SourceID().String(), edge.TargetID().String())
+		edge.SourceID.String(), edge.TargetID.String())
 
 	// Use canonical edge storage pattern (lexicographically ordered IDs)
-	sourceID := edge.SourceID().String()
-	targetID := edge.TargetID().String()
+	sourceID := edge.SourceID.String()
+	targetID := edge.TargetID.String()
 	userID := edge.UserID().String()
 
 	ownerID, canonicalTargetID := getCanonicalEdge(sourceID, targetID)
@@ -507,8 +507,8 @@ func (r *EdgeRepository) deduplicateEdges(edges []*domain.Edge) []*domain.Edge {
 	var uniqueEdges []*domain.Edge
 
 	for _, edge := range edges {
-		sourceID := edge.SourceID().String()
-		targetID := edge.TargetID().String()
+		sourceID := edge.SourceID.String()
+		targetID := edge.TargetID.String()
 
 		// Create canonical key for deduplication
 		ownerID, canonicalTargetID := getCanonicalEdge(sourceID, targetID)

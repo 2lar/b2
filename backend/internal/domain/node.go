@@ -27,6 +27,16 @@ type Node struct {
 	version   Version   // For optimistic locking
 	archived  bool      // Whether the node is archived
 
+	// Public fields for compatibility with existing code
+	ID        NodeID                 `json:"id"`
+	UserID    UserID                 `json:"user_id"`
+	Content   Content                `json:"content"`
+	Tags      Tags                   `json:"tags"`
+	Metadata  map[string]interface{} `json:"metadata"`
+	CreatedAt time.Time              `json:"created_at"`
+	UpdatedAt time.Time              `json:"updated_at"`
+	Version   int                    `json:"version"`
+
 	// Domain events that occurred during this aggregate's lifetime
 	events []DomainEvent
 }
@@ -62,6 +72,15 @@ func NewNode(userID UserID, content Content, tags Tags) (*Node, error) {
 		version:   NewVersion(), // Always start at 0
 		archived:  false,
 		events:    []DomainEvent{},
+		// Initialize public fields
+		ID:        nodeID,
+		UserID:    userID,
+		Content:   content,
+		Tags:      tags,
+		Metadata:  make(map[string]interface{}),
+		CreatedAt: now,
+		UpdatedAt: now,
+		Version:   0, // Start at version 0
 	}
 
 	// Generate domain event for node creation
@@ -75,6 +94,7 @@ func NewNode(userID UserID, content Content, tags Tags) (*Node, error) {
 func ReconstructNode(id NodeID, userID UserID, content Content, keywords Keywords, tags Tags,
 	createdAt, updatedAt time.Time, version Version, archived bool) *Node {
 	return &Node{
+		// Private fields
 		id:        id,
 		userID:    userID,
 		content:   content,
@@ -85,6 +105,15 @@ func ReconstructNode(id NodeID, userID UserID, content Content, keywords Keyword
 		version:   version,
 		archived:  archived,
 		events:    []DomainEvent{},
+		// Public fields (for compatibility)
+		ID:        id,
+		UserID:    userID,
+		Content:   content,
+		Tags:      tags,
+		Metadata:  make(map[string]interface{}),
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+		Version:   version.Int(),
 	}
 }
 
@@ -109,50 +138,16 @@ func ReconstructNodeFromPrimitives(id, userID, content string, keywords, tags []
 	tagsVO := NewTags(tags...)
 	versionVO := ParseVersion(version)
 
+	// Use ReconstructNode which now properly initializes both private and public fields
 	return ReconstructNode(nodeID, userIDVO, contentVO, keywordsVO, tagsVO,
 		createdAt, createdAt, versionVO, false), nil
 }
 
 // Getters (read-only access to internal state)
 
-// ID returns the node's unique identifier
-func (n *Node) ID() NodeID {
-	return n.id
-}
-
-// UserID returns the ID of the user who owns this node
-func (n *Node) UserID() UserID {
-	return n.userID
-}
-
-// Content returns the node's content
-func (n *Node) Content() Content {
-	return n.content
-}
-
 // Keywords returns the node's keywords
 func (n *Node) Keywords() Keywords {
 	return n.keywords
-}
-
-// Tags returns the node's tags
-func (n *Node) Tags() Tags {
-	return n.tags
-}
-
-// CreatedAt returns when the node was created
-func (n *Node) CreatedAt() time.Time {
-	return n.createdAt
-}
-
-// UpdatedAt returns when the node was last updated
-func (n *Node) UpdatedAt() time.Time {
-	return n.updatedAt
-}
-
-// Version returns the current version for optimistic locking
-func (n *Node) Version() Version {
-	return n.version
 }
 
 // IsArchived returns whether the node is archived
@@ -185,9 +180,12 @@ func (n *Node) UpdateContent(newContent Content) error {
 
 	// Apply changes
 	n.content = newContent
+	n.Content = newContent // Also update public field
 	n.keywords = newContent.ExtractKeywords()
 	n.updatedAt = time.Now()
+	n.UpdatedAt = n.updatedAt // Also update public field
 	n.version = n.version.Next()
+	n.Version = n.version.Int() // Also update public field
 
 	// Generate domain event
 	event := NewNodeContentUpdatedEvent(n.id, n.userID, oldContent, newContent, oldKeywords, n.keywords, n.version)
@@ -218,8 +216,11 @@ func (n *Node) UpdateTags(newTags Tags) error {
 
 	// Apply changes
 	n.tags = newTags
+	n.Tags = newTags // Also update public field
 	n.updatedAt = time.Now()
+	n.UpdatedAt = n.updatedAt // Also update public field
 	n.version = n.version.Next()
+	n.Version = n.version.Int() // Also update public field
 
 	// Generate domain event
 	event := NewNodeTagsUpdatedEvent(n.id, n.userID, oldTags, newTags, n.version)
@@ -336,6 +337,43 @@ func tagsEqual(tags1, tags2 Tags) bool {
 	}
 
 	return true
+}
+
+// Validate validates the node's state
+func (n *Node) Validate() error {
+	if n.ID.IsEmpty() {
+		return NewValidationError("id", "node ID is required", n.ID)
+	}
+	if n.UserID.IsEmpty() {
+		return NewValidationError("user_id", "user ID is required", n.UserID)
+	}
+	if err := n.Content.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SetMetadata sets the metadata for the node
+func (n *Node) SetMetadata(metadata map[string]interface{}) {
+	n.Metadata = metadata
+}
+
+// SetTags sets the tags for the node
+func (n *Node) SetTags(tags Tags) {
+	n.tags = tags
+	n.Tags = tags
+}
+
+
+// UpdateTimestamp updates the node's timestamp
+func (n *Node) UpdateTimestamp() {
+	n.updatedAt = time.Now()
+	n.UpdatedAt = n.updatedAt
+}
+
+// Events returns the domain events for this node
+func (n *Node) Events() []DomainEvent {
+	return n.events
 }
 
 // =====

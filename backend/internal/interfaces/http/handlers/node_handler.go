@@ -141,7 +141,7 @@ func (h *NodeHandler) CreateNode() http.HandlerFunc {
 		
 		// Add idempotency key if provided
 		if idempotencyKey := r.Header.Get("Idempotency-Key"); idempotencyKey != "" {
-			command.WithIdempotencyKey(idempotencyKey)
+			command.IdempotencyKey = idempotencyKey
 		}
 		
 		// 6. Execute use case through application service
@@ -287,10 +287,7 @@ func (h *NodeHandler) UpdateNode() http.HandlerFunc {
 			return
 		}
 		
-		// Add idempotency key if provided
-		if idempotencyKey := r.Header.Get("Idempotency-Key"); idempotencyKey != "" {
-			command.WithIdempotencyKey(idempotencyKey)
-		}
+		// Note: UpdateNodeCommand doesn't support idempotency key
 		
 		// 8. Execute update
 		result, err := h.nodeService.UpdateNode(ctx, command)
@@ -340,16 +337,12 @@ func (h *NodeHandler) DeleteNode() http.HandlerFunc {
 		}
 		
 		// 3. Create command
-		command, err := commands.NewDeleteNodeCommand(userID, nodeID)
-		if err != nil {
-			httpErrors.NewBadRequest(err.Error()).Write(w)
-			return
+		command := &commands.DeleteNodeCommand{
+			UserID: userID,
+			NodeID: nodeID,
 		}
 		
-		// Add idempotency key if provided
-		if idempotencyKey := r.Header.Get("Idempotency-Key"); idempotencyKey != "" {
-			command.WithIdempotencyKey(idempotencyKey)
-		}
+		// Note: DeleteNodeCommand doesn't support idempotency key
 		
 		// 4. Execute deletion
 		_, err = h.nodeService.DeleteNode(ctx, command)
@@ -486,10 +479,7 @@ func (h *NodeHandler) BulkDeleteNodes() http.HandlerFunc {
 			return
 		}
 		
-		// Add idempotency key if provided
-		if idempotencyKey := r.Header.Get("Idempotency-Key"); idempotencyKey != "" {
-			command.WithIdempotencyKey(idempotencyKey)
-		}
+		// Note: BulkDeleteNodesCommand doesn't support idempotency key
 		
 		// 5. Execute bulk deletion
 		result, err := h.nodeService.BulkDeleteNodes(ctx, command)

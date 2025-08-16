@@ -312,11 +312,11 @@ func (h *CategoryHandler) GetNodesInCategory(w http.ResponseWriter, r *http.Requ
 	var nodesResponse []NodeResponse
 	for _, node := range nodes {
 		nodesResponse = append(nodesResponse, NodeResponse{
-			NodeID:    node.ID().String(),
-			Content:   node.Content().String(),
-			Tags:      node.Tags().ToSlice(),
-			Timestamp: node.CreatedAt().Format(time.RFC3339),
-			Version:   node.Version().Int(),
+			NodeID:    node.ID.String(),
+			Content:   node.Content.String(),
+			Tags:      node.Tags.ToSlice(),
+			Timestamp: node.CreatedAt.Format(time.RFC3339),
+			Version:   node.Version,
 		})
 	}
 

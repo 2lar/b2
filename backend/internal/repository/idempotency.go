@@ -96,7 +96,7 @@ func GenerateIdempotencyKey(userID, operation string, node domain.Node) Idempote
 	// Create a hash of the node data to ensure uniqueness
 	hasher := sha256.New()
 	hasher.Write([]byte(fmt.Sprintf("%s:%s:%s:%v:%d",
-		node.ID().String(), node.UserID().String(), node.Content().String(), node.Keywords().ToSlice(), node.Version().Int())))
+		node.ID.String(), node.UserID.String(), node.Content.String(), node.Keywords().ToSlice(), node.Version)))
 	hash := fmt.Sprintf("%x", hasher.Sum(nil))
 
 	return IdempotencyKey{
@@ -174,14 +174,14 @@ func (r *LastWriteWinsResolver) ResolveConflict(ctx context.Context, current, in
 	// Simple last-write-wins: we need to create a new node with incremented version
 	// since nodes are immutable value objects
 	newNode := domain.ReconstructNode(
-		incoming.ID(),
-		incoming.UserID(),
-		incoming.Content(),
+		incoming.ID,
+		incoming.UserID,
+		incoming.Content,
 		incoming.Keywords(),
-		incoming.Tags(),
-		incoming.CreatedAt(),
-		incoming.UpdatedAt(),
-		current.Version().Next(), // Increment the current version
+		incoming.Tags,
+		incoming.CreatedAt,
+		incoming.UpdatedAt,
+		domain.ParseVersion(current.Version + 1), // Increment the current version
 		incoming.IsArchived(),
 	)
 	return *newNode, nil
@@ -215,10 +215,10 @@ func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming d
 	
 	// Merge tags too
 	tagSet := make(map[string]bool)
-	for _, tag := range current.Tags().ToSlice() {
+	for _, tag := range current.Tags.ToSlice() {
 		tagSet[tag] = true
 	}
-	for _, tag := range incoming.Tags().ToSlice() {
+	for _, tag := range incoming.Tags.ToSlice() {
 		tagSet[tag] = true
 	}
 	var mergedTagSlice []string
@@ -229,14 +229,14 @@ func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming d
 	
 	// Create new merged node with incremented version
 	mergedNode := domain.ReconstructNode(
-		incoming.ID(),
-		incoming.UserID(),
-		incoming.Content(), // Use incoming content
+		incoming.ID,
+		incoming.UserID,
+		incoming.Content, // Use incoming content
 		mergedKeywords,     // Use merged keywords
 		mergedTags,         // Use merged tags
-		incoming.CreatedAt(),
-		incoming.UpdatedAt(),
-		current.Version().Next(), // Increment version
+		incoming.CreatedAt,
+		incoming.UpdatedAt,
+		domain.ParseVersion(current.Version + 1), // Increment version
 		incoming.IsArchived(),
 	)
 

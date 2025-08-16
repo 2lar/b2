@@ -82,6 +82,11 @@ func (id UserID) Equals(other UserID) bool {
 	return id.value == other.value 
 }
 
+// IsEmpty checks if the UserID is empty
+func (id UserID) IsEmpty() bool {
+	return id.value == ""
+}
+
 // Content is a value object with business rules for node content
 type Content struct {
 	value string

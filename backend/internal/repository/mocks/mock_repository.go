@@ -79,7 +79,7 @@ func (m *MockRepository) CreateNodeAndKeywords(ctx context.Context, node *domain
 	defer m.mu.Unlock()
 
 	// Store the node (create or update)
-	m.nodes[node.ID().String()] = node
+	m.nodes[node.ID.String()] = node
 	return nil
 }
 
@@ -129,15 +129,15 @@ func (m *MockRepository) CreateEdge(ctx context.Context, edge *domain.Edge) erro
 	defer m.mu.Unlock()
 
 	// Store edge in both directions (bidirectional)
-	sourceID := edge.SourceID().String()
-	targetID := edge.TargetID().String()
+	sourceID := edge.SourceID.String()
+	targetID := edge.TargetID.String()
 	
 	m.edges[sourceID] = append(m.edges[sourceID], *edge)
 	
 	// Create reverse edge
 	userIDVO := edge.UserID()
-	sourceNodeIDVO := edge.SourceID()
-	targetNodeIDVO := edge.TargetID()
+	sourceNodeIDVO := edge.SourceID
+	targetNodeIDVO := edge.TargetID
 	reverseEdge, err := domain.NewEdge(targetNodeIDVO, sourceNodeIDVO, userIDVO, edge.Weight())
 	if err != nil {
 		return err
@@ -159,7 +159,7 @@ func (m *MockRepository) CreateNodeWithEdges(ctx context.Context, node *domain.N
 
 	// Then create the edges
 	if len(relatedNodeIDs) > 0 {
-		return m.CreateEdges(ctx, node.UserID().String(), node.ID().String(), relatedNodeIDs)
+		return m.CreateEdges(ctx, node.UserID.String(), node.ID.String(), relatedNodeIDs)
 	}
 
 	return nil
@@ -174,21 +174,21 @@ func (m *MockRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.No
 	defer m.mu.Unlock()
 
 	// Check if node exists
-	if _, exists := m.nodes[node.ID().String()]; !exists {
+	if _, exists := m.nodes[node.ID.String()]; !exists {
 		return appErrors.NewNotFound("node not found")
 	}
 
 	// Update the node
-	m.nodes[node.ID().String()] = node
+	m.nodes[node.ID.String()] = node
 
 	// Clear existing edges for this node
-	delete(m.edges, node.ID().String())
+	delete(m.edges, node.ID.String())
 
 	// Remove references to this node from other nodes' edges
 	for nodeID, edges := range m.edges {
 		var filteredEdges []domain.Edge
 		for _, edge := range edges {
-			if edge.TargetID().String() != node.ID().String() {
+			if edge.TargetID.String() != node.ID.String() {
 				filteredEdges = append(filteredEdges, edge)
 			}
 		}
@@ -203,11 +203,11 @@ func (m *MockRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.No
 
 		// Add edge from source to target
 		// Create rich domain edge using factory method
-		sourceNodeIDVO := node.ID()
+		sourceNodeIDVO := node.ID
 		targetNodeIDVO, _ := domain.ParseNodeID(targetID)
-		userIDVO := node.UserID()
+		userIDVO := node.UserID
 		edge, _ := domain.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
-		m.edges[node.ID().String()] = append(m.edges[node.ID().String()], *edge)
+		m.edges[node.ID.String()] = append(m.edges[node.ID.String()], *edge)
 
 		// Add edge from target to source (bidirectional)
 		reverseEdge, _ := domain.NewEdge(targetNodeIDVO, sourceNodeIDVO, userIDVO, 1.0)
@@ -228,7 +228,7 @@ func (m *MockRepository) DeleteNode(ctx context.Context, userID, nodeID string) 
 	// Check if node exists and belongs to user
 	if node, exists := m.nodes[nodeID]; !exists {
 		return appErrors.NewNotFound("node not found")
-	} else if node.UserID().String() != userID {
+	} else if node.UserID.String() != userID {
 		return appErrors.NewNotFound("node not found")
 	}
 
@@ -240,7 +240,7 @@ func (m *MockRepository) DeleteNode(ctx context.Context, userID, nodeID string) 
 	for sourceID, edges := range m.edges {
 		var filteredEdges []domain.Edge
 		for _, edge := range edges {
-			if edge.TargetID().String() != nodeID {
+			if edge.TargetID.String() != nodeID {
 				filteredEdges = append(filteredEdges, edge)
 			}
 		}
@@ -280,7 +280,7 @@ func (m *MockRepository) FindNodeByID(ctx context.Context, userID, nodeID string
 	}
 
 	// Verify ownership
-	if node.UserID().String() != userID {
+	if node.UserID.String() != userID {
 		return nil, nil
 	}
 
@@ -302,7 +302,7 @@ func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQue
 	// If specific node IDs are requested
 	if query.HasNodeIDs() {
 		for _, nodeID := range query.NodeIDs {
-			if node, exists := m.nodes[nodeID]; exists && node.UserID().String() == query.UserID {
+			if node, exists := m.nodes[nodeID]; exists && node.UserID.String() == query.UserID {
 				nodes = append(nodes, node)
 			}
 		}
@@ -311,7 +311,7 @@ func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQue
 
 	// Otherwise, return all nodes for the user
 	for _, node := range m.nodes {
-		if node.UserID().String() == query.UserID {
+		if node.UserID.String() == query.UserID {
 			// Apply keyword filter if specified
 			if query.HasKeywords() {
 				hasKeyword := false
@@ -378,15 +378,15 @@ func (m *MockRepository) FindEdges(ctx context.Context, query repository.EdgeQue
 
 	// Return all edges for nodes belonging to the user
 	for nodeID, nodeEdges := range m.edges {
-		if node, exists := m.nodes[nodeID]; exists && node.UserID().String() == query.UserID {
+		if node, exists := m.nodes[nodeID]; exists && node.UserID.String() == query.UserID {
 			for _, edge := range nodeEdges {
 				// Apply source filter if specified
-				if query.HasSourceFilter() && edge.SourceID().String() != query.SourceID {
+				if query.HasSourceFilter() && edge.SourceID.String() != query.SourceID {
 					continue
 				}
 
 				// Apply target filter if specified
-				if query.HasTargetFilter() && edge.TargetID().String() != query.TargetID {
+				if query.HasTargetFilter() && edge.TargetID.String() != query.TargetID {
 					continue
 				}
 
@@ -785,7 +785,7 @@ func (m *MockRepository) FindNodesByCategory(ctx context.Context, userID, catego
 
 	if nodeIDs, exists := m.categoryNodes[categoryID]; exists {
 		for _, nodeID := range nodeIDs {
-			if node, exists := m.nodes[nodeID]; exists && node.UserID().String() == userID {
+			if node, exists := m.nodes[nodeID]; exists && node.UserID.String() == userID {
 				nodes = append(nodes, node)
 			}
 		}
@@ -943,7 +943,7 @@ func (m *MockRepository) CountNodes(ctx context.Context, userID string) (int, er
 	// Count nodes for the specific user
 	count := 0
 	for _, node := range m.nodes {
-		if node != nil && node.UserID().String() == userID {
+		if node != nil && node.UserID.String() == userID {
 			count++
 		}
 	}
