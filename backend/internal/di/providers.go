@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"brain2-backend/infrastructure/dynamodb"
+	infraDynamodb "brain2-backend/internal/infrastructure/dynamodb"
 	"brain2-backend/internal/application/adapters"
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
@@ -64,7 +65,7 @@ var InfrastructureProviders = wire.NewSet(
 	
 	// Repository Implementations
 	provideNodeRepository,
-	// provideEdgeRepository, // TODO: Implement when needed
+	provideEdgeRepository,
 	provideCategoryRepository,
 	// provideKeywordRepository, // TODO: Implement when needed
 	// provideTransactionalRepository, // TODO: Implement when needed
@@ -273,15 +274,25 @@ func provideNodeRepository(
 	return decorated
 }
 
-// TODO: Implement EdgeRepository
-// // provideEdgeRepository creates an EdgeRepository with appropriate decorators.
-// func provideEdgeRepository(
-// 	client *awsDynamodb.Client,
-// 	cfg *config.Config,
-// 	logger *zap.Logger,
-// ) *dynamodb.EdgeRepository {
-// 	return dynamodb.NewEdgeRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
-// }
+// provideEdgeRepository creates an EdgeRepository with appropriate decorators.
+func provideEdgeRepository(
+	client *awsDynamodb.Client,
+	cfg *config.Config,
+	logger *zap.Logger,
+	cache decorators.Cache,
+	metrics decorators.MetricsCollector,
+) repository.EdgeRepository {
+	// Base repository implementation
+	base := dynamodb.NewEdgeRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
+	
+	// Apply decorators based on configuration
+	var decorated repository.EdgeRepository = base
+	
+	// Note: Decorator implementations would be added here when available
+	// For now, return the base repository to enable functionality
+	
+	return decorated
+}
 
 // provideCategoryRepository creates a decorated CategoryRepository.
 func provideCategoryRepository(
@@ -407,14 +418,17 @@ func provideEventBus(cfg *config.Config, logger *zap.Logger) domain.EventBus {
 
 // provideUnitOfWork creates the Unit of Work for transactional consistency.
 func provideUnitOfWork(
-	transactionalRepo repository.TransactionalRepository,
+	client *awsDynamodb.Client,
+	cfg *config.Config,
 	eventBus domain.EventBus,
 	logger *zap.Logger,
 ) repository.UnitOfWork {
-	// TODO: Implement NewDynamoDBUnitOfWork when available
-	// This would be a real implementation in production
-	// return repository.NewDynamoDBUnitOfWork(transactionalRepo, eventBus, logger)
-	return nil // Placeholder
+	return infraDynamodb.NewDynamoDBUnitOfWork(
+		client,
+		cfg.Database.TableName,
+		cfg.Database.IndexName,
+		eventBus,
+	)
 }
 
 // ============================================================================
@@ -523,8 +537,9 @@ func provideLegacyMemoryService(
 // provideLegacyCategoryService creates the legacy category service.
 func provideLegacyCategoryService(
 	repo repository.Repository,
+	cfg *config.Config,
 ) categoryService.Service {
-	return categoryService.NewEnhancedService(repo, nil)
+	return categoryService.NewEnhancedService(repo, nil, cfg)
 }
 
 // provideMemoryServiceAdapter creates an adapter for gradual migration.

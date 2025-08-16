@@ -124,6 +124,23 @@ type BulkDeleteResult struct {
 	Message      string   `json:"message,omitempty"`
 }
 
+// BulkCreateResult represents the result of bulk creating nodes.
+type BulkCreateResult struct {
+	CreatedNodes    []*NodeView       `json:"created_nodes"`
+	CreatedCount    int               `json:"created_count"`
+	Connections     []*ConnectionView `json:"connections,omitempty"`
+	ConnectionCount int               `json:"connection_count"`
+	Failed          []BulkCreateError `json:"failed,omitempty"`
+	Message         string            `json:"message,omitempty"`
+}
+
+// BulkCreateError represents an error that occurred during bulk creation.
+type BulkCreateError struct {
+	Index   int    `json:"index"`
+	Content string `json:"content"`
+	Error   string `json:"error"`
+}
+
 // CreateConnectionResult represents the result of creating a connection between nodes.
 type CreateConnectionResult struct {
 	Success    bool              `json:"success"`
@@ -147,86 +164,97 @@ type ListNodesResult struct {
 	Count     int         `json:"count"`
 }
 
-// GetNodeConnectionsResult represents the result of retrieving node connections.
+// GetEdgeResult represents the result of retrieving a single edge.
+type GetEdgeResult struct {
+	Edge       *ConnectionView `json:"edge"`
+	SourceNode *NodeView       `json:"source_node,omitempty"`
+	TargetNode *NodeView       `json:"target_node,omitempty"`
+}
+
+// ListEdgesResult represents the result of listing edges with pagination.
+type ListEdgesResult struct {
+	Edges     []*ConnectionView `json:"edges"`
+	NextToken string            `json:"next_token,omitempty"`
+	HasMore   bool              `json:"has_more"`
+	Total     int               `json:"total"`
+	Count     int               `json:"count"`
+}
+
+// ConnectionStatisticsResult represents connection statistics for a user.
+type ConnectionStatisticsResult struct {
+	TotalEdges           int                  `json:"total_edges"`
+	StrongConnections    int                  `json:"strong_connections"`
+	WeakConnections      int                  `json:"weak_connections"`
+	AverageWeight        float64              `json:"average_weight"`
+	AverageConnections   float64              `json:"average_connections"`
+	ConnectionDensity    float64              `json:"connection_density"`
+	TotalNodes           int                  `json:"total_nodes"`
+	MostConnectedNodes   []NodeConnectionInfo `json:"most_connected_nodes"`
+	CalculatedAt         time.Time            `json:"calculated_at"`
+}
+
+// NodeConnectionInfo represents connection information for a specific node.
+type NodeConnectionInfo struct {
+	NodeID          string `json:"node_id"`
+	ConnectionCount int    `json:"connection_count"`
+}
+
+// GetNodeConnectionsResult represents enriched connections for a node.
 type GetNodeConnectionsResult struct {
-	NodeID      string            `json:"node_id"`
-	Connections []*ConnectionView `json:"connections"`
-	Count       int               `json:"count"`
-}
-
-// GraphView represents the complete graph data optimized for visualization.
-type GraphView struct {
-	Nodes []*NodeView       `json:"nodes"`
-	Edges []*ConnectionView `json:"edges"`
-	Stats *GraphStats       `json:"stats,omitempty"`
-}
-
-// GraphStats contains statistics about the graph.
-type GraphStats struct {
-	NodeCount       int     `json:"node_count"`
-	EdgeCount       int     `json:"edge_count"`
-	AvgConnections  float64 `json:"avg_connections"`
-	MaxConnections  int     `json:"max_connections"`
-	IsolatedNodes   int     `json:"isolated_nodes"`
-}
-
-// ToGraphView converts domain Graph to GraphView.
-func ToGraphView(graph *domain.Graph) *GraphView {
-	if graph == nil {
-		return &GraphView{
-			Nodes: []*NodeView{},
-			Edges: []*ConnectionView{},
-		}
-	}
-	
-	nodeViews := ToNodeViews(graph.Nodes)
-	edgeViews := ToConnectionViews(graph.Edges)
-	
-	// Calculate graph statistics
-	stats := &GraphStats{
-		NodeCount: len(nodeViews),
-		EdgeCount: len(edgeViews),
-	}
-	
-	if len(nodeViews) > 0 {
-		// Calculate average connections
-		connectionCounts := make(map[string]int)
-		maxConnections := 0
-		
-		for _, edge := range edgeViews {
-			connectionCounts[edge.SourceNodeID]++
-			connectionCounts[edge.TargetNodeID]++
-		}
-		
-		totalConnections := 0
-		isolatedNodes := 0
-		
-		for _, node := range nodeViews {
-			count := connectionCounts[node.ID]
-			totalConnections += count
-			if count == 0 {
-				isolatedNodes++
-			}
-			if count > maxConnections {
-				maxConnections = count
-			}
-		}
-		
-		stats.AvgConnections = float64(totalConnections) / float64(len(nodeViews))
-		stats.MaxConnections = maxConnections
-		stats.IsolatedNodes = isolatedNodes
-	}
-	
-	return &GraphView{
-		Nodes: nodeViews,
-		Edges: edgeViews,
-		Stats: stats,
-	}
+	NodeID        string                     `json:"node_id"`
+	Connections   []*ConnectionView          `json:"connections"`
+	Count         int                        `json:"count"`
+	EnrichedNodes map[string]*NodeView       `json:"enriched_nodes,omitempty"`
 }
 
 // GetGraphDataResult represents the result of retrieving graph data.
 type GetGraphDataResult struct {
 	Graph *GraphView `json:"graph"`
+}
+
+// GraphView represents a graph optimized for API responses.
+type GraphView struct {
+	Nodes       []*NodeView       `json:"nodes"`
+	Connections []*ConnectionView `json:"connections"`
+	NodeCount   int               `json:"node_count"`
+	EdgeCount   int               `json:"edge_count"`
+	Density     float64           `json:"density"`
+	GeneratedAt time.Time         `json:"generated_at"`
+}
+
+// ToGraphView converts a domain Graph to a GraphView.
+func ToGraphView(graph *domain.Graph) *GraphView {
+	if graph == nil {
+		return &GraphView{
+			Nodes:       []*NodeView{},
+			Connections: []*ConnectionView{},
+			NodeCount:   0,
+			EdgeCount:   0,
+			Density:     0,
+			GeneratedAt: time.Now(),
+		}
+	}
+
+	nodeViews := ToNodeViews(graph.Nodes)
+	connectionViews := ToConnectionViews(graph.Edges)
+
+	// Calculate density
+	nodeCount := len(graph.Nodes)
+	edgeCount := len(graph.Edges)
+	density := float64(0)
+	if nodeCount > 1 {
+		possibleEdges := nodeCount * (nodeCount - 1) / 2
+		density = float64(edgeCount) / float64(possibleEdges)
+	}
+
+	return &GraphView{
+		Nodes:       nodeViews,
+		Connections: connectionViews,
+		NodeCount:   nodeCount,
+		EdgeCount:   edgeCount,
+		Density:     density,
+		GeneratedAt: time.Now(),
+	}
 }
 
 // ErrorResponse represents an error response from the application layer.

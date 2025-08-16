@@ -395,7 +395,13 @@ func (hf *HandlerFactory) CreateCategoryHandler() *handlers.CategoryHandler {
 	hf.logger.Debug("Creating CategoryHandler")
 	
 	// For now, use legacy service until CategoryService is fully migrated
-	legacyService := categoryService.NewEnhancedService(nil, nil) // Will be replaced
+	// Create a minimal config for the service
+	minimalConfig := &config.Config{
+		Features: config.Features{
+			EnableAIProcessing: false,
+		},
+	}
+	legacyService := categoryService.NewEnhancedService(nil, nil, minimalConfig) // Will be replaced
 	
 	handler := handlers.NewCategoryHandler(legacyService)
 	

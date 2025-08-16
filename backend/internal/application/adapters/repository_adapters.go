@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 
 	"brain2-backend/internal/domain"
 	"brain2-backend/internal/repository"
@@ -262,25 +263,14 @@ func (a *edgeRepositoryAdapter) Save(ctx context.Context, edge *domain.Edge) err
 
 // DeleteByNodeID deletes all edges associated with a node
 func (a *edgeRepositoryAdapter) DeleteByNodeID(ctx context.Context, nodeID domain.NodeID) error {
-	query := repository.EdgeQuery{
-		UserID: "", // May need to be enhanced with proper user context
-		NodeIDs: []string{nodeID.String()},
-	}
+	// For now, we'll delegate to the underlying repository
+	// In a full implementation, this would check for a DeleteByNodeID method
+	// or implement bulk deletion logic
 	
-	edges, err := a.edgeRepo.FindEdges(ctx, query)
-	if err != nil {
-		return err
-	}
-	
-	// Delete each edge individually (assuming no bulk delete method exists)
-	for _, edge := range edges {
-		// Mark for deletion using domain method
-		edge.Delete()
-		// Note: In a real implementation, we'd need a delete method in the repository
-		// For now, this is a placeholder showing the pattern
-	}
-	
-	return nil
+	// Since the EdgeRepository interface doesn't have a DeleteByNodeID method,
+	// we would need to extend it or implement the logic here
+	// For now, return a not implemented error to signal this needs proper implementation
+	return fmt.Errorf("DeleteByNodeID not yet implemented in EdgeRepositoryAdapter")
 }
 
 // nodeCategoryRepositoryAdapter implements NodeCategoryRepositoryAdapter
@@ -318,11 +308,14 @@ func (a *nodeCategoryRepositoryAdapter) Save(ctx context.Context, mapping *domai
 // unitOfWorkAdapter implements UnitOfWorkAdapter using existing UnitOfWork
 type unitOfWorkAdapter struct {
 	unitOfWork repository.UnitOfWork
+	// Cache adapters that wrap the transactional repositories
 	nodeAdapter NodeRepositoryAdapter
 	edgeAdapter EdgeRepositoryAdapter
 	categoryAdapter CategoryRepositoryAdapter
 	graphAdapter GraphRepositoryAdapter
 	nodeCategoryAdapter NodeCategoryRepositoryAdapter
+	// Flag to track if we've initialized the transactional adapters
+	isTransactionActive bool
 }
 
 // NewUnitOfWorkAdapter creates a new unit of work adapter
@@ -344,43 +337,91 @@ func NewUnitOfWorkAdapter(
 	}
 }
 
-// Begin starts the unit of work
+// Begin starts the unit of work and initializes transactional adapters
 func (a *unitOfWorkAdapter) Begin(ctx context.Context) error {
-	return a.unitOfWork.Begin(ctx)
+	err := a.unitOfWork.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	
+	// Don't initialize adapters here - they will be lazily initialized on first access
+	// This avoids calling unitOfWork.Nodes() etc. before the underlying repositories are ready
+	
+	a.isTransactionActive = true
+	return nil
 }
 
-// Commit commits the unit of work
+// Commit commits the unit of work and cleans up transactional state
 func (a *unitOfWorkAdapter) Commit() error {
-	return a.unitOfWork.Commit()
+	err := a.unitOfWork.Commit()
+	a.isTransactionActive = false
+	return err
 }
 
-// Rollback rolls back the unit of work
+// Rollback rolls back the unit of work and cleans up transactional state
 func (a *unitOfWorkAdapter) Rollback() error {
-	return a.unitOfWork.Rollback()
+	err := a.unitOfWork.Rollback()
+	a.isTransactionActive = false
+	return err
 }
 
 // Nodes returns the node repository adapter
 func (a *unitOfWorkAdapter) Nodes() NodeRepositoryAdapter {
+	if !a.isTransactionActive {
+		panic("unit of work not active - call Begin() first")
+	}
+	// Lazy initialization - create adapter on first access
+	if a.nodeAdapter == nil {
+		a.nodeAdapter = NewNodeRepositoryAdapter(a.unitOfWork.Nodes(), nil)
+	}
 	return a.nodeAdapter
 }
 
 // Edges returns the edge repository adapter
 func (a *unitOfWorkAdapter) Edges() EdgeRepositoryAdapter {
+	if !a.isTransactionActive {
+		panic("unit of work not active - call Begin() first")
+	}
+	// Lazy initialization - create adapter on first access
+	if a.edgeAdapter == nil {
+		a.edgeAdapter = NewEdgeRepositoryAdapter(a.unitOfWork.Edges())
+	}
 	return a.edgeAdapter
 }
 
 // Categories returns the category repository adapter
 func (a *unitOfWorkAdapter) Categories() CategoryRepositoryAdapter {
+	if !a.isTransactionActive {
+		panic("unit of work not active - call Begin() first")
+	}
+	// Lazy initialization - create adapter on first access
+	if a.categoryAdapter == nil {
+		a.categoryAdapter = NewCategoryRepositoryAdapter(a.unitOfWork.Categories())
+	}
 	return a.categoryAdapter
 }
 
 // Graph returns the graph repository adapter
 func (a *unitOfWorkAdapter) Graph() GraphRepositoryAdapter {
+	if !a.isTransactionActive {
+		panic("unit of work not active - call Begin() first")
+	}
+	// Lazy initialization - create adapter on first access
+	if a.graphAdapter == nil {
+		a.graphAdapter = NewGraphRepositoryAdapter(a.unitOfWork.Graph())
+	}
 	return a.graphAdapter
 }
 
 // NodeCategories returns the node category repository adapter
 func (a *unitOfWorkAdapter) NodeCategories() NodeCategoryRepositoryAdapter {
+	if !a.isTransactionActive {
+		panic("unit of work not active - call Begin() first")
+	}
+	// Lazy initialization - create adapter on first access
+	if a.nodeCategoryAdapter == nil {
+		a.nodeCategoryAdapter = NewNodeCategoryRepositoryAdapter(a.unitOfWork.NodeCategories())
+	}
 	return a.nodeCategoryAdapter
 }
 

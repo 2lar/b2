@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"brain2-backend/internal/config"
 	"brain2-backend/internal/domain"
 	"brain2-backend/internal/repository"
 	"brain2-backend/internal/service/llm"
@@ -41,10 +42,11 @@ type enhancedService struct {
 	BasicService // Embed the basic service
 	repo         repository.Repository
 	llmSvc       *llm.Service
+	config       *config.Config // Add configuration for feature flags
 }
 
 // NewEnhancedService creates a new enhanced category service
-func NewEnhancedService(repo repository.Repository, llmSvc *llm.Service) EnhancedService {
+func NewEnhancedService(repo repository.Repository, llmSvc *llm.Service, cfg *config.Config) EnhancedService {
 	return &enhancedService{
 		BasicService: BasicService{
 			categoryRepo: nil, // Repository interface mismatch - will use repo field directly
@@ -52,6 +54,7 @@ func NewEnhancedService(repo repository.Repository, llmSvc *llm.Service) Enhance
 		},
 		repo:   repo,
 		llmSvc: llmSvc,
+		config: cfg,
 	}
 }
 
@@ -68,8 +71,8 @@ func (s *enhancedService) CategorizeNode(ctx context.Context, node domain.Node) 
 	var finalCategories []domain.Category
 	var mappings []domain.NodeCategory
 
-	// 2. Try AI categorization first
-	if s.llmSvc != nil && s.llmSvc.IsAvailable() {
+	// 2. Check AI feature flag and try AI categorization first
+	if s.config != nil && s.config.Features.EnableAIProcessing && s.llmSvc != nil && s.llmSvc.IsAvailable() {
 		suggestions, err := s.llmSvc.SuggestCategories(ctx, node.Content().String(), existingCategories)
 		if err != nil {
 			log.Printf("AI categorization failed for node %s: %v", node.ID().String(), err)
@@ -131,6 +134,11 @@ func (s *enhancedService) CategorizeNode(ctx context.Context, node domain.Node) 
 
 // SuggestCategories provides AI-powered category suggestions for content
 func (s *enhancedService) SuggestCategories(ctx context.Context, content string, userID string) ([]domain.CategorySuggestion, error) {
+	// Check AI feature flag first
+	if s.config == nil || !s.config.Features.EnableAIProcessing {
+		return nil, appErrors.NewValidation("AI categorization is disabled")
+	}
+	
 	if s.llmSvc == nil || !s.llmSvc.IsAvailable() {
 		return nil, appErrors.NewValidation("AI categorization service is not available")
 	}

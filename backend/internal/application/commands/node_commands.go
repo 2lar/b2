@@ -311,3 +311,74 @@ func (c *BulkDeleteNodesCommand) Validate() error {
 	
 	return nil
 }
+
+// BulkCreateNodesCommand represents the intent to create multiple nodes in a single operation.
+type BulkCreateNodesCommand struct {
+	UserID            string                  `json:"user_id" validate:"required"`
+	Nodes             []BulkCreateNodeRequest `json:"nodes" validate:"required,min=1,max=50,dive"`
+	CreateConnections bool                    `json:"create_connections"`
+	IdempotencyKey    *string                 `json:"idempotency_key,omitempty"`
+	RequestedAt       time.Time               `json:"requested_at"`
+}
+
+// BulkCreateNodeRequest represents a single node creation request within a bulk operation.
+type BulkCreateNodeRequest struct {
+	Content string   `json:"content" validate:"required,min=1,max=10000"`
+	Tags    []string `json:"tags" validate:"max=10,dive,min=1,max=50"`
+}
+
+// NewBulkCreateNodesCommand creates a new BulkCreateNodesCommand with validation.
+func NewBulkCreateNodesCommand(userID string, nodes []BulkCreateNodeRequest, createConnections bool) (*BulkCreateNodesCommand, error) {
+	cmd := &BulkCreateNodesCommand{
+		UserID:            userID,
+		Nodes:             nodes,
+		CreateConnections: createConnections,
+		RequestedAt:       time.Now(),
+	}
+	
+	if err := cmd.Validate(); err != nil {
+		return nil, err
+	}
+	
+	return cmd, nil
+}
+
+// Validate performs business validation on the command.
+func (c *BulkCreateNodesCommand) Validate() error {
+	if strings.TrimSpace(c.UserID) == "" {
+		return errors.New("user_id is required")
+	}
+	
+	if len(c.Nodes) == 0 {
+		return errors.New("at least one node is required")
+	}
+	
+	if len(c.Nodes) > 50 {
+		return errors.New("maximum of 50 nodes can be created at once")
+	}
+	
+	for i, nodeReq := range c.Nodes {
+		if strings.TrimSpace(nodeReq.Content) == "" {
+			return errors.New("content is required for node at index " + string(rune(i)))
+		}
+		
+		if len(nodeReq.Content) > 10000 {
+			return errors.New("content too long for node at index " + string(rune(i)))
+		}
+		
+		if len(nodeReq.Tags) > 10 {
+			return errors.New("too many tags for node at index " + string(rune(i)))
+		}
+		
+		for j, tag := range nodeReq.Tags {
+			if strings.TrimSpace(tag) == "" {
+				return errors.New("empty tag at index " + string(rune(j)) + " for node at index " + string(rune(i)))
+			}
+			if len(tag) > 50 {
+				return errors.New("tag too long at index " + string(rune(j)) + " for node at index " + string(rune(i)))
+			}
+		}
+	}
+	
+	return nil
+}

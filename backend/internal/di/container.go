@@ -385,7 +385,7 @@ func (c *Container) initializeServices() {
 	}
 	
 	// Initialize enhanced category service with repository
-	c.CategoryService = categoryService.NewEnhancedService(c.Repository, nil) // LLM service can be nil for now
+	c.CategoryService = categoryService.NewEnhancedService(c.Repository, nil, c.Config) // Pass config for feature flags
 }
 
 // initializeHandlers sets up the handler layer.

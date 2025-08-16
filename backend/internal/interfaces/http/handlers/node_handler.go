@@ -644,7 +644,7 @@ func (h *NodeHandler) GetGraphData() http.HandlerFunc {
 		h.logger.Debug("Graph data retrieved",
 			zap.String("user_id", userID),
 			zap.Int("nodes", len(graphView.Nodes)),
-			zap.Int("edges", len(graphView.Edges)))
+			zap.Int("edges", len(graphView.Connections)))
 	}
 }
 
