@@ -82,12 +82,14 @@ type UpdateNodeCommand struct {
 	NodeID        string    `json:"node_id" validate:"required"`
 	Content       *string   `json:"content,omitempty" validate:"omitempty,min=1,max=10000"`
 	Tags          []string  `json:"tags,omitempty" validate:"omitempty,max=10,dive,min=1,max=50"`
+	Version       int       `json:"version,omitempty" validate:"omitempty,min=0"` // For optimistic locking
 	IdempotencyKey *string  `json:"idempotency_key,omitempty"`
 	RequestedAt   time.Time `json:"requested_at"`
 	
 	// Flags to indicate what should be updated
 	UpdateContent bool `json:"-"`
 	UpdateTags    bool `json:"-"`
+	CheckVersion  bool `json:"-"` // Whether to enforce version check
 }
 
 // NewUpdateNodeCommand creates a new UpdateNodeCommand with validation.
@@ -202,6 +204,57 @@ func (c *DeleteNodeCommand) Validate() error {
 	
 	if strings.TrimSpace(c.NodeID) == "" {
 		return errors.New("node_id is required")
+	}
+	
+	return nil
+}
+
+// ConnectNodesCommand represents the intent to create a connection between two nodes.
+type ConnectNodesCommand struct {
+	UserID       string    `json:"user_id" validate:"required"`
+	SourceNodeID string    `json:"source_node_id" validate:"required"`
+	TargetNodeID string    `json:"target_node_id" validate:"required"`
+	Weight       float64   `json:"weight" validate:"min=0,max=1"`
+	RequestedAt  time.Time `json:"requested_at"`
+}
+
+// NewConnectNodesCommand creates a new ConnectNodesCommand with validation.
+func NewConnectNodesCommand(userID, sourceNodeID, targetNodeID string, weight float64) (*ConnectNodesCommand, error) {
+	cmd := &ConnectNodesCommand{
+		UserID:       userID,
+		SourceNodeID: sourceNodeID,
+		TargetNodeID: targetNodeID,
+		Weight:       weight,
+		RequestedAt:  time.Now(),
+	}
+	
+	if err := cmd.Validate(); err != nil {
+		return nil, err
+	}
+	
+	return cmd, nil
+}
+
+// Validate performs business validation on the command.
+func (c *ConnectNodesCommand) Validate() error {
+	if strings.TrimSpace(c.UserID) == "" {
+		return errors.New("user_id is required")
+	}
+	
+	if strings.TrimSpace(c.SourceNodeID) == "" {
+		return errors.New("source_node_id is required")
+	}
+	
+	if strings.TrimSpace(c.TargetNodeID) == "" {
+		return errors.New("target_node_id is required")
+	}
+	
+	if c.SourceNodeID == c.TargetNodeID {
+		return errors.New("cannot connect a node to itself")
+	}
+	
+	if c.Weight < 0 || c.Weight > 1 {
+		return errors.New("weight must be between 0 and 1")
 	}
 	
 	return nil

@@ -86,8 +86,8 @@ func (s *CategoryService) CreateCategory(ctx context.Context, cmd *commands.Crea
 	}
 
 	// 5. Set color if provided
-	if cmd.Color != "" {
-		if err := category.SetColor(cmd.Color); err != nil {
+	if cmd.Color != nil && *cmd.Color != "" {
+		if err := category.SetColor(*cmd.Color); err != nil {
 			return nil, appErrors.NewValidation("invalid color: " + err.Error())
 		}
 	}

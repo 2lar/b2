@@ -12,7 +12,9 @@ type CreateCategoryCommand struct {
 	UserID        string    `json:"user_id" validate:"required"`
 	Title         string    `json:"title" validate:"required,min=1,max=100"`
 	Description   string    `json:"description" validate:"max=500"`
-	Color         string    `json:"color,omitempty" validate:"omitempty,hexcolor"`
+	Color         *string   `json:"color,omitempty" validate:"omitempty,hexcolor"`
+	Icon          *string   `json:"icon,omitempty" validate:"omitempty,max=50"`
+	ParentID      *string   `json:"parent_id,omitempty"`
 	IdempotencyKey *string  `json:"idempotency_key,omitempty"`
 	RequestedAt   time.Time `json:"requested_at"`
 }
@@ -35,7 +37,19 @@ func NewCreateCategoryCommand(userID, title, description string) (*CreateCategor
 
 // WithColor sets the category color.
 func (c *CreateCategoryCommand) WithColor(color string) *CreateCategoryCommand {
-	c.Color = color
+	c.Color = &color
+	return c
+}
+
+// WithIcon sets the category icon.
+func (c *CreateCategoryCommand) WithIcon(icon string) *CreateCategoryCommand {
+	c.Icon = &icon
+	return c
+}
+
+// WithParentID sets the parent category ID.
+func (c *CreateCategoryCommand) WithParentID(parentID string) *CreateCategoryCommand {
+	c.ParentID = &parentID
 	return c
 }
 
@@ -73,6 +87,7 @@ type UpdateCategoryCommand struct {
 	Title         *string   `json:"title,omitempty" validate:"omitempty,min=1,max=100"`
 	Description   *string   `json:"description,omitempty" validate:"omitempty,max=500"`
 	Color         *string   `json:"color,omitempty" validate:"omitempty,hexcolor"`
+	Icon          *string   `json:"icon,omitempty" validate:"omitempty,max=50"`
 	IdempotencyKey *string  `json:"idempotency_key,omitempty"`
 	RequestedAt   time.Time `json:"requested_at"`
 	
@@ -80,6 +95,7 @@ type UpdateCategoryCommand struct {
 	UpdateTitle       bool `json:"-"`
 	UpdateDescription bool `json:"-"`
 	UpdateColor       bool `json:"-"`
+	UpdateIcon        bool `json:"-"`
 }
 
 // NewUpdateCategoryCommand creates a new UpdateCategoryCommand with validation.
@@ -115,6 +131,13 @@ func (c *UpdateCategoryCommand) WithDescription(description string) *UpdateCateg
 func (c *UpdateCategoryCommand) WithColor(color string) *UpdateCategoryCommand {
 	c.Color = &color
 	c.UpdateColor = true
+	return c
+}
+
+// WithIcon sets the icon to be updated.
+func (c *UpdateCategoryCommand) WithIcon(icon string) *UpdateCategoryCommand {
+	c.Icon = &icon
+	c.UpdateIcon = true
 	return c
 }
 

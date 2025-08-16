@@ -124,6 +124,13 @@ type BulkDeleteResult struct {
 	Message      string   `json:"message,omitempty"`
 }
 
+// CreateConnectionResult represents the result of creating a connection between nodes.
+type CreateConnectionResult struct {
+	Success    bool              `json:"success"`
+	Connection *ConnectionView   `json:"connection,omitempty"`
+	Message    string            `json:"message,omitempty"`
+}
+
 // GetNodeResult represents the result of retrieving a single node.
 type GetNodeResult struct {
 	Node        *NodeView         `json:"node"`

@@ -21,6 +21,37 @@ The project is structured to follow Clean Architecture principles:
     -   `api/`: API response structures and helper functions.
     -   `errors/`: Custom error types.
 
+## Quick Command Reference
+
+For a comprehensive list of all commands, see [📚 Command Master List](../docs/command-masterlist.md)
+
+### Most Common Commands
+```bash
+# Install dependencies
+go mod tidy
+
+# Run tests
+go test ./...
+
+# Build for Lambda
+./build.sh
+
+# Quick build (no tests)
+./test_build.sh
+
+# Generate Wire dependencies
+cd internal/di && wire
+
+# Run locally
+go run cmd/main/main.go
+
+# Format code
+go fmt ./...
+
+# Run linter
+golangci-lint run
+```
+
 ## Getting Started
 
 ### Prerequisites

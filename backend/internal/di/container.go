@@ -84,6 +84,7 @@ type Container struct {
 	// Handler Layer
 	MemoryHandler   *handlers.MemoryHandler
 	CategoryHandler *handlers.CategoryHandler
+	HealthHandler   *handlers.HealthHandler
 
 	// HTTP Router
 	Router *chi.Mux
@@ -336,8 +337,8 @@ func (c *Container) initializePhase3Services() {
 	}
 	
 	// Create reader adapters for CQRS query services
-	nodeReader := NewNodeReaderAdapter(c.NodeRepository)
-	edgeReader := NewEdgeReaderAdapter(c.EdgeRepository)
+	nodeReader := NewNodeReaderBridge(c.NodeRepository)
+	edgeReader := NewEdgeReaderBridge(c.EdgeRepository)
 	
 	c.NodeQueryService = queries.NewNodeQueryService(
 		nodeReader,
@@ -391,6 +392,7 @@ func (c *Container) initializeServices() {
 func (c *Container) initializeHandlers() {
 	c.MemoryHandler = handlers.NewMemoryHandler(c.MemoryService, c.EventBridgeClient, c)
 	c.CategoryHandler = handlers.NewCategoryHandler(c.CategoryService)
+	c.HealthHandler = handlers.NewHealthHandler()
 }
 
 // initializeMiddleware sets up middleware configuration.
@@ -428,8 +430,50 @@ func (c *Container) initializeMiddleware() {
 
 // initializeRouter sets up the HTTP router with all routes.
 func (c *Container) initializeRouter() {
-	// Category service has been fixed, re-enabling router
-	c.Router = setupRouter(c.MemoryHandler, c.CategoryHandler)
+	router := chi.NewRouter()
+	
+	// Health check endpoints (public)
+	router.Get("/health", c.HealthHandler.Check)
+	router.Get("/ready", c.HealthHandler.Ready)
+	
+	// API routes (protected)
+	router.Route("/api", func(r chi.Router) {
+		// Apply authentication middleware to all API routes
+		r.Use(handlers.Authenticator)
+		
+		// Node routes
+		r.Route("/nodes", func(r chi.Router) {
+			r.Post("/", c.MemoryHandler.CreateNode)
+			r.Get("/", c.MemoryHandler.ListNodes)
+			r.Get("/{nodeId}", c.MemoryHandler.GetNode)
+			r.Put("/{nodeId}", c.MemoryHandler.UpdateNode)
+			r.Delete("/{nodeId}", c.MemoryHandler.DeleteNode)
+			r.Post("/bulk-delete", c.MemoryHandler.BulkDeleteNodes)
+		})
+		
+		// Graph routes
+		r.Get("/graph-data", c.MemoryHandler.GetGraphData)
+		
+		// Category routes
+		r.Route("/categories", func(r chi.Router) {
+			r.Post("/", c.CategoryHandler.CreateCategory)
+			r.Get("/", c.CategoryHandler.ListCategories)
+			r.Get("/{categoryId}", c.CategoryHandler.GetCategory)
+			r.Put("/{categoryId}", c.CategoryHandler.UpdateCategory)
+			r.Delete("/{categoryId}", c.CategoryHandler.DeleteCategory)
+			
+			// Category-Node relationships
+			r.Post("/{categoryId}/nodes", c.CategoryHandler.AssignNodeToCategory)
+			r.Get("/{categoryId}/nodes", c.CategoryHandler.GetNodesInCategory)
+			r.Delete("/{categoryId}/nodes/{nodeId}", c.CategoryHandler.RemoveNodeFromCategory)
+		})
+		
+		// Node categorization routes
+		r.Get("/nodes/{nodeId}/categories", c.CategoryHandler.GetNodeCategories)
+		r.Post("/nodes/{nodeId}/categories", c.CategoryHandler.CategorizeNode)
+	})
+	
+	c.Router = router
 }
 
 // Shutdown gracefully shuts down all container components.
