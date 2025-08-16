@@ -803,6 +803,12 @@ func (r *cqrsCategoryRepository) DeleteCategoryHierarchy(ctx context.Context, us
 func (r *cqrsCategoryRepository) FindChildCategories(ctx context.Context, userID, parentID string) ([]domain.Category, error) { return nil, nil }
 func (r *cqrsCategoryRepository) FindParentCategory(ctx context.Context, userID, childID string) (*domain.Category, error) { return nil, nil }
 func (r *cqrsCategoryRepository) GetCategoryTree(ctx context.Context, userID string) ([]domain.Category, error) { return nil, nil }
+
+// Adapter-compatible methods for CQRS
+func (r *cqrsCategoryRepository) Save(ctx context.Context, category *domain.Category) error { return nil }
+func (r *cqrsCategoryRepository) FindByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) { return nil, nil }
+func (r *cqrsCategoryRepository) Delete(ctx context.Context, userID, categoryID string) error { return nil }
+
 func (r *cqrsCategoryRepository) AssignNodeToCategory(ctx context.Context, mapping domain.NodeCategory) error { return nil }
 func (r *cqrsCategoryRepository) RemoveNodeFromCategory(ctx context.Context, userID, nodeID, categoryID string) error { return nil }
 func (r *cqrsCategoryRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error) { return nil, nil }

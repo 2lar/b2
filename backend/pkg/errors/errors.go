@@ -8,9 +8,10 @@ import (
 type ErrorType string
 
 const (
-	ErrorTypeValidation ErrorType = "VALIDATION"
-	ErrorTypeNotFound   ErrorType = "NOT_FOUND"
-	ErrorTypeInternal   ErrorType = "INTERNAL"
+	ErrorTypeValidation   ErrorType = "VALIDATION"
+	ErrorTypeNotFound     ErrorType = "NOT_FOUND"
+	ErrorTypeInternal     ErrorType = "INTERNAL"
+	ErrorTypeUnauthorized ErrorType = "UNAUTHORIZED"
 )
 
 // AppError is the custom error type for the application
@@ -57,6 +58,14 @@ func NewInternal(message string, err error) error {
 		Type:    ErrorTypeInternal,
 		Message: message,
 		Err:     err,
+	}
+}
+
+// NewUnauthorized creates an unauthorized error
+func NewUnauthorized(message string) error {
+	return &AppError{
+		Type:    ErrorTypeUnauthorized,
+		Message: message,
 	}
 }
 

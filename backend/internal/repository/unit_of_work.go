@@ -52,6 +52,7 @@ type UnitOfWork interface {
 	Categories() CategoryRepository
 	Keywords() KeywordRepository
 	Graph() GraphRepository
+	NodeCategories() NodeCategoryRepository
 	
 	// Event Publishing - Events are published atomically with transaction
 	PublishEvent(event domain.DomainEvent)
@@ -96,11 +97,12 @@ type unitOfWork struct {
 	rolledBack         bool
 	
 	// Repository instances (created when transaction begins)
-	nodeRepo     NodeRepository
-	edgeRepo     EdgeRepository
-	categoryRepo CategoryRepository
-	keywordRepo  KeywordRepository
-	graphRepo    GraphRepository
+	nodeRepo         NodeRepository
+	edgeRepo         EdgeRepository
+	categoryRepo     CategoryRepository
+	keywordRepo      KeywordRepository
+	graphRepo        GraphRepository
+	nodeCategoryRepo NodeCategoryRepository
 	
 	// Domain events to be published atomically
 	pendingEvents []domain.DomainEvent
@@ -170,6 +172,7 @@ func (uow *unitOfWork) Begin(ctx context.Context) error {
 	uow.categoryRepo = uow.repositoryFactory.CreateCategoryRepository(tx)
 	uow.keywordRepo = uow.repositoryFactory.CreateKeywordRepository(tx)
 	uow.graphRepo = uow.repositoryFactory.CreateGraphRepository(tx)
+	uow.nodeCategoryRepo = uow.repositoryFactory.CreateNodeCategoryRepository(tx)
 	
 	return nil
 }
@@ -314,6 +317,13 @@ func (uow *unitOfWork) Graph() GraphRepository {
 	return uow.graphRepo
 }
 
+func (uow *unitOfWork) NodeCategories() NodeCategoryRepository {
+	if uow.nodeCategoryRepo == nil {
+		panic("unit of work not begun - call Begin() first")
+	}
+	return uow.nodeCategoryRepo
+}
+
 // Event Management Methods
 // These methods handle domain event publishing atomically with data changes
 
@@ -355,6 +365,7 @@ type TransactionalRepositoryFactory interface {
 	CreateCategoryRepository(tx Transaction) CategoryRepository
 	CreateKeywordRepository(tx Transaction) KeywordRepository
 	CreateGraphRepository(tx Transaction) GraphRepository
+	CreateNodeCategoryRepository(tx Transaction) NodeCategoryRepository
 }
 
 // UnitOfWorkManager provides higher-level unit of work operations.

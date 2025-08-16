@@ -9,7 +9,12 @@ import (
 	"time"
 
 	"brain2-backend/infrastructure/dynamodb"
+	"brain2-backend/internal/application/adapters"
+	// "brain2-backend/internal/application/queries"
+	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
+	"brain2-backend/internal/domain"
+	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/handlers"
 	"brain2-backend/internal/infrastructure/decorators"
 	"brain2-backend/internal/repository"
@@ -60,9 +65,20 @@ type Container struct {
 	Cache            decorators.Cache
 	MetricsCollector decorators.MetricsCollector
 
-	// Service Layer  
+	// Legacy Service Layer (Phase 2 - will be deprecated)
 	MemoryService   memoryService.Service
 	CategoryService categoryService.Service
+	
+	// Phase 3: Application Service Layer (CQRS)
+	NodeAppService      *services.NodeService
+	// CategoryAppService  *services.CategoryService
+	// NodeQueryService    *queries.NodeQueryService
+	// CategoryQueryService *queries.CategoryQueryService
+	
+	// Domain Services
+	ConnectionAnalyzer *domainServices.ConnectionAnalyzer
+	EventBus          domain.EventBus
+	UnitOfWork        repository.UnitOfWork
 
 	// Handler Layer
 	MemoryHandler   *handlers.MemoryHandler
@@ -270,6 +286,54 @@ func (c *Container) initializeAdvancedRepositoryComponents() error {
 	return nil
 }
 
+// initializePhase3Services initializes the Phase 3 CQRS application services
+func (c *Container) initializePhase3Services() {
+	log.Println("Initializing Phase 3 Application Services with CQRS pattern...")
+	startTime := time.Now()
+
+	// Initialize domain services first
+	c.ConnectionAnalyzer = domainServices.NewConnectionAnalyzer(0.3, 5, 0.2) // threshold, max connections, recency weight
+	c.EventBus = domain.NewMockEventBus() // Use mock for now, can be replaced with real implementation
+	
+	// Initialize Unit of Work with existing repository
+	transactionProvider := &MockTransactionProvider{} // Placeholder
+	eventPublisher := &MockEventPublisher{} // Placeholder
+	repositoryFactory := &MockTransactionalRepositoryFactory{} // Placeholder
+	
+	c.UnitOfWork = repository.NewUnitOfWork(transactionProvider, eventPublisher, repositoryFactory)
+	
+	// Create repository adapters
+	nodeAdapter := adapters.NewNodeRepositoryAdapter(c.NodeRepository, c.TransactionalRepository)
+	edgeAdapter := adapters.NewEdgeRepositoryAdapter(c.EdgeRepository)
+	categoryAdapter := adapters.NewCategoryRepositoryAdapter(c.CategoryRepository)
+	graphAdapter := adapters.NewGraphRepositoryAdapter(c.GraphRepository)
+	
+	// Create NodeCategoryRepository using the factory instead of UnitOfWork
+	// For container initialization, we use nil transaction since this is just for DI setup
+	nodeCategoryRepo := repositoryFactory.CreateNodeCategoryRepository(nil)
+	nodeCategoryAdapter := adapters.NewNodeCategoryRepositoryAdapter(nodeCategoryRepo)
+	
+	// Create unit of work adapter
+	uowAdapter := adapters.NewUnitOfWorkAdapter(c.UnitOfWork, nodeAdapter, edgeAdapter, categoryAdapter, graphAdapter, nodeCategoryAdapter)
+	
+	// Initialize Application Services (only NodeService for now)
+	c.NodeAppService = services.NewNodeService(
+		nodeAdapter,
+		c.EdgeRepository,
+		uowAdapter,
+		c.EventBus,
+		c.ConnectionAnalyzer,
+		c.IdempotencyStore,
+	)
+	
+	// Note: CategoryAppService and Query services would be initialized here once they're updated to use adapters
+	// c.CategoryAppService = services.NewCategoryService(...)
+	// c.NodeQueryService = queries.NewNodeQueryService(...)
+	// c.CategoryQueryService = queries.NewCategoryQueryService(...)
+	
+	log.Printf("Phase 3 Application Services initialized in %v", time.Since(startTime))
+}
+
 // initializeServices sets up the service layer.
 func (c *Container) initializeServices() {
 	// Initialize memory service with segregated repositories
@@ -284,6 +348,9 @@ func (c *Container) initializeServices() {
 	
 	// Initialize enhanced category service with repository
 	c.CategoryService = categoryService.NewEnhancedService(c.Repository, nil) // LLM service can be nil for now
+	
+	// Phase 3: Initialize Application Services with CQRS pattern
+	c.initializePhase3Services()
 }
 
 // initializeHandlers sets up the handler layer.
@@ -327,6 +394,7 @@ func (c *Container) initializeMiddleware() {
 
 // initializeRouter sets up the HTTP router with all routes.
 func (c *Container) initializeRouter() {
+	// Category service has been fixed, re-enabling router
 	c.Router = setupRouter(c.MemoryHandler, c.CategoryHandler)
 }
 
@@ -523,3 +591,69 @@ func (m *NoOpMetricsCollector) RecordDuration(name string, duration time.Duratio
 func (m *NoOpMetricsCollector) RecordValue(name string, value float64, tags map[string]string) {}
 
 func (m *NoOpMetricsCollector) RecordDistribution(name string, value float64, tags map[string]string) {}
+
+// Placeholder implementations for Phase 3 components
+// These would be replaced with actual implementations in production
+
+// MockTransactionProvider is a placeholder transaction provider
+type MockTransactionProvider struct{}
+
+func (m *MockTransactionProvider) BeginTransaction(ctx context.Context) (repository.Transaction, error) {
+	return &MockTransaction{}, nil
+}
+
+// MockTransaction is a placeholder transaction
+type MockTransaction struct {
+	committed bool
+	rolledBack bool
+}
+
+func (m *MockTransaction) Commit() error {
+	m.committed = true
+	return nil
+}
+
+func (m *MockTransaction) Rollback() error {
+	m.rolledBack = true
+	return nil
+}
+
+func (m *MockTransaction) IsActive() bool {
+	return !m.committed && !m.rolledBack
+}
+
+// MockEventPublisher is a placeholder event publisher
+type MockEventPublisher struct{}
+
+func (m *MockEventPublisher) Publish(ctx context.Context, events []domain.DomainEvent) error {
+	// In a real implementation, this would publish events to a message bus
+	return nil
+}
+
+// MockTransactionalRepositoryFactory is a placeholder repository factory
+type MockTransactionalRepositoryFactory struct{}
+
+func (m *MockTransactionalRepositoryFactory) CreateNodeRepository(tx repository.Transaction) repository.NodeRepository {
+	// Return the same repository - in production this would be a transactional wrapper
+	return nil // Placeholder
+}
+
+func (m *MockTransactionalRepositoryFactory) CreateEdgeRepository(tx repository.Transaction) repository.EdgeRepository {
+	return nil // Placeholder
+}
+
+func (m *MockTransactionalRepositoryFactory) CreateCategoryRepository(tx repository.Transaction) repository.CategoryRepository {
+	return nil // Placeholder
+}
+
+func (m *MockTransactionalRepositoryFactory) CreateKeywordRepository(tx repository.Transaction) repository.KeywordRepository {
+	return nil // Placeholder
+}
+
+func (m *MockTransactionalRepositoryFactory) CreateGraphRepository(tx repository.Transaction) repository.GraphRepository {
+	return nil // Placeholder
+}
+
+func (m *MockTransactionalRepositoryFactory) CreateNodeCategoryRepository(tx repository.Transaction) repository.NodeCategoryRepository {
+	return nil // Placeholder
+}

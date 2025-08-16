@@ -72,6 +72,11 @@ type CategoryRepository interface {
 	FindCategoryByID(ctx context.Context, userID, categoryID string) (*domain.Category, error)
 	FindCategories(ctx context.Context, query CategoryQuery) ([]domain.Category, error)
 	FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]domain.Category, error)
+	
+	// Adapter-compatible methods for CQRS
+	Save(ctx context.Context, category *domain.Category) error
+	FindByID(ctx context.Context, userID, categoryID string) (*domain.Category, error)
+	Delete(ctx context.Context, userID, categoryID string) error
 
 	// Category hierarchy operations
 	CreateCategoryHierarchy(ctx context.Context, hierarchy domain.CategoryHierarchy) error
@@ -89,6 +94,36 @@ type CategoryRepository interface {
 	// Batch operations for performance
 	BatchAssignCategories(ctx context.Context, mappings []domain.NodeCategory) error
 	UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error
+}
+
+// NodeCategoryRepository handles node-category mapping operations
+type NodeCategoryRepository interface {
+	// Core mapping operations
+	Assign(ctx context.Context, mapping *domain.NodeCategory) error
+	Remove(ctx context.Context, userID, nodeID, categoryID string) error
+	RemoveAllByNode(ctx context.Context, userID, nodeID string) error
+	RemoveAllByCategory(ctx context.Context, userID, categoryID string) error
+	RemoveAllFromCategory(ctx context.Context, categoryID string) error
+	
+	// Query operations
+	FindByNode(ctx context.Context, userID, nodeID string) ([]*domain.NodeCategory, error)
+	FindByCategory(ctx context.Context, userID, categoryID string) ([]*domain.NodeCategory, error)
+	FindByUser(ctx context.Context, userID string) ([]*domain.NodeCategory, error)
+	Exists(ctx context.Context, userID, nodeID, categoryID string) (bool, error)
+	
+	// Batch operations
+	BatchAssign(ctx context.Context, mappings []*domain.NodeCategory) error
+	
+	// Category-specific queries 
+	FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error)
+	FindNodesByCategoryPage(ctx context.Context, userID, categoryID string, pagination Pagination) (*NodePage, error)
+	CountNodesInCategory(ctx context.Context, userID, categoryID string) (int, error)
+	FindCategoriesByNode(ctx context.Context, userID, nodeID string) ([]*domain.Category, error)
+	BatchRemove(ctx context.Context, userID string, pairs []struct{ NodeID, CategoryID string }) error
+	
+	// Statistics
+	CountByCategory(ctx context.Context, userID, categoryID string) (int, error)
+	CountByNode(ctx context.Context, userID, nodeID string) (int, error)
 }
 
 // GraphRepository handles graph-wide operations with Phase 2 enhancements

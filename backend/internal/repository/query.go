@@ -2,11 +2,13 @@ package repository
 
 // NodeQuery represents query parameters for finding nodes.
 type NodeQuery struct {
-	UserID   string   // Required: The user ID to query nodes for
-	Keywords []string // Optional: Keywords to search for
-	NodeIDs  []string // Optional: Specific node IDs to retrieve
-	Limit    int      // Optional: Maximum number of results (0 = no limit)
-	Offset   int      // Optional: Number of results to skip
+	UserID     string   // Required: The user ID to query nodes for
+	Keywords   []string // Optional: Keywords to search for
+	NodeIDs    []string // Optional: Specific node IDs to retrieve
+	Tags       []string // Optional: Tags to filter by
+	SearchText string   // Optional: Full-text search term
+	Limit      int      // Optional: Maximum number of results (0 = no limit)
+	Offset     int      // Optional: Number of results to skip
 }
 
 // Validate checks if the NodeQuery has valid parameters.
@@ -84,10 +86,14 @@ func (q EdgeQuery) HasPagination() bool {
 
 // GraphQuery represents query parameters for retrieving graph data.
 type GraphQuery struct {
-	UserID       string   // Required: The user ID to query graph data for
-	NodeIDs      []string // Optional: Specific node IDs to include in the graph
-	MaxDepth     int      // Optional: Maximum depth of connections to include (0 = all)
-	IncludeEdges bool     // Whether to include edge information (default: true)
+	UserID          string   // Required: The user ID to query graph data for
+	NodeIDs         []string // Optional: Specific node IDs to include in the graph
+	MaxDepth        int      // Optional: Maximum depth of connections to include (0 = all)
+	IncludeEdges    bool     // Whether to include edge information (default: true)
+	IncludeArchived bool     // Whether to include archived nodes
+	MaxNodes        int      // Optional: Maximum number of nodes to return
+	MaxEdges        int      // Optional: Maximum number of edges to return
+	TagFilter       []string // Optional: Filter nodes by tags
 }
 
 // Validate checks if the GraphQuery has valid parameters.
@@ -113,9 +119,10 @@ func (q GraphQuery) HasDepthLimit() bool {
 
 // CategoryQuery represents query parameters for finding categories.
 type CategoryQuery struct {
-	UserID string // Required: The user ID to query categories for
-	Limit  int    // Optional: Maximum number of results (0 = no limit)
-	Offset int    // Optional: Number of results to skip
+	UserID     string // Required: The user ID to query categories for
+	SearchText string // Optional: Search text for category names/descriptions
+	Limit      int    // Optional: Maximum number of results (0 = no limit)
+	Offset     int    // Optional: Number of results to skip
 }
 
 // Validate checks if the CategoryQuery has valid parameters.

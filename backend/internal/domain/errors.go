@@ -39,6 +39,7 @@ var (
 	ErrCategoryAlreadyExists = errors.New("category already exists")
 	ErrCircularReference     = errors.New("circular reference detected in category hierarchy")
 	ErrInvalidCategoryLevel  = errors.New("invalid category level")
+	ErrInvalidCategoryID     = errors.New("invalid category ID")
 	
 	// General domain errors
 	ErrValidation        = errors.New("validation failed")

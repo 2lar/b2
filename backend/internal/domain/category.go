@@ -23,6 +23,82 @@ type Category struct {
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
 	Description string      `json:"description,omitempty"`
+	
+	// Domain events
+	events []DomainEvent
+}
+
+// NewCategory creates a new category with validation.
+// This factory method ensures categories are created in a valid state.
+func NewCategory(userID UserID, title, description string) (*Category, error) {
+	if title == "" {
+		return nil, ErrValidation
+	}
+	
+	now := time.Now()
+	categoryID := CategoryID(NewNodeID().String()) // Generate unique ID
+	
+	category := &Category{
+		ID:          categoryID,
+		UserID:      userID.String(),
+		Name:        title,
+		Title:       title,
+		Description: description,
+		Level:       0,
+		NoteCount:   0,
+		AIGenerated: false,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		events:      []DomainEvent{},
+	}
+	
+	// Generate domain event for category creation
+	createdEvent := NewCategoryCreatedEvent(categoryID, userID, title, description, 0)
+	category.addEvent(createdEvent)
+	
+	return category, nil
+}
+
+// UpdateTitle updates the category title
+func (c *Category) UpdateTitle(title string) error {
+	if title == "" {
+		return ErrValidation
+	}
+	c.Title = title
+	c.Name = title
+	c.UpdatedAt = time.Now()
+	return nil
+}
+
+// UpdateDescription updates the category description
+func (c *Category) UpdateDescription(description string) error {
+	c.Description = description
+	c.UpdatedAt = time.Now()
+	return nil
+}
+
+// SetColor sets the category color
+func (c *Category) SetColor(color string) error {
+	c.Color = &color
+	c.UpdatedAt = time.Now()
+	return nil
+}
+
+// Domain Events Implementation (EventAggregate interface)
+
+// GetUncommittedEvents returns events that haven't been persisted yet
+func (c *Category) GetUncommittedEvents() []DomainEvent {
+	return c.events
+}
+
+// MarkEventsAsCommitted clears the events after persistence
+func (c *Category) MarkEventsAsCommitted() {
+	c.events = []DomainEvent{}
+}
+
+// addEvent adds a domain event to the uncommitted events list
+func (c *Category) addEvent(event DomainEvent) {
+	c.events = append(c.events, event)
 }
 
 // CategoryRepository defines the persistence methods required for a Category.

@@ -308,6 +308,110 @@ type EventAggregate interface {
 	MarkEventsAsCommitted()
 }
 
+// Category Events
+
+// CategoryCreatedEvent is fired when a new category is created
+type CategoryCreatedEvent struct {
+	BaseEvent
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Level       int    `json:"level"`
+}
+
+// NewCategoryCreatedEvent creates a new CategoryCreatedEvent
+func NewCategoryCreatedEvent(categoryID CategoryID, userID UserID, name, description string, level int) *CategoryCreatedEvent {
+	return &CategoryCreatedEvent{
+		BaseEvent:   newBaseEvent("CategoryCreated", string(categoryID), userID.String(), 1),
+		Name:        name,
+		Description: description,
+		Level:       level,
+	}
+}
+
+// EventData returns the event-specific data
+func (e *CategoryCreatedEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{
+		"name":        e.Name,
+		"description": e.Description,
+		"level":       e.Level,
+	}
+}
+
+// CategoryDeletedEvent is fired when a category is deleted
+type CategoryDeletedEvent struct {
+	BaseEvent
+	Name     string `json:"name"`
+	Level    int    `json:"level"`
+	NoteCount int   `json:"note_count"`
+}
+
+// NewCategoryDeletedEvent creates a new CategoryDeletedEvent
+func NewCategoryDeletedEvent(categoryID CategoryID, userID UserID, name string, level, noteCount int) *CategoryDeletedEvent {
+	return &CategoryDeletedEvent{
+		BaseEvent: newBaseEvent("CategoryDeleted", string(categoryID), userID.String(), 1),
+		Name:      name,
+		Level:     level,
+		NoteCount: noteCount,
+	}
+}
+
+// EventData returns the event-specific data
+func (e *CategoryDeletedEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{
+		"name":       e.Name,
+		"level":      e.Level,
+		"note_count": e.NoteCount,
+	}
+}
+
+// NodeRemovedFromCategoryEvent is fired when a node is removed from a category
+type NodeRemovedFromCategoryEvent struct {
+	BaseEvent
+	NodeID     string `json:"node_id"`
+	CategoryID string `json:"category_id"`
+}
+
+// NewNodeRemovedFromCategoryEvent creates a new NodeRemovedFromCategoryEvent
+func NewNodeRemovedFromCategoryEvent(nodeID NodeID, categoryID CategoryID, userID UserID) *NodeRemovedFromCategoryEvent {
+	return &NodeRemovedFromCategoryEvent{
+		BaseEvent:  newBaseEvent("NodeRemovedFromCategory", nodeID.String(), userID.String(), 1),
+		NodeID:     nodeID.String(),
+		CategoryID: string(categoryID),
+	}
+}
+
+// EventData returns the event-specific data
+func (e *NodeRemovedFromCategoryEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{
+		"node_id":     e.NodeID,
+		"category_id": e.CategoryID,
+	}
+}
+
+// NodeAssignedToCategoryEvent is fired when a node is assigned to a category
+type NodeAssignedToCategoryEvent struct {
+	BaseEvent
+	NodeID     string `json:"node_id"`
+	CategoryID string `json:"category_id"`
+}
+
+// NewNodeAssignedToCategoryEvent creates a new NodeAssignedToCategoryEvent
+func NewNodeAssignedToCategoryEvent(nodeID, categoryID, userID string, timestamp time.Time) *NodeAssignedToCategoryEvent {
+	return &NodeAssignedToCategoryEvent{
+		BaseEvent:  newBaseEvent("NodeAssignedToCategory", nodeID, userID, 1),
+		NodeID:     nodeID,
+		CategoryID: categoryID,
+	}
+}
+
+// EventData returns the event-specific data
+func (e *NodeAssignedToCategoryEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{
+		"node_id":     e.NodeID,
+		"category_id": e.CategoryID,
+	}
+}
+
 // EventStore interface for persisting and retrieving domain events
 type EventStore interface {
 	// SaveEvents saves events to the store

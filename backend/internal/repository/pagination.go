@@ -12,11 +12,12 @@ import (
 
 // Pagination represents pagination parameters with cursor-based pagination
 type Pagination struct {
-	Limit     int    `json:"limit"`
-	Offset    int    `json:"offset"`
-	Cursor    string `json:"cursor,omitempty"`
-	SortBy    string `json:"sort_by,omitempty"`
-	SortOrder string `json:"sort_order,omitempty"` // "asc" or "desc"
+	Limit         int    `json:"limit"`
+	Offset        int    `json:"offset"`
+	Cursor        string `json:"cursor,omitempty"`
+	SortBy        string `json:"sort_by,omitempty"`
+	SortOrder     string `json:"sort_order,omitempty"` // "asc" or "desc"
+	SortDirection string `json:"sort_direction,omitempty"` // Alias for SortOrder for compatibility
 }
 
 // Validate checks if pagination parameters are valid

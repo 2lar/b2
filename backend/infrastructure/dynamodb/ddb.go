@@ -1765,3 +1765,21 @@ func (repo *ddbRepository) FindCategoriesByLevel(ctx context.Context, userID str
 	// Simplified implementation for consolidation phase
 	return []domain.Category{}, nil
 }
+
+// Adapter-compatible methods for CQRS
+
+// Save creates or updates a category (alias for CreateCategory)
+func (repo *ddbRepository) Save(ctx context.Context, category *domain.Category) error {
+	// Convert pointer to value for CreateCategory
+	return repo.CreateCategory(ctx, *category)
+}
+
+// FindByID retrieves a category by ID (alias for FindCategoryByID)
+func (repo *ddbRepository) FindByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+	return repo.FindCategoryByID(ctx, userID, categoryID)
+}
+
+// Delete removes a category (alias for DeleteCategory)
+func (repo *ddbRepository) Delete(ctx context.Context, userID, categoryID string) error {
+	return repo.DeleteCategory(ctx, userID, categoryID)
+}

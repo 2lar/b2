@@ -58,6 +58,20 @@ func NewUserID(id string) (UserID, error) {
 	return UserID{value: id}, nil
 }
 
+// ParseUserID is an alias for NewUserID for consistency with other value objects
+func ParseUserID(id string) (UserID, error) {
+	return NewUserID(id)
+}
+
+// ParseCategoryID parses a string into a CategoryID
+func ParseCategoryID(id string) (CategoryID, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return CategoryID(""), ErrInvalidCategoryID
+	}
+	return CategoryID(id), nil
+}
+
 // String returns the string representation of the UserID
 func (id UserID) String() string { 
 	return id.value 

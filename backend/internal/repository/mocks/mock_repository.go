@@ -997,3 +997,29 @@ func (m *MockRepository) GetConnectedComponents(ctx context.Context, userID stri
 	// For consolidation phase, return empty result
 	return []domain.Graph{}, nil
 }
+
+// Adapter-compatible methods for CQRS CategoryRepository
+
+// Save creates or updates a category (alias for CreateCategory)
+func (m *MockRepository) Save(ctx context.Context, category *domain.Category) error {
+	if err := m.checkError("Save"); err != nil {
+		return err
+	}
+	return m.CreateCategory(ctx, *category)
+}
+
+// FindByID retrieves a category by ID (alias for FindCategoryByID)
+func (m *MockRepository) FindByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+	if err := m.checkError("FindByID"); err != nil {
+		return nil, err
+	}
+	return m.FindCategoryByID(ctx, userID, categoryID)
+}
+
+// Delete removes a category (alias for DeleteCategory)
+func (m *MockRepository) Delete(ctx context.Context, userID, categoryID string) error {
+	if err := m.checkError("Delete"); err != nil {
+		return err
+	}
+	return m.DeleteCategory(ctx, userID, categoryID)
+}

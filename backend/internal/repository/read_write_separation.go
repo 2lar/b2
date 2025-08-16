@@ -58,6 +58,10 @@ type NodeReader interface {
 	// Relationship queries
 	FindConnected(ctx context.Context, nodeID domain.NodeID, depth int, opts ...QueryOption) ([]*domain.Node, error)
 	FindSimilar(ctx context.Context, nodeID domain.NodeID, threshold float64, opts ...QueryOption) ([]*domain.Node, error)
+	
+	// Query service compatibility methods
+	GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error)
+	CountNodes(ctx context.Context, userID string) (int, error)
 }
 
 // EdgeReader handles read-only operations for edges
@@ -86,6 +90,10 @@ type EdgeReader interface {
 	
 	// Paginated queries
 	FindPage(ctx context.Context, query EdgeQuery, pagination Pagination) (*EdgePage, error)
+	
+	// Query service compatibility methods
+	FindEdges(ctx context.Context, query EdgeQuery) ([]*domain.Edge, error)
+	CountBySourceID(ctx context.Context, sourceID domain.NodeID) (int, error)
 }
 
 // CategoryReader handles read-only operations for categories
@@ -114,6 +122,10 @@ type CategoryReader interface {
 	// Specification-based queries
 	FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]domain.Category, error)
 	CountBySpecification(ctx context.Context, spec Specification) (int, error)
+	
+	// Query service compatibility methods
+	GetCategoriesPage(ctx context.Context, query CategoryQuery, pagination Pagination) (*CategoryPage, error)
+	CountCategories(ctx context.Context, userID string) (int, error)
 }
 
 // Writer Interfaces - Optimized for Consistency and Validation
