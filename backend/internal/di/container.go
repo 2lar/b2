@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"brain2-backend/infrastructure/dynamodb"
 	"brain2-backend/internal/application/adapters"
-	// "brain2-backend/internal/application/queries"
+	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
 	"brain2-backend/internal/domain"
@@ -72,7 +73,7 @@ type Container struct {
 	// Phase 3: Application Service Layer (CQRS)
 	NodeAppService      *services.NodeService
 	// CategoryAppService  *services.CategoryService
-	// NodeQueryService    *queries.NodeQueryService
+	NodeQueryService    *queries.NodeQueryService
 	// CategoryQueryService *queries.CategoryQueryService
 	
 	// Domain Services
@@ -326,9 +327,27 @@ func (c *Container) initializePhase3Services() {
 		c.IdempotencyStore,
 	)
 	
-	// Note: CategoryAppService and Query services would be initialized here once they're updated to use adapters
+	// Initialize Node Query Service with simple cache
+	var queryCache queries.Cache
+	if c.Config.Features.EnableCaching {
+		queryCache = NewSimpleMemoryCache(100, 5*time.Minute) // 100 items max, 5 min TTL
+	} else {
+		queryCache = nil // NodeQueryService handles nil cache gracefully
+	}
+	
+	// Create reader adapters for CQRS query services
+	nodeReader := NewNodeReaderAdapter(c.NodeRepository)
+	edgeReader := NewEdgeReaderAdapter(c.EdgeRepository)
+	
+	c.NodeQueryService = queries.NewNodeQueryService(
+		nodeReader,
+		edgeReader,
+		c.GraphRepository,
+		queryCache,
+	)
+	
+	// Note: CategoryAppService would be initialized here once it's updated to use adapters
 	// c.CategoryAppService = services.NewCategoryService(...)
-	// c.NodeQueryService = queries.NewNodeQueryService(...)
 	// c.CategoryQueryService = queries.NewCategoryQueryService(...)
 	
 	log.Printf("Phase 3 Application Services initialized in %v", time.Since(startTime))
@@ -336,8 +355,8 @@ func (c *Container) initializePhase3Services() {
 
 // initializeServices sets up the service layer.
 func (c *Container) initializeServices() {
-	// Initialize memory service with segregated repositories
-	c.MemoryService = memoryService.NewServiceWithIdempotency(
+	// First, initialize the legacy service for operations not yet migrated
+	legacyMemoryService := memoryService.NewServiceWithIdempotency(
 		c.NodeRepository,
 		c.EdgeRepository,
 		c.KeywordRepository,
@@ -346,11 +365,26 @@ func (c *Container) initializeServices() {
 		c.IdempotencyStore,
 	)
 	
+	// Initialize Phase 3 CQRS services
+	c.initializePhase3Services()
+	
+	// Create the migration adapter that uses new services where available
+	if c.NodeAppService != nil && c.NodeQueryService != nil {
+		// Use the adapter for gradual migration
+		c.MemoryService = NewMemoryServiceAdapter(
+			c.NodeAppService,
+			c.NodeQueryService,
+			legacyMemoryService,
+		)
+		log.Println("Using CQRS-based MemoryService with migration adapter")
+	} else {
+		// Fallback to legacy service if CQRS services aren't ready
+		c.MemoryService = legacyMemoryService
+		log.Println("Using legacy MemoryService")
+	}
+	
 	// Initialize enhanced category service with repository
 	c.CategoryService = categoryService.NewEnhancedService(c.Repository, nil) // LLM service can be nil for now
-	
-	// Phase 3: Initialize Application Services with CQRS pattern
-	c.initializePhase3Services()
 }
 
 // initializeHandlers sets up the handler layer.
@@ -655,5 +689,183 @@ func (m *MockTransactionalRepositoryFactory) CreateGraphRepository(tx repository
 }
 
 func (m *MockTransactionalRepositoryFactory) CreateNodeCategoryRepository(tx repository.Transaction) repository.NodeCategoryRepository {
-	return nil // Placeholder
+	return &MockNodeCategoryRepository{}
+}
+
+// MockNodeCategoryRepository implements repository.NodeCategoryRepository for Phase 3 testing
+type MockNodeCategoryRepository struct{}
+
+func (m *MockNodeCategoryRepository) Assign(ctx context.Context, mapping *domain.NodeCategory) error {
+	return nil
+}
+
+func (m *MockNodeCategoryRepository) Remove(ctx context.Context, userID, nodeID, categoryID string) error {
+	return nil
+}
+
+func (m *MockNodeCategoryRepository) RemoveAllByNode(ctx context.Context, userID, nodeID string) error {
+	return nil
+}
+
+func (m *MockNodeCategoryRepository) RemoveAllByCategory(ctx context.Context, userID, categoryID string) error {
+	return nil
+}
+
+func (m *MockNodeCategoryRepository) RemoveAllFromCategory(ctx context.Context, categoryID string) error {
+	return nil
+}
+
+func (m *MockNodeCategoryRepository) FindByNode(ctx context.Context, userID, nodeID string) ([]*domain.NodeCategory, error) {
+	return nil, nil
+}
+
+func (m *MockNodeCategoryRepository) FindByCategory(ctx context.Context, userID, categoryID string) ([]*domain.NodeCategory, error) {
+	return nil, nil
+}
+
+func (m *MockNodeCategoryRepository) FindByUser(ctx context.Context, userID string) ([]*domain.NodeCategory, error) {
+	return nil, nil
+}
+
+func (m *MockNodeCategoryRepository) Exists(ctx context.Context, userID, nodeID, categoryID string) (bool, error) {
+	return false, nil
+}
+
+func (m *MockNodeCategoryRepository) BatchAssign(ctx context.Context, mappings []*domain.NodeCategory) error {
+	return nil
+}
+
+func (m *MockNodeCategoryRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error) {
+	return nil, nil
+}
+
+func (m *MockNodeCategoryRepository) FindNodesByCategoryPage(ctx context.Context, userID, categoryID string, pagination repository.Pagination) (*repository.NodePage, error) {
+	return &repository.NodePage{}, nil
+}
+
+func (m *MockNodeCategoryRepository) CountNodesInCategory(ctx context.Context, userID, categoryID string) (int, error) {
+	return 0, nil
+}
+
+func (m *MockNodeCategoryRepository) FindCategoriesByNode(ctx context.Context, userID, nodeID string) ([]*domain.Category, error) {
+	return nil, nil
+}
+
+func (m *MockNodeCategoryRepository) BatchRemove(ctx context.Context, userID string, pairs []struct{ NodeID, CategoryID string }) error {
+	return nil
+}
+
+func (m *MockNodeCategoryRepository) CountByCategory(ctx context.Context, userID, categoryID string) (int, error) {
+	return 0, nil
+}
+
+func (m *MockNodeCategoryRepository) CountByNode(ctx context.Context, userID, nodeID string) (int, error) {
+	return 0, nil
+}
+
+// SimpleMemoryCache is a basic in-memory cache implementation for Phase 3 CQRS queries
+type SimpleMemoryCache struct {
+	items    map[string]cacheItem
+	maxItems int
+	ttl      time.Duration
+	mutex    sync.RWMutex
+}
+
+type cacheItem struct {
+	value     interface{}
+	expiresAt time.Time
+}
+
+// NewSimpleMemoryCache creates a new simple in-memory cache
+func NewSimpleMemoryCache(maxItems int, ttl time.Duration) *SimpleMemoryCache {
+	cache := &SimpleMemoryCache{
+		items:    make(map[string]cacheItem),
+		maxItems: maxItems,
+		ttl:      ttl,
+	}
+	
+	// Start cleanup goroutine
+	go cache.cleanup()
+	
+	return cache
+}
+
+// Get retrieves a value from the cache
+func (c *SimpleMemoryCache) Get(ctx context.Context, key string) (interface{}, bool) {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+	
+	item, found := c.items[key]
+	if !found {
+		return nil, false
+	}
+	
+	if time.Now().After(item.expiresAt) {
+		return nil, false
+	}
+	
+	return item.value, true
+}
+
+// Set stores a value in the cache
+func (c *SimpleMemoryCache) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	
+	// Use default TTL if not specified
+	if ttl == 0 {
+		ttl = c.ttl
+	}
+	
+	// Evict oldest items if at capacity
+	if len(c.items) >= c.maxItems {
+		c.evictOldest()
+	}
+	
+	c.items[key] = cacheItem{
+		value:     value,
+		expiresAt: time.Now().Add(ttl),
+	}
+}
+
+// Delete removes a value from the cache
+func (c *SimpleMemoryCache) Delete(ctx context.Context, key string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	
+	delete(c.items, key)
+}
+
+// evictOldest removes the oldest item from the cache
+func (c *SimpleMemoryCache) evictOldest() {
+	var oldestKey string
+	var oldestTime time.Time
+	
+	for key, item := range c.items {
+		if oldestTime.IsZero() || item.expiresAt.Before(oldestTime) {
+			oldestKey = key
+			oldestTime = item.expiresAt
+		}
+	}
+	
+	if oldestKey != "" {
+		delete(c.items, oldestKey)
+	}
+}
+
+// cleanup periodically removes expired items
+func (c *SimpleMemoryCache) cleanup() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	
+	for range ticker.C {
+		c.mutex.Lock()
+		now := time.Now()
+		for key, item := range c.items {
+			if now.After(item.expiresAt) {
+				delete(c.items, key)
+			}
+		}
+		c.mutex.Unlock()
+	}
 }
