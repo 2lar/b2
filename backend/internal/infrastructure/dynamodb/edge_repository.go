@@ -3,7 +3,6 @@ package dynamodb
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	"brain2-backend/internal/domain"
@@ -57,8 +56,6 @@ func (r *EdgeRepository) CreateEdges(ctx context.Context, userID, sourceNodeID s
 		return nil // Nothing to create
 	}
 
-	log.Printf("DEBUG EdgeRepository.CreateEdges: creating %d edges for source node %s", len(relatedNodeIDs), sourceNodeID)
-
 	var transactItems []types.TransactWriteItem
 
 	// Create canonical edges - only one edge per connection pair
@@ -85,8 +82,6 @@ func (r *EdgeRepository) CreateEdges(ctx context.Context, userID, sourceNodeID s
 			},
 		})
 
-		log.Printf("DEBUG EdgeRepository.CreateEdges: prepared edge %s -> %s (canonical: %s -> %s)", 
-			sourceNodeID, relatedNodeID, ownerID, targetID)
 	}
 
 	// Execute transaction
@@ -97,7 +92,6 @@ func (r *EdgeRepository) CreateEdges(ctx context.Context, userID, sourceNodeID s
 		return appErrors.Wrap(err, "transaction to create edges failed")
 	}
 
-	log.Printf("DEBUG EdgeRepository.CreateEdges: successfully created %d edges", len(relatedNodeIDs))
 	return nil
 }
 
@@ -106,9 +100,6 @@ func (r *EdgeRepository) CreateEdge(ctx context.Context, edge *domain.Edge) erro
 	if edge == nil {
 		return appErrors.NewValidation("edge cannot be nil")
 	}
-
-	log.Printf("DEBUG EdgeRepository.CreateEdge: creating edge %s -> %s", 
-		edge.SourceID.String(), edge.TargetID.String())
 
 	// Use canonical edge storage pattern (lexicographically ordered IDs)
 	sourceID := edge.SourceID.String()
@@ -139,8 +130,6 @@ func (r *EdgeRepository) CreateEdge(ctx context.Context, edge *domain.Edge) erro
 		return appErrors.Wrap(err, "failed to create edge in DynamoDB")
 	}
 
-	log.Printf("DEBUG EdgeRepository.CreateEdge: successfully created canonical edge %s -> %s", 
-		ownerID, canonicalTargetID)
 	return nil
 }
 
@@ -149,9 +138,6 @@ func (r *EdgeRepository) FindEdges(ctx context.Context, query repository.EdgeQue
 	if err := query.Validate(); err != nil {
 		return nil, appErrors.Wrap(err, "edge query validation failed")
 	}
-
-	log.Printf("DEBUG EdgeRepository.FindEdges: query userID=%s, sourceID=%s, targetID=%s, nodeIDs=%v", 
-		query.UserID, query.SourceID, query.TargetID, query.NodeIDs)
 
 	var edges []*domain.Edge
 
@@ -218,9 +204,6 @@ func (r *EdgeRepository) GetEdgesPage(ctx context.Context, query repository.Edge
 		return nil, appErrors.Wrap(err, "pagination validation failed")
 	}
 
-	log.Printf("DEBUG EdgeRepository.GetEdgesPage: userID=%s, limit=%d", 
-		query.UserID, pagination.GetEffectiveLimit())
-
 	var queryInput *dynamodb.QueryInput
 
 	if query.HasSourceFilter() {
@@ -265,7 +248,7 @@ func (r *EdgeRepository) GetEdgesPage(ctx context.Context, query repository.Edge
 	for _, item := range result.Items {
 		edge, err := r.ddbItemToEdge(item, query.UserID)
 		if err != nil {
-			log.Printf("WARN EdgeRepository.GetEdgesPage: failed to convert item to edge: %v", err)
+			// Skip items that can't be converted - consider adding structured logging here
 			continue
 		}
 		if edge != nil {
@@ -284,7 +267,6 @@ func (r *EdgeRepository) GetEdgesPage(ctx context.Context, query repository.Edge
 // FindEdgesWithOptions implements enhanced edge queries with options (Phase 2 enhancement).
 func (r *EdgeRepository) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*domain.Edge, error) {
 	// For now, delegate to existing method - options can be implemented later
-	log.Printf("DEBUG EdgeRepository.FindEdgesWithOptions: delegating to FindEdges (options ignored for now)")
 	return r.FindEdges(ctx, query)
 }
 
@@ -384,7 +366,7 @@ func (r *EdgeRepository) findEdgesByTargetNode(ctx context.Context, userID, targ
 		for _, item := range result.Items {
 			edge, err := r.ddbItemToEdge(item, userID)
 			if err != nil {
-				log.Printf("WARN EdgeRepository.findEdgesByTargetNode: failed to convert item: %v", err)
+				// Skip items that can't be converted - consider adding structured logging here
 				continue
 			}
 			if edge != nil {
@@ -520,7 +502,5 @@ func (r *EdgeRepository) deduplicateEdges(edges []*domain.Edge) []*domain.Edge {
 		}
 	}
 
-	log.Printf("DEBUG EdgeRepository.deduplicateEdges: reduced %d edges to %d unique edges", 
-		len(edges), len(uniqueEdges))
 	return uniqueEdges
 }

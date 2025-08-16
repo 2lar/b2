@@ -10,20 +10,35 @@ import (
 
 // NodeReaderBridge bridges NodeRepository to NodeReader interface
 type NodeReaderBridge struct {
-	repo repository.NodeRepository
+	repo   repository.NodeRepository
+	userID string // Default userID for operations that need it
 }
 
 // NewNodeReaderBridge creates a bridge from NodeRepository to NodeReader
+// Note: Since the underlying repository requires userID but the reader interface doesn't,
+// this bridge will need to be enhanced with proper user context extraction.
 func NewNodeReaderBridge(repo repository.NodeRepository) repository.NodeReader {
-	return &NodeReaderBridge{repo: repo}
+	return &NodeReaderBridge{
+		repo: repo,
+		// TODO: Extract userID from context or request in production
+	}
 }
 
 // Implement minimal NodeReader interface to satisfy compilation
 // These are stub implementations that allow the code to compile
 
 func (b *NodeReaderBridge) FindByID(ctx context.Context, id domain.NodeID) (*domain.Node, error) {
-	// Use empty user ID as we don't have it
-	return b.repo.FindNodeByID(ctx, "", id.String())
+	// Try to extract userID from context if available
+	// For now, we attempt to find the node without userID filtering
+	// This may need refinement based on security requirements
+	node, err := b.repo.FindNodeByID(ctx, "", id.String())
+	if err != nil {
+		return nil, err
+	}
+	if node == nil {
+		return nil, repository.ErrNodeNotFound
+	}
+	return node, nil
 }
 
 func (b *NodeReaderBridge) Exists(ctx context.Context, id domain.NodeID) (bool, error) {
@@ -66,7 +81,8 @@ func (b *NodeReaderBridge) FindRecentlyUpdated(ctx context.Context, userID domai
 }
 
 func (b *NodeReaderBridge) FindBySpecification(ctx context.Context, spec repository.Specification, opts ...repository.QueryOption) ([]*domain.Node, error) {
-	// Stub implementation
+	// TODO: Implement specification pattern properly
+	// For now, return empty result instead of nil to avoid nil pointer issues
 	return []*domain.Node{}, nil
 }
 
@@ -79,16 +95,26 @@ func (b *NodeReaderBridge) FindPage(ctx context.Context, query repository.NodeQu
 }
 
 func (b *NodeReaderBridge) FindConnected(ctx context.Context, nodeID domain.NodeID, depth int, opts ...repository.QueryOption) ([]*domain.Node, error) {
-	graph, err := b.repo.GetNodeNeighborhood(ctx, "", nodeID.String(), depth)
+	// First, get the node to determine its userID
+	node, err := b.FindByID(ctx, nodeID)
 	if err != nil {
 		return nil, err
 	}
-	// graph.Nodes is already []*domain.Node, so just return it
+	if node == nil {
+		return nil, repository.ErrNodeNotFound
+	}
+	
+	// Use the node's userID for the neighborhood query
+	graph, err := b.repo.GetNodeNeighborhood(ctx, node.UserID.String(), nodeID.String(), depth)
+	if err != nil {
+		return nil, err
+	}
 	return graph.Nodes, nil
 }
 
 func (b *NodeReaderBridge) FindSimilar(ctx context.Context, nodeID domain.NodeID, threshold float64, opts ...repository.QueryOption) ([]*domain.Node, error) {
-	// Stub implementation
+	// TODO: Implement similarity search
+	// For now, return empty result instead of nil to avoid nil pointer issues
 	return []*domain.Node{}, nil
 }
 
@@ -112,7 +138,9 @@ func NewEdgeReaderBridge(repo repository.EdgeRepository) repository.EdgeReader {
 
 // Implement minimal EdgeReader interface
 func (b *EdgeReaderBridge) FindByID(ctx context.Context, id domain.NodeID) (*domain.Edge, error) {
-	query := repository.EdgeQuery{UserID: ""}
+	// EdgeRepository doesn't have a direct FindByID, so we need to search
+	// This is inefficient and should be improved in production
+	query := repository.EdgeQuery{}
 	edges, err := b.repo.FindEdges(ctx, query)
 	if err != nil {
 		return nil, err
@@ -122,7 +150,7 @@ func (b *EdgeReaderBridge) FindByID(ctx context.Context, id domain.NodeID) (*dom
 			return edge, nil
 		}
 	}
-	return nil, nil
+	return nil, repository.ErrEdgeNotFound
 }
 
 func (b *EdgeReaderBridge) Exists(ctx context.Context, id domain.NodeID) (bool, error) {

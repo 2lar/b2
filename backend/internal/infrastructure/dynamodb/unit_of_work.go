@@ -3,7 +3,6 @@ package dynamodb
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"brain2-backend/internal/domain"
 	"brain2-backend/internal/repository"
@@ -65,8 +64,6 @@ func (uow *DynamoDBUnitOfWork) Begin(ctx context.Context) error {
 		return appErrors.NewValidation("unit of work already active")
 	}
 	
-	log.Printf("DEBUG DynamoDBUnitOfWork.Begin: starting new unit of work")
-	
 	// Initialize repository instances with transactional capabilities
 	uow.nodeRepo = NewTransactionalNodeRepository(uow)
 	uow.edgeRepo = NewTransactionalEdgeRepository(uow)
@@ -79,7 +76,6 @@ func (uow *DynamoDBUnitOfWork) Begin(ctx context.Context) error {
 	uow.isCommitted = false
 	uow.isRolledBack = false
 	
-	log.Printf("DEBUG DynamoDBUnitOfWork.Begin: unit of work started successfully")
 	return nil
 }
 
@@ -92,8 +88,6 @@ func (uow *DynamoDBUnitOfWork) Commit() error {
 	if uow.isCommitted || uow.isRolledBack {
 		return appErrors.NewValidation("unit of work already completed")
 	}
-	
-	log.Printf("DEBUG DynamoDBUnitOfWork.Commit: committing %d transaction items", len(uow.transactItems))
 	
 	// Execute all transactional items atomically
 	if len(uow.transactItems) > 0 {
@@ -113,11 +107,10 @@ func (uow *DynamoDBUnitOfWork) Commit() error {
 	
 	// Publish events after successful database commit
 	if len(uow.pendingEvents) > 0 && uow.eventBus != nil {
-		log.Printf("DEBUG DynamoDBUnitOfWork.Commit: publishing %d domain events", len(uow.pendingEvents))
 		for _, event := range uow.pendingEvents {
 			if err := uow.eventBus.Publish(context.Background(), event); err != nil {
-				log.Printf("WARN DynamoDBUnitOfWork.Commit: failed to publish event: %v", err)
 				// Continue with other events - event publishing failures shouldn't rollback DB changes
+				// Consider adding proper logging with structured logger here
 			}
 		}
 	}
@@ -125,7 +118,6 @@ func (uow *DynamoDBUnitOfWork) Commit() error {
 	uow.isCommitted = true
 	uow.isActive = false
 	
-	log.Printf("DEBUG DynamoDBUnitOfWork.Commit: unit of work committed successfully")
 	return nil
 }
 
@@ -139,8 +131,6 @@ func (uow *DynamoDBUnitOfWork) Rollback() error {
 		return appErrors.NewValidation("cannot rollback committed unit of work")
 	}
 	
-	log.Printf("DEBUG DynamoDBUnitOfWork.Rollback: rolling back %d queued operations", len(uow.transactItems))
-	
 	// Clear all queued operations
 	uow.transactItems = uow.transactItems[:0]
 	uow.pendingEvents = uow.pendingEvents[:0]
@@ -148,7 +138,6 @@ func (uow *DynamoDBUnitOfWork) Rollback() error {
 	uow.isRolledBack = true
 	uow.isActive = false
 	
-	log.Printf("DEBUG DynamoDBUnitOfWork.Rollback: unit of work rolled back successfully")
 	return nil
 }
 
