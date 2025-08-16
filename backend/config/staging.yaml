@@ -1,0 +1,119 @@
+# Staging Environment Configuration
+# This file overrides base.yaml for the staging environment.
+# It provides production-like settings for testing before deployment.
+
+environment: "staging"
+
+# Server configuration for staging
+server:
+  port: 8080
+  enable_https: true
+  cert_file: "/etc/ssl/certs/staging.crt"
+  key_file: "/etc/ssl/private/staging.key"
+
+# Database configuration for staging
+database:
+  table_name: "brain2-staging"
+  region: "us-east-1"
+  # Moderate capacity for staging
+  read_capacity: 10
+  write_capacity: 10
+  enable_backups: true
+  enable_streams: true
+
+# AWS configuration for staging
+aws:
+  region: "us-east-1"
+
+# Domain configuration for staging
+domain:
+  # Production-like settings
+  similarity_threshold: 0.3
+  max_connections_per_node: 15
+  max_nodes_per_user: 50000
+
+# Infrastructure configuration for staging
+infrastructure:
+  circuit_breaker:
+    failure_threshold: 0.4      # Slightly more tolerant than production
+    success_threshold: 0.7
+
+# Logging configuration for staging
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+
+# Security configuration for staging
+security:
+  jwt_secret: "${JWT_SECRET}"  # Must be provided via environment variable
+  enable_auth: true
+  secure_headers: true
+  allowed_origins:
+    - "https://staging.brain2.example.com"
+    - "https://staging-app.brain2.example.com"
+
+# Rate limiting configuration for staging
+rate_limit:
+  enabled: true
+  requests_per_minute: 500
+  burst: 50
+
+# CORS configuration for staging
+cors:
+  allowed_origins:
+    - "https://staging.brain2.example.com"
+    - "https://staging-app.brain2.example.com"
+  allow_credentials: true
+
+# Metrics configuration for staging
+metrics:
+  provider: "cloudwatch"
+  namespace: "brain2-staging"
+
+# Tracing configuration for staging
+tracing:
+  enabled: true
+  provider: "xray"
+  service_name: "brain2-staging"
+  sample_rate: 0.5           # Sample 50% of requests
+
+# Event bus configuration for staging
+events:
+  event_bus_name: "brain2-staging"
+
+# Feature flags for staging
+features:
+  # Core features
+  enable_caching: true
+  enable_auto_connect: true
+  enable_ai_processing: true
+  enable_metrics: true
+  enable_tracing: true
+  enable_event_bus: true
+  
+  # Infrastructure features
+  enable_retries: true
+  enable_circuit_breaker: true
+  enable_rate_limiting: true
+  enable_compression: true
+  
+  # Debugging features (disabled in staging)
+  enable_debug_endpoints: false
+  enable_profiling: false
+  verbose_logging: false
+  
+  # Experimental features for testing
+  enable_graphql: true
+  enable_websockets: true
+  enable_batch_api: false
+
+# Cache configuration for staging
+cache:
+  provider: "redis"
+  redis:
+    host: "redis-staging.example.com"
+    port: 6379
+    password: "${REDIS_PASSWORD}"
+    db: 0
+    pool_size: 20

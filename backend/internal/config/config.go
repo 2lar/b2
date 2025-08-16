@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-playground/validator/v10"
 )
 
 // ============================================================================
@@ -26,25 +28,29 @@ import (
 //   - Comprehensive documentation
 //   - Validation support
 type Config struct {
-	Environment    Environment    `validate:"required,oneof=development staging production"`
-	Server         Server         `validate:"required"`
-	Database       Database       `validate:"required"`
-	AWS            AWS            `validate:"required"`
-	Domain         Domain         `validate:"required"`
-	Infrastructure Infrastructure `validate:"required"`
-	Features       Features       // Feature flags
-	Cache          Cache          // Cache configuration
-	Metrics        Metrics        // Metrics configuration
-	Logging        Logging        // Logging configuration
-	Security       Security       // Security settings
-	RateLimit      RateLimit      // Rate limiting configuration
-	CORS           CORS           // CORS configuration
-	Tracing        Tracing        // Distributed tracing
-	Events         Events         // Event configuration
+	Environment    Environment    `yaml:"environment" json:"environment" validate:"required,oneof=development staging production"`
+	Server         Server         `yaml:"server" json:"server" validate:"required,dive"`
+	Database       Database       `yaml:"database" json:"database" validate:"required,dive"`
+	AWS            AWS            `yaml:"aws" json:"aws" validate:"required,dive"`
+	Domain         Domain         `yaml:"domain" json:"domain" validate:"required,dive"`
+	Infrastructure Infrastructure `yaml:"infrastructure" json:"infrastructure" validate:"required,dive"`
+	Features       Features       `yaml:"features" json:"features"` // Feature flags
+	Cache          Cache          `yaml:"cache" json:"cache" validate:"dive"`
+	Metrics        Metrics        `yaml:"metrics" json:"metrics" validate:"dive"`
+	Logging        Logging        `yaml:"logging" json:"logging" validate:"dive"`
+	Security       Security       `yaml:"security" json:"security" validate:"required,dive"`
+	RateLimit      RateLimit      `yaml:"rate_limit" json:"rate_limit" validate:"dive"`
+	CORS           CORS           `yaml:"cors" json:"cors" validate:"dive"`
+	Tracing        Tracing        `yaml:"tracing" json:"tracing" validate:"dive"`
+	Events         Events         `yaml:"events" json:"events" validate:"dive"`
+	
+	// Metadata fields
+	Version        string         `yaml:"version" json:"version"` // Configuration version
+	LoadedFrom     []string       `yaml:"-" json:"-"`             // Sources configuration was loaded from
 	
 	// Legacy fields for backward compatibility
-	TableName string // Deprecated: Use Database.TableName
-	IndexName string // Deprecated: Use Database.IndexName
+	TableName string `yaml:"-" json:"-"` // Deprecated: Use Database.TableName
+	IndexName string `yaml:"-" json:"-"` // Deprecated: Use Database.IndexName
 }
 
 // Environment represents the deployment environment.
@@ -62,17 +68,17 @@ const (
 
 // Server contains HTTP server configuration.
 type Server struct {
-	Port            int           `validate:"required,min=1,max=65535"`
-	Host            string        `validate:"required"`
-	ReadTimeout     time.Duration `validate:"required,min=1s"`
-	WriteTimeout    time.Duration `validate:"required,min=1s"`
-	IdleTimeout     time.Duration `validate:"required,min=1s"`
-	ShutdownTimeout time.Duration `validate:"required,min=1s"`
-	MaxRequestSize  int64         `validate:"required,min=1024"`
-	RequestTimeout  time.Duration `validate:"required,min=1s"`
-	EnableHTTPS     bool
-	CertFile        string `validate:"required_if=EnableHTTPS true"`
-	KeyFile         string `validate:"required_if=EnableHTTPS true"`
+	Port            int           `yaml:"port" json:"port" validate:"required,min=1,max=65535"`
+	Host            string        `yaml:"host" json:"host" validate:"required,hostname|ip"`
+	ReadTimeout     time.Duration `yaml:"read_timeout" json:"read_timeout" validate:"required,min=1s"`
+	WriteTimeout    time.Duration `yaml:"write_timeout" json:"write_timeout" validate:"required,min=1s"`
+	IdleTimeout     time.Duration `yaml:"idle_timeout" json:"idle_timeout" validate:"required,min=1s"`
+	ShutdownTimeout time.Duration `yaml:"shutdown_timeout" json:"shutdown_timeout" validate:"required,min=1s"`
+	MaxRequestSize  int64         `yaml:"max_request_size" json:"max_request_size" validate:"required,min=1024"`
+	RequestTimeout  time.Duration `yaml:"request_timeout" json:"request_timeout" validate:"required,min=1s"`
+	EnableHTTPS     bool          `yaml:"enable_https" json:"enable_https"`
+	CertFile        string        `yaml:"cert_file" json:"cert_file" validate:"required_if=EnableHTTPS true,omitempty,file"`
+	KeyFile         string        `yaml:"key_file" json:"key_file" validate:"required_if=EnableHTTPS true,omitempty,file"`
 }
 
 // ============================================================================
@@ -81,17 +87,17 @@ type Server struct {
 
 // Database contains DynamoDB configuration.
 type Database struct {
-	TableName       string        `validate:"required"`
-	IndexName       string        `validate:"required"`
-	Region          string        `validate:"required"`
-	MaxRetries      int           `validate:"min=0,max=10"`
-	RetryBaseDelay  time.Duration `validate:"min=10ms"`
-	ConnectionPool  int           `validate:"min=1,max=100"`
-	Timeout         time.Duration `validate:"min=1s"`
-	ReadCapacity    int64         `validate:"min=1"`
-	WriteCapacity   int64         `validate:"min=1"`
-	EnableBackups   bool
-	EnableStreams   bool
+	TableName       string        `yaml:"table_name" json:"table_name" validate:"required,min=3,max=255"`
+	IndexName       string        `yaml:"index_name" json:"index_name" validate:"required,min=3,max=255"`
+	Region          string        `yaml:"region" json:"region" validate:"required,aws_region"`
+	MaxRetries      int           `yaml:"max_retries" json:"max_retries" validate:"min=0,max=10"`
+	RetryBaseDelay  time.Duration `yaml:"retry_base_delay" json:"retry_base_delay" validate:"min=10ms"`
+	ConnectionPool  int           `yaml:"connection_pool" json:"connection_pool" validate:"min=1,max=100"`
+	Timeout         time.Duration `yaml:"timeout" json:"timeout" validate:"min=1s,max=5m"`
+	ReadCapacity    int64         `yaml:"read_capacity" json:"read_capacity" validate:"min=1,max=40000"`
+	WriteCapacity   int64         `yaml:"write_capacity" json:"write_capacity" validate:"min=1,max=40000"`
+	EnableBackups   bool          `yaml:"enable_backups" json:"enable_backups"`
+	EnableStreams   bool          `yaml:"enable_streams" json:"enable_streams"`
 }
 
 // ============================================================================
@@ -100,12 +106,12 @@ type Database struct {
 
 // AWS contains AWS service configuration.
 type AWS struct {
-	Region          string `validate:"required"`
-	Profile         string
-	Endpoint        string // For local development with LocalStack
-	AccessKeyID     string // Optional, uses IAM role if not provided
-	SecretAccessKey string // Optional, uses IAM role if not provided
-	SessionToken    string // For temporary credentials
+	Region          string `yaml:"region" json:"region" validate:"required,aws_region"`
+	Profile         string `yaml:"profile" json:"profile" validate:"omitempty,min=1"`
+	Endpoint        string `yaml:"endpoint" json:"endpoint" validate:"omitempty,url"` // For local development with LocalStack
+	AccessKeyID     string `yaml:"access_key_id" json:"access_key_id" validate:"omitempty,min=16"` // Optional, uses IAM role if not provided
+	SecretAccessKey string `yaml:"secret_access_key" json:"secret_access_key" validate:"omitempty,min=16"` // Optional, uses IAM role if not provided
+	SessionToken    string `yaml:"session_token" json:"session_token" validate:"omitempty"` // For temporary credentials
 }
 
 // ============================================================================
@@ -114,14 +120,14 @@ type AWS struct {
 
 // Domain contains business logic configuration.
 type Domain struct {
-	SimilarityThreshold   float64 `validate:"min=0,max=1"`
-	MaxConnectionsPerNode int     `validate:"min=1,max=1000"`
-	MaxContentLength      int     `validate:"min=100,max=100000"`
-	MinKeywordLength      int     `validate:"min=2,max=50"`
-	RecencyWeight         float64 `validate:"min=0,max=1"`
-	DiversityThreshold    float64 `validate:"min=0,max=1"`
-	MaxTagsPerNode        int     `validate:"min=1,max=100"`
-	MaxNodesPerUser       int     `validate:"min=1"`
+	SimilarityThreshold   float64 `yaml:"similarity_threshold" json:"similarity_threshold" validate:"min=0,max=1"`
+	MaxConnectionsPerNode int     `yaml:"max_connections_per_node" json:"max_connections_per_node" validate:"min=1,max=1000"`
+	MaxContentLength      int     `yaml:"max_content_length" json:"max_content_length" validate:"min=100,max=100000"`
+	MinKeywordLength      int     `yaml:"min_keyword_length" json:"min_keyword_length" validate:"min=2,max=50"`
+	RecencyWeight         float64 `yaml:"recency_weight" json:"recency_weight" validate:"min=0,max=1"`
+	DiversityThreshold    float64 `yaml:"diversity_threshold" json:"diversity_threshold" validate:"min=0,max=1"`
+	MaxTagsPerNode        int     `yaml:"max_tags_per_node" json:"max_tags_per_node" validate:"min=1,max=100"`
+	MaxNodesPerUser       int     `yaml:"max_nodes_per_user" json:"max_nodes_per_user" validate:"min=1,max=1000000"`
 }
 
 // ============================================================================
@@ -130,32 +136,32 @@ type Domain struct {
 
 // Infrastructure contains infrastructure-level settings.
 type Infrastructure struct {
-	RetryConfig           RetryConfig
-	CircuitBreakerConfig  CircuitBreakerConfig
-	IdempotencyTTL        time.Duration `validate:"min=1h"`
-	HealthCheckInterval   time.Duration `validate:"min=10s"`
-	GracefulShutdownDelay time.Duration `validate:"min=0"`
+	RetryConfig           RetryConfig           `yaml:"retry" json:"retry" validate:"dive"`
+	CircuitBreakerConfig  CircuitBreakerConfig  `yaml:"circuit_breaker" json:"circuit_breaker" validate:"dive"`
+	IdempotencyTTL        time.Duration         `yaml:"idempotency_ttl" json:"idempotency_ttl" validate:"min=1h,max=168h"`
+	HealthCheckInterval   time.Duration         `yaml:"health_check_interval" json:"health_check_interval" validate:"min=10s,max=5m"`
+	GracefulShutdownDelay time.Duration         `yaml:"graceful_shutdown_delay" json:"graceful_shutdown_delay" validate:"min=0,max=60s"`
 }
 
 // RetryConfig contains retry behavior settings.
 type RetryConfig struct {
-	MaxRetries     int           `validate:"min=0,max=10"`
-	InitialDelay   time.Duration `validate:"min=10ms"`
-	MaxDelay       time.Duration `validate:"min=100ms"`
-	BackoffFactor  float64       `validate:"min=1,max=10"`
-	JitterFactor   float64       `validate:"min=0,max=1"`
-	RetryOnTimeout bool
-	RetryOn5xx     bool
+	MaxRetries     int           `yaml:"max_retries" json:"max_retries" validate:"min=0,max=10"`
+	InitialDelay   time.Duration `yaml:"initial_delay" json:"initial_delay" validate:"min=10ms,max=10s"`
+	MaxDelay       time.Duration `yaml:"max_delay" json:"max_delay" validate:"min=100ms,max=60s"`
+	BackoffFactor  float64       `yaml:"backoff_factor" json:"backoff_factor" validate:"min=1,max=10"`
+	JitterFactor   float64       `yaml:"jitter_factor" json:"jitter_factor" validate:"min=0,max=1"`
+	RetryOnTimeout bool          `yaml:"retry_on_timeout" json:"retry_on_timeout"`
+	RetryOn5xx     bool          `yaml:"retry_on_5xx" json:"retry_on_5xx"`
 }
 
 // CircuitBreakerConfig contains circuit breaker settings.
 type CircuitBreakerConfig struct {
-	FailureThreshold float64       `validate:"min=0,max=1"`
-	SuccessThreshold float64       `validate:"min=0,max=1"`
-	MinimumRequests  int           `validate:"min=1"`
-	WindowSize       time.Duration `validate:"min=1s"`
-	OpenDuration     time.Duration `validate:"min=1s"`
-	HalfOpenRequests int           `validate:"min=1"`
+	FailureThreshold float64       `yaml:"failure_threshold" json:"failure_threshold" validate:"min=0,max=1"`
+	SuccessThreshold float64       `yaml:"success_threshold" json:"success_threshold" validate:"min=0,max=1"`
+	MinimumRequests  int           `yaml:"minimum_requests" json:"minimum_requests" validate:"min=1,max=1000"`
+	WindowSize       time.Duration `yaml:"window_size" json:"window_size" validate:"min=1s,max=5m"`
+	OpenDuration     time.Duration `yaml:"open_duration" json:"open_duration" validate:"min=1s,max=5m"`
+	HalfOpenRequests int           `yaml:"half_open_requests" json:"half_open_requests" validate:"min=1,max=100"`
 }
 
 // ============================================================================
@@ -165,29 +171,29 @@ type CircuitBreakerConfig struct {
 // Features contains feature flags for gradual rollout and A/B testing.
 type Features struct {
 	// Core features
-	EnableCaching        bool
-	EnableAutoConnect    bool
-	EnableAIProcessing   bool
-	EnableMetrics        bool
-	EnableTracing        bool
-	EnableEventBus       bool
+	EnableCaching        bool `yaml:"enable_caching" json:"enable_caching"`
+	EnableAutoConnect    bool `yaml:"enable_auto_connect" json:"enable_auto_connect"`
+	EnableAIProcessing   bool `yaml:"enable_ai_processing" json:"enable_ai_processing"`
+	EnableMetrics        bool `yaml:"enable_metrics" json:"enable_metrics"`
+	EnableTracing        bool `yaml:"enable_tracing" json:"enable_tracing"`
+	EnableEventBus       bool `yaml:"enable_event_bus" json:"enable_event_bus"`
 	
 	// Infrastructure features
-	EnableRetries        bool
-	EnableCircuitBreaker bool
-	EnableRateLimiting   bool
-	EnableCompression    bool
+	EnableRetries        bool `yaml:"enable_retries" json:"enable_retries"`
+	EnableCircuitBreaker bool `yaml:"enable_circuit_breaker" json:"enable_circuit_breaker"`
+	EnableRateLimiting   bool `yaml:"enable_rate_limiting" json:"enable_rate_limiting"`
+	EnableCompression    bool `yaml:"enable_compression" json:"enable_compression"`
 	
 	// Debugging features
-	EnableDebugEndpoints bool
-	EnableProfiling      bool
-	EnableLogging        bool
-	VerboseLogging       bool
+	EnableDebugEndpoints bool `yaml:"enable_debug_endpoints" json:"enable_debug_endpoints"`
+	EnableProfiling      bool `yaml:"enable_profiling" json:"enable_profiling"`
+	EnableLogging        bool `yaml:"enable_logging" json:"enable_logging"`
+	VerboseLogging       bool `yaml:"verbose_logging" json:"verbose_logging"`
 	
 	// Experimental features
-	EnableGraphQL        bool
-	EnableWebSockets     bool
-	EnableBatchAPI       bool
+	EnableGraphQL        bool `yaml:"enable_graphql" json:"enable_graphql"`
+	EnableWebSockets     bool `yaml:"enable_websockets" json:"enable_websockets"`
+	EnableBatchAPI       bool `yaml:"enable_batch_api" json:"enable_batch_api"`
 }
 
 // ============================================================================
@@ -196,22 +202,22 @@ type Features struct {
 
 // Cache contains caching configuration.
 type Cache struct {
-	Provider  string        `validate:"oneof=memory redis memcached"`
-	MaxItems  int           `validate:"min=1"`
-	TTL       time.Duration `validate:"min=1s"`
-	QueryTTL  time.Duration `validate:"min=1s"`
+	Provider  string        `yaml:"provider" json:"provider" validate:"oneof=memory redis memcached"`
+	MaxItems  int           `yaml:"max_items" json:"max_items" validate:"min=1,max=1000000"`
+	TTL       time.Duration `yaml:"ttl" json:"ttl" validate:"min=1s,max=24h"`
+	QueryTTL  time.Duration `yaml:"query_ttl" json:"query_ttl" validate:"min=1s,max=24h"`
 	
 	// Redis-specific settings
-	Redis RedisConfig
+	Redis RedisConfig `yaml:"redis" json:"redis" validate:"dive"`
 }
 
 // RedisConfig contains Redis-specific settings.
 type RedisConfig struct {
-	Host     string `validate:"required_if=Provider redis"`
-	Port     int    `validate:"required_if=Provider redis,min=1,max=65535"`
-	Password string
-	DB       int `validate:"min=0,max=15"`
-	PoolSize int `validate:"min=1,max=1000"`
+	Host     string `yaml:"host" json:"host" validate:"omitempty,hostname|ip"`
+	Port     int    `yaml:"port" json:"port" validate:"omitempty,min=1,max=65535"`
+	Password string `yaml:"password" json:"password" validate:"omitempty"`
+	DB       int    `yaml:"db" json:"db" validate:"min=0,max=15"`
+	PoolSize int    `yaml:"pool_size" json:"pool_size" validate:"min=1,max=1000"`
 }
 
 // ============================================================================
@@ -220,24 +226,24 @@ type RedisConfig struct {
 
 // Metrics contains metrics collection configuration.
 type Metrics struct {
-	Provider   string `validate:"oneof=prometheus datadog cloudwatch statsd"`
-	Interval   time.Duration
-	Namespace  string
-	Prometheus PrometheusConfig
-	Datadog    DatadogConfig
+	Provider   string           `yaml:"provider" json:"provider" validate:"oneof=prometheus datadog cloudwatch statsd"`
+	Interval   time.Duration    `yaml:"interval" json:"interval" validate:"omitempty,min=1s,max=5m"`
+	Namespace  string           `yaml:"namespace" json:"namespace" validate:"omitempty,min=1,max=255"`
+	Prometheus PrometheusConfig `yaml:"prometheus" json:"prometheus" validate:"dive"`
+	Datadog    DatadogConfig    `yaml:"datadog" json:"datadog" validate:"dive"`
 }
 
 // PrometheusConfig contains Prometheus-specific settings.
 type PrometheusConfig struct {
-	Port int `validate:"min=1,max=65535"`
-	Path string
+	Port int    `yaml:"port" json:"port" validate:"min=1,max=65535"`
+	Path string `yaml:"path" json:"path" validate:"omitempty,startswith=/"`
 }
 
 // DatadogConfig contains Datadog-specific settings.
 type DatadogConfig struct {
-	APIKey string
-	Host   string
-	Port   int `validate:"min=1,max=65535"`
+	APIKey string `yaml:"api_key" json:"api_key" validate:"omitempty,min=32"`
+	Host   string `yaml:"host" json:"host" validate:"omitempty,hostname|ip"`
+	Port   int    `yaml:"port" json:"port" validate:"omitempty,min=1,max=65535"`
 }
 
 // ============================================================================
@@ -324,11 +330,11 @@ type Tracing struct {
 
 // Events contains event bus configuration.
 type Events struct {
-	Provider     string `validate:"oneof=eventbridge kafka rabbitmq sns"`
-	EventBusName string
-	TopicPrefix  string
-	RetryAttempts int
-	BatchSize    int
+	Provider      string `yaml:"provider" json:"provider" validate:"oneof=eventbridge kafka rabbitmq sns"`
+	EventBusName  string `yaml:"event_bus_name" json:"event_bus_name" validate:"omitempty,min=1,max=255"`
+	TopicPrefix   string `yaml:"topic_prefix" json:"topic_prefix" validate:"omitempty,min=1,max=255"`
+	RetryAttempts int    `yaml:"retry_attempts" json:"retry_attempts" validate:"min=0,max=10"`
+	BatchSize     int    `yaml:"batch_size" json:"batch_size" validate:"min=1,max=1000"`
 }
 
 // ============================================================================
@@ -365,19 +371,75 @@ func LoadConfig() Config {
 	return cfg
 }
 
-// Validate validates the configuration.
+// Validate validates the configuration using struct tags and custom rules.
 func (c *Config) Validate() error {
-	// Basic validation
-	if c.Server.Port < 1 || c.Server.Port > 65535 {
-		return fmt.Errorf("invalid server port: %d", c.Server.Port)
+	// Use struct tag validation
+	validate := validator.New()
+	
+	// Register custom validation for AWS regions
+	validate.RegisterValidation("aws_region", validateAWSRegion)
+	
+	// Validate struct tags
+	if err := validate.Struct(c); err != nil {
+		// Format validation errors nicely
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			var errors []string
+			for _, e := range validationErrors {
+				errors = append(errors, formatValidationError(e))
+			}
+			return fmt.Errorf("validation failed:\n  - %s", strings.Join(errors, "\n  - "))
+		}
+		return fmt.Errorf("validation failed: %w", err)
 	}
 	
-	if c.Domain.SimilarityThreshold < 0 || c.Domain.SimilarityThreshold > 1 {
-		return fmt.Errorf("similarity threshold must be between 0 and 1")
+	// Custom business logic validation
+	if err := c.validateBusinessRules(); err != nil {
+		return fmt.Errorf("business rule validation failed: %w", err)
 	}
 	
 	// Environment-specific validation
-	if c.Environment == Production {
+	if err := c.validateEnvironmentRules(); err != nil {
+		return fmt.Errorf("environment validation failed: %w", err)
+	}
+	
+	return nil
+}
+
+// validateBusinessRules checks custom business logic constraints.
+func (c *Config) validateBusinessRules() error {
+	// Ensure retry max delay is greater than initial delay
+	if c.Infrastructure.RetryConfig.MaxDelay <= c.Infrastructure.RetryConfig.InitialDelay {
+		return fmt.Errorf("retry max delay must be greater than initial delay")
+	}
+	
+	// Ensure cache TTL is reasonable compared to query TTL
+	if c.Cache.QueryTTL > c.Cache.TTL {
+		return fmt.Errorf("cache query TTL cannot be greater than general TTL")
+	}
+	
+	// Ensure circuit breaker thresholds are sensible
+	if c.Infrastructure.CircuitBreakerConfig.SuccessThreshold <= c.Infrastructure.CircuitBreakerConfig.FailureThreshold {
+		return fmt.Errorf("circuit breaker success threshold must be greater than failure threshold")
+	}
+	
+	// Validate Redis configuration if Redis is selected
+	if c.Cache.Provider == "redis" {
+		if c.Cache.Redis.Host == "" {
+			return fmt.Errorf("redis host is required when cache provider is redis")
+		}
+		if c.Cache.Redis.Port == 0 {
+			return fmt.Errorf("redis port is required when cache provider is redis")
+		}
+	}
+	
+	return nil
+}
+
+// validateEnvironmentRules enforces environment-specific constraints.
+func (c *Config) validateEnvironmentRules() error {
+	switch c.Environment {
+	case Production:
+		// Production must have certain features enabled
 		if !c.Features.EnableMetrics {
 			return fmt.Errorf("metrics must be enabled in production")
 		}
@@ -387,9 +449,76 @@ func (c *Config) Validate() error {
 		if c.Logging.Level == "debug" {
 			return fmt.Errorf("debug logging should not be used in production")
 		}
+		if !c.Security.SecureHeaders {
+			return fmt.Errorf("secure headers must be enabled in production")
+		}
+		if c.Server.Port == 8080 {
+			return fmt.Errorf("default port 8080 should not be used in production")
+		}
+		
+	case Staging:
+		// Staging should have metrics enabled for testing
+		if !c.Features.EnableMetrics {
+			return fmt.Errorf("metrics should be enabled in staging for testing")
+		}
+		
+	case Development:
+		// Development warnings (not errors)
+		if c.Features.EnableDebugEndpoints && c.Security.EnableAuth {
+			// This is just a warning, logged elsewhere
+		}
 	}
 	
 	return nil
+}
+
+// validateAWSRegion is a custom validator for AWS region format.
+func validateAWSRegion(fl validator.FieldLevel) bool {
+	region := fl.Field().String()
+	// Simple AWS region pattern validation
+	// Format: us-east-1, eu-west-2, ap-southeast-1, etc.
+	if region == "" {
+		return false
+	}
+	
+	parts := strings.Split(region, "-")
+	if len(parts) < 3 {
+		return false
+	}
+	
+	// Check if it matches known region patterns
+	validPrefixes := []string{"us", "eu", "ap", "ca", "sa", "me", "af"}
+	for _, prefix := range validPrefixes {
+		if strings.HasPrefix(region, prefix+"-") {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// formatValidationError formats a validation error for better readability.
+func formatValidationError(e validator.FieldError) string {
+	field := e.Namespace()
+	tag := e.Tag()
+	param := e.Param()
+	
+	switch tag {
+	case "required":
+		return fmt.Sprintf("%s is required", field)
+	case "min":
+		return fmt.Sprintf("%s must be at least %s", field, param)
+	case "max":
+		return fmt.Sprintf("%s must be at most %s", field, param)
+	case "oneof":
+		return fmt.Sprintf("%s must be one of: %s", field, param)
+	case "required_if":
+		return fmt.Sprintf("%s is required when %s", field, param)
+	case "aws_region":
+		return fmt.Sprintf("%s must be a valid AWS region (e.g., us-east-1)", field)
+	default:
+		return fmt.Sprintf("%s failed %s validation", field, tag)
+	}
 }
 
 // applyEnvironmentDefaults applies environment-specific defaults.

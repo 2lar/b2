@@ -1,0 +1,40 @@
+# Local Development Configuration Override
+# Copy this file to local.yaml for your personal development settings.
+# local.yaml is gitignored and won't be committed to version control.
+#
+# This file is loaded AFTER development.yaml and overrides its values.
+# Use it for personal preferences and local service endpoints.
+
+# Example: Use your local DynamoDB or LocalStack
+aws:
+  endpoint: "http://localhost:4566"  # LocalStack endpoint
+  access_key_id: "test"
+  secret_access_key: "test"
+
+# Example: Use your local Redis
+cache:
+  provider: "redis"
+  redis:
+    host: "localhost"
+    port: 6379
+
+# Example: Personal logging preferences
+logging:
+  level: "debug"
+  verbose_logging: true
+
+# Example: Disable auth for easier testing
+security:
+  enable_auth: false
+
+# Example: Custom test database
+database:
+  table_name: "brain2-john-dev"  # Your personal test table
+
+# Example: Enable all features for testing
+features:
+  enable_caching: true
+  enable_metrics: true
+  enable_tracing: true
+  enable_debug_endpoints: true
+  enable_profiling: true

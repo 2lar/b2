@@ -1,0 +1,378 @@
+# Example Configuration File for Brain2 Backend
+# This file documents all available configuration options with explanations.
+# Copy this file to local.yaml for local development overrides.
+#
+# Configuration Loading Order (highest priority last):
+#   1. Default values in code
+#   2. base.yaml
+#   3. {environment}.yaml (development/staging/production)
+#   4. local.yaml (for local development only)
+#   5. Environment variables
+#
+# Environment Variables:
+#   Most configuration values can be overridden via environment variables.
+#   The naming convention is SECTION_KEY (e.g., SERVER_PORT, DATABASE_TABLE_NAME)
+#   
+# Secrets:
+#   Sensitive values should NEVER be committed to version control.
+#   Use environment variables or secret management systems.
+#   Values like ${VAR_NAME} will be replaced with environment variables.
+
+# ============================================================================
+# METADATA
+# ============================================================================
+
+# Configuration schema version (for compatibility checking)
+version: "2.0.0"
+
+# Deployment environment
+# Options: development, staging, production
+environment: "development"
+
+# ============================================================================
+# SERVER CONFIGURATION
+# ============================================================================
+
+server:
+  # Network binding address
+  # Use 0.0.0.0 to bind to all interfaces
+  host: "0.0.0.0"
+  
+  # Server port
+  # Default: 8080 for HTTP, 443 for HTTPS
+  port: 8080
+  
+  # Timeouts for various operations
+  read_timeout: 30s          # Time to read request headers and body
+  write_timeout: 30s         # Time to write response
+  idle_timeout: 60s          # Keep-alive timeout
+  shutdown_timeout: 10s      # Graceful shutdown timeout
+  request_timeout: 30s       # Overall request processing timeout
+  
+  # Maximum request body size in bytes
+  max_request_size: 10485760  # 10MB
+  
+  # HTTPS configuration
+  enable_https: false
+  cert_file: "/path/to/cert.pem"  # Required if enable_https is true
+  key_file: "/path/to/key.pem"    # Required if enable_https is true
+
+# ============================================================================
+# DATABASE CONFIGURATION (DynamoDB)
+# ============================================================================
+
+database:
+  # DynamoDB table name
+  # Convention: brain2-{environment}
+  table_name: "brain2-dev"
+  
+  # Global Secondary Index name for keyword searches
+  index_name: "KeywordIndex"
+  
+  # AWS region for DynamoDB
+  region: "us-east-1"
+  
+  # Retry configuration
+  max_retries: 3               # Maximum retry attempts
+  retry_base_delay: 100ms      # Initial retry delay
+  
+  # Connection pooling
+  connection_pool: 10          # Number of concurrent connections
+  
+  # Operation timeout
+  timeout: 10s
+  
+  # DynamoDB capacity units (for provisioned mode)
+  read_capacity: 5             # Read capacity units
+  write_capacity: 5            # Write capacity units
+  
+  # Backup and streaming
+  enable_backups: false        # Enable point-in-time recovery
+  enable_streams: false        # Enable DynamoDB Streams
+
+# ============================================================================
+# AWS CONFIGURATION
+# ============================================================================
+
+aws:
+  # AWS region (should match database region)
+  region: "us-east-1"
+  
+  # AWS profile name (for local development)
+  # Leave empty to use default profile or IAM roles
+  profile: ""
+  
+  # Custom endpoint (for LocalStack or testing)
+  # Example: http://localhost:4566
+  endpoint: ""
+  
+  # AWS credentials (use IAM roles in production!)
+  # These can be provided via environment variables:
+  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+  access_key_id: ""
+  secret_access_key: ""
+  session_token: ""            # For temporary credentials
+
+# ============================================================================
+# DOMAIN BUSINESS LOGIC
+# ============================================================================
+
+domain:
+  # Connection similarity threshold (0.0 to 1.0)
+  # Lower values create more connections
+  similarity_threshold: 0.3
+  
+  # Maximum number of connections per node
+  max_connections_per_node: 10
+  
+  # Maximum content length in characters
+  max_content_length: 10000
+  
+  # Minimum keyword length for extraction
+  min_keyword_length: 3
+  
+  # Weight for recency in connection scoring (0.0 to 1.0)
+  recency_weight: 0.2
+  
+  # Diversity threshold for connections (0.0 to 1.0)
+  # Higher values ensure more diverse connections
+  diversity_threshold: 0.5
+  
+  # Maximum tags allowed per node
+  max_tags_per_node: 10
+  
+  # Maximum nodes per user
+  max_nodes_per_user: 10000
+
+# ============================================================================
+# INFRASTRUCTURE CONFIGURATION
+# ============================================================================
+
+infrastructure:
+  # Retry configuration
+  retry:
+    max_retries: 3             # Maximum retry attempts
+    initial_delay: 100ms       # First retry delay
+    max_delay: 5s              # Maximum retry delay
+    backoff_factor: 2.0        # Exponential backoff multiplier
+    jitter_factor: 0.1         # Random jitter (0.0 to 1.0)
+    retry_on_timeout: true     # Retry on timeout errors
+    retry_on_5xx: true         # Retry on 5xx errors
+  
+  # Circuit breaker configuration
+  circuit_breaker:
+    failure_threshold: 0.5     # Trip after 50% failures
+    success_threshold: 0.8     # Reset after 80% success
+    minimum_requests: 10       # Min requests before evaluation
+    window_size: 10s          # Time window for metrics
+    open_duration: 30s        # How long to stay open
+    half_open_requests: 3     # Test requests in half-open
+  
+  # Idempotency configuration
+  idempotency_ttl: 24h        # How long to store idempotency keys
+  
+  # Health check configuration
+  health_check_interval: 30s  # Interval between health checks
+  
+  # Shutdown configuration
+  graceful_shutdown_delay: 5s # Wait before force shutdown
+
+# ============================================================================
+# CACHING CONFIGURATION
+# ============================================================================
+
+cache:
+  # Cache provider
+  # Options: memory, redis, memcached
+  provider: "memory"
+  
+  # Maximum items in cache (for memory provider)
+  max_items: 1000
+  
+  # Default TTL for cached items
+  ttl: 5m
+  
+  # TTL for query results
+  query_ttl: 1m
+  
+  # Redis configuration (if provider is redis)
+  redis:
+    host: "localhost"
+    port: 6379
+    password: ""              # Use ${REDIS_PASSWORD} in production
+    db: 0                     # Redis database number (0-15)
+    pool_size: 10            # Connection pool size
+
+# ============================================================================
+# METRICS CONFIGURATION
+# ============================================================================
+
+metrics:
+  # Metrics provider
+  # Options: prometheus, datadog, cloudwatch, statsd
+  provider: "prometheus"
+  
+  # Metrics collection interval
+  interval: 10s
+  
+  # Metrics namespace/prefix
+  namespace: "brain2"
+  
+  # Prometheus configuration
+  prometheus:
+    port: 9090               # Metrics endpoint port
+    path: "/metrics"         # Metrics endpoint path
+  
+  # Datadog configuration (if provider is datadog)
+  datadog:
+    api_key: "${DATADOG_API_KEY}"
+    host: "localhost"
+    port: 8125
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+
+logging:
+  # Log level
+  # Options: debug, info, warn, error, fatal
+  level: "info"
+  
+  # Output format
+  # Options: json (structured), console (human-readable)
+  format: "json"
+  
+  # Output destination
+  # Options: stdout, stderr, file
+  output: "stdout"
+  
+  # File logging configuration (if output is file)
+  file_path: "/var/log/brain2.log"
+  max_size: 100              # Max file size in MB
+  max_age: 30                # Max age in days
+  max_backups: 10            # Max number of old files
+  compress: true             # Compress old files
+
+# ============================================================================
+# SECURITY CONFIGURATION
+# ============================================================================
+
+security:
+  # JWT configuration
+  jwt_secret: "${JWT_SECRET}"  # MUST use environment variable
+  jwt_expiry: 24h             # Token expiration time
+  
+  # API key configuration
+  api_key_header: "X-API-Key"  # Header name for API keys
+  
+  # Authentication
+  enable_auth: true            # Enable authentication
+  
+  # CORS origins
+  allowed_origins:
+    - "https://example.com"
+    - "https://app.example.com"
+  
+  # Trusted proxy IPs (for X-Forwarded-For)
+  trusted_proxies:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+  
+  # Security headers
+  secure_headers: true         # Add security headers
+  
+  # CSRF protection
+  enable_csrf: false           # Enable CSRF protection
+  csrf_token_length: 32        # CSRF token length
+
+# ============================================================================
+# RATE LIMITING CONFIGURATION
+# ============================================================================
+
+rate_limit:
+  enabled: false               # Enable rate limiting
+  requests_per_minute: 100     # Requests per minute
+  burst: 10                    # Burst capacity
+  cleanup_interval: 1m         # Cleanup interval
+  by_ip: true                  # Rate limit by IP
+  by_user: false               # Rate limit by user
+  by_api_key: false           # Rate limit by API key
+
+# ============================================================================
+# CORS CONFIGURATION
+# ============================================================================
+
+cors:
+  enabled: true
+  allowed_origins:
+    - "*"                      # Use specific origins in production
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowed_headers:
+    - "*"                      # Be specific in production
+  exposed_headers:
+    - "X-Request-ID"
+  allow_credentials: false
+  max_age: 86400              # Preflight cache duration
+
+# ============================================================================
+# DISTRIBUTED TRACING
+# ============================================================================
+
+tracing:
+  enabled: false
+  # Tracing provider
+  # Options: jaeger, zipkin, xray, datadog
+  provider: "jaeger"
+  service_name: "brain2-backend"
+  sample_rate: 0.1            # Sample 10% of requests
+  endpoint: ""                # Collector endpoint
+  agent_host: "localhost"     # Agent host
+  agent_port: 6831           # Agent port
+
+# ============================================================================
+# EVENT BUS CONFIGURATION
+# ============================================================================
+
+events:
+  # Event bus provider
+  # Options: eventbridge, kafka, rabbitmq, sns
+  provider: "eventbridge"
+  event_bus_name: "default"
+  topic_prefix: "brain2"      # Prefix for topic names
+  retry_attempts: 3           # Retry attempts for publishing
+  batch_size: 10             # Batch size for bulk operations
+
+# ============================================================================
+# FEATURE FLAGS
+# ============================================================================
+
+features:
+  # Core features
+  enable_caching: false       # Enable caching layer
+  enable_auto_connect: true   # Auto-connect related nodes
+  enable_ai_processing: false # Enable AI features
+  enable_metrics: false       # Enable metrics collection
+  enable_tracing: false       # Enable distributed tracing
+  enable_event_bus: false     # Enable event publishing
+  
+  # Infrastructure features
+  enable_retries: true        # Enable automatic retries
+  enable_circuit_breaker: false  # Enable circuit breaker
+  enable_rate_limiting: false    # Enable rate limiting
+  enable_compression: false      # Enable response compression
+  
+  # Debugging features
+  enable_debug_endpoints: false  # Enable debug endpoints
+  enable_profiling: false        # Enable profiling endpoints
+  enable_logging: true           # Enable logging
+  verbose_logging: false         # Enable verbose logging
+  
+  # Experimental features
+  enable_graphql: false         # Enable GraphQL endpoint
+  enable_websockets: false      # Enable WebSocket support
+  enable_batch_api: false       # Enable batch API

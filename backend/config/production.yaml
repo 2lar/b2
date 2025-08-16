@@ -1,0 +1,164 @@
+# Production Environment Configuration
+# This file overrides base.yaml for the production environment.
+# It provides secure, optimized settings for production deployment.
+
+environment: "production"
+
+# Server configuration for production
+server:
+  port: 443                    # HTTPS port
+  enable_https: true
+  cert_file: "/etc/ssl/certs/production.crt"
+  key_file: "/etc/ssl/private/production.key"
+  read_timeout: 15s
+  write_timeout: 15s
+  max_request_size: 5242880    # 5MB (stricter limit)
+
+# Database configuration for production
+database:
+  table_name: "brain2-production"
+  region: "us-east-1"
+  # High capacity for production
+  read_capacity: 100
+  write_capacity: 50
+  enable_backups: true
+  enable_streams: true
+  max_retries: 5
+  timeout: 30s
+
+# AWS configuration for production
+aws:
+  region: "us-east-1"
+  # Uses IAM roles in production
+
+# Domain configuration for production
+domain:
+  similarity_threshold: 0.35    # Stricter similarity requirements
+  max_connections_per_node: 10
+  max_content_length: 10000
+  max_nodes_per_user: 100000
+
+# Infrastructure configuration for production
+infrastructure:
+  retry:
+    max_retries: 5
+    max_delay: 10s
+  
+  circuit_breaker:
+    failure_threshold: 0.3      # Trip quickly on failures
+    success_threshold: 0.9      # Require high success to reset
+    minimum_requests: 20
+    window_size: 30s
+    open_duration: 60s
+    half_open_requests: 5
+  
+  health_check_interval: 15s
+  graceful_shutdown_delay: 30s
+
+# Logging configuration for production
+logging:
+  level: "warn"               # Only warnings and errors
+  format: "json"
+  output: "stdout"            # CloudWatch will capture stdout
+
+# Security configuration for production
+security:
+  jwt_secret: "${JWT_SECRET}"  # MUST be provided via environment/secrets
+  jwt_expiry: 12h            # Shorter expiry in production
+  enable_auth: true
+  secure_headers: true
+  enable_csrf: true
+  allowed_origins:
+    - "https://brain2.example.com"
+    - "https://app.brain2.example.com"
+    - "https://www.brain2.example.com"
+
+# Rate limiting configuration for production
+rate_limit:
+  enabled: true
+  requests_per_minute: 1000
+  burst: 100
+  cleanup_interval: 5m
+  by_ip: true
+  by_user: true
+  by_api_key: true
+
+# CORS configuration for production
+cors:
+  allowed_origins:
+    - "https://brain2.example.com"
+    - "https://app.brain2.example.com"
+    - "https://www.brain2.example.com"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+  allowed_headers:
+    - "Content-Type"
+    - "Authorization"
+    - "X-API-Key"
+  exposed_headers:
+    - "X-Request-ID"
+    - "X-RateLimit-Remaining"
+  allow_credentials: true
+
+# Metrics configuration for production
+metrics:
+  provider: "cloudwatch"
+  namespace: "brain2-production"
+  interval: 30s
+
+# Tracing configuration for production
+tracing:
+  enabled: true
+  provider: "xray"
+  service_name: "brain2-production"
+  sample_rate: 0.1           # Sample 10% of requests
+
+# Event bus configuration for production
+events:
+  provider: "eventbridge"
+  event_bus_name: "brain2-production"
+  retry_attempts: 5
+  batch_size: 25
+
+# Feature flags for production
+features:
+  # Core features
+  enable_caching: true
+  enable_auto_connect: true
+  enable_ai_processing: true
+  enable_metrics: true          # REQUIRED in production
+  enable_tracing: true
+  enable_event_bus: true
+  
+  # Infrastructure features
+  enable_retries: true          # REQUIRED in production
+  enable_circuit_breaker: true  # REQUIRED in production
+  enable_rate_limiting: true    # REQUIRED in production
+  enable_compression: true
+  
+  # Debugging features (MUST be disabled in production)
+  enable_debug_endpoints: false
+  enable_profiling: false
+  enable_logging: true
+  verbose_logging: false
+  
+  # Experimental features (disabled until proven)
+  enable_graphql: false
+  enable_websockets: false
+  enable_batch_api: false
+
+# Cache configuration for production
+cache:
+  provider: "redis"
+  max_items: 10000
+  ttl: 15m
+  query_ttl: 5m
+  redis:
+    host: "${REDIS_HOST}"      # Provided via secrets
+    port: 6379
+    password: "${REDIS_PASSWORD}"
+    db: 0
+    pool_size: 50
