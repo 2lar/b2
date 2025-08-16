@@ -248,9 +248,32 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	edgeIDs := make([]string, len(edges))
-	for i, edge := range edges {
-		edgeIDs[i] = edge.TargetID().String()
+	// Extract connected node IDs from edges
+	// For each edge, we need to get the "other" node (not the current node)
+	connectedNodeIDs := make(map[string]bool) // Use map to avoid duplicates
+	for _, edge := range edges {
+		sourceID := edge.SourceID().String()
+		targetID := edge.TargetID().String()
+		
+		// Add the "other" node ID
+		if sourceID == nodeID {
+			// Current node is source, so target is the connected node
+			if targetID != nodeID { // Avoid self-references
+				connectedNodeIDs[targetID] = true
+			}
+		} else if targetID == nodeID {
+			// Current node is target, so source is the connected node
+			if sourceID != nodeID { // Avoid self-references
+				connectedNodeIDs[sourceID] = true
+			}
+		}
+		// Note: In canonical storage, one of these conditions should always be true
+	}
+	
+	// Convert map to slice
+	edgeIDs := make([]string, 0, len(connectedNodeIDs))
+	for id := range connectedNodeIDs {
+		edgeIDs = append(edgeIDs, id)
 	}
 
 	response := api.NodeDetailsResponse{

@@ -231,9 +231,11 @@ func (s *service) GetNodeDetails(ctx context.Context, userID, nodeID string) (*d
 		return nil, nil, appErrors.NewNotFound("node not found")
 	}
 
+	// Fetch ALL edges connected to this node (both as source and target)
+	// This ensures we get bidirectional connections properly
 	edgeQuery := repository.EdgeQuery{
-		UserID:   userID,
-		SourceID: nodeID,
+		UserID:  userID,
+		NodeIDs: []string{nodeID}, // This will find edges where node is either source or target
 	}
 	edges, err := s.edgeRepo.FindEdges(ctx, edgeQuery)
 	if err != nil {
