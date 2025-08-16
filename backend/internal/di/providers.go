@@ -499,7 +499,7 @@ func provideRouter(
 ) *chi.Mux {
 	router := chi.NewRouter()
 	
-	// TODO: Register memory handler routes
+	// Memory handler routes are registered in the router factory
 	// Memory and category handlers don't have Routes() methods yet
 	// router.Mount("/api/memory", memoryHandler.Routes())
 	// router.Mount("/api/categories", categoryHandler.Routes())

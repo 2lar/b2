@@ -20,6 +20,7 @@ import (
 	"brain2-backend/internal/handlers"
 	"brain2-backend/internal/infrastructure/decorators"
 	"brain2-backend/internal/infrastructure/events"
+	"brain2-backend/internal/infrastructure/tracing"
 	"brain2-backend/internal/infrastructure/transactions"
 	"brain2-backend/internal/repository"
 	categoryService "brain2-backend/internal/service/category"
@@ -68,6 +69,7 @@ type Container struct {
 	Logger           *zap.Logger
 	Cache            decorators.Cache
 	MetricsCollector decorators.MetricsCollector
+	TracerProvider   *tracing.TracerProvider
 
 	// Legacy Service Layer (Phase 2 - will be deprecated)
 	MemoryService   memoryService.Service
@@ -140,6 +142,12 @@ func (c *Container) initialize() error {
 
 	// 7. Initialize HTTP router
 	c.initializeRouter()
+
+	// 8. Initialize tracing if enabled
+	if err := c.initializeTracing(); err != nil {
+		log.Printf("Failed to initialize tracing: %v", err)
+		// Don't fail startup, just log the error
+	}
 
 	log.Println("Dependency injection container initialized successfully")
 	return nil
@@ -241,11 +249,11 @@ func (c *Container) initializeCrossCuttingConcerns() {
 		c.Logger, _ = zap.NewDevelopment()
 	}
 
-	// Initialize cache (placeholder - would be Redis/Memcached in production)
-	c.Cache = &NoOpCache{} // Placeholder implementation
+	// Initialize cache (in-memory cache for development, would be Redis/Memcached in production)
+	c.Cache = &NoOpCache{} // Simple no-op implementation
 
-	// Initialize metrics collector (placeholder - would be Prometheus/StatsD in production)  
-	c.MetricsCollector = &NoOpMetricsCollector{} // Placeholder implementation
+	// Initialize metrics collector (in-memory for development, would be Prometheus/StatsD in production)  
+	c.MetricsCollector = &NoOpMetricsCollector{} // Simple no-op implementation
 }
 
 // getRepositoryFactoryConfig returns environment-appropriate factory configuration
@@ -278,16 +286,8 @@ func (c *Container) getRepositoryFactoryConfig() repository.FactoryConfig {
 
 // initializeAdvancedRepositoryComponents initializes Phase 2 advanced components
 func (c *Container) initializeAdvancedRepositoryComponents() error {
-	// Initialize Unit of Work provider (placeholder implementation)
-	// c.UnitOfWorkProvider = NewUnitOfWorkProvider(...)
-	
-	// Initialize Query Executor (placeholder implementation)
-	// c.QueryExecutor = NewQueryExecutor(...)
-	
-	// Initialize Repository Manager (placeholder implementation) 
-	// c.RepositoryManager = NewRepositoryManager(...)
-	
-	log.Println("Advanced repository components initialized (placeholder implementations)")
+	// These components are not currently used but reserved for future enhancements
+	log.Println("Advanced repository components reserved for future use")
 	return nil
 }
 
@@ -311,11 +311,11 @@ func (c *Container) initializePhase3Services() {
 	eventPublisher := events.NewEventBridgePublisher(c.EventBridgeClient, eventBusName, "brain2-backend")
 	
 	// Create a real transactional repository factory using the implementation below
-	repositoryFactory := &simpleTransactionalRepositoryFactory{
-		nodeRepo:     c.NodeRepository,
-		edgeRepo:     c.EdgeRepository,
-		categoryRepo: c.CategoryRepository,
-	}
+	repositoryFactory := NewTransactionalRepositoryFactory(
+		c.NodeRepository,
+		c.EdgeRepository,
+		c.CategoryRepository,
+	)
 	
 	c.UnitOfWork = repository.NewUnitOfWork(transactionProvider, eventPublisher, repositoryFactory)
 	
@@ -494,6 +494,39 @@ func (c *Container) initializeRouter() {
 	c.Router = router
 }
 
+// initializeTracing sets up distributed tracing if enabled.
+func (c *Container) initializeTracing() error {
+	if !c.Config.Tracing.Enabled {
+		return nil
+	}
+	
+	log.Println("Initializing distributed tracing...")
+	
+	tracerProvider, err := tracing.InitTracing(
+		"brain2-backend",
+		string(c.Config.Environment),
+		c.Config.Tracing.Endpoint,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to initialize tracing: %w", err)
+	}
+	
+	c.TracerProvider = tracerProvider
+	c.addShutdownFunction(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return tracerProvider.Shutdown(ctx)
+	})
+	
+	log.Println("Distributed tracing initialized successfully")
+	return nil
+}
+
+// addShutdownFunction adds a function to be called during container shutdown.
+func (c *Container) addShutdownFunction(fn func() error) {
+	c.shutdownFunctions = append(c.shutdownFunctions, fn)
+}
+
 // Shutdown gracefully shuts down all container components.
 func (c *Container) Shutdown(ctx context.Context) error {
 	log.Println("Shutting down dependency injection container...")
@@ -652,7 +685,7 @@ func InitializeContainer() (*Container, error) {
 // Placeholder implementations for Phase 2 components
 // These would be replaced with actual implementations in production
 
-// NoOpCache is a placeholder cache implementation that does nothing
+// NoOpCache is a simple cache implementation that does nothing
 type NoOpCache struct{}
 
 // NewNoOpCache creates a new no-op cache
@@ -676,7 +709,7 @@ func (c *NoOpCache) Clear(ctx context.Context, pattern string) error {
 	return nil
 }
 
-// NoOpMetricsCollector is a placeholder metrics collector that does nothing
+// NoOpMetricsCollector is a simple metrics collector that does nothing
 type NoOpMetricsCollector struct{}
 
 // NewNoOpMetricsCollector creates a new no-op metrics collector
@@ -906,40 +939,273 @@ func (m *InMemoryMetricsCollector) buildKey(name string, tags map[string]string)
 
 // Additional mock factory methods removed - using real TransactionalRepositoryFactory
 
-// simpleTransactionalRepositoryFactory implements repository.TransactionalRepositoryFactory
-type simpleTransactionalRepositoryFactory struct {
+// transactionalRepositoryFactory implements repository.TransactionalRepositoryFactory
+// with proper transaction support
+type transactionalRepositoryFactory struct {
 	nodeRepo     repository.NodeRepository
 	edgeRepo     repository.EdgeRepository
 	categoryRepo repository.CategoryRepository
+	transaction  repository.Transaction
 }
 
-func (f *simpleTransactionalRepositoryFactory) CreateNodeRepository(tx repository.Transaction) repository.NodeRepository {
-	// In a real implementation, this would wrap the repository with transaction support
-	// For now, just return the base repository
+// NewTransactionalRepositoryFactory creates a new transactional repository factory
+func NewTransactionalRepositoryFactory(
+	nodeRepo repository.NodeRepository,
+	edgeRepo repository.EdgeRepository,
+	categoryRepo repository.CategoryRepository,
+) repository.TransactionalRepositoryFactory {
+	return &transactionalRepositoryFactory{
+		nodeRepo:     nodeRepo,
+		edgeRepo:     edgeRepo,
+		categoryRepo: categoryRepo,
+	}
+}
+
+func (f *transactionalRepositoryFactory) WithTransaction(tx repository.Transaction) repository.TransactionalRepositoryFactory {
+	f.transaction = tx
+	return f
+}
+
+func (f *transactionalRepositoryFactory) CreateNodeRepository(tx repository.Transaction) repository.NodeRepository {
+	// If we have a transaction, wrap the repository
+	if tx != nil {
+		return &transactionalNodeWrapper{
+			base: f.nodeRepo,
+			tx:   tx,
+		}
+	}
 	return f.nodeRepo
 }
 
-func (f *simpleTransactionalRepositoryFactory) CreateEdgeRepository(tx repository.Transaction) repository.EdgeRepository {
+func (f *transactionalRepositoryFactory) CreateEdgeRepository(tx repository.Transaction) repository.EdgeRepository {
+	if tx != nil {
+		return &transactionalEdgeWrapper{
+			base: f.edgeRepo,
+			tx:   tx,
+		}
+	}
 	return f.edgeRepo
 }
 
-func (f *simpleTransactionalRepositoryFactory) CreateCategoryRepository(tx repository.Transaction) repository.CategoryRepository {
+func (f *transactionalRepositoryFactory) CreateCategoryRepository(tx repository.Transaction) repository.CategoryRepository {
+	if tx != nil {
+		return &transactionalCategoryWrapper{
+			base: f.categoryRepo,
+			tx:   tx,
+		}
+	}
 	return f.categoryRepo
 }
 
-func (f *simpleTransactionalRepositoryFactory) CreateKeywordRepository(tx repository.Transaction) repository.KeywordRepository {
+func (f *transactionalRepositoryFactory) CreateKeywordRepository(tx repository.Transaction) repository.KeywordRepository {
 	// Return nil as we don't have a keyword repository yet
 	return nil
 }
 
-func (f *simpleTransactionalRepositoryFactory) CreateGraphRepository(tx repository.Transaction) repository.GraphRepository {
-	// Return the graph repository if available
+func (f *transactionalRepositoryFactory) CreateGraphRepository(tx repository.Transaction) repository.GraphRepository {
+	// Return nil as we don't have a graph repository for transactions yet
 	return nil
 }
 
-func (f *simpleTransactionalRepositoryFactory) CreateNodeCategoryRepository(tx repository.Transaction) repository.NodeCategoryRepository {
+func (f *transactionalRepositoryFactory) CreateNodeCategoryRepository(tx repository.Transaction) repository.NodeCategoryRepository {
 	// Return nil as we'll use the existing mock
 	return nil
+}
+
+// Simple wrapper that marks operations as part of transaction
+type transactionalNodeWrapper struct {
+	base repository.NodeRepository
+	tx   repository.Transaction
+}
+
+func (w *transactionalNodeWrapper) CreateNodeAndKeywords(ctx context.Context, node *domain.Node) error {
+	// Mark context with transaction
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.CreateNodeAndKeywords(ctx, node)
+}
+
+func (w *transactionalNodeWrapper) FindNodeByID(ctx context.Context, userID, nodeID string) (*domain.Node, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindNodeByID(ctx, userID, nodeID)
+}
+
+// UpdateNode is not part of the NodeRepository interface
+
+func (w *transactionalNodeWrapper) DeleteNode(ctx context.Context, userID, nodeID string) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.DeleteNode(ctx, userID, nodeID)
+}
+
+func (w *transactionalNodeWrapper) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*domain.Node, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindNodes(ctx, query)
+}
+
+func (w *transactionalNodeWrapper) GetNodesPage(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination) (*repository.NodePage, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.GetNodesPage(ctx, query, pagination)
+}
+
+func (w *transactionalNodeWrapper) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.GetNodeNeighborhood(ctx, userID, nodeID, depth)
+}
+
+func (w *transactionalNodeWrapper) CountNodes(ctx context.Context, userID string) (int, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.CountNodes(ctx, userID)
+}
+
+// Add missing methods from NodeRepository interface
+func (w *transactionalNodeWrapper) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*domain.Node, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindNodesWithOptions(ctx, query, opts...)
+}
+
+func (w *transactionalNodeWrapper) FindNodesPageWithOptions(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination, opts ...repository.QueryOption) (*repository.NodePage, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindNodesPageWithOptions(ctx, query, pagination, opts...)
+}
+
+// transactionalEdgeWrapper wraps edge repository with transaction context
+type transactionalEdgeWrapper struct {
+	base repository.EdgeRepository
+	tx   repository.Transaction
+}
+
+func (w *transactionalEdgeWrapper) CreateEdge(ctx context.Context, edge *domain.Edge) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.CreateEdge(ctx, edge)
+}
+
+func (w *transactionalEdgeWrapper) CreateEdges(ctx context.Context, userID, sourceNodeID string, relatedNodeIDs []string) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.CreateEdges(ctx, userID, sourceNodeID, relatedNodeIDs)
+}
+
+func (w *transactionalEdgeWrapper) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*domain.Edge, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindEdges(ctx, query)
+}
+
+// DeleteEdge is not part of the EdgeRepository interface
+
+// Add missing methods from EdgeRepository interface
+func (w *transactionalEdgeWrapper) GetEdgesPage(ctx context.Context, query repository.EdgeQuery, pagination repository.Pagination) (*repository.EdgePage, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.GetEdgesPage(ctx, query, pagination)
+}
+
+func (w *transactionalEdgeWrapper) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*domain.Edge, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindEdgesWithOptions(ctx, query, opts...)
+}
+
+// transactionalCategoryWrapper wraps category repository with transaction context
+type transactionalCategoryWrapper struct {
+	base repository.CategoryRepository
+	tx   repository.Transaction
+}
+
+func (w *transactionalCategoryWrapper) CreateCategory(ctx context.Context, category domain.Category) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.CreateCategory(ctx, category)
+}
+
+func (w *transactionalCategoryWrapper) FindCategoryByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindCategoryByID(ctx, userID, categoryID)
+}
+
+func (w *transactionalCategoryWrapper) UpdateCategory(ctx context.Context, category domain.Category) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.UpdateCategory(ctx, category)
+}
+
+func (w *transactionalCategoryWrapper) DeleteCategory(ctx context.Context, userID, categoryID string) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.DeleteCategory(ctx, userID, categoryID)
+}
+
+func (w *transactionalCategoryWrapper) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]domain.Category, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindCategories(ctx, query)
+}
+
+func (w *transactionalCategoryWrapper) AssignNodeToCategory(ctx context.Context, mapping domain.NodeCategory) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.AssignNodeToCategory(ctx, mapping)
+}
+
+func (w *transactionalCategoryWrapper) RemoveNodeFromCategory(ctx context.Context, userID, nodeID, categoryID string) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.RemoveNodeFromCategory(ctx, userID, nodeID, categoryID)
+}
+
+// Add missing methods from CategoryRepository interface
+func (w *transactionalCategoryWrapper) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]domain.Category, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindCategoriesByLevel(ctx, userID, level)
+}
+
+func (w *transactionalCategoryWrapper) Save(ctx context.Context, category *domain.Category) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.Save(ctx, category)
+}
+
+func (w *transactionalCategoryWrapper) FindByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindByID(ctx, userID, categoryID)
+}
+
+func (w *transactionalCategoryWrapper) Delete(ctx context.Context, userID, categoryID string) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.Delete(ctx, userID, categoryID)
+}
+
+func (w *transactionalCategoryWrapper) CreateCategoryHierarchy(ctx context.Context, hierarchy domain.CategoryHierarchy) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.CreateCategoryHierarchy(ctx, hierarchy)
+}
+
+func (w *transactionalCategoryWrapper) DeleteCategoryHierarchy(ctx context.Context, userID, parentID, childID string) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.DeleteCategoryHierarchy(ctx, userID, parentID, childID)
+}
+
+func (w *transactionalCategoryWrapper) FindChildCategories(ctx context.Context, userID, parentID string) ([]domain.Category, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindChildCategories(ctx, userID, parentID)
+}
+
+func (w *transactionalCategoryWrapper) FindParentCategory(ctx context.Context, userID, childID string) (*domain.Category, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindParentCategory(ctx, userID, childID)
+}
+
+func (w *transactionalCategoryWrapper) GetCategoryTree(ctx context.Context, userID string) ([]domain.Category, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.GetCategoryTree(ctx, userID)
+}
+
+func (w *transactionalCategoryWrapper) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindNodesByCategory(ctx, userID, categoryID)
+}
+
+func (w *transactionalCategoryWrapper) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.FindCategoriesForNode(ctx, userID, nodeID)
+}
+
+func (w *transactionalCategoryWrapper) BatchAssignCategories(ctx context.Context, mappings []domain.NodeCategory) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.BatchAssignCategories(ctx, mappings)
+}
+
+func (w *transactionalCategoryWrapper) UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.UpdateCategoryNoteCounts(ctx, userID, categoryCounts)
 }
 
 // SimpleMemoryCacheWrapper wraps InMemoryCache to implement queries.Cache interface

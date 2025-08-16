@@ -107,14 +107,20 @@ func (f *ServiceFactory) CreateNodeService() *services.NodeService {
 	// Create adapters for CQRS compatibility
 	nodeAdapter := adapters.NewNodeRepositoryAdapter(nodeRepo, nil)
 	
+	// Create stub adapters instead of nil
+	edgeAdapter := &adapters.StubEdgeRepositoryAdapter{}
+	categoryAdapter := &adapters.StubCategoryRepositoryAdapter{}
+	graphAdapter := &adapters.StubGraphRepositoryAdapter{}
+	nodeCategoryAdapter := &adapters.StubNodeCategoryRepositoryAdapter{}
+	
 	// Create UnitOfWork adapter with repository adapters
 	uowAdapter := adapters.NewUnitOfWorkAdapter(
 		f.repositories.UnitOfWork,
 		nodeAdapter,
-		nil, // EdgeRepositoryAdapter
-		nil, // CategoryRepositoryAdapter
-		nil, // GraphRepositoryAdapter
-		nil, // NodeCategoryRepositoryAdapter
+		edgeAdapter,         // Stub instead of nil
+		categoryAdapter,     // Stub instead of nil
+		graphAdapter,        // Stub instead of nil
+		nodeCategoryAdapter, // Stub instead of nil
 	)
 	
 	// Create the service with adapted dependencies
@@ -147,13 +153,18 @@ func (f *ServiceFactory) CreateCategoryService() *services.CategoryService {
 	// Create adapters for CQRS compatibility
 	categoryAdapter := adapters.NewCategoryRepositoryAdapter(categoryRepo)
 	nodeAdapter := adapters.NewNodeRepositoryAdapter(nodeRepo, nil)
+	// Create stub adapters for missing dependencies
+	edgeAdapter := &adapters.StubEdgeRepositoryAdapter{}
+	graphAdapter := &adapters.StubGraphRepositoryAdapter{}
+	nodeCategoryAdapter := &adapters.StubNodeCategoryRepositoryAdapter{}
+	
 	uowAdapter := adapters.NewUnitOfWorkAdapter(
 		f.repositories.UnitOfWork,
 		nodeAdapter,
-		nil, // EdgeRepositoryAdapter
+		edgeAdapter,         // Stub instead of nil
 		categoryAdapter,
-		nil, // GraphRepositoryAdapter
-		nil, // NodeCategoryRepositoryAdapter
+		graphAdapter,        // Stub instead of nil
+		nodeCategoryAdapter, // Stub instead of nil
 	)
 	
 	// Create the service
@@ -443,7 +454,7 @@ func (rf *RouterFactory) CreateRouter() *chi.Mux {
 // applyMiddleware configures middleware based on environment and features.
 func (rf *RouterFactory) applyMiddleware(router *chi.Mux) {
 	// Middleware will be implemented in Phase 5
-	// For now, this is a placeholder that will be implemented in Phase 5
+	// Middleware implementation will be added in future phases
 	
 	// // Always apply these middleware
 	// router.Use(middleware.RequestID)

@@ -315,13 +315,13 @@ type CORS struct {
 
 // Tracing contains distributed tracing configuration.
 type Tracing struct {
-	Enabled      bool
-	Provider     string `validate:"oneof=jaeger zipkin xray datadog"`
-	ServiceName  string
-	SampleRate   float64 `validate:"min=0,max=1"`
-	Endpoint     string
-	AgentHost    string
-	AgentPort    int `validate:"min=1,max=65535"`
+	Enabled      bool    `yaml:"enabled" json:"enabled"`
+	Provider     string  `yaml:"provider" json:"provider" validate:"omitempty,oneof=jaeger xray otlp"`
+	ServiceName  string  `yaml:"service_name" json:"service_name"`
+	AgentHost    string  `yaml:"agent_host" json:"agent_host"`
+	AgentPort    int     `yaml:"agent_port" json:"agent_port"`
+	Endpoint     string  `yaml:"endpoint" json:"endpoint"` // For OTLP
+	SampleRate   float64 `yaml:"sample_rate" json:"sample_rate" validate:"min=0,max=1"`
 }
 
 // ============================================================================
