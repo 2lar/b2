@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"brain2-backend/infrastructure/dynamodb"
-	"brain2-backend/internal/application/adapters"
+	infradynamodb "brain2-backend/internal/infrastructure/dynamodb"
 	"brain2-backend/internal/application/commands"
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
@@ -40,7 +40,9 @@ import (
 // TODO: Refactor to use focused sub-containers as defined in factories.go
 type Container struct {
 	// Configuration
-	Config *config.Config
+	Config    *config.Config
+	TableName string
+	IndexName string
 	
 	// Cold start tracking
 	ColdStartTime *time.Time
@@ -90,6 +92,7 @@ type Container struct {
 	ConnectionAnalyzer *domainServices.ConnectionAnalyzer
 	EventBus          domain.EventBus
 	UnitOfWork        repository.UnitOfWork
+	UnitOfWorkFactory repository.UnitOfWorkFactory
 
 	// Handler Layer
 	MemoryHandler   *handlers.MemoryHandler
@@ -125,6 +128,8 @@ func (c *Container) initialize() error {
 	// 1. Load configuration
 	cfg := config.LoadConfig()
 	c.Config = &cfg
+	c.TableName = cfg.TableName
+	c.IndexName = cfg.IndexName
 
 	// 2. Initialize AWS clients
 	if err := c.initializeAWSClients(); err != nil {
@@ -333,27 +338,25 @@ func (c *Container) initializePhase3Services() {
 		c.CategoryRepository,
 	)
 	
+	// Create UnitOfWorkFactory instead of singleton UnitOfWork
+	// This ensures each request gets its own isolated transaction context
+	c.UnitOfWorkFactory = infradynamodb.NewDynamoDBUnitOfWorkFactory(
+		c.DynamoDBClient,
+		c.TableName,
+		c.IndexName,
+		c.EventBus,
+		c.Logger,
+	)
+	
+	// Keep singleton for backward compatibility (will be removed later)
 	c.UnitOfWork = repository.NewUnitOfWork(transactionProvider, eventPublisher, repositoryFactory)
 	
-	// Create repository adapters
-	nodeAdapter := adapters.NewNodeRepositoryAdapter(c.NodeRepository, c.TransactionalRepository)
-	edgeAdapter := adapters.NewEdgeRepositoryAdapter(c.EdgeRepository)
-	categoryAdapter := adapters.NewCategoryRepositoryAdapter(c.CategoryRepository)
-	graphAdapter := adapters.NewGraphRepositoryAdapter(c.GraphRepository)
-	
-	// Create NodeCategoryRepository using the factory instead of UnitOfWork
-	// For container initialization, we use nil transaction since this is just for DI setup
-	nodeCategoryRepo := repositoryFactory.CreateNodeCategoryRepository(nil)
-	nodeCategoryAdapter := adapters.NewNodeCategoryRepositoryAdapter(nodeCategoryRepo)
-	
-	// Create unit of work adapter
-	uowAdapter := adapters.NewUnitOfWorkAdapter(c.UnitOfWork, nodeAdapter, edgeAdapter, categoryAdapter, graphAdapter, nodeCategoryAdapter)
-	
 	// Initialize Application Services (only NodeService for now)
+	// No more adapters - use repositories directly
 	c.NodeAppService = services.NewNodeService(
-		nodeAdapter,
+		c.NodeRepository,
 		c.EdgeRepository,
-		uowAdapter,
+		c.UnitOfWorkFactory, // Use factory instead of singleton
 		c.EventBus,
 		c.ConnectionAnalyzer,
 		c.IdempotencyStore,

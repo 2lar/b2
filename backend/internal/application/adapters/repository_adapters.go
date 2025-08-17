@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"brain2-backend/internal/domain"
 	"brain2-backend/internal/repository"
@@ -234,6 +235,7 @@ type UnitOfWorkAdapter interface {
 	Begin(ctx context.Context) error
 	Commit() error
 	Rollback() error
+	IsActive() bool
 	
 	Nodes() NodeRepositoryAdapter
 	Edges() EdgeRepositoryAdapter
@@ -316,6 +318,10 @@ type unitOfWorkAdapter struct {
 	nodeCategoryAdapter NodeCategoryRepositoryAdapter
 	// Flag to track if we've initialized the transactional adapters
 	isTransactionActive bool
+	// Mutex for thread-safe transaction state management
+	mu sync.Mutex
+	// Track transaction context for proper cleanup
+	transactionContext context.Context
 }
 
 // NewUnitOfWorkAdapter creates a new unit of work adapter
@@ -339,14 +345,22 @@ func NewUnitOfWorkAdapter(
 
 // Begin starts the unit of work and initializes transactional adapters
 func (a *unitOfWorkAdapter) Begin(ctx context.Context) error {
-	// Reset state in case previous transaction wasn't properly cleaned up
-	// This handles warm Lambda containers where the adapter is reused
-	a.isTransactionActive = false
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	
+	// Check if transaction is already active
+	if a.isTransactionActive {
+		return fmt.Errorf("transaction already in progress")
+	}
+	
+	// Reset all state to ensure clean transaction boundaries
+	// This is critical for Lambda warm containers where the adapter is reused
 	a.nodeAdapter = nil
 	a.edgeAdapter = nil
 	a.categoryAdapter = nil
 	a.graphAdapter = nil
 	a.nodeCategoryAdapter = nil
+	a.transactionContext = nil
 	
 	// For high TPS scenarios, ensure clean rollback of any previous state
 	// This is safe to call multiple times and handles edge cases
@@ -357,37 +371,58 @@ func (a *unitOfWorkAdapter) Begin(ctx context.Context) error {
 		return err
 	}
 	
-	// Don't initialize adapters here - they will be lazily initialized on first access
-	// This avoids calling unitOfWork.Nodes() etc. before the underlying repositories are ready
-	
+	// Store transaction context for cleanup
+	a.transactionContext = ctx
 	a.isTransactionActive = true
+	
 	return nil
 }
 
 // Commit commits the unit of work and cleans up transactional state
 func (a *unitOfWorkAdapter) Commit() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	
+	if !a.isTransactionActive {
+		return fmt.Errorf("no active transaction to commit")
+	}
+	
 	err := a.unitOfWork.Commit()
+	
 	// Always reset state regardless of error to prevent stuck transactions
-	a.isTransactionActive = false
-	a.nodeAdapter = nil
-	a.edgeAdapter = nil
-	a.categoryAdapter = nil
-	a.graphAdapter = nil
-	a.nodeCategoryAdapter = nil
+	a.resetTransactionState()
+	
 	return err
 }
 
 // Rollback rolls back the unit of work and cleans up transactional state
 func (a *unitOfWorkAdapter) Rollback() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	
+	// Allow rollback even if no active transaction (idempotent)
+	if !a.isTransactionActive {
+		return nil
+	}
+	
 	err := a.unitOfWork.Rollback()
+	
 	// Always reset state regardless of error to prevent stuck transactions
+	a.resetTransactionState()
+	
+	return err
+}
+
+// resetTransactionState clears all transaction-related state
+// Must be called with lock held
+func (a *unitOfWorkAdapter) resetTransactionState() {
 	a.isTransactionActive = false
+	a.transactionContext = nil
 	a.nodeAdapter = nil
 	a.edgeAdapter = nil
 	a.categoryAdapter = nil
 	a.graphAdapter = nil
 	a.nodeCategoryAdapter = nil
-	return err
 }
 
 // Nodes returns the node repository adapter
@@ -453,4 +488,11 @@ func (a *unitOfWorkAdapter) NodeCategories() NodeCategoryRepositoryAdapter {
 // PublishEvent publishes a domain event
 func (a *unitOfWorkAdapter) PublishEvent(event domain.DomainEvent) {
 	a.unitOfWork.PublishEvent(event)
+}
+
+// IsActive returns true if a transaction is currently active
+func (a *unitOfWorkAdapter) IsActive() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.isTransactionActive
 }

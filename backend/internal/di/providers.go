@@ -11,7 +11,6 @@ import (
 
 	"brain2-backend/infrastructure/dynamodb"
 	infraDynamodb "brain2-backend/internal/infrastructure/dynamodb"
-	"brain2-backend/internal/application/adapters"
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
@@ -336,28 +335,16 @@ func provideUnitOfWork(
 func provideNodeService(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
-	uow repository.UnitOfWork,
+	uowFactory repository.UnitOfWorkFactory,
 	eventBus domain.EventBus,
 	analyzer *domainServices.ConnectionAnalyzer,
 	idempotencyStore repository.IdempotencyStore,
 ) *services.NodeService {
-	// Create repository adapters for the service
-	nodeAdapter := adapters.NewNodeRepositoryAdapter(nodeRepo, nil)
-	
-	// Create UnitOfWork adapter with all required dependencies
-	uowAdapter := adapters.NewUnitOfWorkAdapter(
-		uow,
-		nodeAdapter,
-		nil, // EdgeRepositoryAdapter
-		nil, // CategoryRepositoryAdapter
-		nil, // GraphRepositoryAdapter
-		nil, // NodeCategoryRepositoryAdapter
-	)
-	
+	// No more adapters - use repositories directly
 	return services.NewNodeService(
-		nodeAdapter,
+		nodeRepo,
 		edgeRepo,
-		uowAdapter,
+		uowFactory,
 		eventBus,
 		analyzer,
 		idempotencyStore,

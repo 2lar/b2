@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"time"
 
-	"brain2-backend/internal/application/adapters"
 	"brain2-backend/internal/application/commands"
 	"brain2-backend/internal/application/dto"
 	"brain2-backend/internal/domain"
@@ -31,27 +30,27 @@ import (
 // It orchestrates use cases by coordinating between domain objects, repositories, and services.
 type NodeService struct {
 	// Dependencies are injected, not created (Dependency Inversion Principle)
-	nodeAdapter      adapters.NodeRepositoryAdapter    // Adapter for node persistence
-	edgeRepo         repository.EdgeRepository         // For edge persistence
-	uow              adapters.UnitOfWorkAdapter        // Adapter for transaction management
-	eventBus         domain.EventBus                   // For domain event publishing
+	nodeRepo         repository.NodeRepository          // For node persistence
+	edgeRepo         repository.EdgeRepository          // For edge persistence
+	uowFactory       repository.UnitOfWorkFactory       // Factory for creating request-scoped UnitOfWork instances
+	eventBus         domain.EventBus                    // For domain event publishing
 	connectionAnalyzer *domainServices.ConnectionAnalyzer // Domain service for complex business logic
-	idempotencyStore repository.IdempotencyStore       // For idempotent operations
+	idempotencyStore repository.IdempotencyStore        // For idempotent operations
 }
 
 // NewNodeService creates a new NodeService with all required dependencies.
 func NewNodeService(
-	nodeAdapter adapters.NodeRepositoryAdapter,
+	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
-	uow adapters.UnitOfWorkAdapter,
+	uowFactory repository.UnitOfWorkFactory,
 	eventBus domain.EventBus,
 	connectionAnalyzer *domainServices.ConnectionAnalyzer,
 	idempotencyStore repository.IdempotencyStore,
 ) *NodeService {
 	return &NodeService{
-		nodeAdapter:        nodeAdapter,
+		nodeRepo:           nodeRepo,
 		edgeRepo:           edgeRepo,
-		uow:                uow,
+		uowFactory:         uowFactory,
 		eventBus:           eventBus,
 		connectionAnalyzer: connectionAnalyzer,
 		idempotencyStore:   idempotencyStore,
@@ -67,11 +66,35 @@ func NewNodeService(
 // 5. Publish domain events
 // 6. Convert domain objects back to DTOs for response
 func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCommand) (*dto.CreateNodeResult, error) {
-	// 1. Start unit of work for transaction boundary
-	if err := s.uow.Begin(ctx); err != nil {
+	// 1. Create a new UnitOfWork instance for this request
+	uow, err := s.uowFactory.Create(ctx)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to create unit of work")
+	}
+	
+	// Start unit of work for transaction boundary
+	if err := uow.Begin(ctx); err != nil {
 		return nil, appErrors.Wrap(err, "failed to begin transaction")
 	}
-	defer s.uow.Rollback() // Rollback if not committed
+	
+	// Track whether commit was called successfully
+	var commitCalled bool
+	
+	// Ensure proper cleanup even on panic
+	defer func() {
+		if r := recover(); r != nil {
+			// Attempt rollback on panic
+			if rollbackErr := uow.Rollback(); rollbackErr != nil {
+				// Log error but continue with panic
+				// TODO: Add proper logging
+			}
+			// Re-panic to let it bubble up
+			panic(r)
+		} else if !commitCalled {
+			// Only rollback if commit wasn't called
+			uow.Rollback()
+		}
+	}()
 
 	// 2. Handle idempotency if key is provided
 	if cmd.IdempotencyKey != "" {
@@ -85,12 +108,20 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 				return v, nil
 			case map[string]interface{}:
 				// JSON deserialized as map - need to reconstruct
-				// This happens when Lambda reuses warm containers
-				return s.reconstructCreateNodeResult(v)
+				// This happens when Lambda reuses warm containers and the in-memory
+				// idempotency store returns objects that have been through JSON marshaling
+				reconstructed, err := s.reconstructCreateNodeResult(v)
+				if err != nil {
+					// If reconstruction fails, proceed with new creation rather than failing
+					// This ensures the API remains available even with cache issues
+					// In production, this should be logged for monitoring
+				} else {
+					return reconstructed, nil
+				}
 			default:
-				// Log the unexpected type and continue with new creation
-				// Better to create a new node than to panic
-				// TODO: Add proper logging here
+				// Unexpected type from idempotency store - proceed with new creation
+				// This could happen if the store implementation changes or has issues
+				// In production, this should be logged as a warning
 			}
 		}
 	}
@@ -115,7 +146,10 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	}
 
 	// 5. Find potential connections using domain service
-	existingNodes, err := s.uow.Nodes().FindByUser(ctx, userID)
+	query := repository.NodeQuery{
+		UserID: userID.String(),
+	}
+	existingNodes, err := uow.Nodes().FindNodes(ctx, query)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to find existing nodes for connection analysis")
 	}
@@ -127,8 +161,8 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	}
 
 	// 6. Save the node first
-	// Use CreateNodeAndKeywords instead of Save
-	if err := s.uow.Nodes().Save(ctx, node); err != nil {
+	// Use CreateNodeAndKeywords for node creation
+	if err := uow.Nodes().CreateNodeAndKeywords(ctx, node); err != nil {
 		return nil, appErrors.Wrap(err, "failed to save node")
 	}
 
@@ -150,7 +184,7 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 			continue // Skip if edge creation fails
 		}
 
-		if err := s.uow.Edges().Save(ctx, edge); err != nil {
+		if err := uow.Edges().CreateEdge(ctx, edge); err != nil {
 			return nil, appErrors.Wrap(err, "failed to create edge")
 		}
 
@@ -176,7 +210,9 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	}
 
 	// 9. Commit transaction
-	if err := s.uow.Commit(); err != nil {
+	commitCalled = true
+	if err := uow.Commit(); err != nil {
+		commitCalled = false // Reset if commit fails
 		return nil, appErrors.Wrap(err, "failed to commit transaction")
 	}
 
@@ -201,11 +237,35 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 		return nil, appErrors.NewValidation("no changes specified in update command")
 	}
 
-	// 1. Start unit of work
-	if err := s.uow.Begin(ctx); err != nil {
+	// 1. Create a new UnitOfWork instance for this request
+	uow, err := s.uowFactory.Create(ctx)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to create unit of work")
+	}
+	
+	// Start unit of work
+	if err := uow.Begin(ctx); err != nil {
 		return nil, appErrors.Wrap(err, "failed to begin transaction")
 	}
-	defer s.uow.Rollback()
+	
+	// Track whether commit was called successfully
+	var commitCalled bool
+	
+	// Ensure proper cleanup even on panic
+	defer func() {
+		if r := recover(); r != nil {
+			// Attempt rollback on panic
+			if rollbackErr := uow.Rollback(); rollbackErr != nil {
+				// Log error but continue with panic
+				// TODO: Add proper logging
+			}
+			// Re-panic to let it bubble up
+			panic(r)
+		} else if !commitCalled {
+			// Only rollback if commit wasn't called
+			uow.Rollback()
+		}
+	}()
 
 	// 2. No idempotency for updates (they are idempotent by nature)
 
@@ -221,8 +281,8 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 	}
 
 	// 4. Retrieve existing node
-	// Use FindNodeByID with userID instead of FindByID
-	node, err := s.uow.Nodes().GetByID(ctx, userID, nodeID)
+	// Use FindNodeByID with userID
+	node, err := uow.Nodes().FindNodeByID(ctx, userID.String(), nodeID.String())
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to find node")
 	}
@@ -259,7 +319,7 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 
 	// 7. Save updated node
 	// Use CreateNodeAndKeywords which handles both create and update
-	if err := s.uow.Nodes().Save(ctx, node); err != nil {
+	if err := uow.Nodes().CreateNodeAndKeywords(ctx, node); err != nil {
 		return nil, appErrors.Wrap(err, "failed to save updated node")
 	}
 
@@ -272,7 +332,9 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 	node.MarkEventsAsCommitted()
 
 	// 9. Commit transaction
-	if err := s.uow.Commit(); err != nil {
+	commitCalled = true
+	if err := uow.Commit(); err != nil {
+		commitCalled = false // Reset if commit fails
 		return nil, appErrors.Wrap(err, "failed to commit transaction")
 	}
 
@@ -289,11 +351,35 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 
 // DeleteNode implements the use case for deleting a node.
 func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCommand) (*dto.DeleteNodeResult, error) {
-	// 1. Start unit of work
-	if err := s.uow.Begin(ctx); err != nil {
+	// 1. Create a new UnitOfWork instance for this request
+	uow, err := s.uowFactory.Create(ctx)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to create unit of work")
+	}
+	
+	// Start unit of work
+	if err := uow.Begin(ctx); err != nil {
 		return nil, appErrors.Wrap(err, "failed to begin transaction")
 	}
-	defer s.uow.Rollback()
+	
+	// Track whether commit was called successfully
+	var commitCalled bool
+	
+	// Ensure proper cleanup even on panic
+	defer func() {
+		if r := recover(); r != nil {
+			// Attempt rollback on panic
+			if rollbackErr := uow.Rollback(); rollbackErr != nil {
+				// Log error but continue with panic
+				// TODO: Add proper logging
+			}
+			// Re-panic to let it bubble up
+			panic(r)
+		} else if !commitCalled {
+			// Only rollback if commit wasn't called
+			uow.Rollback()
+		}
+	}()
 
 	// 2. Handle idempotency if key is provided
 	// No idempotency for deletes (they are idempotent by nature)
@@ -311,7 +397,7 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 
 	// 4. Verify node exists and user owns it
 	// Use FindNodeByID with userID
-	node, err := s.uow.Nodes().GetByID(ctx, userID, nodeID)
+	node, err := uow.Nodes().FindNodeByID(ctx, userID.String(), nodeID.String())
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to find node")
 	}
@@ -326,12 +412,12 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 	// 5. Delete associated edges first
 	// For now, we'll skip edge deletion as it's not fully implemented
 	// TODO: Implement proper edge deletion
-	// if err := s.uow.Edges().DeleteByNodeID(ctx, nodeID); err != nil {
+	// if err := uow.Edges().DeleteByNodeID(ctx, nodeID); err != nil {
 	//	return nil, appErrors.Wrap(err, "failed to delete node edges")
 	// }
 
 	// 6. Delete the node
-	if err := s.uow.Nodes().Delete(ctx, userID, nodeID); err != nil {
+	if err := uow.Nodes().DeleteNode(ctx, userID.String(), nodeID.String()); err != nil {
 		return nil, appErrors.Wrap(err, "failed to delete node")
 	}
 
@@ -350,7 +436,9 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 	}
 
 	// 8. Commit transaction
-	if err := s.uow.Commit(); err != nil {
+	commitCalled = true
+	if err := uow.Commit(); err != nil {
+		commitCalled = false // Reset if commit fails
 		return nil, appErrors.Wrap(err, "failed to commit transaction")
 	}
 
@@ -367,11 +455,35 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 
 // BulkDeleteNodes implements the use case for deleting multiple nodes.
 func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDeleteNodesCommand) (*dto.BulkDeleteResult, error) {
-	// 1. Start unit of work
-	if err := s.uow.Begin(ctx); err != nil {
+	// 1. Create a new UnitOfWork instance for this request
+	uow, err := s.uowFactory.Create(ctx)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to create unit of work")
+	}
+	
+	// Start unit of work
+	if err := uow.Begin(ctx); err != nil {
 		return nil, appErrors.Wrap(err, "failed to begin transaction")
 	}
-	defer s.uow.Rollback()
+	
+	// Track whether commit was called successfully
+	var commitCalled bool
+	
+	// Ensure proper cleanup even on panic
+	defer func() {
+		if r := recover(); r != nil {
+			// Attempt rollback on panic
+			if rollbackErr := uow.Rollback(); rollbackErr != nil {
+				// Log error but continue with panic
+				// TODO: Add proper logging
+			}
+			// Re-panic to let it bubble up
+			panic(r)
+		} else if !commitCalled {
+			// Only rollback if commit wasn't called
+			uow.Rollback()
+		}
+	}()
 
 	// 2. No idempotency for bulk deletes
 
@@ -395,7 +507,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 
 		// Verify node exists and user owns it
 		// Use FindNodeByID with userID
-		node, err := s.uow.Nodes().GetByID(ctx, userID, nodeID)
+		node, err := uow.Nodes().FindNodeByID(ctx, userID.String(), nodeID.String())
 		if err != nil || node == nil {
 			failedIDs = append(failedIDs, nodeIDStr)
 			continue
@@ -412,7 +524,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 	// 5. Delete edges for all valid nodes
 	// TODO: Implement proper edge deletion
 	// for _, nodeID := range nodeIDs {
-	//	if err := s.uow.Edges().DeleteByNodeID(ctx, nodeID); err != nil {
+	//	if err := uow.Edges().DeleteByNodeID(ctx, nodeID); err != nil {
 	//		failedIDs = append(failedIDs, nodeID.String())
 	//		continue
 	//	}
@@ -420,7 +532,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 
 	// 6. Delete all valid nodes
 	for _, nodeID := range nodeIDs {
-		if err := s.uow.Nodes().Delete(ctx, userID, nodeID); err != nil {
+		if err := uow.Nodes().DeleteNode(ctx, userID.String(), nodeID.String()); err != nil {
 			failedIDs = append(failedIDs, nodeID.String())
 		} else {
 			deletedCount++
@@ -445,7 +557,9 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 	}
 
 	// 7. Commit transaction
-	if err := s.uow.Commit(); err != nil {
+	commitCalled = true
+	if err := uow.Commit(); err != nil {
+		commitCalled = false // Reset if commit fails
 		return nil, appErrors.Wrap(err, "failed to commit transaction")
 	}
 
@@ -600,11 +714,35 @@ func (s *NodeService) storeIdempotencyResult(ctx context.Context, key, operation
 
 // BulkCreateNodes implements the use case for creating multiple nodes in a single transaction.
 func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCreateNodesCommand) (*dto.BulkCreateResult, error) {
-	// 1. Start unit of work
-	if err := s.uow.Begin(ctx); err != nil {
+	// 1. Create a new UnitOfWork instance for this request
+	uow, err := s.uowFactory.Create(ctx)
+	if err != nil {
+		return nil, appErrors.Wrap(err, "failed to create unit of work")
+	}
+	
+	// Start unit of work
+	if err := uow.Begin(ctx); err != nil {
 		return nil, appErrors.Wrap(err, "failed to begin transaction")
 	}
-	defer s.uow.Rollback()
+	
+	// Track whether commit was called successfully
+	var commitCalled bool
+	
+	// Ensure proper cleanup even on panic
+	defer func() {
+		if r := recover(); r != nil {
+			// Attempt rollback on panic
+			if rollbackErr := uow.Rollback(); rollbackErr != nil {
+				// Log error but continue with panic
+				// TODO: Add proper logging
+			}
+			// Re-panic to let it bubble up
+			panic(r)
+		} else if !commitCalled {
+			// Only rollback if commit wasn't called
+			uow.Rollback()
+		}
+	}()
 
 	// 2. No idempotency for bulk creates
 
@@ -645,7 +783,7 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 		// Keywords are already generated during node creation
 
 		// Save node through unit of work
-		if err := s.uow.Nodes().Save(ctx, node); err != nil {
+		if err := uow.Nodes().CreateNodeAndKeywords(ctx, node); err != nil {
 			errors = append(errors, dto.BulkCreateError{
 				Index:   i,
 				Content: nodeReq.Content,
@@ -678,7 +816,7 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 					}
 
 					// Save edge through unit of work
-					if err := s.uow.Edges().Save(ctx, edge); err != nil {
+					if err := uow.Edges().CreateEdge(ctx, edge); err != nil {
 						// Log error but don't fail the entire operation
 						continue
 					}
@@ -700,7 +838,9 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 	}
 
 	// 7. Commit transaction
-	if err := s.uow.Commit(); err != nil {
+	commitCalled = true
+	if err := uow.Commit(); err != nil {
+		commitCalled = false // Reset if commit fails
 		return nil, appErrors.Wrap(err, "failed to commit transaction")
 	}
 

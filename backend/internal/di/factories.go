@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 
-	"brain2-backend/internal/application/adapters"
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
@@ -49,6 +48,7 @@ type RepositoryContainer struct {
 	Graph         repository.GraphRepository
 	Idempotency   repository.IdempotencyStore
 	UnitOfWork    repository.UnitOfWork
+	UnitOfWorkFactory repository.UnitOfWorkFactory
 }
 
 // DomainServiceContainer holds domain services.
@@ -104,30 +104,21 @@ func (f *ServiceFactory) CreateNodeService() *services.NodeService {
 	nodeRepo := f.decorateNodeRepository(f.repositories.Node)
 	edgeRepo := f.decorateEdgeRepository(f.repositories.Edge)
 	
-	// Create adapters for CQRS compatibility
-	nodeAdapter := adapters.NewNodeRepositoryAdapter(nodeRepo, nil)
+	// No more adapters - use repositories directly
+	// Use UnitOfWorkFactory if available, otherwise fall back to singleton
+	var uowFactory repository.UnitOfWorkFactory
+	if f.repositories.UnitOfWorkFactory != nil {
+		uowFactory = f.repositories.UnitOfWorkFactory
+	} else {
+		// Create a simple factory that returns the singleton
+		// This is a temporary fallback for testing
+		uowFactory = &singletonUnitOfWorkFactory{uow: f.repositories.UnitOfWork}
+	}
 	
-	// Create stub adapters instead of nil
-	edgeAdapter := &adapters.StubEdgeRepositoryAdapter{}
-	categoryAdapter := &adapters.StubCategoryRepositoryAdapter{}
-	graphAdapter := &adapters.StubGraphRepositoryAdapter{}
-	nodeCategoryAdapter := &adapters.StubNodeCategoryRepositoryAdapter{}
-	
-	// Create UnitOfWork adapter with repository adapters
-	uowAdapter := adapters.NewUnitOfWorkAdapter(
-		f.repositories.UnitOfWork,
-		nodeAdapter,
-		edgeAdapter,         // Stub instead of nil
-		categoryAdapter,     // Stub instead of nil
-		graphAdapter,        // Stub instead of nil
-		nodeCategoryAdapter, // Stub instead of nil
-	)
-	
-	// Create the service with adapted dependencies
 	service := services.NewNodeService(
-		nodeAdapter,
+		nodeRepo,
 		edgeRepo,
-		uowAdapter,
+		uowFactory,
 		f.domainServices.EventBus,
 		f.domainServices.ConnectionAnalyzer,
 		f.repositories.Idempotency,
@@ -146,29 +137,7 @@ func (f *ServiceFactory) CreateNodeService() *services.NodeService {
 func (f *ServiceFactory) CreateCategoryService() *services.CategoryService {
 	f.logger.Debug("Creating CategoryService with factory pattern")
 	
-	// Apply repository decorators
-	categoryRepo := f.decorateCategoryRepository(f.repositories.Category)
-	nodeRepo := f.decorateNodeRepository(f.repositories.Node)
-	
-	// Create adapters for CQRS compatibility
-	categoryAdapter := adapters.NewCategoryRepositoryAdapter(categoryRepo)
-	nodeAdapter := adapters.NewNodeRepositoryAdapter(nodeRepo, nil)
-	// Create stub adapters for missing dependencies
-	edgeAdapter := &adapters.StubEdgeRepositoryAdapter{}
-	graphAdapter := &adapters.StubGraphRepositoryAdapter{}
-	nodeCategoryAdapter := &adapters.StubNodeCategoryRepositoryAdapter{}
-	
-	// Note: Not using uowAdapter for now since we're not creating the command handler
-	_ = adapters.NewUnitOfWorkAdapter(
-		f.repositories.UnitOfWork,
-		nodeAdapter,
-		edgeAdapter,         // Stub instead of nil
-		categoryAdapter,
-		graphAdapter,        // Stub instead of nil
-		nodeCategoryAdapter, // Stub instead of nil
-	)
-	
-	// TODO: Create command handler when Store interface is available in InfrastructureContainer
+	// TODO: Implement CategoryService without adapters
 	// For now, return nil to use legacy handler
 	service := (*services.CategoryService)(nil)
 	
@@ -690,4 +659,14 @@ type ApplicationFactories struct {
 	Service *ServiceFactory
 	Handler *HandlerFactory
 	Router  *RouterFactory
+}
+
+// singletonUnitOfWorkFactory is a temporary adapter for backward compatibility
+// It wraps a singleton UnitOfWork to implement the UnitOfWorkFactory interface
+type singletonUnitOfWorkFactory struct {
+	uow repository.UnitOfWork
+}
+
+func (f *singletonUnitOfWorkFactory) Create(ctx context.Context) (repository.UnitOfWork, error) {
+	return f.uow, nil
 }
