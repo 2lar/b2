@@ -5,6 +5,8 @@ import (
 	"time"
 	
 	"brain2-backend/internal/domain"
+	// NOTE: Removed adapters import to break circular dependency
+	// Store-based repository creation will be moved to a separate factory
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -214,6 +216,20 @@ func (f *RepositoryFactory) CreateNodeRepository(
 	return f.applyNodeDecorators(base, logger, cache, metrics)
 }
 
+// TODO: Move Store-based repository creation to separate factory to avoid circular imports
+/*
+// CreateNodeRepositoryFromStore creates a NodeRepository from a Store interface
+func (f *RepositoryFactory) CreateNodeRepositoryFromStore(
+	store persistence.Store,
+	logger *zap.Logger,
+	cache Cache,
+	metrics MetricsCollector,
+) NodeRepository {
+	// Create adapter from Store interface
+	base := adapters.NewNodeRepositoryAdapter(store, logger)
+	return f.applyNodeDecorators(base, logger, cache, metrics)
+}
+
 // CreateEdgeRepository creates an EdgeRepository with configured decorators
 func (f *RepositoryFactory) CreateEdgeRepository(
 	base EdgeRepository,
@@ -224,6 +240,8 @@ func (f *RepositoryFactory) CreateEdgeRepository(
 	return f.applyEdgeDecorators(base, logger, cache, metrics)
 }
 
+*/
+
 // CreateCategoryRepository creates a CategoryRepository with configured decorators
 func (f *RepositoryFactory) CreateCategoryRepository(
 	base CategoryRepository,
@@ -233,6 +251,14 @@ func (f *RepositoryFactory) CreateCategoryRepository(
 ) CategoryRepository {
 	return f.applyCategoryDecorators(base, logger, cache, metrics)
 }
+
+/*
+// Commented out Store-based methods to avoid circular imports
+// These will be moved to a separate factory package
+
+// CreateEdgeRepositoryFromStore, CreateCategoryRepositoryFromStore, etc.
+// CreateRepositoriesFromStore - creates all repositories from Store interface  
+*/
 
 // CreateUnitOfWork creates a UnitOfWork with the configured transaction provider
 // Now integrated with existing TransactionManager infrastructure

@@ -12,6 +12,7 @@ import (
 
 	"brain2-backend/infrastructure/dynamodb"
 	"brain2-backend/internal/application/adapters"
+	"brain2-backend/internal/application/commands"
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
@@ -20,6 +21,7 @@ import (
 	"brain2-backend/internal/handlers"
 	"brain2-backend/internal/infrastructure/decorators"
 	"brain2-backend/internal/infrastructure/events"
+	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/infrastructure/tracing"
 	"brain2-backend/internal/infrastructure/transactions"
 	"brain2-backend/internal/repository"
@@ -35,6 +37,7 @@ import (
 
 // Container holds all application dependencies with lifecycle management.
 // Enhanced for Phase 2 repository pattern excellence
+// TODO: Refactor to use focused sub-containers as defined in factories.go
 type Container struct {
 	// Configuration
 	Config *config.Config
@@ -70,16 +73,18 @@ type Container struct {
 	Cache            decorators.Cache
 	MetricsCollector decorators.MetricsCollector
 	TracerProvider   *tracing.TracerProvider
+	Store            persistence.Store
 
 	// Legacy Service Layer (Phase 2 - will be deprecated)
 	MemoryService   memoryService.Service
 	CategoryService categoryService.Service
 	
 	// Phase 3: Application Service Layer (CQRS)
-	NodeAppService      *services.NodeService
-	// CategoryAppService  *services.CategoryService
-	NodeQueryService    *queries.NodeQueryService
-	// CategoryQueryService *queries.CategoryQueryService
+	NodeAppService       *services.NodeService
+	CategoryAppService   *services.CategoryService
+	NodeQueryService     *queries.NodeQueryService
+	CategoryQueryService *queries.CategoryQueryService
+	GraphQueryService    *queries.GraphQueryService
 	
 	// Domain Services
 	ConnectionAnalyzer *domainServices.ConnectionAnalyzer
@@ -132,10 +137,10 @@ func (c *Container) initialize() error {
 	}
 
 	// 4. Initialize service layer
-	c.initializeServices()
+	c.initializeServicesLegacy()
 
 	// 5. Initialize handler layer
-	c.initializeHandlers()
+	c.initializeHandlersLegacy()
 
 	// 6. Initialize middleware configuration
 	c.initializeMiddleware()
@@ -202,21 +207,32 @@ func (c *Container) initializeRepository() error {
 	// Initialize cross-cutting concerns first
 	c.initializeCrossCuttingConcerns()
 
+	// Initialize Store implementation now that logger is available
+	storeConfig := persistence.StoreConfig{
+		TableName:      c.Config.TableName, // Use config table name
+		TimeoutMs:      15000,
+		RetryAttempts:  3,
+		ConsistentRead: false,
+	}
+	c.Store = persistence.NewDynamoDBStore(c.DynamoDBClient, storeConfig, c.Logger)
+
 	// Phase 2: Initialize repository factory with environment-specific configuration
 	factoryConfig := c.getRepositoryFactoryConfig()
 	c.RepositoryFactory = repository.NewRepositoryFactory(factoryConfig)
 
 	// Initialize base repositories (without decorators)
-	baseNodeRepo := dynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
-	baseEdgeRepo := dynamodb.NewEdgeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
-	baseKeywordRepo := dynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
-	baseTransactionalRepo := dynamodb.NewTransactionalRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
-	baseCategoryRepo := dynamodb.NewCategoryRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
-	baseGraphRepo := dynamodb.NewGraphRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	baseNodeRepo := dynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	baseEdgeRepo := dynamodb.NewEdgeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	baseKeywordRepo := dynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	baseTransactionalRepo := dynamodb.NewTransactionalRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	baseCategoryRepo := dynamodb.NewCategoryRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	baseGraphRepo := dynamodb.NewGraphRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 
 	// Phase 2: Apply decorators using the factory
 	c.NodeRepository = c.RepositoryFactory.CreateNodeRepository(baseNodeRepo, c.Logger, c.Cache, c.MetricsCollector)
-	c.EdgeRepository = c.RepositoryFactory.CreateEdgeRepository(baseEdgeRepo, c.Logger, c.Cache, c.MetricsCollector)
+	// TODO: Uncomment when CreateEdgeRepository is implemented
+	// c.EdgeRepository = c.RepositoryFactory.CreateEdgeRepository(baseEdgeRepo, c.Logger, c.Cache, c.MetricsCollector)
+	c.EdgeRepository = baseEdgeRepo // Use base repository for now
 	c.CategoryRepository = c.RepositoryFactory.CreateCategoryRepository(baseCategoryRepo, c.Logger, c.Cache, c.MetricsCollector)
 	
 	// Repositories that don't need decorators yet (can be enhanced later)
@@ -225,7 +241,7 @@ func (c *Container) initializeRepository() error {
 	c.GraphRepository = baseGraphRepo
 
 	// Initialize composed repository for backward compatibility
-	c.Repository = dynamodb.NewRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	c.Repository = dynamodb.NewRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 
 	// Initialize idempotency store with 24-hour TTL
 	c.IdempotencyStore = dynamodb.NewIdempotencyStore(c.DynamoDBClient, c.Config.TableName, 24*time.Hour)
@@ -365,15 +381,40 @@ func (c *Container) initializePhase3Services() {
 		queryCache,
 	)
 	
-	// Note: CategoryAppService would be initialized here once it's updated to use adapters
-	// c.CategoryAppService = services.NewCategoryService(...)
-	// c.CategoryQueryService = queries.NewCategoryQueryService(...)
+	// Initialize CategoryQueryService with proper dependencies
+	categoryReader := NewCategoryReaderBridge(c.CategoryRepository)
+	c.CategoryQueryService = queries.NewCategoryQueryService(
+		categoryReader,
+		nodeReader,
+		c.Logger,
+		queryCache,
+		nil, // aiService - optional
+	)
+	
+	// Initialize GraphQueryService with Store implementation
+	c.GraphQueryService = queries.NewGraphQueryService(
+		c.Store,
+		c.Logger,
+		queryCache,
+	)
+	
+	// Initialize CategoryAppService for command handling
+	categoryCommandHandler := commands.NewCategoryCommandHandler(
+		c.Store,
+		c.Logger,
+		c.EventBus,
+		c.IdempotencyStore,
+	)
+	c.CategoryAppService = services.NewCategoryService(
+		categoryCommandHandler,
+		nil, // aiService - optional
+	)
 	
 	log.Printf("Phase 3 Application Services initialized in %v", time.Since(startTime))
 }
 
 // initializeServices sets up the service layer.
-func (c *Container) initializeServices() {
+func (c *Container) initializeServicesLegacy() {
 	// First, initialize the legacy service for operations not yet migrated
 	legacyMemoryService := memoryService.NewServiceWithIdempotency(
 		c.NodeRepository,
@@ -407,9 +448,35 @@ func (c *Container) initializeServices() {
 }
 
 // initializeHandlers sets up the handler layer.
-func (c *Container) initializeHandlers() {
-	c.MemoryHandler = handlers.NewMemoryHandler(c.MemoryService, c.EventBridgeClient, c)
-	c.CategoryHandler = handlers.NewCategoryHandler(c.CategoryService)
+func (c *Container) initializeHandlersLegacy() {
+	// Initialize handlers - use legacy services as fallback if CQRS services not ready
+	if c.NodeAppService != nil && c.NodeQueryService != nil && c.GraphQueryService != nil {
+		c.MemoryHandler = handlers.NewMemoryHandler(
+			c.NodeAppService,
+			c.NodeQueryService,
+			c.GraphQueryService,
+			c.EventBridgeClient,
+			c,
+		)
+		log.Println("MemoryHandler initialized with CQRS services")
+	} else {
+		// Keep using legacy service for now
+		c.MemoryHandler = handlers.NewMemoryHandlerLegacy(c.MemoryService, c.EventBridgeClient, c)
+		log.Println("MemoryHandler initialized with legacy service (CQRS services not ready)")
+	}
+	
+	if c.CategoryAppService != nil && c.CategoryQueryService != nil {
+		c.CategoryHandler = handlers.NewCategoryHandler(
+			c.CategoryAppService,
+			c.CategoryQueryService,
+		)
+		log.Println("CategoryHandler initialized with CQRS services")
+	} else {
+		// Keep using legacy service for now
+		c.CategoryHandler = handlers.NewCategoryHandlerLegacy(c.CategoryService)
+		log.Println("CategoryHandler initialized with legacy service (CQRS services not ready)")
+	}
+	
 	c.HealthHandler = handlers.NewHealthHandler()
 }
 

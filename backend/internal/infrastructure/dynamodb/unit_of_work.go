@@ -10,6 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"go.uber.org/zap"
 )
 
 // DynamoDBUnitOfWork implements the repository.UnitOfWork interface for DynamoDB.
@@ -20,6 +21,7 @@ type DynamoDBUnitOfWork struct {
 	tableName     string
 	indexName     string
 	eventBus      domain.EventBus
+	logger        *zap.Logger
 	
 	// Transaction state
 	isActive      bool
@@ -46,12 +48,14 @@ func NewDynamoDBUnitOfWork(
 	client *dynamodb.Client,
 	tableName, indexName string,
 	eventBus domain.EventBus,
+	logger *zap.Logger,
 ) repository.UnitOfWork {
 	return &DynamoDBUnitOfWork{
 		client:        client,
 		tableName:     tableName,
 		indexName:     indexName,
 		eventBus:      eventBus,
+		logger:        logger,
 		transactItems: make([]types.TransactWriteItem, 0),
 		pendingEvents: make([]domain.DomainEvent, 0),
 	}
@@ -60,11 +64,31 @@ func NewDynamoDBUnitOfWork(
 // Begin starts a new unit of work by initializing repository instances.
 // In DynamoDB, we don't start a transaction here but prepare for batched operations.
 func (uow *DynamoDBUnitOfWork) Begin(ctx context.Context) error {
+	// CRITICAL: Check if a transaction is already active
 	if uow.isActive {
-		return appErrors.NewValidation("unit of work already active")
+		return appErrors.NewValidation("transaction already active - must commit or rollback before beginning a new transaction")
 	}
 	
-	// Initialize repository instances with transactional capabilities
+	// Reset ALL state to ensure clean transaction boundaries in warm Lambda containers
+	// This is critical for Lambda reuse scenarios
+	uow.isActive = false
+	uow.isCommitted = false
+	uow.isRolledBack = false
+	
+	// Create new slices to avoid any potential data leakage
+	uow.transactItems = make([]types.TransactWriteItem, 0)
+	uow.pendingEvents = make([]domain.DomainEvent, 0)
+	
+	// Clear repository references to ensure fresh instances
+	uow.nodeRepo = nil
+	uow.edgeRepo = nil
+	uow.categoryRepo = nil
+	uow.keywordRepo = nil
+	uow.graphRepo = nil
+	uow.nodeCategoryRepo = nil
+	
+	// Initialize NEW repository instances with transactional capabilities
+	// This ensures each transaction gets fresh repository instances
 	uow.nodeRepo = NewTransactionalNodeRepository(uow)
 	uow.edgeRepo = NewTransactionalEdgeRepository(uow)
 	uow.categoryRepo = NewTransactionalCategoryRepository(uow)
@@ -72,9 +96,8 @@ func (uow *DynamoDBUnitOfWork) Begin(ctx context.Context) error {
 	uow.graphRepo = NewTransactionalGraphRepository(uow)
 	uow.nodeCategoryRepo = NewTransactionalNodeCategoryRepository(uow)
 	
+	// Mark as active only after successful initialization
 	uow.isActive = true
-	uow.isCommitted = false
-	uow.isRolledBack = false
 	
 	return nil
 }
@@ -82,11 +105,15 @@ func (uow *DynamoDBUnitOfWork) Begin(ctx context.Context) error {
 // Commit persists all queued operations atomically using DynamoDB TransactWrite.
 func (uow *DynamoDBUnitOfWork) Commit() error {
 	if !uow.isActive {
-		return appErrors.NewValidation("no active unit of work")
+		return appErrors.NewValidation("cannot commit: no active transaction")
 	}
 	
-	if uow.isCommitted || uow.isRolledBack {
-		return appErrors.NewValidation("unit of work already completed")
+	if uow.isCommitted {
+		return appErrors.NewValidation("cannot commit: transaction already committed")
+	}
+	
+	if uow.isRolledBack {
+		return appErrors.NewValidation("cannot commit: transaction already rolled back")
 	}
 	
 	// Execute all transactional items atomically
@@ -123,20 +150,25 @@ func (uow *DynamoDBUnitOfWork) Commit() error {
 
 // Rollback discards all queued operations without persisting them.
 func (uow *DynamoDBUnitOfWork) Rollback() error {
-	if !uow.isActive && !uow.isRolledBack {
-		return nil // Safe to call multiple times
-	}
-	
-	if uow.isCommitted {
-		return appErrors.NewValidation("cannot rollback committed unit of work")
-	}
+	// Always allow rollback - safe to call multiple times
+	// This is critical for Lambda containers where the UnitOfWork might be reused
 	
 	// Clear all queued operations
 	uow.transactItems = uow.transactItems[:0]
 	uow.pendingEvents = uow.pendingEvents[:0]
 	
+	// Reset all state flags
 	uow.isRolledBack = true
 	uow.isActive = false
+	uow.isCommitted = false
+	
+	// Clear repository instances to ensure fresh state on next Begin()
+	uow.nodeRepo = nil
+	uow.edgeRepo = nil
+	uow.categoryRepo = nil
+	uow.keywordRepo = nil
+	uow.graphRepo = nil
+	uow.nodeCategoryRepo = nil
 	
 	return nil
 }
@@ -248,7 +280,7 @@ type TransactionalNodeRepository struct {
 }
 
 func NewTransactionalNodeRepository(uow *DynamoDBUnitOfWork) repository.NodeRepository {
-	base := NewNodeRepository(uow.client, uow.tableName, uow.indexName)
+	base := NewNodeRepository(uow.client, uow.tableName, uow.indexName, uow.logger)
 	return &TransactionalNodeRepository{uow: uow, base: base}
 }
 
@@ -479,7 +511,7 @@ type TransactionalGraphRepository struct {
 }
 
 func NewTransactionalGraphRepository(uow *DynamoDBUnitOfWork) repository.GraphRepository {
-	base := NewGraphRepository(uow.client, uow.tableName, uow.indexName)
+	base := NewGraphRepository(uow.client, uow.tableName, uow.indexName, uow.logger)
 	return &TransactionalGraphRepository{uow: uow, base: base}
 }
 

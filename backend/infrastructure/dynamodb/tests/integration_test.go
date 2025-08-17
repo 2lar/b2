@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 	"github.com/stretchr/testify/require"
 )
 
@@ -51,7 +52,8 @@ func setupTestRepo(t *testing.T) repository.Repository {
 	}
 
 	client := dynamodb.NewFromConfig(cfg)
-	return infraDynamoDB.NewRepository(client, testTableName, testIndexName)
+	logger, _ := zap.NewDevelopment()
+	return infraDynamoDB.NewRepository(client, testTableName, testIndexName, logger)
 }
 
 func TestNodeOperations(t *testing.T) {

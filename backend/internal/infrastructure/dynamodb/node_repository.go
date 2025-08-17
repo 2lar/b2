@@ -8,6 +8,7 @@ import (
 	"brain2-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"go.uber.org/zap"
 )
 
 // NodeRepository delegates to the main DynamoDB implementation.
@@ -17,9 +18,9 @@ type NodeRepository struct {
 }
 
 // NewNodeRepository creates a new NodeRepository instance.
-func NewNodeRepository(client *dynamodb.Client, tableName, indexName string) repository.NodeRepository {
+func NewNodeRepository(client *dynamodb.Client, tableName, indexName string, logger *zap.Logger) repository.NodeRepository {
 	// Create the actual DynamoDB repository from the main package
-	base := mainDdb.NewNodeRepository(client, tableName, indexName)
+	base := mainDdb.NewNodeRepository(client, tableName, indexName, logger)
 	return &NodeRepository{
 		base: base,
 	}

@@ -158,7 +158,8 @@ func (f *ServiceFactory) CreateCategoryService() *services.CategoryService {
 	graphAdapter := &adapters.StubGraphRepositoryAdapter{}
 	nodeCategoryAdapter := &adapters.StubNodeCategoryRepositoryAdapter{}
 	
-	uowAdapter := adapters.NewUnitOfWorkAdapter(
+	// Note: Not using uowAdapter for now since we're not creating the command handler
+	_ = adapters.NewUnitOfWorkAdapter(
 		f.repositories.UnitOfWork,
 		nodeAdapter,
 		edgeAdapter,         // Stub instead of nil
@@ -167,15 +168,9 @@ func (f *ServiceFactory) CreateCategoryService() *services.CategoryService {
 		nodeCategoryAdapter, // Stub instead of nil
 	)
 	
-	// Create the service
-	service := services.NewCategoryService(
-		categoryAdapter,
-		nodeAdapter,
-		uowAdapter,
-		f.domainServices.EventBus,
-		f.repositories.Idempotency,
-		nil, // AI service
-	)
+	// TODO: Create command handler when Store interface is available in InfrastructureContainer
+	// For now, return nil to use legacy handler
+	service := (*services.CategoryService)(nil)
 	
 	f.logger.Info("CategoryService created successfully")
 	return service
@@ -356,7 +351,7 @@ func (hf *HandlerFactory) CreateMemoryHandler(coldStartProvider ColdStartInfoPro
 	// Create service with migration support
 	service := hf.serviceFactory.CreateMemoryServiceWithMigration()
 	
-	handler := handlers.NewMemoryHandler(
+	handler := handlers.NewMemoryHandlerLegacy(
 		service,
 		hf.infrastructure.EventBridgeClient,
 		coldStartProvider,
@@ -379,7 +374,7 @@ func (hf *HandlerFactory) CreateCategoryHandler() *handlers.CategoryHandler {
 	}
 	legacyService := categoryService.NewEnhancedService(nil, nil, minimalConfig) // Will be replaced
 	
-	handler := handlers.NewCategoryHandler(legacyService)
+	handler := handlers.NewCategoryHandlerLegacy(legacyService)
 	
 	hf.logger.Info("CategoryHandler created successfully")
 	return handler

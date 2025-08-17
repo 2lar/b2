@@ -129,8 +129,21 @@ func NewUnitOfWork(
 // This method demonstrates proper resource initialization and error handling.
 // Now uses TransactionManager for enhanced transaction step management.
 func (uow *unitOfWork) Begin(ctx context.Context) error {
+	// Handle reuse in warm Lambda containers: if transaction exists but was completed, reset state
 	if uow.transaction != nil {
-		return NewRepositoryError(ErrCodeInvalidOperation, "unit of work already begun", nil)
+		if uow.committed || uow.rolledBack {
+			// Previous transaction was completed, reset state for new transaction
+			uow.transaction = nil
+			uow.committed = false
+			uow.rolledBack = false
+			uow.pendingEvents = nil
+			if uow.transactionManager != nil {
+				uow.transactionManager = NewTransactionManager() // Reset transaction manager
+			}
+		} else {
+			// Transaction is still active
+			return NewRepositoryError(ErrCodeInvalidOperation, "unit of work already begun", nil)
+		}
 	}
 	
 	// Start database transaction
@@ -232,6 +245,7 @@ func (uow *unitOfWork) Commit() error {
 	}
 	
 	uow.committed = true
+	uow.transaction = nil // Clear transaction reference to allow new Begin() calls
 	
 	// Clear pending events after successful publishing
 	uow.pendingEvents = nil
@@ -247,7 +261,7 @@ func (uow *unitOfWork) Rollback() error {
 	}
 	
 	if uow.committed {
-		return NewRepositoryError(ErrCodeInvalidOperation, "cannot rollback committed transaction", nil)
+		return nil // Transaction already committed successfully, silently succeed
 	}
 	
 	if uow.rolledBack {
@@ -261,6 +275,7 @@ func (uow *unitOfWork) Rollback() error {
 func (uow *unitOfWork) rollbackTransaction() error {
 	if err := uow.transaction.Rollback(); err != nil {
 		uow.rolledBack = true // Mark as rolled back even on error to prevent retry
+		uow.transaction = nil // Clear transaction reference to allow new Begin() calls
 		return NewRepositoryErrorWithDetails(
 			ErrCodeTransactionFailed,
 			"failed to rollback transaction",
@@ -272,6 +287,7 @@ func (uow *unitOfWork) rollbackTransaction() error {
 	}
 	
 	uow.rolledBack = true
+	uow.transaction = nil // Clear transaction reference to allow new Begin() calls
 	
 	// Clear pending events on rollback
 	uow.pendingEvents = nil

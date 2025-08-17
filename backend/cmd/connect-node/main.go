@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+	"go.uber.org/zap"
 )
 
 var repo repository.Repository
@@ -27,9 +28,16 @@ func init() {
 	if err != nil {
 		log.Fatalf("unable to load SDK config: %v", err)
 	}
+	
+	// Initialize logger
+	logger, err := zap.NewProduction()
+	if err != nil {
+		logger, _ = zap.NewDevelopment()
+	}
+	
 	dbClient := dynamodb.NewFromConfig(awsCfg)
 	eventbridgeClient = eventbridge.NewFromConfig(awsCfg)
-	repo = infraDynamoDB.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName)
+	repo = infraDynamoDB.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName, logger)
 }
 
 type NodeCreatedEvent struct {

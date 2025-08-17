@@ -7,26 +7,50 @@ import (
 	"net/http"
 	"time"
 
-	"brain2-backend/internal/service/category"
+	"brain2-backend/internal/application/commands"
+	"brain2-backend/internal/application/queries"
+	"brain2-backend/internal/application/services"
 	"brain2-backend/pkg/api"
 
 	"github.com/go-chi/chi/v5"
 )
 
-// CategoryHandler handles category-related HTTP requests with injected dependencies.
+// CategoryHandler handles category-related HTTP requests with CQRS services.
 type CategoryHandler struct {
-	categoryService category.Service
+	// CQRS services for clean separation of concerns
+	categoryService      *services.CategoryService      // Write operations (commands)
+	categoryQueryService *queries.CategoryQueryService  // Read operations (queries)
 }
 
-// NewCategoryHandler creates a new category handler with dependency injection.
-func NewCategoryHandler(categoryService category.Service) *CategoryHandler {
+// NewCategoryHandler creates a new category handler with CQRS services.
+func NewCategoryHandler(
+	categoryService *services.CategoryService,
+	categoryQueryService *queries.CategoryQueryService,
+) *CategoryHandler {
 	return &CategoryHandler{
-		categoryService: categoryService,
+		categoryService:      categoryService,
+		categoryQueryService: categoryQueryService,
+	}
+}
+
+// NewCategoryHandlerLegacy creates a new category handler with legacy service (temporary).
+func NewCategoryHandlerLegacy(legacyService interface{}) *CategoryHandler {
+	// For now, return a handler that will fail gracefully
+	// This is a temporary solution until we complete the CQRS migration
+	return &CategoryHandler{
+		categoryService:      nil,
+		categoryQueryService: nil,
 	}
 }
 
 // ListCategories handles GET /api/categories
 func (h *CategoryHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
+	// Check if CQRS services are available
+	if h.categoryQueryService == nil {
+		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
+		return
+	}
+	
 	userID, ok := getUserID(r)
 	if !ok {
 		log.Printf("ERROR: ListCategories - Authentication failed, getUserID returned false")
@@ -36,14 +60,25 @@ func (h *CategoryHandler) ListCategories(w http.ResponseWriter, r *http.Request)
 	
 	log.Printf("DEBUG: ListCategories called for userID: %s", userID)
 	
-	categories, err := h.categoryService.ListCategories(r.Context(), userID)
+	// Create query for CQRS pattern
+	listQuery, err := queries.NewListCategoriesQuery(userID)
 	if err != nil {
-		log.Printf("ERROR: ListCategories - categoryService.ListCategories failed: %v", err)
+		log.Printf("ERROR: ListCategories - failed to create query: %v", err)
 		handleServiceError(w, err)
 		return
 	}
 	
-	log.Printf("DEBUG: ListCategories - retrieved %d categories", len(categories))
+	// Include node counts in the response
+	listQuery.WithNodeCounts()
+	
+	result, err := h.categoryQueryService.ListCategories(r.Context(), listQuery)
+	if err != nil {
+		log.Printf("ERROR: ListCategories - categoryQueryService.ListCategories failed: %v", err)
+		handleServiceError(w, err)
+		return
+	}
+	
+	log.Printf("DEBUG: ListCategories - retrieved %d categories", len(result.Categories))
 
 	type CategoryResponse struct {
 		ID          string  `json:"id"`
@@ -60,25 +95,25 @@ func (h *CategoryHandler) ListCategories(w http.ResponseWriter, r *http.Request)
 	}
 
 	var categoriesResponse []CategoryResponse
-	for _, cat := range categories {
-		var parentID *string
-		if cat.ParentID != nil {
-			parentIDStr := string(*cat.ParentID)
-			parentID = &parentIDStr
+	for _, catView := range result.Categories {
+		// CategoryView structure is simpler than domain Category
+		var color *string
+		if catView.Color != "" {
+			color = &catView.Color
 		}
 		
 		categoriesResponse = append(categoriesResponse, CategoryResponse{
-			ID:          string(cat.ID),
-			Title:       cat.Title,
-			Description: cat.Description,
-			Level:       cat.Level,
-			ParentID:    parentID,
-			Color:       cat.Color,
-			Icon:        cat.Icon,
-			AIGenerated: cat.AIGenerated,
-			NoteCount:   cat.NoteCount,
-			CreatedAt:   cat.CreatedAt.Format(time.RFC3339),
-			UpdatedAt:   cat.UpdatedAt.Format(time.RFC3339),
+			ID:          catView.ID,
+			Title:       catView.Title,
+			Description: catView.Description,
+			Level:       0,         // CategoryView doesn't have Level field
+			ParentID:    nil,       // CategoryView doesn't have ParentID field  
+			Color:       color,
+			Icon:        nil,       // CategoryView doesn't have Icon field
+			AIGenerated: false,     // CategoryView doesn't have AIGenerated field
+			NoteCount:   catView.NodeCount,
+			CreatedAt:   catView.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:   catView.UpdatedAt.Format(time.RFC3339),
 		})
 	}
 
@@ -87,6 +122,12 @@ func (h *CategoryHandler) ListCategories(w http.ResponseWriter, r *http.Request)
 
 // CreateCategory handles POST /api/categories
 func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
+	// Check if CQRS services are available
+	if h.categoryService == nil {
+		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
+		return
+	}
+	
 	userID, ok := getUserID(r)
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -109,7 +150,14 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	cat, err := h.categoryService.CreateCategory(r.Context(), userID, req.Title, req.Description)
+	// Create command for CQRS pattern
+	cmd, err := commands.NewCreateCategoryCommand(userID, req.Title, req.Description)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	result, err := h.categoryService.CreateCategory(r.Context(), cmd)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -129,29 +177,35 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		UpdatedAt   string  `json:"updatedAt"`
 	}
 
-	var parentID *string
-	if cat.ParentID != nil {
-		parentIDStr := string(*cat.ParentID)
-		parentID = &parentIDStr
+	// Convert CategoryView from CQRS result to response format
+	var color *string
+	if result.Category.Color != "" {
+		color = &result.Category.Color
 	}
 	
 	api.Success(w, http.StatusCreated, CategoryResponse{
-		ID:          string(cat.ID),
-		Title:       cat.Title,
-		Description: cat.Description,
-		Level:       cat.Level,
-		ParentID:    parentID,
-		Color:       cat.Color,
-		Icon:        cat.Icon,
-		AIGenerated: cat.AIGenerated,
-		NoteCount:   cat.NoteCount,
-		CreatedAt:   cat.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   cat.UpdatedAt.Format(time.RFC3339),
+		ID:          result.Category.ID,
+		Title:       result.Category.Title,
+		Description: result.Category.Description,
+		Level:       0,       // CategoryView doesn't have Level field
+		ParentID:    nil,     // CategoryView doesn't have ParentID field
+		Color:       color,
+		Icon:        nil,     // CategoryView doesn't have Icon field
+		AIGenerated: false,   // CategoryView doesn't have AIGenerated field
+		NoteCount:   result.Category.NodeCount,
+		CreatedAt:   result.Category.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   result.Category.UpdatedAt.Format(time.RFC3339),
 	})
 }
 
 // GetCategory handles GET /api/categories/{categoryId}
 func (h *CategoryHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
+	// Check if CQRS services are available
+	if h.categoryQueryService == nil {
+		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
+		return
+	}
+	
 	userID, ok := getUserID(r)
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -159,7 +213,14 @@ func (h *CategoryHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	categoryID := chi.URLParam(r, "categoryId")
 
-	category, err := h.categoryService.GetCategory(r.Context(), userID, categoryID)
+	// Create query for CQRS pattern
+	categoryQuery, err := queries.NewGetCategoryQuery(userID, categoryID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	result, err := h.categoryQueryService.GetCategory(r.Context(), categoryQuery)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -179,29 +240,35 @@ func (h *CategoryHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt   string  `json:"updatedAt"`
 	}
 
-	var parentID *string
-	if category.ParentID != nil {
-		parentIDStr := string(*category.ParentID)
-		parentID = &parentIDStr
+	// Convert CategoryView from CQRS result to response format
+	var color *string
+	if result.Category.Color != "" {
+		color = &result.Category.Color
 	}
 	
 	api.Success(w, http.StatusOK, CategoryResponse{
-		ID:          string(category.ID),
-		Title:       category.Title,
-		Description: category.Description,
-		Level:       category.Level,
-		ParentID:    parentID,
-		Color:       category.Color,
-		Icon:        category.Icon,
-		AIGenerated: category.AIGenerated,
-		NoteCount:   category.NoteCount,
-		CreatedAt:   category.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   category.UpdatedAt.Format(time.RFC3339),
+		ID:          result.Category.ID,
+		Title:       result.Category.Title,
+		Description: result.Category.Description,
+		Level:       0,       // CategoryView doesn't have Level field
+		ParentID:    nil,     // CategoryView doesn't have ParentID field
+		Color:       color,
+		Icon:        nil,     // CategoryView doesn't have Icon field
+		AIGenerated: false,   // CategoryView doesn't have AIGenerated field
+		NoteCount:   result.Category.NodeCount,
+		CreatedAt:   result.Category.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   result.Category.UpdatedAt.Format(time.RFC3339),
 	})
 }
 
 // UpdateCategory handles PUT /api/categories/{categoryId}
 func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
+	// Check if CQRS services are available
+	if h.categoryService == nil {
+		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
+		return
+	}
+	
 	userID, ok := getUserID(r)
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -225,7 +292,16 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	category, err := h.categoryService.UpdateCategory(r.Context(), userID, categoryID, req.Title, req.Description)
+	// Create command for CQRS pattern
+	cmd, err := commands.NewUpdateCategoryCommand(userID, categoryID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	cmd.WithTitle(req.Title).WithDescription(req.Description)
+
+	result, err := h.categoryService.UpdateCategory(r.Context(), cmd)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -233,12 +309,18 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 
 	api.Success(w, http.StatusOK, map[string]interface{}{
 		"message":    "Category updated successfully",
-		"categoryId": string(category.ID),
+		"categoryId": result.Category.ID,
 	})
 }
 
 // DeleteCategory handles DELETE /api/categories/{categoryId}
 func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
+	// Check if CQRS services are available
+	if h.categoryService == nil {
+		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
+		return
+	}
+	
 	userID, ok := getUserID(r)
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -246,7 +328,15 @@ func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request)
 	}
 	categoryID := chi.URLParam(r, "categoryId")
 
-	if err := h.categoryService.DeleteCategory(r.Context(), userID, categoryID); err != nil {
+	// Create command for CQRS pattern
+	cmd, err := commands.NewDeleteCategoryCommand(userID, categoryID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	_, err = h.categoryService.DeleteCategory(r.Context(), cmd)
+	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
@@ -255,35 +345,9 @@ func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request)
 }
 
 // AssignNodeToCategory handles POST /api/categories/{categoryId}/nodes
+// TODO: Implement after adding corresponding command handler
 func (h *CategoryHandler) AssignNodeToCategory(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r)
-	if !ok {
-		api.Error(w, http.StatusUnauthorized, "Authentication required")
-		return
-	}
-	categoryID := chi.URLParam(r, "categoryId")
-
-	type AssignNodeRequest struct {
-		NodeID string `json:"nodeId"`
-	}
-
-	var req AssignNodeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		api.Error(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	if req.NodeID == "" {
-		api.Error(w, http.StatusBadRequest, "NodeID cannot be empty")
-		return
-	}
-
-	if err := h.categoryService.AssignNodeToCategory(r.Context(), userID, categoryID, req.NodeID); err != nil {
-		handleServiceError(w, err)
-		return
-	}
-
-	api.Success(w, http.StatusOK, map[string]string{"message": "Node assigned to category successfully"})
+	api.Error(w, http.StatusNotImplemented, "AssignNodeToCategory not yet implemented")
 }
 
 // GetNodesInCategory handles GET /api/categories/{categoryId}/nodes
@@ -295,7 +359,14 @@ func (h *CategoryHandler) GetNodesInCategory(w http.ResponseWriter, r *http.Requ
 	}
 	categoryID := chi.URLParam(r, "categoryId")
 
-	nodes, err := h.categoryService.GetNodesInCategory(r.Context(), userID, categoryID)
+	// Create query for CQRS pattern
+	nodesQuery, err := queries.NewGetNodesInCategoryQuery(userID, categoryID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	result, err := h.categoryQueryService.GetNodesInCategory(r.Context(), nodesQuery)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -310,13 +381,13 @@ func (h *CategoryHandler) GetNodesInCategory(w http.ResponseWriter, r *http.Requ
 	}
 
 	var nodesResponse []NodeResponse
-	for _, node := range nodes {
+	for _, nodeView := range result.Nodes {
 		nodesResponse = append(nodesResponse, NodeResponse{
-			NodeID:    node.ID.String(),
-			Content:   node.Content.String(),
-			Tags:      node.Tags.ToSlice(),
-			Timestamp: node.CreatedAt.Format(time.RFC3339),
-			Version:   node.Version,
+			NodeID:    nodeView.ID,
+			Content:   nodeView.Content,
+			Tags:      nodeView.Tags,
+			Timestamp: nodeView.CreatedAt.Format(time.RFC3339),
+			Version:   nodeView.Version,
 		})
 	}
 
@@ -324,21 +395,9 @@ func (h *CategoryHandler) GetNodesInCategory(w http.ResponseWriter, r *http.Requ
 }
 
 // RemoveNodeFromCategory handles DELETE /api/categories/{categoryId}/nodes/{nodeId}
+// TODO: Implement after adding corresponding command handler
 func (h *CategoryHandler) RemoveNodeFromCategory(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getUserID(r)
-	if !ok {
-		api.Error(w, http.StatusUnauthorized, "Authentication required")
-		return
-	}
-	categoryID := chi.URLParam(r, "categoryId")
-	nodeID := chi.URLParam(r, "nodeId")
-
-	if err := h.categoryService.RemoveNodeFromCategory(r.Context(), userID, categoryID, nodeID); err != nil {
-		handleServiceError(w, err)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
+	api.Error(w, http.StatusNotImplemented, "RemoveNodeFromCategory not yet implemented")
 }
 
 // GetNodeCategories handles GET /api/nodes/{nodeId}/categories
@@ -355,8 +414,15 @@ func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Create query for CQRS pattern
+	categoriesQuery, err := queries.NewGetCategoriesForNodeQuery(userID, nodeID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
 	// Get categories for this node
-	categories, err := h.categoryService.GetCategoriesForNode(r.Context(), userID, nodeID)
+	result, err := h.categoryQueryService.GetCategoriesForNode(r.Context(), categoriesQuery)
 	if err != nil {
 		handleServiceError(w, err)
 		return
@@ -377,25 +443,25 @@ func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Reque
 	}
 
 	var categoriesResponse []CategoryResponse
-	for _, cat := range categories {
-		var parentID *string
-		if cat.ParentID != nil {
-			parentIDStr := string(*cat.ParentID)
-			parentID = &parentIDStr
+	for _, catView := range result.Categories {
+		// Convert CategoryView to response format
+		var color *string
+		if catView.Color != "" {
+			color = &catView.Color
 		}
 		
 		categoriesResponse = append(categoriesResponse, CategoryResponse{
-			ID:          string(cat.ID),
-			Title:       cat.Title,
-			Description: cat.Description,
-			Level:       cat.Level,
-			ParentID:    parentID,
-			Color:       cat.Color,
-			Icon:        cat.Icon,
-			AIGenerated: cat.AIGenerated,
-			NoteCount:   cat.NoteCount,
-			CreatedAt:   cat.CreatedAt.Format(time.RFC3339),
-			UpdatedAt:   cat.UpdatedAt.Format(time.RFC3339),
+			ID:          catView.ID,
+			Title:       catView.Title,
+			Description: catView.Description,
+			Level:       0,       // CategoryView doesn't have Level field
+			ParentID:    nil,     // CategoryView doesn't have ParentID field
+			Color:       color,
+			Icon:        nil,     // CategoryView doesn't have Icon field
+			AIGenerated: false,   // CategoryView doesn't have AIGenerated field
+			NoteCount:   catView.NodeCount,
+			CreatedAt:   catView.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:   catView.UpdatedAt.Format(time.RFC3339),
 		})
 	}
 

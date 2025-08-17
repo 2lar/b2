@@ -6,7 +6,13 @@ import (
 	"context"
 	"brain2-backend/internal/domain"
 	"brain2-backend/internal/repository"
+	sharedContext "brain2-backend/internal/context"
 )
+
+// getUserIDFromContext extracts userID from context using the shared context key
+func getUserIDFromContext(ctx context.Context) (string, bool) {
+	return sharedContext.GetUserIDFromContext(ctx)
+}
 
 // NodeReaderBridge bridges NodeRepository to NodeReader interface
 type NodeReaderBridge struct {
@@ -28,10 +34,13 @@ func NewNodeReaderBridge(repo repository.NodeRepository) repository.NodeReader {
 // These are stub implementations that allow the code to compile
 
 func (b *NodeReaderBridge) FindByID(ctx context.Context, id domain.NodeID) (*domain.Node, error) {
-	// Try to extract userID from context if available
-	// For now, we attempt to find the node without userID filtering
-	// This may need refinement based on security requirements
-	node, err := b.repo.FindNodeByID(ctx, "", id.String())
+	// Extract userID from context - this is required for DynamoDB queries
+	userID, ok := getUserIDFromContext(ctx)
+	if !ok {
+		return nil, repository.ErrNodeNotFound // Without userID, we cannot find the node
+	}
+	
+	node, err := b.repo.FindNodeByID(ctx, userID, id.String())
 	if err != nil {
 		return nil, err
 	}

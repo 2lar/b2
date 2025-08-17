@@ -27,8 +27,8 @@ func setupRouter(memoryHandler *handlers.MemoryHandler, categoryHandler *handler
 		})
 	})
 
-	// Protected routes (require authentication)
-	r.Group(func(r chi.Router) {
+	// API v1 routes
+	r.Route("/api/v1", func(r chi.Router) {
 		// Apply circuit breaker for API routes (protects against cascading failures)
 		apiCircuitBreaker := middleware.CircuitBreaker(
 			middleware.DefaultCircuitBreakerConfig("api-routes"))
@@ -36,26 +36,34 @@ func setupRouter(memoryHandler *handlers.MemoryHandler, categoryHandler *handler
 
 		r.Use(handlers.Authenticator) // Apply authentication middleware
 
-		r.Post("/api/nodes", memoryHandler.CreateNode)
-		r.Get("/api/nodes", memoryHandler.ListNodes)
-		r.Get("/api/nodes/{nodeId}", memoryHandler.GetNode)
-		r.Put("/api/nodes/{nodeId}", memoryHandler.UpdateNode)
-		r.Delete("/api/nodes/{nodeId}", memoryHandler.DeleteNode)
-		r.Post("/api/nodes/bulk-delete", memoryHandler.BulkDeleteNodes)
-		r.Get("/api/graph-data", memoryHandler.GetGraphData)
+		// Node endpoints
+		r.Route("/nodes", func(r chi.Router) {
+			r.Post("/", memoryHandler.CreateNode)
+			r.Get("/", memoryHandler.ListNodes)
+			r.Get("/{nodeId}", memoryHandler.GetNode)
+			r.Put("/{nodeId}", memoryHandler.UpdateNode)
+			r.Delete("/{nodeId}", memoryHandler.DeleteNode)
+			r.Post("/bulk-delete", memoryHandler.BulkDeleteNodes)
+			
+			// Node categorization routes
+			r.Get("/{nodeId}/categories", categoryHandler.GetNodeCategories)
+			r.Post("/{nodeId}/categories", categoryHandler.CategorizeNode)
+		})
 
-		r.Post("/api/categories", categoryHandler.CreateCategory)
-		r.Get("/api/categories", categoryHandler.ListCategories)
-		r.Get("/api/categories/{categoryId}", categoryHandler.GetCategory)
-		r.Put("/api/categories/{categoryId}", categoryHandler.UpdateCategory)
-		r.Delete("/api/categories/{categoryId}", categoryHandler.DeleteCategory)
-		r.Post("/api/categories/{categoryId}/nodes", categoryHandler.AssignNodeToCategory)
-		r.Get("/api/categories/{categoryId}/nodes", categoryHandler.GetNodesInCategory)
-		r.Delete("/api/categories/{categoryId}/nodes/{nodeId}", categoryHandler.RemoveNodeFromCategory)
+		// Category endpoints
+		r.Route("/categories", func(r chi.Router) {
+			r.Post("/", categoryHandler.CreateCategory)
+			r.Get("/", categoryHandler.ListCategories)
+			r.Get("/{categoryId}", categoryHandler.GetCategory)
+			r.Put("/{categoryId}", categoryHandler.UpdateCategory)
+			r.Delete("/{categoryId}", categoryHandler.DeleteCategory)
+			r.Post("/{categoryId}/nodes", categoryHandler.AssignNodeToCategory)
+			r.Get("/{categoryId}/nodes", categoryHandler.GetNodesInCategory)
+			r.Delete("/{categoryId}/nodes/{nodeId}", categoryHandler.RemoveNodeFromCategory)
+		})
 
-		// Node categorization routes
-		r.Get("/api/nodes/{nodeId}/categories", categoryHandler.GetNodeCategories)
-		r.Post("/api/nodes/{nodeId}/categories", categoryHandler.CategorizeNode)
+		// Graph data endpoint
+		r.Get("/graph-data", memoryHandler.GetGraphData)
 	})
 
 	return r

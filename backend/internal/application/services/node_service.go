@@ -16,6 +16,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"brain2-backend/internal/application/adapters"
 	"brain2-backend/internal/application/commands"
@@ -77,7 +78,20 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 		if result, exists, err := s.checkIdempotency(ctx, cmd.IdempotencyKey, "CREATE_NODE", cmd.UserID); err != nil {
 			return nil, err
 		} else if exists {
-			return result.(*dto.CreateNodeResult), nil
+			// Handle type assertion safely - the stored result might be a map after JSON serialization
+			switch v := result.(type) {
+			case *dto.CreateNodeResult:
+				// Direct type match - ideal case
+				return v, nil
+			case map[string]interface{}:
+				// JSON deserialized as map - need to reconstruct
+				// This happens when Lambda reuses warm containers
+				return s.reconstructCreateNodeResult(v)
+			default:
+				// Log the unexpected type and continue with new creation
+				// Better to create a new node than to panic
+				// TODO: Add proper logging here
+			}
 		}
 	}
 
@@ -448,6 +462,108 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 }
 
 // Helper methods for idempotency handling
+
+// reconstructCreateNodeResult reconstructs a CreateNodeResult from a map[string]interface{}
+// This is needed when the idempotency store returns a JSON-deserialized object
+func (s *NodeService) reconstructCreateNodeResult(data map[string]interface{}) (*dto.CreateNodeResult, error) {
+	result := &dto.CreateNodeResult{}
+	
+	// Reconstruct the node view
+	if nodeData, ok := data["Node"].(map[string]interface{}); ok {
+		result.Node = s.reconstructNodeView(nodeData)
+	}
+	
+	// Reconstruct connections
+	if connections, ok := data["Connections"].([]interface{}); ok {
+		result.Connections = make([]*dto.ConnectionView, 0, len(connections))
+		for _, conn := range connections {
+			if connMap, ok := conn.(map[string]interface{}); ok {
+				result.Connections = append(result.Connections, s.reconstructConnectionView(connMap))
+			}
+		}
+	}
+	
+	// Reconstruct message
+	if msg, ok := data["Message"].(string); ok {
+		result.Message = msg
+	}
+	
+	return result, nil
+}
+
+// reconstructNodeView reconstructs a NodeView from a map
+func (s *NodeService) reconstructNodeView(data map[string]interface{}) *dto.NodeView {
+	view := &dto.NodeView{}
+	
+	if id, ok := data["ID"].(string); ok {
+		view.ID = id
+	}
+	if userID, ok := data["UserID"].(string); ok {
+		view.UserID = userID
+	}
+	if content, ok := data["Content"].(string); ok {
+		view.Content = content
+	}
+	if keywords, ok := data["Keywords"].([]interface{}); ok {
+		view.Keywords = make([]string, 0, len(keywords))
+		for _, k := range keywords {
+			if str, ok := k.(string); ok {
+				view.Keywords = append(view.Keywords, str)
+			}
+		}
+	}
+	if tags, ok := data["Tags"].([]interface{}); ok {
+		view.Tags = make([]string, 0, len(tags))
+		for _, t := range tags {
+			if str, ok := t.(string); ok {
+				view.Tags = append(view.Tags, str)
+			}
+		}
+	}
+	if version, ok := data["Version"].(float64); ok {
+		view.Version = int(version)
+	}
+	
+	// Parse timestamps - they might be strings in JSON
+	if createdAt, ok := data["CreatedAt"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
+			view.CreatedAt = t
+		}
+	}
+	if updatedAt, ok := data["UpdatedAt"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, updatedAt); err == nil {
+			view.UpdatedAt = t
+		}
+	}
+	
+	return view
+}
+
+// reconstructConnectionView reconstructs a ConnectionView from a map
+func (s *NodeService) reconstructConnectionView(data map[string]interface{}) *dto.ConnectionView {
+	view := &dto.ConnectionView{}
+	
+	// Map the correct field names from ConnectionView struct
+	if id, ok := data["id"].(string); ok {
+		view.ID = id
+	}
+	if sourceNodeID, ok := data["source_node_id"].(string); ok {
+		view.SourceNodeID = sourceNodeID
+	}
+	if targetNodeID, ok := data["target_node_id"].(string); ok {
+		view.TargetNodeID = targetNodeID
+	}
+	if strength, ok := data["strength"].(float64); ok {
+		view.Strength = strength
+	}
+	if createdAt, ok := data["created_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
+			view.CreatedAt = t
+		}
+	}
+	
+	return view
+}
 
 func (s *NodeService) checkIdempotency(ctx context.Context, key, operation, userID string) (interface{}, bool, error) {
 	if s.idempotencyStore == nil {

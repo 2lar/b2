@@ -31,13 +31,6 @@ type NodeQueryService struct {
 	cache      Cache                 // Cache interface for performance
 }
 
-// Cache defines the interface for caching read results.
-type Cache interface {
-	Get(ctx context.Context, key string) (interface{}, bool)
-	Set(ctx context.Context, key string, value interface{}, ttl time.Duration)
-	Delete(ctx context.Context, key string)
-}
-
 // NewNodeQueryService creates a new NodeQueryService with all required dependencies.
 func NewNodeQueryService(
 	nodeReader repository.NodeReader,

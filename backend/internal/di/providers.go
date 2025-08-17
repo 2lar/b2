@@ -214,7 +214,7 @@ func provideNodeRepository(
 	metrics decorators.MetricsCollector,
 ) repository.NodeRepository {
 	// Base repository implementation
-	base := dynamodb.NewNodeRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
+	base := dynamodb.NewNodeRepository(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
 	// Create decorator chain and apply decorators
 	decoratorChain := decorators.NewDecoratorChain(cfg, logger, cache, metrics)
@@ -232,7 +232,7 @@ func provideEdgeRepository(
 	metrics decorators.MetricsCollector,
 ) repository.EdgeRepository {
 	// Base repository implementation
-	base := dynamodb.NewEdgeRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
+	base := dynamodb.NewEdgeRepository(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
 	// Create decorator chain and apply decorators
 	decoratorChain := decorators.NewDecoratorChain(cfg, logger, cache, metrics)
@@ -250,7 +250,7 @@ func provideCategoryRepository(
 	metrics decorators.MetricsCollector,
 ) repository.CategoryRepository {
 	// Base repository
-	base := dynamodb.NewCategoryRepository(client, cfg.Database.TableName, cfg.Database.IndexName)
+	base := dynamodb.NewCategoryRepository(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
 	// Create decorator chain and apply decorators
 	decoratorChain := decorators.NewDecoratorChain(cfg, logger, cache, metrics)
@@ -324,6 +324,7 @@ func provideUnitOfWork(
 		cfg.Database.TableName,
 		cfg.Database.IndexName,
 		eventBus,
+		logger,
 	)
 }
 
@@ -401,10 +402,27 @@ func provideNodeQueryService(
 // provideCategoryQueryService creates the query service for categories.
 func provideCategoryQueryService(
 	categoryRepo repository.CategoryRepository,
+	nodeRepo repository.NodeRepository,
 	cache decorators.Cache,
+	logger *zap.Logger,
 ) *queries.CategoryQueryService {
-	// Would implement similar to NodeQueryService
-	return nil // Placeholder
+	// Create reader bridges using the new persistence bridges
+	categoryReader := NewCategoryReaderBridge(categoryRepo)
+	nodeReader := NewNodeReaderBridge(nodeRepo)
+	
+	// Convert cache to queries.Cache interface
+	var queryCache queries.Cache
+	if cache != nil {
+		queryCache = &queryCacheAdapter{inner: cache}
+	}
+	
+	return queries.NewCategoryQueryService(
+		categoryReader,
+		nodeReader,
+		logger,
+		queryCache,
+		nil, // AI service
+	)
 }
 
 // ============================================================================
@@ -480,14 +498,14 @@ func provideMemoryHandler(
 	eventBridge *awsEventbridge.Client,
 	container ColdStartInfoProvider,
 ) *handlers.MemoryHandler {
-	return handlers.NewMemoryHandler(service, eventBridge, container)
+	return handlers.NewMemoryHandlerLegacy(service, eventBridge, container)
 }
 
 // provideCategoryHandler creates the HTTP handler for category operations.
 func provideCategoryHandler(
 	service categoryService.Service,
 ) *handlers.CategoryHandler {
-	return handlers.NewCategoryHandler(service)
+	return handlers.NewCategoryHandlerLegacy(service)
 }
 
 

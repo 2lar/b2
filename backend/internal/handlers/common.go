@@ -10,25 +10,14 @@ import (
 	"brain2-backend/internal/repository"
 	"brain2-backend/pkg/api"
 	appErrors "brain2-backend/pkg/errors"
+	sharedContext "brain2-backend/internal/context"
 
 	"github.com/awslabs/aws-lambda-go-api-proxy/core"
 )
 
-// contextKey is used for context values
-type contextKey struct {
-	name string
-}
-
-var userIDKey = contextKey{"userID"}
-
 // getUserID safely extracts userID from context
 func getUserID(r *http.Request) (string, bool) {
-	userIDVal := r.Context().Value(userIDKey)
-	if userIDVal == nil {
-		return "", false
-	}
-	userID, ok := userIDVal.(string)
-	return userID, ok && userID != ""
+	return sharedContext.GetUserIDFromContext(r.Context())
 }
 
 // handleServiceError converts service errors to appropriate HTTP responses
@@ -112,7 +101,7 @@ func Authenticator(next http.Handler) http.Handler {
 		}
 
 		ctx := r.Context()
-		ctx = context.WithValue(ctx, userIDKey, userID)
+		ctx = context.WithValue(ctx, sharedContext.UserIDKey, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

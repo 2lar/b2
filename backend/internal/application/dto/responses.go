@@ -448,3 +448,92 @@ type RemoveNodeFromCategoryResult struct {
 	NodeID     string `json:"node_id"`
 	Message    string `json:"message,omitempty"`
 }
+
+// GetGraphResult represents the result of retrieving a complete graph.
+type GetGraphResult struct {
+	Nodes []*NodeView  `json:"nodes"`
+	Edges []*EdgeView  `json:"edges"`
+	Stats *GraphStats  `json:"stats,omitempty"`
+}
+
+// GetNodeNeighborhoodResult represents the result of retrieving a node's neighborhood.
+type GetNodeNeighborhoodResult struct {
+	RootNode *NodeView         `json:"root_node"`
+	Nodes    []*NodeView       `json:"nodes"`
+	Edges    []*EdgeView       `json:"edges"`
+	Stats    *NeighborhoodStats `json:"stats,omitempty"`
+}
+
+// GetGraphAnalyticsResult represents the result of graph analytics.
+type GetGraphAnalyticsResult struct {
+	UserID    string         `json:"user_id"`
+	Analytics *GraphAnalytics `json:"analytics"`
+	Timestamp time.Time      `json:"timestamp"`
+}
+
+// GraphStats contains basic graph statistics.
+type GraphStats struct {
+	NodeCount int                    `json:"node_count"`
+	EdgeCount int                    `json:"edge_count"`
+	Metrics   map[string]interface{} `json:"metrics,omitempty"`
+}
+
+// NeighborhoodStats contains neighborhood-specific statistics.
+type NeighborhoodStats struct {
+	TotalNodes int `json:"total_nodes"`
+	TotalEdges int `json:"total_edges"`
+	Depth      int `json:"depth"`
+}
+
+// GraphAnalytics contains comprehensive graph analytics data.
+type GraphAnalytics struct {
+	NodeCount        int                      `json:"node_count"`
+	EdgeCount        int                      `json:"edge_count"`
+	Metrics          map[string]interface{}   `json:"metrics"`
+	TopConnectedNodes []map[string]interface{} `json:"top_connected_nodes,omitempty"`
+}
+
+// EdgeView represents an edge optimized for read operations and API responses.
+type EdgeView struct {
+	ID         string    `json:"id"`
+	SourceID   string    `json:"source_id"`
+	TargetID   string    `json:"target_id"`
+	Strength   float64   `json:"strength"`
+	EdgeType   string    `json:"edge_type"`
+	UserID     string    `json:"user_id"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	Version    int       `json:"version"`
+}
+
+// ToEdgeView converts a domain Edge to an EdgeView.
+func ToEdgeView(edge *domain.Edge) *EdgeView {
+	if edge == nil {
+		return nil
+	}
+	
+	return &EdgeView{
+		ID:        edge.ID.String(),
+		SourceID:  edge.SourceID.String(),
+		TargetID:  edge.TargetID.String(),
+		Strength:  edge.Strength,
+		EdgeType:  string(edge.EdgeType),
+		UserID:    edge.UserID().String(),
+		CreatedAt: edge.CreatedAt,
+		UpdatedAt: edge.UpdatedAt,
+		Version:   edge.Version,
+	}
+}
+
+// ToEdgeViews converts a slice of domain Edges to EdgeViews.
+func ToEdgeViews(edges []*domain.Edge) []*EdgeView {
+	if edges == nil {
+		return nil
+	}
+	
+	views := make([]*EdgeView, len(edges))
+	for i, edge := range edges {
+		views[i] = ToEdgeView(edge)
+	}
+	return views
+}

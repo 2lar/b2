@@ -339,6 +339,19 @@ func NewUnitOfWorkAdapter(
 
 // Begin starts the unit of work and initializes transactional adapters
 func (a *unitOfWorkAdapter) Begin(ctx context.Context) error {
+	// Reset state in case previous transaction wasn't properly cleaned up
+	// This handles warm Lambda containers where the adapter is reused
+	a.isTransactionActive = false
+	a.nodeAdapter = nil
+	a.edgeAdapter = nil
+	a.categoryAdapter = nil
+	a.graphAdapter = nil
+	a.nodeCategoryAdapter = nil
+	
+	// For high TPS scenarios, ensure clean rollback of any previous state
+	// This is safe to call multiple times and handles edge cases
+	a.unitOfWork.Rollback()
+	
 	err := a.unitOfWork.Begin(ctx)
 	if err != nil {
 		return err
@@ -354,14 +367,26 @@ func (a *unitOfWorkAdapter) Begin(ctx context.Context) error {
 // Commit commits the unit of work and cleans up transactional state
 func (a *unitOfWorkAdapter) Commit() error {
 	err := a.unitOfWork.Commit()
+	// Always reset state regardless of error to prevent stuck transactions
 	a.isTransactionActive = false
+	a.nodeAdapter = nil
+	a.edgeAdapter = nil
+	a.categoryAdapter = nil
+	a.graphAdapter = nil
+	a.nodeCategoryAdapter = nil
 	return err
 }
 
 // Rollback rolls back the unit of work and cleans up transactional state
 func (a *unitOfWorkAdapter) Rollback() error {
 	err := a.unitOfWork.Rollback()
+	// Always reset state regardless of error to prevent stuck transactions
 	a.isTransactionActive = false
+	a.nodeAdapter = nil
+	a.edgeAdapter = nil
+	a.categoryAdapter = nil
+	a.graphAdapter = nil
+	a.nodeCategoryAdapter = nil
 	return err
 }
 

@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -77,55 +77,58 @@ type ddbCategoryMemory struct {
 type ddbRepository struct {
 	dbClient *dynamodb.Client
 	config   repository.Config
+	logger   *zap.Logger
 }
 
 // NewRepository creates a new instance of the DynamoDB repository.
-func NewRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.Repository {
+func NewRepository(dbClient *dynamodb.Client, tableName, indexName string, logger *zap.Logger) repository.Repository {
 	config := repository.NewConfig(tableName, indexName)
 	return &ddbRepository{
 		dbClient: dbClient,
 		config:   config,
+		logger:   logger,
 	}
 }
 
 // NewRepositoryWithConfig creates a new instance of the DynamoDB repository with custom config.
-func NewRepositoryWithConfig(dbClient *dynamodb.Client, config repository.Config) repository.Repository {
+func NewRepositoryWithConfig(dbClient *dynamodb.Client, config repository.Config, logger *zap.Logger) repository.Repository {
 	return &ddbRepository{
 		dbClient: dbClient,
 		config:   config.WithDefaults(),
+		logger:   logger,
 	}
 }
 
 // Segregated repository factory functions for dependency injection
 
 // NewNodeRepository creates a new instance implementing NodeRepository interface.
-func NewNodeRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.NodeRepository {
-	return NewRepository(dbClient, tableName, indexName)
+func NewNodeRepository(dbClient *dynamodb.Client, tableName, indexName string, logger *zap.Logger) repository.NodeRepository {
+	return NewRepository(dbClient, tableName, indexName, logger)
 }
 
 // NewEdgeRepository creates a new instance implementing EdgeRepository interface.
-func NewEdgeRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.EdgeRepository {
-	return NewRepository(dbClient, tableName, indexName)
+func NewEdgeRepository(dbClient *dynamodb.Client, tableName, indexName string, logger *zap.Logger) repository.EdgeRepository {
+	return NewRepository(dbClient, tableName, indexName, logger)
 }
 
 // NewKeywordRepository creates a new instance implementing KeywordRepository interface.
-func NewKeywordRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.KeywordRepository {
-	return NewRepository(dbClient, tableName, indexName)
+func NewKeywordRepository(dbClient *dynamodb.Client, tableName, indexName string, logger *zap.Logger) repository.KeywordRepository {
+	return NewRepository(dbClient, tableName, indexName, logger)
 }
 
 // NewTransactionalRepository creates a new instance implementing TransactionalRepository interface.
-func NewTransactionalRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.TransactionalRepository {
-	return NewRepository(dbClient, tableName, indexName)
+func NewTransactionalRepository(dbClient *dynamodb.Client, tableName, indexName string, logger *zap.Logger) repository.TransactionalRepository {
+	return NewRepository(dbClient, tableName, indexName, logger)
 }
 
 // NewCategoryRepository creates a new instance implementing CategoryRepository interface.
-func NewCategoryRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.CategoryRepository {
-	return NewRepository(dbClient, tableName, indexName)
+func NewCategoryRepository(dbClient *dynamodb.Client, tableName, indexName string, logger *zap.Logger) repository.CategoryRepository {
+	return NewRepository(dbClient, tableName, indexName, logger)
 }
 
 // NewGraphRepository creates a new instance implementing GraphRepository interface.
-func NewGraphRepository(dbClient *dynamodb.Client, tableName, indexName string) repository.GraphRepository {
-	return NewRepository(dbClient, tableName, indexName)
+func NewGraphRepository(dbClient *dynamodb.Client, tableName, indexName string, logger *zap.Logger) repository.GraphRepository {
+	return NewRepository(dbClient, tableName, indexName, logger)
 }
 
 
@@ -184,7 +187,10 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *domain.
 
 // CreateNodeWithEdges saves a node, its keywords, and its connections in a single transaction.
 func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error {
-	log.Printf("DEBUG CreateNodeWithEdges: creating node ID=%s with keywords=%v and %d edges", node.ID.String(), node.Keywords().ToSlice(), len(relatedNodeIDs))
+	r.logger.Debug("creating node with edges",
+		zap.String("node_id", node.ID.String()),
+		zap.Strings("keywords", node.Keywords().ToSlice()),
+		zap.Int("edge_count", len(relatedNodeIDs)))
 	
 	// Ensure node starts with version 0
 	// Note: Version is immutable in rich domain model, using Version().Int() for DDB
@@ -200,7 +206,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *domain.No
 		return appErrors.Wrap(err, "failed to marshal node item")
 	}
 	transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: nodeItem}})
-	log.Printf("DEBUG CreateNodeWithEdges: added node item with PK=%s", pk)
+	r.logger.Debug("added node item to transaction", zap.String("pk", pk))
 
 	for _, keyword := range node.Keywords().ToSlice() {
 		gsi1PK := fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID.String(), keyword)
@@ -213,7 +219,10 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *domain.No
 			return appErrors.Wrap(err, "failed to marshal keyword item")
 		}
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: keywordItem}})
-		log.Printf("DEBUG CreateNodeWithEdges: added keyword item for '%s' with GSI1PK=%s, GSI1SK=%s", keyword, gsi1PK, gsi1SK)
+		r.logger.Debug("added keyword item to transaction",
+			zap.String("keyword", keyword),
+			zap.String("gsi1_pk", gsi1PK),
+			zap.String("gsi1_sk", gsi1SK))
 	}
 
 	// Create canonical edges - only one edge per connection
@@ -232,17 +241,21 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *domain.No
 			return appErrors.Wrap(err, "failed to marshal canonical edge item")
 		}
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edgeItem}})
-		log.Printf("DEBUG CreateNodeWithEdges: added edge from %s to %s (canonical: ownerPK=%s)", node.ID.String(), relatedNodeID, ownerPK)
+		r.logger.Debug("added edge to transaction",
+			zap.String("from_node", node.ID.String()),
+			zap.String("to_node", relatedNodeID),
+			zap.String("owner_pk", ownerPK))
 	}
 
-	log.Printf("DEBUG CreateNodeWithEdges: executing transaction with %d items", len(transactItems))
+	r.logger.Debug("executing transaction", zap.Int("item_count", len(transactItems)))
 	_, err = r.dbClient.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: transactItems})
 	if err != nil {
-		log.Printf("ERROR CreateNodeWithEdges: transaction failed: %v", err)
+		r.logger.Error("transaction failed", zap.Error(err))
 		return appErrors.Wrap(err, "transaction to create node with edges failed")
 	}
 	
-	log.Printf("DEBUG CreateNodeWithEdges: transaction completed successfully for node %s", node.ID.String())
+	r.logger.Debug("transaction completed successfully",
+		zap.String("node_id", node.ID.String()))
 	return nil
 }
 
@@ -354,50 +367,69 @@ func (r *ddbRepository) CreateEdge(ctx context.Context, edge *domain.Edge) error
 
 // FindNodesByKeywords uses the GSI to find nodes with matching keywords.
 func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]*domain.Node, error) {
-	log.Printf("DEBUG FindNodesByKeywords: called with userID=%s, keywords=%v", userID, keywords)
+	r.logger.Debug("finding nodes by keywords",
+		zap.String("user_id", userID),
+		zap.Strings("keywords", keywords))
 	
 	nodeIdMap := make(map[string]bool)
 	var nodes []*domain.Node
 	for _, keyword := range keywords {
 		gsiPK := fmt.Sprintf("USER#%s#KEYWORD#%s", userID, keyword)
-		log.Printf("DEBUG FindNodesByKeywords: querying GSI with gsiPK=%s", gsiPK)
+		r.logger.Debug("querying GSI for keyword", zap.String("gsi_pk", gsiPK))
 		
 		result, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
 			TableName: aws.String(r.config.TableName), IndexName: aws.String(r.config.IndexName), KeyConditionExpression: aws.String("GSI1PK = :gsiPK"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{":gsiPK": &types.AttributeValueMemberS{Value: gsiPK}},
 		})
 		if err != nil {
-			log.Printf("ERROR FindNodesByKeywords: failed to query GSI for keyword %s: %v", keyword, err)
+			r.logger.Error("failed to query GSI for keyword",
+				zap.String("keyword", keyword),
+				zap.Error(err))
 			continue
 		}
 		
-		log.Printf("DEBUG FindNodesByKeywords: GSI query for keyword '%s' returned %d items", keyword, len(result.Items))
+		r.logger.Debug("GSI query completed",
+			zap.String("keyword", keyword),
+			zap.Int("items_found", len(result.Items)))
 		
 		for _, item := range result.Items {
 			pkValue := item["PK"].(*types.AttributeValueMemberS).Value
 			nodeID := strings.Split(pkValue, "#")[3]
-			log.Printf("DEBUG FindNodesByKeywords: found nodeID=%s from keyword '%s' (PK=%s)", nodeID, keyword, pkValue)
+			r.logger.Debug("extracted node ID from keyword search",
+				zap.String("node_id", nodeID),
+				zap.String("keyword", keyword),
+				zap.String("pk", pkValue))
 			
 			if _, exists := nodeIdMap[nodeID]; !exists {
 				nodeIdMap[nodeID] = true
 				node, err := r.FindNodeByID(ctx, userID, nodeID)
 				if err != nil {
-					log.Printf("ERROR FindNodesByKeywords: failed to find node %s from keyword search: %v", nodeID, err)
+					r.logger.Error("failed to find node from keyword search",
+						zap.String("node_id", nodeID),
+						zap.Error(err))
 					continue
 				}
 				if node != nil {
-					log.Printf("DEBUG FindNodesByKeywords: successfully retrieved node ID=%s, content='%s'", node.ID.String(), node.Content.String())
+					contentStr := node.Content.String()
+					preview := contentStr
+					if len(contentStr) > 50 {
+						preview = contentStr[:50] + "..."
+					}
+					r.logger.Debug("successfully retrieved node",
+						zap.String("node_id", node.ID.String()),
+						zap.String("content_preview", preview))
 					nodes = append(nodes, node)
 				} else {
-					log.Printf("WARN FindNodesByKeywords: node %s was nil after FindNodeByID", nodeID)
+					r.logger.Warn("node was nil after FindNodeByID", zap.String("node_id", nodeID))
 				}
 			} else {
-				log.Printf("DEBUG FindNodesByKeywords: nodeID=%s already processed, skipping", nodeID)
+				r.logger.Debug("node already processed, skipping", zap.String("node_id", nodeID))
 			}
 		}
 	}
 	
-	log.Printf("DEBUG FindNodesByKeywords: returning %d unique nodes", len(nodes))
+	r.logger.Debug("findNodesByKeywords completed",
+		zap.Int("unique_nodes_found", len(nodes)))
 	return nodes, nil
 }
 
@@ -510,7 +542,7 @@ func (r *ddbRepository) DeleteNode(ctx context.Context, userID, nodeID string) e
 
 // GetAllGraphData retrieves all nodes and edges for a user using optimized parallel queries.
 func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*domain.Graph, error) {
-	log.Println("Starting optimized GetAllGraphData with parallel queries")
+	r.logger.Debug("starting optimized GetAllGraphData with parallel queries")
 
 	g, ctx := errgroup.WithContext(ctx)
 	
@@ -532,11 +564,13 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 
 	// Wait for both operations to complete
 	if err := g.Wait(); err != nil {
-		log.Printf("ERROR: failed to fetch graph data: %v", err)
+		r.logger.Error("failed to fetch graph data", zap.Error(err))
 		return nil, appErrors.Wrap(err, "failed to fetch graph data")
 	}
 
-	log.Printf("Finished optimized GetAllGraphData. Found %d nodes and %d edges.", len(nodes), len(edges))
+	r.logger.Debug("getAllGraphData completed",
+		zap.Int("nodes_found", len(nodes)),
+		zap.Int("edges_found", len(edges)))
 
 	return &domain.Graph{Nodes: nodes, Edges: edges}, nil
 }
@@ -722,16 +756,20 @@ func (r *ddbRepository) clearNodeConnections(ctx context.Context, userID, nodeID
 
 // FindNodes implements the enhanced node querying with NodeQuery.
 func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*domain.Node, error) {
-	log.Printf("DEBUG FindNodes: called with userID=%s, keywords=%v, nodeIDs=%v", query.UserID, query.Keywords, query.NodeIDs)
+	r.logger.Debug("findNodes called",
+		zap.String("user_id", query.UserID),
+		zap.Strings("keywords", query.Keywords),
+		zap.Strings("node_ids", query.NodeIDs))
 	
 	if err := query.Validate(); err != nil {
-		log.Printf("ERROR FindNodes: query validation failed: %v", err)
+		r.logger.Error("query validation failed", zap.Error(err))
 		return nil, err
 	}
 
 	// If specific node IDs are requested, fetch them directly
 	if query.HasNodeIDs() {
-		log.Printf("DEBUG FindNodes: using nodeID-based lookup for %d nodes", len(query.NodeIDs))
+		r.logger.Debug("using nodeID-based lookup",
+			zap.Int("node_count", len(query.NodeIDs)))
 		var nodes []*domain.Node
 		for _, nodeID := range query.NodeIDs {
 			node, err := r.FindNodeByID(ctx, query.UserID, nodeID)
@@ -742,15 +780,19 @@ func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuer
 				nodes = append(nodes, node)
 			}
 		}
-		log.Printf("DEBUG FindNodes: found %d nodes by nodeID lookup", len(nodes))
+		r.logger.Debug("nodeID lookup completed",
+			zap.Int("nodes_found", len(nodes)))
 		return nodes, nil
 	}
 
 	// If keywords are specified, use keyword search
 	if query.HasKeywords() {
-		log.Printf("DEBUG FindNodes: using keyword-based lookup with keywords=%v", query.Keywords)
+		r.logger.Debug("using keyword-based lookup",
+			zap.Strings("keywords", query.Keywords))
 		nodes, err := r.FindNodesByKeywords(ctx, query.UserID, query.Keywords)
-		log.Printf("DEBUG FindNodes: keyword lookup returned %d nodes, error=%v", len(nodes), err)
+		r.logger.Debug("keyword lookup completed",
+			zap.Int("nodes_found", len(nodes)),
+			zap.Error(err))
 		return nodes, err
 	}
 
@@ -1201,8 +1243,10 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
 				// Log nodes with IsLatest=false for debugging
 				if !ddbItem.IsLatest {
-					log.Printf("DEBUG: GetNodesPage found node with IsLatest=false: NodeID=%s, UserID=%s, Version=%d", 
-						ddbItem.NodeID, ddbItem.UserID, ddbItem.Version)
+					r.logger.Debug("found node with IsLatest=false",
+						zap.String("node_id", ddbItem.NodeID),
+						zap.String("user_id", ddbItem.UserID),
+						zap.Int("version", ddbItem.Version))
 				}
 				
 				// Include ALL valid nodes (removing IsLatest filter to match graph behavior)
@@ -1217,7 +1261,7 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 					ddbItem.Version,
 				)
 				if err != nil {
-					log.Printf("Failed to reconstruct node: %v", err)
+					r.logger.Error("failed to reconstruct node", zap.Error(err))
 					continue
 				}
 				nodes = append(nodes, node)
@@ -1229,7 +1273,7 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 				}
 			} else {
 				// Log unmarshaling errors for debugging
-				log.Printf("WARN: GetNodesPage failed to unmarshal node: %v", err)
+				r.logger.Warn("failed to unmarshal node", zap.Error(err))
 			}
 		}
 		
@@ -1238,8 +1282,11 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 		
 		// Log scan continuation for debugging
 		if scanIterations > 1 {
-			log.Printf("INFO: GetNodesPage scan continuation - iteration %d, items found: %d, total collected: %d/%d", 
-				scanIterations, itemsProcessedThisIteration, len(nodes), requestedLimit)
+			r.logger.Debug("scan continuation",
+				zap.Int("iteration", scanIterations),
+				zap.Int("items_processed", itemsProcessedThisIteration),
+				zap.Int("total_collected", len(nodes)),
+				zap.Int("total_requested", requestedLimit))
 		}
 		
 		// Break if no more items available
@@ -1249,16 +1296,19 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 		
 		// Safety check to prevent infinite loops
 		if scanIterations > 10 {
-			log.Printf("WARN: GetNodesPage exceeded maximum scan iterations (%d), returning %d nodes", 
-				scanIterations, len(nodes))
+			r.logger.Warn("exceeded maximum scan iterations",
+				zap.Int("iterations", scanIterations),
+				zap.Int("nodes_returned", len(nodes)))
 			break
 		}
 	}
 	
 	// Final logging
 	if scanIterations > 1 {
-		log.Printf("INFO: GetNodesPage completed with %d scan iterations, returned %d/%d nodes", 
-			scanIterations, len(nodes), requestedLimit)
+		r.logger.Debug("getNodesPage completed",
+			zap.Int("iterations", scanIterations),
+			zap.Int("nodes_returned", len(nodes)),
+			zap.Int("total_requested", requestedLimit))
 	}
 
 	return &repository.NodePage{
@@ -1341,7 +1391,7 @@ func (r *ddbRepository) GetNodesPageOptimized(ctx context.Context, userID string
 					ddbItem.Version,
 				)
 				if err != nil {
-					log.Printf("Failed to reconstruct node: %v", err)
+					r.logger.Error("failed to reconstruct node", zap.Error(err))
 					continue
 				}
 				nodes = append(nodes, node)
@@ -1403,7 +1453,7 @@ func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID 
 					userIDVO, _ := domain.NewUserID(userID)
 					edge, err := domain.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
 					if err != nil {
-						log.Printf("Failed to create edge: %v", err)
+						r.logger.Error("failed to create edge", zap.Error(err))
 						continue
 					}
 					edges = append(edges, edge)
@@ -1495,7 +1545,7 @@ func (r *ddbRepository) GetEdgesPage(ctx context.Context, query repository.EdgeQ
 				userIDVO, _ := domain.NewUserID(query.UserID)
 				edge, err := domain.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
 				if err != nil {
-					log.Printf("Failed to create edge: %v", err)
+					r.logger.Error("failed to create edge", zap.Error(err))
 					continue
 				}
 				edges = append(edges, edge)
@@ -1513,14 +1563,17 @@ func (r *ddbRepository) GetEdgesPage(ctx context.Context, query repository.EdgeQ
 
 // GetGraphDataPaginated retrieves graph data with pagination for large datasets
 func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query repository.GraphQuery, pagination repository.Pagination) (*domain.Graph, string, error) {
-	log.Printf("DEBUG: GetGraphDataPaginated called for userID: %s, includeEdges: %t, limit: %d", query.UserID, query.IncludeEdges, pagination.GetEffectiveLimit())
+	r.logger.Debug("getGraphDataPaginated called",
+		zap.String("user_id", query.UserID),
+		zap.Bool("include_edges", query.IncludeEdges),
+		zap.Int("limit", pagination.GetEffectiveLimit()))
 
 	if err := query.Validate(); err != nil {
-		log.Printf("ERROR: Query validation failed: %v", err)
+		r.logger.Error("query validation failed", zap.Error(err))
 		return nil, "", err
 	}
 	if err := pagination.Validate(); err != nil {
-		log.Printf("ERROR: Pagination validation failed: %v", err)
+		r.logger.Error("pagination validation failed", zap.Error(err))
 		return nil, "", err
 	}
 
@@ -1548,7 +1601,9 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 		Limit:                     aws.Int32(int32(pagination.GetEffectiveLimit())),
 	}
 
-	log.Printf("DEBUG: DynamoDB scan input - TableName: %s, filtering for USER#%s#NODE# prefix", r.config.TableName, query.UserID)
+	r.logger.Debug("executing DynamoDB scan",
+		zap.String("table_name", r.config.TableName),
+		zap.String("user_id", query.UserID))
 
 	// Handle cursor-based pagination
 	if pagination.HasCursor() {
@@ -1560,11 +1615,13 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 
 	result, err := r.dbClient.Scan(ctx, scanInput)
 	if err != nil {
-		log.Printf("ERROR: DynamoDB query failed: %v", err)
+		r.logger.Error("DynamoDB query failed", zap.Error(err))
 		return nil, "", appErrors.Wrap(err, "failed to query graph data")
 	}
 
-	log.Printf("DEBUG: DynamoDB query successful - returned %d items, LastEvaluatedKey: %v", len(result.Items), result.LastEvaluatedKey != nil)
+	r.logger.Debug("DynamoDB query successful",
+		zap.Int("items_returned", len(result.Items)),
+		zap.Bool("has_more_data", result.LastEvaluatedKey != nil))
 
 	var nodes []*domain.Node
 	var edges []*domain.Edge
@@ -1577,7 +1634,7 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 	for _, item := range result.Items {
 		skValueAttr, ok := item["SK"].(*types.AttributeValueMemberS)
 		if !ok {
-			log.Printf("WARN: Item missing SK attribute: %v", item)
+			r.logger.Warn("item missing SK attribute", zap.Any("item", item))
 			skippedItems++
 			continue
 		}
@@ -1586,14 +1643,18 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 		if strings.HasPrefix(skValue, "METADATA#") {
 			var ddbItem ddbNode
 			if err := attributevalue.UnmarshalMap(item, &ddbItem); err != nil {
-				log.Printf("ERROR: Failed to unmarshal node item: %v, item: %v", err, item)
+				r.logger.Error("failed to unmarshal node item",
+					zap.Error(err),
+					zap.Any("item", item))
 				skippedItems++
 				continue
 			}
 			if ddbItem.IsLatest {
 				createdAt, parseErr := time.Parse(time.RFC3339, ddbItem.Timestamp)
 				if parseErr != nil {
-					log.Printf("WARN: Failed to parse timestamp %s: %v", ddbItem.Timestamp, parseErr)
+					r.logger.Warn("failed to parse timestamp",
+						zap.String("timestamp", ddbItem.Timestamp),
+						zap.Error(parseErr))
 					createdAt = time.Now() // fallback
 				}
 				node, err := domain.ReconstructNodeFromPrimitives(
@@ -1606,7 +1667,7 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 					ddbItem.Version,
 				)
 				if err != nil {
-					log.Printf("Failed to reconstruct node: %v", err)
+					r.logger.Error("failed to reconstruct node", zap.Error(err))
 					continue
 				}
 				nodes = append(nodes, node)
@@ -1615,7 +1676,9 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 		} else if strings.HasPrefix(skValue, "EDGE#") && query.IncludeEdges {
 			var ddbItem ddbEdge
 			if err := attributevalue.UnmarshalMap(item, &ddbItem); err != nil {
-				log.Printf("ERROR: Failed to unmarshal edge item: %v, item: %v", err, item)
+				r.logger.Error("failed to unmarshal edge item",
+					zap.Error(err),
+					zap.Any("item", item))
 				skippedItems++
 				continue
 			}
@@ -1638,23 +1701,29 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 					userIDVO, _ := domain.NewUserID(query.UserID)
 					edge, err := domain.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
 					if err != nil {
-						log.Printf("Failed to create edge: %v", err)
+						r.logger.Error("failed to create edge", zap.Error(err))
 						continue
 					}
 					edges = append(edges, edge)
 					edgeCount++
 				}
 			} else {
-				log.Printf("WARN: Invalid PK format for edge: %s", ddbItem.PK)
+				r.logger.Warn("invalid PK format for edge", zap.String("pk", ddbItem.PK))
 			}
 		}
 	}
 
-	log.Printf("DEBUG: Processed data - nodes: %d, edges: %d, skipped items: %d", nodeCount, edgeCount, skippedItems)
+	r.logger.Debug("processed data",
+		zap.Int("nodes", nodeCount),
+		zap.Int("edges", edgeCount),
+		zap.Int("skipped_items", skippedItems))
 
 	nextCursor := repository.EncodeCursor(result.LastEvaluatedKey)
 
-	log.Printf("DEBUG: GetGraphDataPaginated completed - returning %d nodes, %d edges, nextCursor: %s", len(nodes), len(edges), nextCursor)
+	r.logger.Debug("getGraphDataPaginated completed",
+		zap.Int("nodes_returned", len(nodes)),
+		zap.Int("edges_returned", len(edges)),
+		zap.String("next_cursor", nextCursor))
 
 	return &domain.Graph{
 		Nodes: nodes,
