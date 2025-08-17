@@ -19,8 +19,6 @@ import (
 	"brain2-backend/internal/handlers"
 	"brain2-backend/internal/infrastructure/decorators"
 	"brain2-backend/internal/repository"
-	categoryService "brain2-backend/internal/service/category"
-	memoryService "brain2-backend/internal/service/memory"
 
 	aws "github.com/aws/aws-sdk-go-v2/aws"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
@@ -94,18 +92,11 @@ var ApplicationProviders = wire.NewSet(
 	provideNodeQueryService,
 	provideCategoryQueryService,
 	
-	// Legacy Services (for migration)
-	provideLegacyCategoryService,
-	
-	// Service Adapters for gradual migration
-	provideMemoryServiceAdapter, // This provides memoryService.Service
 )
 
-// InterfaceProviders provides interface adapters (handlers, middleware).
+// InterfaceProviders provides interface layer components (handlers, middleware).
 // This is the outermost layer that adapts external requests to application services.
 var InterfaceProviders = wire.NewSet(
-	provideMemoryHandler,
-	provideCategoryHandler,
 	provideRouter,
 )
 
@@ -340,7 +331,7 @@ func provideNodeService(
 	analyzer *domainServices.ConnectionAnalyzer,
 	idempotencyStore repository.IdempotencyStore,
 ) *services.NodeService {
-	// No more adapters - use repositories directly
+	// Use repositories directly
 	return services.NewNodeService(
 		nodeRepo,
 		edgeRepo,
@@ -368,9 +359,9 @@ func provideNodeQueryService(
 	graphRepo repository.GraphRepository,
 	cache decorators.Cache,
 ) *queries.NodeQueryService {
-	// Create reader adapters
-	nodeReader := NewNodeReaderBridge(nodeRepo)
-	edgeReader := NewEdgeReaderBridge(edgeRepo)
+	// Use repositories directly as they implement the reader interfaces
+	nodeReader := nodeRepo.(repository.NodeReader)
+	edgeReader := edgeRepo.(repository.EdgeReader)
 	
 	// Convert cache to queries.Cache interface
 	var queryCache queries.Cache
@@ -393,9 +384,9 @@ func provideCategoryQueryService(
 	cache decorators.Cache,
 	logger *zap.Logger,
 ) *queries.CategoryQueryService {
-	// Create reader bridges using the new persistence bridges
-	categoryReader := NewCategoryReaderBridge(categoryRepo)
-	nodeReader := NewNodeReaderBridge(nodeRepo)
+	// Use repositories directly as they implement the reader interfaces
+	categoryReader := categoryRepo.(repository.CategoryReader)
+	nodeReader := nodeRepo.(repository.NodeReader)
 	
 	// Convert cache to queries.Cache interface
 	var queryCache queries.Cache
@@ -408,7 +399,6 @@ func provideCategoryQueryService(
 		nodeReader,
 		logger,
 		queryCache,
-		nil, // AI service
 	)
 }
 
@@ -416,84 +406,14 @@ func provideCategoryQueryService(
 // APPLICATION PROVIDERS - Legacy Services
 // ============================================================================
 
-// provideLegacyMemoryService creates the legacy memory service.
-func provideLegacyMemoryService(
-	nodeRepo repository.NodeRepository,
-	edgeRepo repository.EdgeRepository,
-	keywordRepo repository.KeywordRepository,
-	transactionalRepo repository.TransactionalRepository,
-	graphRepo repository.GraphRepository,
-	idempotencyStore repository.IdempotencyStore,
-) memoryService.Service {
-	return memoryService.NewServiceWithIdempotency(
-		nodeRepo,
-		edgeRepo,
-		keywordRepo,
-		transactionalRepo,
-		graphRepo,
-		idempotencyStore,
-	)
-}
 
-// provideLegacyCategoryService creates the legacy category service.
-func provideLegacyCategoryService(
-	repo repository.Repository,
-	cfg *config.Config,
-) categoryService.Service {
-	return categoryService.NewEnhancedService(repo, nil, cfg)
-}
 
-// provideMemoryServiceAdapter creates an adapter for gradual migration.
-func provideMemoryServiceAdapter(
-	nodeService *services.NodeService,
-	nodeQueryService *queries.NodeQueryService,
-	nodeRepo repository.NodeRepository,
-	edgeRepo repository.EdgeRepository,
-	keywordRepo repository.KeywordRepository,
-	transactionalRepo repository.TransactionalRepository,
-	graphRepo repository.GraphRepository,
-	idempotencyStore repository.IdempotencyStore,
-) memoryService.Service {
-	// Create legacy service
-	legacyService := memoryService.NewServiceWithIdempotency(
-		nodeRepo,
-		edgeRepo,
-		keywordRepo,
-		transactionalRepo,
-		graphRepo,
-		idempotencyStore,
-	)
-	
-	if nodeService != nil && nodeQueryService != nil {
-		return NewMemoryServiceAdapter(
-			nodeService,
-			nodeQueryService,
-			legacyService,
-		)
-	}
-	
-	return legacyService
-}
 
 // ============================================================================
 // INTERFACE PROVIDERS - Handlers
 // ============================================================================
 
-// provideMemoryHandler creates the HTTP handler for memory operations.
-func provideMemoryHandler(
-	service memoryService.Service,
-	eventBridge *awsEventbridge.Client,
-	container ColdStartInfoProvider,
-) *handlers.MemoryHandler {
-	return handlers.NewMemoryHandlerLegacy(service, eventBridge, container)
-}
 
-// provideCategoryHandler creates the HTTP handler for category operations.
-func provideCategoryHandler(
-	service categoryService.Service,
-) *handlers.CategoryHandler {
-	return handlers.NewCategoryHandlerLegacy(service)
-}
 
 
 // provideRouter creates and configures the HTTP router.

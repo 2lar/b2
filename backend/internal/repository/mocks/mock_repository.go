@@ -998,7 +998,7 @@ func (m *MockRepository) GetConnectedComponents(ctx context.Context, userID stri
 	return []domain.Graph{}, nil
 }
 
-// Adapter-compatible methods for CQRS CategoryRepository
+// CQRS-compatible methods for CategoryRepository
 
 // Save creates or updates a category (alias for CreateCategory)
 func (m *MockRepository) Save(ctx context.Context, category *domain.Category) error {

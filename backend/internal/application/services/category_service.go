@@ -14,28 +14,23 @@ import (
 
 	"brain2-backend/internal/application/commands"
 	"brain2-backend/internal/application/dto"
-	categoryService "brain2-backend/internal/service/category"
 )
+
 
 // CategoryService implements the Application Service pattern for category operations
 // using CQRS command handlers for write operations.
 type CategoryService struct {
 	// CQRS command handler for category operations
 	commandHandler *commands.CategoryCommandHandler
-	
-	// Optional AI service with fallback
-	aiService categoryService.AIService // Optional AI service for categorization
 }
 
 // NewCategoryService creates a new CategoryService with all required dependencies.
 // The AI service is optional and the service will work without it.
 func NewCategoryService(
 	commandHandler *commands.CategoryCommandHandler,
-	aiService categoryService.AIService, // Can be nil
 ) *CategoryService {
 	return &CategoryService{
 		commandHandler: commandHandler,
-		aiService:      aiService,
 	}
 }
 
@@ -61,13 +56,10 @@ func (s *CategoryService) DeleteCategory(ctx context.Context, cmd *commands.Dele
 // IsAIServiceAvailable checks if the AI service is available for use.
 // This method demonstrates the fallback pattern - always check availability before using AI.
 func (s *CategoryService) IsAIServiceAvailable() bool {
-	return s.aiService != nil
+	return false // AI service integration removed
 }
 
 // GetAIServiceStatus returns information about the AI service status.
 func (s *CategoryService) GetAIServiceStatus() string {
-	if s.aiService == nil {
-		return "AI service not configured - using domain-based fallback"
-	}
-	return "AI service available"
+	return "AI service not configured - using domain-based fallback"
 }

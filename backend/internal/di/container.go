@@ -25,8 +25,6 @@ import (
 	"brain2-backend/internal/infrastructure/tracing"
 	"brain2-backend/internal/infrastructure/transactions"
 	"brain2-backend/internal/repository"
-	categoryService "brain2-backend/internal/service/category"
-	memoryService "brain2-backend/internal/service/memory"
 
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -77,13 +75,11 @@ type Container struct {
 	TracerProvider   *tracing.TracerProvider
 	Store            persistence.Store
 
-	// Legacy Service Layer (Phase 2 - will be deprecated)
-	MemoryService   memoryService.Service
-	CategoryService categoryService.Service
 	
 	// Phase 3: Application Service Layer (CQRS)
 	NodeAppService       *services.NodeService
 	CategoryAppService   *services.CategoryService
+	CleanupService       *services.CleanupService
 	NodeQueryService     *queries.NodeQueryService
 	CategoryQueryService *queries.CategoryQueryService
 	GraphQueryService    *queries.GraphQueryService
@@ -226,12 +222,13 @@ func (c *Container) initializeRepository() error {
 	c.RepositoryFactory = repository.NewRepositoryFactory(factoryConfig)
 
 	// Initialize base repositories (without decorators)
-	baseNodeRepo := dynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
-	baseEdgeRepo := dynamodb.NewEdgeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
-	baseKeywordRepo := dynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	baseNodeRepo := infradynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	baseEdgeRepo := infradynamodb.NewEdgeRepositoryCQRS(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	baseKeywordRepo := infradynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	// Use old dynamodb package for repositories not yet migrated
 	baseTransactionalRepo := dynamodb.NewTransactionalRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
-	baseCategoryRepo := dynamodb.NewCategoryRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
-	baseGraphRepo := dynamodb.NewGraphRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	baseCategoryRepo := infradynamodb.NewCategoryRepositoryCQRS(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	baseGraphRepo := infradynamodb.NewGraphRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 
 	// Phase 2: Apply decorators using the factory
 	c.NodeRepository = c.RepositoryFactory.CreateNodeRepository(baseNodeRepo, c.Logger, c.Cache, c.MetricsCollector)
@@ -248,8 +245,12 @@ func (c *Container) initializeRepository() error {
 	// Initialize composed repository for backward compatibility
 	c.Repository = dynamodb.NewRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 
-	// Initialize idempotency store with 24-hour TTL
-	c.IdempotencyStore = dynamodb.NewIdempotencyStore(c.DynamoDBClient, c.Config.TableName, 24*time.Hour)
+	// Initialize idempotency store with configured TTL
+	// TTL can be configured via:
+	//   - IDEMPOTENCY_TTL environment variable (e.g., "24h", "7d", "1h")
+	//   - infrastructure.idempotency_ttl in config files
+	// Default: 24h, Valid range: 1h to 168h (7 days)
+	c.IdempotencyStore = dynamodb.NewIdempotencyStore(c.DynamoDBClient, c.Config.TableName, c.Config.Infrastructure.IdempotencyTTL)
 
 	// Phase 2: Initialize advanced repository components
 	if err := c.initializeAdvancedRepositoryComponents(); err != nil {
@@ -319,17 +320,25 @@ func (c *Container) initializePhase3Services() {
 
 	// Initialize domain services first
 	c.ConnectionAnalyzer = domainServices.NewConnectionAnalyzer(0.3, 5, 0.2) // threshold, max connections, recency weight
-	c.EventBus = domain.NewMockEventBus() // Use mock for now, can be replaced with real implementation
 	
 	// Initialize REAL implementations instead of mocks
 	transactionProvider := transactions.NewDynamoDBTransactionProvider(c.DynamoDBClient)
 	
-	// Get event bus name from config, default to "default" if not set
-	eventBusName := "default"
+	// Get event bus name from config or environment, default to "B2EventBus" to match CDK
+	eventBusName := "B2EventBus" // Match the CDK-created event bus name
 	if c.Config != nil && c.Config.Events.EventBusName != "" {
 		eventBusName = c.Config.Events.EventBusName
 	}
+	
+	// Add debug logging for event bus configuration
+	log.Printf("DEBUG: Configuring EventBridge with bus name: %s, source: brain2-backend", eventBusName)
+	
 	eventPublisher := events.NewEventBridgePublisher(c.EventBridgeClient, eventBusName, "brain2-backend")
+	
+	// Use the REAL EventBridge publisher through the adapter
+	c.EventBus = events.NewEventBusAdapter(eventPublisher)
+	
+	log.Printf("DEBUG: EventBridge publisher configured successfully")
 	
 	// Create a real transactional repository factory using the implementation below
 	repositoryFactory := NewTransactionalRepositoryFactory(
@@ -352,7 +361,7 @@ func (c *Container) initializePhase3Services() {
 	c.UnitOfWork = repository.NewUnitOfWork(transactionProvider, eventPublisher, repositoryFactory)
 	
 	// Initialize Application Services (only NodeService for now)
-	// No more adapters - use repositories directly
+	// Use repositories directly
 	c.NodeAppService = services.NewNodeService(
 		c.NodeRepository,
 		c.EdgeRepository,
@@ -373,25 +382,20 @@ func (c *Container) initializePhase3Services() {
 		queryCache = nil // NodeQueryService handles nil cache gracefully
 	}
 	
-	// Create reader adapters for CQRS query services
-	nodeReader := NewNodeReaderBridge(c.NodeRepository)
-	edgeReader := NewEdgeReaderBridge(c.EdgeRepository)
-	
+	// Use repositories directly - they implement the Reader/Writer interfaces
 	c.NodeQueryService = queries.NewNodeQueryService(
-		nodeReader,
-		edgeReader,
+		c.NodeRepository.(repository.NodeReader),
+		c.EdgeRepository.(repository.EdgeReader),
 		c.GraphRepository,
 		queryCache,
 	)
 	
 	// Initialize CategoryQueryService with proper dependencies
-	categoryReader := NewCategoryReaderBridge(c.CategoryRepository)
 	c.CategoryQueryService = queries.NewCategoryQueryService(
-		categoryReader,
-		nodeReader,
+		c.CategoryRepository.(repository.CategoryReader),
+		c.NodeRepository.(repository.NodeReader),
 		c.Logger,
 		queryCache,
-		nil, // aiService - optional
 	)
 	
 	// Initialize GraphQueryService with Store implementation
@@ -410,7 +414,21 @@ func (c *Container) initializePhase3Services() {
 	)
 	c.CategoryAppService = services.NewCategoryService(
 		categoryCommandHandler,
-		nil, // aiService - optional
+	)
+	
+	// Initialize CleanupService for async resource cleanup
+	// Get EdgeWriter from the edge repository if it implements the interface
+	var edgeWriter repository.EdgeWriter
+	if writer, ok := c.EdgeRepository.(repository.EdgeWriter); ok {
+		edgeWriter = writer
+	}
+	
+	c.CleanupService = services.NewCleanupService(
+		c.NodeRepository,
+		c.EdgeRepository,
+		edgeWriter,
+		c.IdempotencyStore,
+		c.UnitOfWorkFactory,
 	)
 	
 	log.Printf("Phase 3 Application Services initialized in %v", time.Since(startTime))
@@ -418,36 +436,11 @@ func (c *Container) initializePhase3Services() {
 
 // initializeServices sets up the service layer.
 func (c *Container) initializeServicesLegacy() {
-	// First, initialize the legacy service for operations not yet migrated
-	legacyMemoryService := memoryService.NewServiceWithIdempotency(
-		c.NodeRepository,
-		c.EdgeRepository,
-		c.KeywordRepository,
-		c.TransactionalRepository,
-		c.GraphRepository,
-		c.IdempotencyStore,
-	)
-	
 	// Initialize Phase 3 CQRS services
 	c.initializePhase3Services()
 	
-	// Create the migration adapter that uses new services where available
-	if c.NodeAppService != nil && c.NodeQueryService != nil {
-		// Use the adapter for gradual migration
-		c.MemoryService = NewMemoryServiceAdapter(
-			c.NodeAppService,
-			c.NodeQueryService,
-			legacyMemoryService,
-		)
-		log.Println("Using CQRS-based MemoryService with migration adapter")
-	} else {
-		// Fallback to legacy service if CQRS services aren't ready
-		c.MemoryService = legacyMemoryService
-		log.Println("Using legacy MemoryService")
-	}
-	
-	// Initialize enhanced category service with repository
-	c.CategoryService = categoryService.NewEnhancedService(c.Repository, nil, c.Config) // Pass config for feature flags
+	// Legacy services have been removed - using CQRS architecture directly
+	log.Println("Using CQRS services directly - legacy services removed")
 }
 
 // initializeHandlers sets up the handler layer.
@@ -463,9 +456,7 @@ func (c *Container) initializeHandlersLegacy() {
 		)
 		log.Println("MemoryHandler initialized with CQRS services")
 	} else {
-		// Keep using legacy service for now
-		c.MemoryHandler = handlers.NewMemoryHandlerLegacy(c.MemoryService, c.EventBridgeClient, c)
-		log.Println("MemoryHandler initialized with legacy service (CQRS services not ready)")
+		log.Println("ERROR: CQRS services not available for MemoryHandler")
 	}
 	
 	if c.CategoryAppService != nil && c.CategoryQueryService != nil {
@@ -475,9 +466,7 @@ func (c *Container) initializeHandlersLegacy() {
 		)
 		log.Println("CategoryHandler initialized with CQRS services")
 	} else {
-		// Keep using legacy service for now
-		c.CategoryHandler = handlers.NewCategoryHandlerLegacy(c.CategoryService)
-		log.Println("CategoryHandler initialized with legacy service (CQRS services not ready)")
+		log.Println("ERROR: CQRS services not available for CategoryHandler")
 	}
 	
 	c.HealthHandler = handlers.NewHealthHandler()
@@ -647,6 +636,11 @@ func (c *Container) IsPostColdStartRequest() bool {
 	return timeSince < 30*time.Second && !c.IsColdStart
 }
 
+// GetCleanupService returns the cleanup service instance
+func (c *Container) GetCleanupService() *services.CleanupService {
+	return c.CleanupService
+}
+
 // Validate ensures all critical dependencies are properly initialized.
 func (c *Container) Validate() error {
 	if c.Config == nil {
@@ -687,12 +681,6 @@ func (c *Container) Validate() error {
 		return fmt.Errorf("idempotency store not initialized")
 	}
 	
-	if c.MemoryService == nil {
-		return fmt.Errorf("memory service not initialized")
-	}
-	if c.CategoryService == nil {
-		return fmt.Errorf("category service not initialized")
-	}
 	if c.MemoryHandler == nil {
 		return fmt.Errorf("memory handler not initialized")
 	}

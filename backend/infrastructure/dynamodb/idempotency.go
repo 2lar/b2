@@ -34,6 +34,20 @@ type ddbIdempotencyStore struct {
 }
 
 // NewIdempotencyStore creates a new DynamoDB-based idempotency store
+// 
+// The TTL parameter controls how long idempotency records are retained:
+//   - Records are automatically deleted by DynamoDB after the TTL expires
+//   - After expiration, identical requests will be processed as new requests
+//   - TTL is configured via infrastructure.idempotency_ttl in config or IDEMPOTENCY_TTL env var
+//   - Default: 24 hours if not specified
+//
+// TTL considerations:
+//   - Shorter TTL (1-6h): Reduces storage costs, suitable for high-volume transient operations
+//   - Medium TTL (24h): Good balance for most use cases
+//   - Longer TTL (2-7d): Better duplicate prevention for critical operations
+//
+// Note: DynamoDB TTL deletion happens within 48 hours of expiration, but expired
+// items are filtered from queries immediately after their TTL timestamp passes.
 func NewIdempotencyStore(dbClient *dynamodb.Client, tableName string, ttl time.Duration) repository.IdempotencyStore {
 	if ttl == 0 {
 		ttl = 24 * time.Hour // Default to 24 hours
@@ -57,6 +71,9 @@ func (s *ddbIdempotencyStore) Store(ctx context.Context, key repository.Idempote
 	pk := fmt.Sprintf("IDEMPOTENCY#%s#%s", key.UserID, key.Operation)
 	sk := key.Hash
 	
+	// Calculate TTL: current time + configured TTL duration
+	// This TTL value is used by DynamoDB to automatically delete the record
+	// The TTL duration is configurable via IDEMPOTENCY_TTL env var or config file
 	expirationTime := time.Now().Add(s.ttl)
 	
 	item := ddbIdempotencyItem{
@@ -64,7 +81,7 @@ func (s *ddbIdempotencyStore) Store(ctx context.Context, key repository.Idempote
 		SK:        sk,
 		Result:    string(resultBytes),
 		CreatedAt: key.CreatedAt.Format(time.RFC3339),
-		TTL:       expirationTime.Unix(),
+		TTL:       expirationTime.Unix(),  // Unix timestamp when record expires
 	}
 
 	itemMap, err := attributevalue.MarshalMap(item)

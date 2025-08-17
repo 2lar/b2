@@ -1835,7 +1835,7 @@ func (repo *ddbRepository) FindCategoriesByLevel(ctx context.Context, userID str
 	return []domain.Category{}, nil
 }
 
-// Adapter-compatible methods for CQRS
+// CQRS-compatible methods
 
 // Save creates or updates a category (alias for CreateCategory)
 func (repo *ddbRepository) Save(ctx context.Context, category *domain.Category) error {

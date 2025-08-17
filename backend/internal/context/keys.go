@@ -22,3 +22,8 @@ func GetUserIDFromContext(ctx context.Context) (string, bool) {
 	userID, ok := userIDVal.(string)
 	return userID, ok && userID != ""
 }
+
+// WithUserID adds userID to context
+func WithUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, UserIDKey, userID)
+}

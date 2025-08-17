@@ -60,22 +60,6 @@ func NewMemoryHandler(
 	}
 }
 
-// NewMemoryHandlerLegacy creates a new memory handler with legacy service (temporary).
-func NewMemoryHandlerLegacy(
-	legacyService interface{}, // Temporary interface{} to avoid import cycles
-	eventBridgeClient *eventbridge.Client,
-	container ColdStartContainer,
-) *MemoryHandler {
-	// For now, return a handler that will fail gracefully
-	// This is a temporary solution until we complete the CQRS migration
-	return &MemoryHandler{
-		nodeService:       nil,
-		nodeQueryService:  nil, 
-		graphQueryService: nil,
-		eventBridgeClient: eventBridgeClient,
-		container:         container,
-	}
-}
 
 // CreateNode handles POST /api/nodes
 func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {

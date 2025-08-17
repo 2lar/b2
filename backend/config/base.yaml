@@ -68,6 +68,20 @@ infrastructure:
     open_duration: 30s         # How long to stay open
     half_open_requests: 3      # Requests to test in half-open state
   
+  # Idempotency TTL Configuration
+  # Controls how long idempotency records are retained in DynamoDB
+  # These records prevent duplicate processing of identical requests
+  # After expiration, the same request will be treated as new
+  # 
+  # Valid formats: "1h", "24h", "7d", "168h"
+  # Range: 1h (minimum) to 168h/7d (maximum)
+  # 
+  # To override via environment variable: IDEMPOTENCY_TTL=48h
+  # 
+  # Considerations when setting TTL:
+  # - Shorter TTL (1-6h): Good for high-volume APIs where duplicate requests are unlikely after a few hours
+  # - Medium TTL (24h): Default, balances storage costs with duplicate prevention
+  # - Longer TTL (2-7d): Good for critical operations where duplicates must be prevented for days
   idempotency_ttl: 24h
   health_check_interval: 30s
   graceful_shutdown_delay: 5s

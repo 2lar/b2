@@ -52,12 +52,13 @@ Configuration is loaded in this order (later sources override earlier ones):
 
 Any configuration value can be overridden using environment variables:
 
-| Config Path | Environment Variable |
-|------------|---------------------|
-| `server.port` | `SERVER_PORT` |
-| `database.table_name` | `DATABASE_TABLE_NAME` |
-| `features.enable_metrics` | `FEATURES_ENABLE_METRICS` |
-| `security.jwt_secret` | `SECURITY_JWT_SECRET` |
+| Config Path | Environment Variable | Description |
+|------------|---------------------|-------------|
+| `server.port` | `SERVER_PORT` | HTTP server port |
+| `database.table_name` | `DATABASE_TABLE_NAME` | DynamoDB table name |
+| `features.enable_metrics` | `FEATURES_ENABLE_METRICS` | Enable metrics collection |
+| `security.jwt_secret` | `SECURITY_JWT_SECRET` | JWT signing secret |
+| `infrastructure.idempotency_ttl` | `IDEMPOTENCY_TTL` | Idempotency record retention (e.g., "24h", "7d") |
 
 ### Naming Convention
 - Replace dots (.) with underscores (_)
@@ -107,6 +108,53 @@ Provide actual values via:
 - `security.secure_headers: true`
 - `features.enable_metrics: true`
 - `features.enable_circuit_breaker: true`
+
+## ⏰ Idempotency TTL Configuration
+
+The idempotency TTL controls how long duplicate request prevention records are retained in DynamoDB.
+
+### Configuration Options
+
+1. **Via Configuration File** (base.yaml, development.yaml, etc.):
+   ```yaml
+   infrastructure:
+     idempotency_ttl: 24h  # Default: 24 hours
+   ```
+
+2. **Via Environment Variable**:
+   ```bash
+   export IDEMPOTENCY_TTL=7d    # 7 days
+   export IDEMPOTENCY_TTL=1h    # 1 hour
+   export IDEMPOTENCY_TTL=48h   # 48 hours
+   ```
+
+### TTL Guidelines
+
+| Duration | Use Case | Storage Impact |
+|----------|----------|----------------|
+| **1-6 hours** | High-volume transient operations, rapid request processing | Minimal storage, lower costs |
+| **24 hours** (default) | Standard APIs, balanced duplicate prevention | Moderate storage |
+| **2-7 days** | Critical operations, payment processing, important state changes | Higher storage, better protection |
+
+### Important Notes
+
+- **Valid Range**: 1h (minimum) to 168h/7d (maximum)
+- **DynamoDB TTL**: Records expire at the specified time but may persist up to 48 hours before deletion
+- **Query Behavior**: Expired records are filtered from queries immediately after TTL passes
+- **Cost Consideration**: Longer TTLs increase storage costs but provide better duplicate prevention
+
+### Example Configurations
+
+```bash
+# Short TTL for high-volume API
+IDEMPOTENCY_TTL=2h
+
+# Standard daily operations
+IDEMPOTENCY_TTL=24h
+
+# Critical financial transactions
+IDEMPOTENCY_TTL=7d
+```
 
 ## 📝 Configuration Examples
 

@@ -138,6 +138,14 @@ type Domain struct {
 type Infrastructure struct {
 	RetryConfig           RetryConfig           `yaml:"retry" json:"retry" validate:"dive"`
 	CircuitBreakerConfig  CircuitBreakerConfig  `yaml:"circuit_breaker" json:"circuit_breaker" validate:"dive"`
+	// IdempotencyTTL controls how long idempotency records are retained in DynamoDB.
+	// These records prevent duplicate processing of requests with the same idempotency key.
+	// After this duration, records expire via DynamoDB TTL and identical requests will be processed as new.
+	// Can be configured via:
+	//   - Environment variable: IDEMPOTENCY_TTL (e.g., "24h", "7d", "1h")
+	//   - Config file: infrastructure.idempotency_ttl
+	// Default: 24h (24 hours)
+	// Valid range: 1h to 168h (1 hour to 7 days)
 	IdempotencyTTL        time.Duration         `yaml:"idempotency_ttl" json:"idempotency_ttl" validate:"min=1h,max=168h"`
 	HealthCheckInterval   time.Duration         `yaml:"health_check_interval" json:"health_check_interval" validate:"min=10s,max=5m"`
 	GracefulShutdownDelay time.Duration         `yaml:"graceful_shutdown_delay" json:"graceful_shutdown_delay" validate:"min=0,max=60s"`

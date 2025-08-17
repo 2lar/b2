@@ -33,15 +33,6 @@ func NewCategoryHandler(
 	}
 }
 
-// NewCategoryHandlerLegacy creates a new category handler with legacy service (temporary).
-func NewCategoryHandlerLegacy(legacyService interface{}) *CategoryHandler {
-	// For now, return a handler that will fail gracefully
-	// This is a temporary solution until we complete the CQRS migration
-	return &CategoryHandler{
-		categoryService:      nil,
-		categoryQueryService: nil,
-	}
-}
 
 // ListCategories handles GET /api/categories
 func (h *CategoryHandler) ListCategories(w http.ResponseWriter, r *http.Request) {

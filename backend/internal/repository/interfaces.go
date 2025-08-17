@@ -73,7 +73,7 @@ type CategoryRepository interface {
 	FindCategories(ctx context.Context, query CategoryQuery) ([]domain.Category, error)
 	FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]domain.Category, error)
 	
-	// Adapter-compatible methods for CQRS
+	// CQRS-compatible methods
 	Save(ctx context.Context, category *domain.Category) error
 	FindByID(ctx context.Context, userID, categoryID string) (*domain.Category, error)
 	Delete(ctx context.Context, userID, categoryID string) error

@@ -10,14 +10,7 @@ import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as path from 'path';
 import { EnvironmentConfig } from '../config/environments';
-import { GoLambdaFunction, NodeLambdaFunction } from '../constructs/lambda-function';
 import { Brain2WebSocketApi } from '../constructs/websocket-api';
-import { 
-  RESOURCE_NAMES, 
-  LAMBDA_CONFIG, 
-  EVENT_PATTERNS,
-  getResourceName 
-} from '../config/constants';
 
 export interface ComputeStackProps extends StackProps {
   config: EnvironmentConfig;
@@ -28,6 +21,7 @@ export interface ComputeStackProps extends StackProps {
 export class ComputeStack extends Stack {
   public readonly backendLambda: lambda.Function;
   public readonly connectNodeLambda: lambda.Function;
+  public readonly cleanupLambda: lambda.Function;
   public readonly wsConnectLambda: lambda.Function;
   public readonly wsDisconnectLambda: lambda.Function;
   public readonly wsSendMessageLambda: lambda.Function;
@@ -87,6 +81,22 @@ export class ComputeStack extends Stack {
       },
     });
 
+    // Cleanup Lambda (Go) - Async cleanup of node residuals
+    this.cleanupLambda = new lambda.Function(this, 'CleanupLambda', {
+      runtime: lambda.Runtime.PROVIDED_AL2,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/cleanup-handler')),
+      handler: 'bootstrap',
+      memorySize: 256,  // More memory for batch operations
+      timeout: Duration.seconds(60),  // Longer timeout for cleanup operations
+      environment: {
+        TABLE_NAME: memoryTable.tableName,
+        INDEX_NAME: 'KeywordIndex',
+        EVENT_BUS_NAME: this.eventBus.eventBusName,
+      },
+      // Note: No reserved concurrency - Lambda will auto-scale as needed
+      // DynamoDB's built-in throttling will naturally limit request rate
+    });
+
     // WebSocket Connect Lambda (Go) - Match original b2-stack pattern
     this.wsConnectLambda = new lambda.Function(this, 'wsConnectLambda', {
         runtime: lambda.Runtime.PROVIDED_AL2,
@@ -129,6 +139,7 @@ export class ComputeStack extends Stack {
     // Grant DynamoDB permissions
     memoryTable.grantReadWriteData(this.backendLambda);
     memoryTable.grantReadWriteData(this.connectNodeLambda);
+    memoryTable.grantReadWriteData(this.cleanupLambda);  // Cleanup needs table access
     connectionsTable.grantWriteData(this.wsConnectLambda);
     connectionsTable.grantReadWriteData(this.wsDisconnectLambda);
     connectionsTable.grantReadData(this.wsSendMessageLambda);
@@ -147,6 +158,7 @@ export class ComputeStack extends Stack {
     // Grant EventBridge permissions
     this.eventBus.grantPutEventsTo(this.backendLambda);
     this.eventBus.grantPutEventsTo(this.connectNodeLambda);
+    this.eventBus.grantPutEventsTo(this.cleanupLambda);  // Cleanup might publish events
 
     // EventBridge rule for NodeCreated events - Match original b2-stack pattern
     new events.Rule(this, 'NodeCreatedRule', {
@@ -166,6 +178,21 @@ export class ComputeStack extends Stack {
             detailType: ['EdgesCreated'],
         },
         targets: [new targets.LambdaFunction(this.wsSendMessageLambda)],
+    });
+
+    // EventBridge rule for NodeDeleted events - Triggers async cleanup
+    new events.Rule(this, 'NodeDeletedRule', {
+        eventBus: this.eventBus,
+        eventPattern: {
+            source: ['brain2-backend'],  // Matches the source used in EventBridgePublisher
+            detailType: ['NodeDeleted'],
+        },
+        targets: [
+            new targets.LambdaFunction(this.cleanupLambda, {
+                retryAttempts: 2,  // Retry failed cleanups
+                maxEventAge: Duration.hours(1),  // Don't retry events older than 1 hour
+            }),
+        ],
     });
 
     // Output WebSocket API URL for frontend configuration

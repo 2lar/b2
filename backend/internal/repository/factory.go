@@ -5,8 +5,7 @@ import (
 	"time"
 	
 	"brain2-backend/internal/domain"
-	// NOTE: Removed adapters import to break circular dependency
-	// Store-based repository creation will be moved to a separate factory
+	// Store-based repository creation moved to infrastructure layer
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -216,31 +215,7 @@ func (f *RepositoryFactory) CreateNodeRepository(
 	return f.applyNodeDecorators(base, logger, cache, metrics)
 }
 
-// TODO: Move Store-based repository creation to separate factory to avoid circular imports
-/*
-// CreateNodeRepositoryFromStore creates a NodeRepository from a Store interface
-func (f *RepositoryFactory) CreateNodeRepositoryFromStore(
-	store persistence.Store,
-	logger *zap.Logger,
-	cache Cache,
-	metrics MetricsCollector,
-) NodeRepository {
-	// Create adapter from Store interface
-	base := adapters.NewNodeRepositoryAdapter(store, logger)
-	return f.applyNodeDecorators(base, logger, cache, metrics)
-}
-
-// CreateEdgeRepository creates an EdgeRepository with configured decorators
-func (f *RepositoryFactory) CreateEdgeRepository(
-	base EdgeRepository,
-	logger *zap.Logger,
-	cache Cache,
-	metrics MetricsCollector,
-) EdgeRepository {
-	return f.applyEdgeDecorators(base, logger, cache, metrics)
-}
-
-*/
+// Store-based repository creation is handled directly in the infrastructure layer
 
 // CreateCategoryRepository creates a CategoryRepository with configured decorators
 func (f *RepositoryFactory) CreateCategoryRepository(
@@ -252,13 +227,7 @@ func (f *RepositoryFactory) CreateCategoryRepository(
 	return f.applyCategoryDecorators(base, logger, cache, metrics)
 }
 
-/*
-// Commented out Store-based methods to avoid circular imports
-// These will be moved to a separate factory package
-
-// CreateEdgeRepositoryFromStore, CreateCategoryRepositoryFromStore, etc.
-// CreateRepositoriesFromStore - creates all repositories from Store interface  
-*/
+// Store-based factory methods are implemented in the infrastructure layer
 
 // CreateUnitOfWork creates a UnitOfWork with the configured transaction provider
 // Now integrated with existing TransactionManager infrastructure
@@ -830,7 +799,7 @@ func (r *cqrsCategoryRepository) FindChildCategories(ctx context.Context, userID
 func (r *cqrsCategoryRepository) FindParentCategory(ctx context.Context, userID, childID string) (*domain.Category, error) { return nil, nil }
 func (r *cqrsCategoryRepository) GetCategoryTree(ctx context.Context, userID string) ([]domain.Category, error) { return nil, nil }
 
-// Adapter-compatible methods for CQRS
+// CQRS-compatible methods
 func (r *cqrsCategoryRepository) Save(ctx context.Context, category *domain.Category) error { return nil }
 func (r *cqrsCategoryRepository) FindByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) { return nil, nil }
 func (r *cqrsCategoryRepository) Delete(ctx context.Context, userID, categoryID string) error { return nil }

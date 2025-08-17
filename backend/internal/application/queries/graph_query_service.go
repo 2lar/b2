@@ -73,23 +73,26 @@ func (s *GraphQueryService) GetGraph(ctx context.Context, query *GetGraphQuery) 
 		return nil, appErrors.Wrap(err, "failed to retrieve user edges")
 	}
 
-	// 5. Build graph result
+	// 5. Filter out orphaned edges (defensive programming)
+	validEdges := s.filterOrphanedEdges(nodes, edges)
+	
+	// 6. Build graph result
 	result := &dto.GetGraphResult{
 		Nodes: dto.ToNodeViews(nodes),
-		Edges: dto.ToEdgeViews(edges),
+		Edges: dto.ToEdgeViews(validEdges),
 		Stats: &dto.GraphStats{
 			NodeCount: len(nodes),
-			EdgeCount: len(edges),
+			EdgeCount: len(validEdges),
 		},
 	}
 
-	// 6. Add graph metrics if requested
+	// 7. Add graph metrics if requested
 	if query.IncludeMetrics {
-		metrics := s.calculateGraphMetrics(nodes, edges)
+		metrics := s.calculateGraphMetrics(nodes, validEdges)
 		result.Stats.Metrics = metrics
 	}
 
-	// 7. Cache the result
+	// 8. Cache the result
 	if s.cache != nil {
 		s.cache.Set(ctx, cacheKey, result, 10*time.Minute)
 	}
@@ -212,20 +215,21 @@ func (s *GraphQueryService) GetGraphAnalytics(ctx context.Context, query *GetGra
 // Helper methods
 
 func (s *GraphQueryService) getUserNodes(ctx context.Context, userID string, limit int) ([]*domain.Node, error) {
+	// Query for nodes using the correct key structure:
+	// PK = USER#<userID>, SK begins with NODE#
+	sortKeyPrefix := "NODE#"
 	query := persistence.Query{
-		FilterExpr: stringPtr("begins_with(PK, :pk_prefix)"),
-		Attributes: map[string]interface{}{
-			":pk_prefix": fmt.Sprintf("USER#%s#NODE#", userID),
-		},
+		PartitionKey:  fmt.Sprintf("USER#%s", userID),
+		SortKeyPrefix: &sortKeyPrefix,
 	}
 
 	if limit > 0 {
 		query.Limit = int32Ptr(int32(limit))
 	}
 
-	result, err := s.store.Scan(ctx, query)
+	result, err := s.store.Query(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to scan user nodes: %w", err)
+		return nil, fmt.Errorf("failed to query user nodes: %w", err)
 	}
 
 	nodes := make([]*domain.Node, 0, len(result.Records))
@@ -242,18 +246,23 @@ func (s *GraphQueryService) getUserNodes(ctx context.Context, userID string, lim
 }
 
 func (s *GraphQueryService) getUserEdges(ctx context.Context, userID string, limit int) ([]*domain.Edge, error) {
+	// Edges are stored with PK = USER#<userID>#NODE#<sourceID>, SK = EDGE#RELATES_TO#<targetID>
+	// We need to scan for all edges belonging to this user
 	query := persistence.Query{
-		PartitionKey: fmt.Sprintf("USER#%s#EDGE", userID), // Use GSI2PK format
-		IndexName:    stringPtr("EdgeIndex"),               // Use GSI2 index
+		FilterExpr: stringPtr("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix)"),
+		Attributes: map[string]interface{}{
+			":pk_prefix": fmt.Sprintf("USER#%s#NODE#", userID),
+			":sk_prefix": "EDGE#",
+		},
 	}
 
 	if limit > 0 {
 		query.Limit = int32Ptr(int32(limit))
 	}
 
-	result, err := s.store.Query(ctx, query) // Use Query instead of Scan
+	result, err := s.store.Scan(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query user edges: %w", err)
+		return nil, fmt.Errorf("failed to scan user edges: %w", err)
 	}
 
 	edges := make([]*domain.Edge, 0, len(result.Records))
@@ -459,42 +468,40 @@ func (s *GraphQueryService) calculateGraphAnalytics(nodes []*domain.Node, edges 
 
 // Helper functions for domain object reconstruction
 func (s *GraphQueryService) recordToNode(record *persistence.Record) (*domain.Node, error) {
-	// First, validate that this is actually a node record by checking the sort key
+	// Validate that this is a node record by checking the sort key
+	// Nodes have SK = NODE#<nodeID>
 	sk, ok := record.Data["SK"].(string)
-	if !ok || !strings.HasPrefix(sk, "METADATA#") {
+	if !ok || !strings.HasPrefix(sk, "NODE#") {
 		return nil, fmt.Errorf("not a node record - SK: %v", sk)
 	}
 	
-	// Skip keyword records and other non-metadata records
-	if strings.Contains(sk, "KEYWORD#") || strings.Contains(sk, "IDEMPOTENCY#") {
-		return nil, fmt.Errorf("skipping non-node record type")
+	// Extract NodeID from SK
+	skParts := strings.Split(sk, "#")
+	if len(skParts) != 2 {
+		return nil, fmt.Errorf("invalid SK format for node: %s", sk)
+	}
+	nodeID := skParts[1]
+	
+	// Extract UserID from PK (format: USER#<userID>)
+	pk, ok := record.Data["PK"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing PK in record")
 	}
 	
-	// Extract NodeID - try direct field first, then parse from PK
-	nodeID, hasNodeID := record.Data["NodeID"].(string)
-	var userID string
+	pkParts := strings.Split(pk, "#")
+	if len(pkParts) != 2 || pkParts[0] != "USER" {
+		return nil, fmt.Errorf("invalid PK format for node: %s", pk)
+	}
+	userID := pkParts[1]
 	
-	if !hasNodeID {
-		// Extract from PK pattern: USER#<userID>#NODE#<nodeID>
-		pk, ok := record.Data["PK"].(string)
-		if !ok {
-			return nil, fmt.Errorf("missing PK in record")
-		}
-		
-		pkParts := strings.Split(pk, "#")
-		if len(pkParts) != 4 || pkParts[0] != "USER" || pkParts[2] != "NODE" {
-			return nil, fmt.Errorf("invalid PK format for node: %s", pk)
-		}
-		
-		userID = pkParts[1]
-		nodeID = pkParts[3]
-	} else {
-		// NodeID exists directly, extract UserID
-		userIDVal, ok := record.Data["UserID"].(string)
-		if !ok {
-			return nil, fmt.Errorf("missing UserID in record")
-		}
-		userID = userIDVal
+	// Try to get NodeID from direct field if available
+	if directNodeID, ok := record.Data["NodeID"].(string); ok {
+		nodeID = directNodeID
+	}
+	
+	// Try to get UserID from direct field if available  
+	if directUserID, ok := record.Data["UserID"].(string); ok {
+		userID = directUserID
 	}
 
 	content, ok := record.Data["Content"].(string)
@@ -570,12 +577,19 @@ func (s *GraphQueryService) recordToEdge(record *persistence.Record) (*domain.Ed
 		
 		userID = pkParts[1]
 	} else {
-		// Legacy format - extract from PK pattern: USER#<userID>#NODE#<sourceID>
+		// Current format - extract from PK pattern: USER#<userID>#NODE#<sourceID>
+		// and SK pattern: EDGE#RELATES_TO#<targetID>
 		pk, ok := record.Data["PK"].(string)
 		if !ok {
 			return nil, fmt.Errorf("missing PK in record")
 		}
 
+		sk, ok := record.Data["SK"].(string)
+		if !ok || !strings.HasPrefix(sk, "EDGE#") {
+			return nil, fmt.Errorf("not an edge record - SK: %v", sk)
+		}
+
+		// Parse PK to get userID and sourceID
 		pkParts := strings.Split(pk, "#")
 		if len(pkParts) != 4 || pkParts[0] != "USER" || pkParts[2] != "NODE" {
 			return nil, fmt.Errorf("invalid PK format: %s", pk)
@@ -584,12 +598,12 @@ func (s *GraphQueryService) recordToEdge(record *persistence.Record) (*domain.Ed
 		userID = pkParts[1]
 		sourceID = pkParts[3]
 
-		// Extract TargetID from record
-		targetIDVal, ok := record.Data["TargetID"].(string)
-		if !ok {
-			return nil, fmt.Errorf("missing TargetID in record")
+		// Parse SK to get targetID
+		skParts := strings.Split(sk, "#")
+		if len(skParts) < 3 {
+			return nil, fmt.Errorf("invalid SK format for edge: %s", sk)
 		}
-		targetID = targetIDVal
+		targetID = skParts[2]
 	}
 
 	// Extract optional fields with defaults
@@ -605,6 +619,51 @@ func (s *GraphQueryService) recordToEdge(record *persistence.Record) (*domain.Ed
 		userID,
 		strength,
 	)
+}
+
+// filterOrphanedEdges removes edges that reference non-existent nodes
+func (s *GraphQueryService) filterOrphanedEdges(nodes []*domain.Node, edges []*domain.Edge) []*domain.Edge {
+	// Create a set of existing node IDs for quick lookup
+	nodeSet := make(map[string]bool)
+	for _, node := range nodes {
+		nodeSet[node.ID.String()] = true
+	}
+	
+	// Filter edges to only include those with valid source and target nodes
+	validEdges := make([]*domain.Edge, 0, len(edges))
+	orphanedCount := 0
+	
+	for _, edge := range edges {
+		sourceExists := nodeSet[edge.SourceID.String()]
+		targetExists := nodeSet[edge.TargetID.String()]
+		
+		if sourceExists && targetExists {
+			validEdges = append(validEdges, edge)
+		} else {
+			orphanedCount++
+			// Log orphaned edges for monitoring
+			if !sourceExists {
+				s.logger.Warn("Orphaned edge: source node doesn't exist",
+					zap.String("edge_id", edge.ID.String()),
+					zap.String("source_id", edge.SourceID.String()),
+					zap.String("target_id", edge.TargetID.String()))
+			}
+			if !targetExists {
+				s.logger.Warn("Orphaned edge: target node doesn't exist",
+					zap.String("edge_id", edge.ID.String()),
+					zap.String("source_id", edge.SourceID.String()),
+					zap.String("target_id", edge.TargetID.String()))
+			}
+		}
+	}
+	
+	if orphanedCount > 0 {
+		s.logger.Info("Filtered orphaned edges",
+			zap.Int("orphaned_count", orphanedCount),
+			zap.Int("valid_count", len(validEdges)))
+	}
+	
+	return validEdges
 }
 
 // Helper functions

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"brain2-backend/internal/application/dto"
+	sharedContext "brain2-backend/internal/context"
 	"brain2-backend/internal/domain"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
@@ -70,7 +71,10 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
 	}
 
-	// 3. Retrieve node from repository
+	// 3. Add userID to context for repository operations
+	ctx = sharedContext.WithUserID(ctx, query.UserID)
+	
+	// 4. Retrieve node from repository
 	node, err := s.nodeReader.FindByID(ctx, nodeID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to retrieve node")
@@ -91,15 +95,29 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 
 	// 6. Include connections if requested
 	if query.IncludeConnections {
-		edgeQuery := repository.EdgeQuery{
+		// Get outgoing edges (where this node is the source)
+		outgoingQuery := repository.EdgeQuery{
 			UserID:   query.UserID,
 			SourceID: query.NodeID,
 		}
-		edges, err := s.edgeReader.FindEdges(ctx, edgeQuery)
+		outgoingEdges, err := s.edgeReader.FindEdges(ctx, outgoingQuery)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to retrieve node connections")
+			return nil, appErrors.Wrap(err, "failed to retrieve outgoing connections")
 		}
-		result.Connections = dto.ToConnectionViews(edges)
+		
+		// Get incoming edges (where this node is the target)
+		incomingQuery := repository.EdgeQuery{
+			UserID:   query.UserID,
+			TargetID: query.NodeID,
+		}
+		incomingEdges, err := s.edgeReader.FindEdges(ctx, incomingQuery)
+		if err != nil {
+			return nil, appErrors.Wrap(err, "failed to retrieve incoming connections")
+		}
+		
+		// Combine both sets of edges
+		allEdges := append(outgoingEdges, incomingEdges...)
+		result.Connections = dto.ToConnectionViews(allEdges)
 	}
 
 	// 7. Include metadata if requested
@@ -167,7 +185,10 @@ func (s *NodeQueryService) ListNodes(ctx context.Context, query *ListNodesQuery)
 		pagination.SortDirection = query.SortDirection
 	}
 
-	// 4. Execute query
+	// 4. Add userID to context for repository operations
+	ctx = sharedContext.WithUserID(ctx, query.UserID)
+	
+	// 5. Execute query
 	page, err := s.nodeReader.GetNodesPage(ctx, nodeQuery, pagination)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to retrieve nodes page")

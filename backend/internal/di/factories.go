@@ -14,9 +14,8 @@ import (
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/handlers"
 	"brain2-backend/internal/infrastructure/decorators"
+	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/repository"
-	categoryService "brain2-backend/internal/service/category"
-	memoryService "brain2-backend/internal/service/memory"
 
 	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/go-chi/chi/v5"
@@ -62,6 +61,7 @@ type InfrastructureContainer struct {
 	Cache             decorators.Cache
 	MetricsCollector  decorators.MetricsCollector
 	EventBridgeClient *awsEventbridge.Client
+	Store             persistence.Store
 }
 
 // NewServiceFactory creates a new service factory with all dependencies.
@@ -104,7 +104,7 @@ func (f *ServiceFactory) CreateNodeService() *services.NodeService {
 	nodeRepo := f.decorateNodeRepository(f.repositories.Node)
 	edgeRepo := f.decorateEdgeRepository(f.repositories.Edge)
 	
-	// No more adapters - use repositories directly
+	// Use repositories directly
 	// Use UnitOfWorkFactory if available, otherwise fall back to singleton
 	var uowFactory repository.UnitOfWorkFactory
 	if f.repositories.UnitOfWorkFactory != nil {
@@ -137,7 +137,7 @@ func (f *ServiceFactory) CreateNodeService() *services.NodeService {
 func (f *ServiceFactory) CreateCategoryService() *services.CategoryService {
 	f.logger.Debug("Creating CategoryService with factory pattern")
 	
-	// TODO: Implement CategoryService without adapters
+	// TODO: Implement CategoryService using CQRS patterns
 	// For now, return nil to use legacy handler
 	service := (*services.CategoryService)(nil)
 	
@@ -154,13 +154,13 @@ func (f *ServiceFactory) CreateCategoryService() *services.CategoryService {
 func (f *ServiceFactory) CreateNodeQueryService() *queries.NodeQueryService {
 	f.logger.Debug("Creating NodeQueryService for CQRS queries")
 	
-	// Create cache adapter if caching is enabled
+	// Create cache wrapper if caching is enabled
 	var cache queries.Cache
 	if f.config.Features.EnableCaching {
 		cache = f.createQueryCache()
 	}
 	
-	// Create reader adapters with read-optimized configurations
+	// Create reader interfaces with read-optimized configurations
 	nodeReader := f.createNodeReader()
 	edgeReader := f.createEdgeReader()
 	
@@ -191,13 +191,32 @@ func (f *ServiceFactory) CreateCategoryQueryService() *queries.CategoryQueryServ
 	
 	service := queries.NewCategoryQueryService(
 		categoryReader,
-		nil, // nodeCategoryRepo
 		nil, // nodeReader
+		f.logger,
 		cache,
-		nil, // AI service
 	)
 	
 	f.logger.Info("CategoryQueryService created successfully")
+	return service
+}
+
+// CreateGraphQueryService creates the query service for graph operations.
+func (f *ServiceFactory) CreateGraphQueryService() *queries.GraphQueryService {
+	f.logger.Debug("Creating GraphQueryService")
+	
+	var cache queries.Cache
+	if f.config.Features.EnableCaching {
+		cache = f.createQueryCache()
+	}
+	
+	// Use the store directly for graph queries
+	service := queries.NewGraphQueryService(
+		f.infrastructure.Store,
+		f.logger,
+		cache,
+	)
+	
+	f.logger.Info("GraphQueryService created successfully")
 	return service
 }
 
@@ -205,45 +224,7 @@ func (f *ServiceFactory) CreateCategoryQueryService() *queries.CategoryQueryServ
 // LEGACY SERVICE CREATION (for migration)
 // ============================================================================
 
-// CreateLegacyMemoryService creates the legacy service for backward compatibility.
-func (f *ServiceFactory) CreateLegacyMemoryService() memoryService.Service {
-	f.logger.Debug("Creating legacy MemoryService")
-	
-	return memoryService.NewServiceWithIdempotency(
-		f.repositories.Node,
-		f.repositories.Edge,
-		f.repositories.Keyword,
-		f.repositories.Transactional,
-		f.repositories.Graph,
-		f.repositories.Idempotency,
-	)
-}
-
-// CreateMemoryServiceWithMigration creates a memory service with migration adapter.
-// This demonstrates the Adapter pattern for gradual migration.
-func (f *ServiceFactory) CreateMemoryServiceWithMigration() memoryService.Service {
-	f.logger.Debug("Creating MemoryService with migration adapter")
-	
-	// Create new CQRS-based services
-	nodeService := f.CreateNodeService()
-	nodeQueryService := f.CreateNodeQueryService()
-	
-	// Create legacy service as fallback
-	legacyService := f.CreateLegacyMemoryService()
-	
-	// Use adapter if new services are available
-	if nodeService != nil && nodeQueryService != nil {
-		f.logger.Info("Using CQRS-based MemoryService with migration adapter")
-		return NewMemoryServiceAdapter(
-			nodeService,
-			nodeQueryService,
-			legacyService,
-		)
-	}
-	
-	f.logger.Warn("Falling back to legacy MemoryService")
-	return legacyService
-}
+// Legacy service methods have been removed - using CQRS services directly
 
 // ============================================================================
 // REPOSITORY DECORATION
@@ -317,11 +298,15 @@ func NewHandlerFactory(
 func (hf *HandlerFactory) CreateMemoryHandler(coldStartProvider ColdStartInfoProvider) *handlers.MemoryHandler {
 	hf.logger.Debug("Creating MemoryHandler")
 	
-	// Create service with migration support
-	service := hf.serviceFactory.CreateMemoryServiceWithMigration()
+	// Create CQRS services
+	nodeService := hf.serviceFactory.CreateNodeService()
+	nodeQueryService := hf.serviceFactory.CreateNodeQueryService()
+	graphQueryService := hf.serviceFactory.CreateGraphQueryService()
 	
-	handler := handlers.NewMemoryHandlerLegacy(
-		service,
+	handler := handlers.NewMemoryHandler(
+		nodeService,
+		nodeQueryService,
+		graphQueryService,
 		hf.infrastructure.EventBridgeClient,
 		coldStartProvider,
 	)
@@ -334,16 +319,14 @@ func (hf *HandlerFactory) CreateMemoryHandler(coldStartProvider ColdStartInfoPro
 func (hf *HandlerFactory) CreateCategoryHandler() *handlers.CategoryHandler {
 	hf.logger.Debug("Creating CategoryHandler")
 	
-	// For now, use legacy service until CategoryService is fully migrated
-	// Create a minimal config for the service
-	minimalConfig := &config.Config{
-		Features: config.Features{
-			EnableAIProcessing: false,
-		},
-	}
-	legacyService := categoryService.NewEnhancedService(nil, nil, minimalConfig) // Will be replaced
+	// Create CQRS services
+	categoryService := hf.serviceFactory.CreateCategoryService()
+	categoryQueryService := hf.serviceFactory.CreateCategoryQueryService()
 	
-	handler := handlers.NewCategoryHandlerLegacy(legacyService)
+	handler := handlers.NewCategoryHandler(
+		categoryService,
+		categoryQueryService,
+	)
 	
 	hf.logger.Info("CategoryHandler created successfully")
 	return handler
@@ -536,30 +519,30 @@ func (rf *RouterFactory) getMiddlewareCount() int {
 // HELPER FUNCTIONS AND INTERFACES
 // ============================================================================
 
-// createQueryCache creates a cache adapter for query services.
+// createQueryCache creates a cache wrapper for query services.
 func (f *ServiceFactory) createQueryCache() queries.Cache {
 	return &queryCacheAdapter{
 		inner: f.infrastructure.Cache,
-		// ttl:   f.config.Cache.QueryTTL, // Need to add this field to the adapter
+		// ttl:   f.config.Cache.QueryTTL, // Need to add this field to the wrapper
 	}
 }
 
 // createNodeReader creates a read-optimized node reader.
 func (f *ServiceFactory) createNodeReader() repository.NodeReader {
-	// Use the bridge implementation
-	return NewNodeReaderBridge(f.repositories.Node)
+	// Use repository directly as it implements NodeReader
+	return f.repositories.Node.(repository.NodeReader)
 }
 
 // createEdgeReader creates a read-optimized edge reader.
 func (f *ServiceFactory) createEdgeReader() repository.EdgeReader {
-	// Use the bridge implementation
-	return NewEdgeReaderBridge(f.repositories.Edge)
+	// Use repository directly as it implements EdgeReader
+	return f.repositories.Edge.(repository.EdgeReader)
 }
 
 // createCategoryReader creates a read-optimized category reader.
 func (f *ServiceFactory) createCategoryReader() repository.CategoryReader {
-	// Use the bridge implementation
-	return NewCategoryReaderBridge(f.repositories.Category)
+	// Use repository directly as it implements CategoryReader
+	return f.repositories.Category.(repository.CategoryReader)
 }
 
 // registerShutdownHandler registers a function to be called on shutdown.
@@ -661,7 +644,7 @@ type ApplicationFactories struct {
 	Router  *RouterFactory
 }
 
-// singletonUnitOfWorkFactory is a temporary adapter for backward compatibility
+// singletonUnitOfWorkFactory is a temporary wrapper for backward compatibility
 // It wraps a singleton UnitOfWork to implement the UnitOfWorkFactory interface
 type singletonUnitOfWorkFactory struct {
 	uow repository.UnitOfWork

@@ -45,6 +45,10 @@ func (p *EventBridgePublisher) Publish(ctx context.Context, events []domain.Doma
 		return nil
 	}
 	
+	// Log publishing attempt
+	fmt.Printf("DEBUG: EventBridgePublisher.Publish - Publishing %d events to EventBridge bus: %s, source: %s\n", 
+		len(events), p.eventBus, p.source)
+	
 	// Process events in batches
 	for i := 0; i < len(events); i += p.batchSize {
 		end := i + p.batchSize
@@ -54,10 +58,12 @@ func (p *EventBridgePublisher) Publish(ctx context.Context, events []domain.Doma
 		
 		batch := events[i:end]
 		if err := p.publishBatch(ctx, batch); err != nil {
+			fmt.Printf("ERROR: EventBridgePublisher failed to publish batch: %v\n", err)
 			return fmt.Errorf("failed to publish event batch: %w", err)
 		}
 	}
 	
+	fmt.Printf("DEBUG: EventBridgePublisher successfully published %d events\n", len(events))
 	return nil
 }
 
@@ -78,14 +84,25 @@ func (p *EventBridgePublisher) publishBatch(ctx context.Context, events []domain
 	})
 	
 	if err != nil {
+		fmt.Printf("ERROR: EventBridge PutEvents API call failed: %v\n", err)
 		return fmt.Errorf("failed to put events: %w", err)
 	}
 	
 	// Check for failed entries
 	if output.FailedEntryCount > 0 {
+		fmt.Printf("ERROR: EventBridge reported %d failed events\n", output.FailedEntryCount)
+		if output.Entries != nil {
+			for i, entry := range output.Entries {
+				if entry.ErrorCode != nil {
+					fmt.Printf("ERROR: Event %d failed - Code: %s, Message: %s\n", 
+						i, aws.ToString(entry.ErrorCode), aws.ToString(entry.ErrorMessage))
+				}
+			}
+		}
 		return fmt.Errorf("%d events failed to publish", output.FailedEntryCount)
 	}
 	
+	fmt.Printf("DEBUG: EventBridge PutEvents successful - %d events sent\n", len(entries))
 	return nil
 }
 
@@ -97,25 +114,49 @@ func (p *EventBridgePublisher) createEventEntry(event domain.DomainEvent) (types
 		return types.PutEventsRequestEntry{}, fmt.Errorf("failed to marshal event: %w", err)
 	}
 	
-	// Extract metadata
+	// Create detail map with all required fields at the top level
+	detailMap := make(map[string]interface{})
+	
+	// Unmarshal event data into the detail map
+	if err := json.Unmarshal(eventData, &detailMap); err != nil {
+		return types.PutEventsRequestEntry{}, fmt.Errorf("failed to unmarshal event data: %w", err)
+	}
+	
+	// Add critical fields at the top level for EventBridge handlers
+	// These fields are needed by cleanup Lambda and other handlers
+	detailMap["aggregate_id"] = event.AggregateID()  // Node ID for NodeDeleted events
+	detailMap["user_id"] = event.UserID()            // User ID who owns the resource
+	detailMap["event_id"] = event.EventID()
+	detailMap["event_type"] = event.EventType()
+	detailMap["occurred_at"] = time.Now().Format(time.RFC3339)
+	detailMap["version"] = event.Version()
+	
+	// Also keep metadata for backward compatibility
 	metadata := map[string]interface{}{
 		"eventId":      event.EventID(),
 		"aggregateId":  event.AggregateID(),
+		"userId":       event.UserID(),
 		"eventType":    event.EventType(),
 		"occurredAt":   time.Now().Format(time.RFC3339),
+		"version":      event.Version(),
+	}
+	detailMap["_metadata"] = metadata
+	
+	// Marshal the complete detail map
+	detailJSON, err := json.Marshal(detailMap)
+	if err != nil {
+		return types.PutEventsRequestEntry{}, fmt.Errorf("failed to marshal detail: %w", err)
 	}
 	
-	metadataJSON, err := json.Marshal(metadata)
-	if err != nil {
-		return types.PutEventsRequestEntry{}, fmt.Errorf("failed to marshal metadata: %w", err)
-	}
+	// Log the event detail for debugging
+	fmt.Printf("DEBUG: EventBridge event detail for %s: %s\n", event.EventType(), string(detailJSON))
 	
 	// Create EventBridge entry
 	entry := types.PutEventsRequestEntry{
 		EventBusName: aws.String(p.eventBus),
 		Source:       aws.String(p.source),
 		DetailType:   aws.String(event.EventType()),
-		Detail:       aws.String(string(eventData)),
+		Detail:       aws.String(string(detailJSON)),
 		Time:         aws.Time(time.Now()),
 		Resources:    []string{event.AggregateID()},
 	}
@@ -123,15 +164,6 @@ func (p *EventBridgePublisher) createEventEntry(event domain.DomainEvent) (types
 	// Add trace ID if available
 	if traceID := getTraceID(event); traceID != "" {
 		entry.TraceHeader = aws.String(traceID)
-	}
-	
-	// Add metadata as part of the detail
-	detailMap := make(map[string]interface{})
-	if err := json.Unmarshal(eventData, &detailMap); err == nil {
-		detailMap["_metadata"] = json.RawMessage(metadataJSON)
-		if updatedDetail, err := json.Marshal(detailMap); err == nil {
-			entry.Detail = aws.String(string(updatedDetail))
-		}
 	}
 	
 	return entry, nil

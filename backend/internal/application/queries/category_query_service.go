@@ -18,10 +18,10 @@ import (
 	"brain2-backend/internal/application/dto"
 	"brain2-backend/internal/domain"
 	"brain2-backend/internal/repository"
-	categoryService "brain2-backend/internal/service/category"
 	appErrors "brain2-backend/pkg/errors"
 	"go.uber.org/zap"
 )
+
 
 // CategoryQueryService handles read operations for categories with AI-powered suggestions.
 type CategoryQueryService struct {
@@ -30,9 +30,6 @@ type CategoryQueryService struct {
 	nodeReader     repository.NodeReader
 	logger         *zap.Logger
 	cache          Cache // Cache interface for performance
-	
-	// Optional AI service with fallback
-	aiService categoryService.AIService // Optional AI service for suggestions
 }
 
 // NewCategoryQueryService creates a new CategoryQueryService with all required dependencies.
@@ -42,14 +39,12 @@ func NewCategoryQueryService(
 	nodeReader repository.NodeReader,
 	logger *zap.Logger,
 	cache Cache,
-	aiService categoryService.AIService, // Can be nil
 ) *CategoryQueryService {
 	return &CategoryQueryService{
 		categoryReader: categoryReader,
 		nodeReader:     nodeReader,
 		logger:         logger,
 		cache:          cache,
-		aiService:      aiService,
 	}
 }
 
@@ -343,37 +338,8 @@ func (s *CategoryQueryService) SuggestCategories(ctx context.Context, query *Sug
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	// 2. Try AI service first if available
-	if s.aiService != nil {
-		aiSuggestions, err := s.aiService.SuggestCategories(ctx, query.Content, query.UserID)
-		if err == nil && len(aiSuggestions) > 0 {
-			// AI service succeeded - return AI suggestions
-			suggestions := dto.ToCategorySuggestionViews(aiSuggestions)
-			
-			// Filter by confidence threshold
-			filteredSuggestions := make([]*dto.CategorySuggestionView, 0)
-			for _, suggestion := range suggestions {
-				if suggestion.Confidence >= query.MinConfidence {
-					filteredSuggestions = append(filteredSuggestions, suggestion)
-				}
-			}
-			
-			// Limit to max suggestions
-			if len(filteredSuggestions) > query.MaxSuggestions {
-				filteredSuggestions = filteredSuggestions[:query.MaxSuggestions]
-			}
-
-			return &dto.SuggestCategoriesResult{
-				Suggestions: filteredSuggestions,
-				Count:       len(filteredSuggestions),
-				Message:     "Category suggestions generated using AI",
-				Source:      "ai",
-			}, nil
-		}
-		// AI service failed or returned no results - fall through to fallback
-	}
-
-	// 3. Fallback to domain-based suggestions
+	// 2. Use domain-based suggestions (AI service integration removed)
+	// TODO: Re-implement AI service integration when available
 	suggestions := s.generateFallbackSuggestions(ctx, userID, query.Content, query.ExistingCategories)
 	
 	// Filter by confidence and limit

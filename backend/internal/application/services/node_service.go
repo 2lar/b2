@@ -16,6 +16,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"brain2-backend/internal/application/commands"
@@ -431,9 +432,14 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 		domain.ParseVersion(node.Version),
 	)
 
+	log.Printf("DEBUG: NodeService.DeleteNode - Publishing NodeDeleted event for node %s, user %s", nodeID.String(), userID.String())
+	
 	if err := s.eventBus.Publish(ctx, deletionEvent); err != nil {
+		log.Printf("ERROR: NodeService.DeleteNode - Failed to publish NodeDeleted event: %v", err)
 		return nil, appErrors.Wrap(err, "failed to publish deletion event")
 	}
+	
+	log.Printf("DEBUG: NodeService.DeleteNode - Successfully published NodeDeleted event for node %s", nodeID.String())
 
 	// 8. Commit transaction
 	commitCalled = true
@@ -552,7 +558,15 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 				emptyTags,
 				emptyVersion,
 			)
-			s.eventBus.Publish(ctx, deletionEvent)
+			
+			log.Printf("DEBUG: NodeService.BulkDeleteNodes - Publishing NodeDeleted event for node %s", nodeID.String())
+			
+			if err := s.eventBus.Publish(ctx, deletionEvent); err != nil {
+				// Log but don't fail the bulk operation for event publishing failures
+				log.Printf("ERROR: NodeService.BulkDeleteNodes - Failed to publish NodeDeleted event for node %s: %v", nodeID.String(), err)
+			} else {
+				log.Printf("DEBUG: NodeService.BulkDeleteNodes - Successfully published NodeDeleted event for node %s", nodeID.String())
+			}
 		}
 	}
 

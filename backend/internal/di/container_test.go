@@ -71,13 +71,13 @@ func TestContainerComponents(t *testing.T) {
 		t.Error("Repository should be initialized")
 	}
 	
-	// Test services
-	if container.MemoryService == nil {
-		t.Error("MemoryService should be initialized")
+	// Test CQRS services
+	if container.NodeAppService == nil {
+		t.Error("NodeAppService should be initialized")
 	}
 	
-	if container.CategoryService == nil {
-		t.Error("CategoryService should be initialized")
+	if container.CategoryAppService == nil {
+		t.Error("CategoryAppService should be initialized")
 	}
 	
 	// Test handlers

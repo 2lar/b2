@@ -1,6 +1,6 @@
 // Package dynamodb provides DynamoDB implementations of repository interfaces.
 // This file implements a unified repository that directly implements all
-// repository interfaces without unnecessary adapter layers.
+// repository interfaces using direct CQRS patterns.
 package dynamodb
 
 import (
@@ -19,7 +19,6 @@ import (
 )
 
 // UnifiedRepository implements all repository interfaces directly.
-// This simplifies the architecture by removing unnecessary adapter layers.
 type UnifiedRepository struct {
 	client    *dynamodb.Client
 	tableName string
