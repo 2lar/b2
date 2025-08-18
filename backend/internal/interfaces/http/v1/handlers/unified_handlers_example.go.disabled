@@ -1,0 +1,439 @@
+// Package handlers demonstrates the use of unified DTOs and validation
+// to eliminate code duplication across handlers.
+package handlers
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+
+	"brain2-backend/internal/application/commands"
+	"brain2-backend/internal/application/queries"
+	"brain2-backend/internal/application/services"
+	"brain2-backend/internal/interfaces/http/v1/dto"
+	"brain2-backend/internal/interfaces/http/v1/validation"
+	"brain2-backend/pkg/api"
+
+	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
+)
+
+// UnifiedHandlerExample demonstrates how unified DTOs and validation eliminate duplication.
+// This handler shows the pattern that should replace all the duplicated response structures
+// and validation logic found throughout the existing handlers.
+type UnifiedHandlerExample struct {
+	// Services
+	nodeService     *services.NodeService
+	categoryService *services.CategoryService
+	nodeQuery       *queries.NodeQueryService
+	categoryQuery   *queries.CategoryQueryService
+	
+	// Unified components (eliminates duplication)
+	nodeConverter     *dto.NodeConverter
+	categoryConverter *dto.CategoryConverter
+	responseBuilder   *dto.ResponseBuilder
+	
+	// Unified validation (eliminates duplication)
+	nodeValidator     *validation.NodeValidator
+	categoryValidator *validation.CategoryValidator
+	requestValidator  *validation.RequestValidator
+	
+	logger *zap.Logger
+}
+
+// NewUnifiedHandlerExample creates a new unified handler with shared components.
+func NewUnifiedHandlerExample(
+	nodeService *services.NodeService,
+	categoryService *services.CategoryService,
+	nodeQuery *queries.NodeQueryService,
+	categoryQuery *queries.CategoryQueryService,
+	logger *zap.Logger,
+) *UnifiedHandlerExample {
+	return &UnifiedHandlerExample{
+		nodeService:       nodeService,
+		categoryService:   categoryService,
+		nodeQuery:         nodeQuery,
+		categoryQuery:     categoryQuery,
+		nodeConverter:     dto.NewNodeConverter(),
+		categoryConverter: dto.NewCategoryConverter(),
+		responseBuilder:   dto.NewResponseBuilder(),
+		nodeValidator:     validation.NewNodeValidator(),
+		categoryValidator: validation.NewCategoryValidator(),
+		requestValidator:  validation.NewRequestValidator(),
+		logger:            logger,
+	}
+}
+
+// ============================================================================
+// NODE OPERATIONS WITH UNIFIED COMPONENTS
+// ============================================================================
+
+// CreateNode demonstrates unified DTO and validation usage for node creation.
+func (h *UnifiedHandlerExample) CreateNode(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID using unified approach
+	userID, ok := getUserIDFromContext(r.Context())
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	
+	// Parse and validate request using unified validator
+	var request CreateNodeRequest
+	validationResult := h.requestValidator.ParseAndValidateJSON(r, &request, func(obj interface{}) []validation.ValidationError {
+		req := obj.(*CreateNodeRequest)
+		var errors []validation.ValidationError
+		
+		// Use unified node validator
+		if err := h.nodeValidator.ValidateNodeContent(req.Content); err != nil {
+			errors = append(errors, *err)
+		}
+		
+		// Validate tags using unified validator
+		tagErrors := h.nodeValidator.ValidateNodeTags(req.Tags)
+		errors = append(errors, tagErrors...)
+		
+		return errors
+	})
+	
+	if !validationResult.IsValid {
+		message := validation.FormatValidationErrors(validationResult.Errors)
+		api.Error(w, http.StatusBadRequest, message)
+		return
+	}
+	
+	// Create command
+	cmd, err := commands.NewCreateNodeCommand(userID, request.Content, request.Tags)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	// Execute command
+	result, err := h.nodeService.CreateNode(r.Context(), cmd)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	// Convert to unified DTO (eliminates CategoryResponse duplication)
+	nodeView := queries.NodeView{
+		ID:        result.Node.ID,
+		Content:   result.Node.Content,
+		Tags:      result.Node.Tags,
+		Version:   result.Node.Version,
+		CreatedAt: result.Node.CreatedAt,
+		UpdatedAt: result.Node.UpdatedAt,
+	}
+	
+	response := h.nodeConverter.FromNodeView(nodeView)
+	api.Success(w, http.StatusCreated, response)
+}
+
+// ListNodes demonstrates unified pagination and response structures.
+func (h *UnifiedHandlerExample) ListNodes(w http.ResponseWriter, r *http.Request) {
+	userID, ok := getUserIDFromContext(r.Context())
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	
+	// Validate query parameters using unified validator
+	validationResult := h.requestValidator.ValidateQueryParams(r, map[string]func(string) *validation.ValidationError{
+		"limit": func(value string) *validation.ValidationError {
+			if value == "" {
+				return nil // Optional parameter
+			}
+			// Would parse and validate numeric range
+			return nil
+		},
+		"offset": func(value string) *validation.ValidationError {
+			if value == "" {
+				return nil
+			}
+			// Would parse and validate numeric range
+			return nil
+		},
+	})
+	
+	if !validationResult.IsValid {
+		message := validation.FormatValidationErrors(validationResult.Errors)
+		api.Error(w, http.StatusBadRequest, message)
+		return
+	}
+	
+	// Create query
+	listQuery, err := queries.NewListNodesQuery(userID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	// Execute query
+	result, err := h.nodeQuery.ListNodes(r.Context(), listQuery)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	// Convert to unified DTO with pagination (eliminates response duplication)
+	pageInfo := h.responseBuilder.PageInfo(
+		false, false, "", "", // hasNext, hasPrev, cursors
+		1, 1, len(result.Nodes), // totalPages, currentPage, pageSize
+	)
+	
+	response := h.nodeConverter.FromNodeViewsWithPaging(result.Nodes, len(result.Nodes), &pageInfo)
+	api.Success(w, http.StatusOK, response)
+}
+
+// GetNode demonstrates unified detail responses with relationships.
+func (h *UnifiedHandlerExample) GetNode(w http.ResponseWriter, r *http.Request) {
+	userID, ok := getUserIDFromContext(r.Context())
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	
+	nodeID := chi.URLParam(r, "nodeId")
+	
+	// Validate node ID using unified validator
+	if err := h.nodeValidator.ValidateNodeID(nodeID); err != nil {
+		api.Error(w, http.StatusBadRequest, err.Message)
+		return
+	}
+	
+	// Get node
+	nodeQuery, err := queries.NewGetNodeQuery(userID, nodeID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	nodeResult, err := h.nodeQuery.GetNode(r.Context(), nodeQuery)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	// Get node categories (demonstrates relationship loading)
+	categoriesQuery, err := queries.NewGetNodeCategoriesQuery(userID, nodeID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	categoriesResult, err := h.categoryQuery.GetNodeCategories(r.Context(), categoriesQuery)
+	if err != nil {
+		// Log error but don't fail the request
+		h.logger.Warn("Failed to load node categories", zap.Error(err))
+		categoriesResult = &queries.GetNodeCategoriesResult{Categories: []queries.CategoryView{}}
+	}
+	
+	// Convert to unified DTOs (eliminates all response structure duplication)
+	nodeResponse := h.nodeConverter.FromNodeView(nodeResult.Node)
+	categoryResponses := h.categoryConverter.FromCategoryViews(categoriesResult.Categories)
+	
+	// Create detailed response with relationships
+	detailResponse := h.nodeConverter.ToDetailResponse(
+		nodeResponse,
+		categoryResponses.Categories,
+		[]dto.NodeResponse{}, // connectedTo (would be loaded similarly)
+		[]dto.NodeResponse{}, // connectedFrom
+	)
+	
+	api.Success(w, http.StatusOK, detailResponse)
+}
+
+// ============================================================================
+// CATEGORY OPERATIONS WITH UNIFIED COMPONENTS
+// ============================================================================
+
+// CreateCategory demonstrates unified category handling.
+func (h *UnifiedHandlerExample) CreateCategory(w http.ResponseWriter, r *http.Request) {
+	userID, ok := getUserIDFromContext(r.Context())
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	
+	// Use unified category validation (eliminates validation duplication)
+	request, validationResult := h.categoryValidator.ValidateCreateCategoryRequest(r)
+	if !validationResult.IsValid {
+		message := h.categoryValidator.FormatValidationErrors(validationResult.Errors)
+		api.Error(w, http.StatusBadRequest, message)
+		return
+	}
+	
+	// Create command
+	cmd, err := commands.NewCreateCategoryCommand(userID, request.Title, request.Description)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	// Execute command
+	result, err := h.categoryService.CreateCategory(r.Context(), cmd)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	// Convert to unified DTO (eliminates CategoryResponse duplication)
+	response := h.categoryConverter.FromCategoryView(result.Category)
+	api.Success(w, http.StatusCreated, response)
+}
+
+// ListCategories demonstrates unified category list handling.
+func (h *UnifiedHandlerExample) ListCategories(w http.ResponseWriter, r *http.Request) {
+	userID, ok := getUserIDFromContext(r.Context())
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	
+	// Create query
+	listQuery, err := queries.NewListCategoriesQuery(userID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	listQuery.WithNodeCounts()
+	
+	// Execute query
+	result, err := h.categoryQuery.ListCategories(r.Context(), listQuery)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	// Convert to unified DTO (eliminates all CategoryResponse duplication)
+	response := h.categoryConverter.FromCategoryViews(result.Categories)
+	api.Success(w, http.StatusOK, response)
+}
+
+// ============================================================================
+// BULK OPERATIONS WITH UNIFIED COMPONENTS
+// ============================================================================
+
+// BulkDeleteNodes demonstrates unified bulk operation responses.
+func (h *UnifiedHandlerExample) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) {
+	userID, ok := getUserIDFromContext(r.Context())
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	
+	// Parse request
+	var request BulkDeleteRequest
+	validationResult := h.requestValidator.ParseAndValidateJSON(r, &request, func(obj interface{}) []validation.ValidationError {
+		req := obj.(*BulkDeleteRequest)
+		var errors []validation.ValidationError
+		
+		// Validate node IDs using unified validator
+		for i, nodeID := range req.NodeIDs {
+			if err := h.nodeValidator.ValidateNodeID(nodeID); err != nil {
+				errors = append(errors, validation.ValidationError{
+					Field:   fmt.Sprintf("nodeIds[%d]", i),
+					Message: err.Message,
+				})
+			}
+		}
+		
+		return errors
+	})
+	
+	if !validationResult.IsValid {
+		message := validation.FormatValidationErrors(validationResult.Errors)
+		api.Error(w, http.StatusBadRequest, message)
+		return
+	}
+	
+	// Create command
+	cmd, err := commands.NewBulkDeleteNodesCommand(userID, request.NodeIDs)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	// Execute command
+	result, err := h.nodeService.BulkDeleteNodes(r.Context(), cmd)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	
+	// Create unified bulk operation response (eliminates response duplication)
+	response := h.responseBuilder.BulkOperation(
+		len(request.NodeIDs),
+		len(result.DeletedNodeIDs),
+		len(result.FailedNodeIDs),
+		result.DeletedNodeIDs,
+		result.FailedNodeIDs,
+		result.Errors,
+	)
+	
+	api.Success(w, http.StatusOK, response)
+}
+
+// ============================================================================
+// SEARCH OPERATIONS WITH UNIFIED COMPONENTS
+// ============================================================================
+
+// SearchNodes demonstrates unified search responses.
+func (h *UnifiedHandlerExample) SearchNodes(w http.ResponseWriter, r *http.Request) {
+	userID, ok := getUserIDFromContext(r.Context())
+	if !ok {
+		api.Error(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		api.Error(w, http.StatusBadRequest, "Search query is required")
+		return
+	}
+	
+	// Execute search (placeholder)
+	// searchResult, err := h.nodeQuery.SearchNodes(r.Context(), query)
+	
+	// Create unified search response (eliminates search response duplication)
+	searchResponse := dto.SearchResponse{
+		Query:      query,
+		Results:    []dto.SearchResult{}, // Would be populated from search results
+		TotalCount: 0,
+		Took:       10, // milliseconds
+	}
+	
+	api.Success(w, http.StatusOK, searchResponse)
+}
+
+// ============================================================================
+// REQUEST TYPES (THESE WOULD ALSO BE UNIFIED/SHARED)
+// ============================================================================
+
+// CreateNodeRequest represents node creation request.
+type CreateNodeRequest struct {
+	Content string   `json:"content"`
+	Tags    []string `json:"tags,omitempty"`
+}
+
+// BulkDeleteRequest represents bulk delete request.
+type BulkDeleteRequest struct {
+	NodeIDs []string `json:"nodeIds"`
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+// getUserIDFromContext extracts user ID from context (unified approach).
+func getUserIDFromContext(ctx context.Context) (string, bool) {
+	if userID := ctx.Value("userID"); userID != nil {
+		if uid, ok := userID.(string); ok {
+			return uid, true
+		}
+	}
+	return "", false
+}
+
+// Note: handleServiceError is defined in common.go to avoid duplication

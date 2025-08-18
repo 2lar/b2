@@ -23,6 +23,22 @@ func Error(w http.ResponseWriter, statusCode int, message string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
+// ErrorWithData sends a standardized error response with additional data.
+func ErrorWithData(w http.ResponseWriter, statusCode int, message string, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	
+	response := map[string]interface{}{
+		"error": message,
+	}
+	
+	if data != nil {
+		response["data"] = data
+	}
+	
+	json.NewEncoder(w).Encode(response)
+}
+
 // NodeResponse represents the response format for node operations.
 type NodeResponse struct {
 	NodeID    string   `json:"nodeId"`

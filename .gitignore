@@ -2,6 +2,9 @@ aws/
 frontend/node_modules/
 infra/node_modules/
 
+# Build artifacts
+backend/build/
+
 # Local configuration overrides
 backend/config/local.yaml
 backend/config/local.yml
