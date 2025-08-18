@@ -3,12 +3,13 @@ package dynamodb
 import (
 	"context"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 )
 
-// DynamoCategoryRepository is the DynamoDB implementation of the domain.CategoryRepository.
+// DynamoCategoryRepository is the DynamoDB implementation of the category.CategoryRepository.
 type DynamoCategoryRepository struct {
 	client    *dynamodb.Client
 	tableName string
@@ -24,8 +25,8 @@ func NewDynamoCategoryRepository(client *dynamodb.Client, tableName string) *Dyn
 	}
 }
 
-// FindByID implements the domain.CategoryRepository interface.
-func (r *DynamoCategoryRepository) FindByID(ctx context.Context, userID string, id domain.CategoryID) (*domain.Category, error) {
+// FindByID implements the category.CategoryRepository interface.
+func (r *DynamoCategoryRepository) FindByID(ctx context.Context, userID string, id shared.CategoryID) (*category.Category, error) {
 	// TODO: Implement the specific DynamoDB GetItem logic here.
 	// You will build a GetItemInput, call the GetItem API, and unmarshal the result.
 	// Example:
@@ -37,31 +38,31 @@ func (r *DynamoCategoryRepository) FindByID(ctx context.Context, userID string, 
 	return nil, nil // Placeholder
 }
 
-// ListByParentID implements the domain.CategoryRepository interface.
-func (r *DynamoCategoryRepository) ListByParentID(ctx context.Context, userID string, parentID domain.CategoryID) ([]*domain.Category, error) {
+// ListByParentID implements the category.CategoryRepository interface.
+func (r *DynamoCategoryRepository) ListByParentID(ctx context.Context, userID string, parentID shared.CategoryID) ([]*category.Category, error) {
 	// TODO: Implement the specific DynamoDB Query logic here using a GSI.
 	// You will likely query a GSI where the PK is USER#<userID>#CAT#<parentID>.
 	return nil, nil // Placeholder
 }
 
-// ListRoot implements the domain.CategoryRepository interface.
-func (r *DynamoCategoryRepository) ListRoot(ctx context.Context, userID string) ([]*domain.Category, error) {
+// ListRoot implements the category.CategoryRepository interface.
+func (r *DynamoCategoryRepository) ListRoot(ctx context.Context, userID string) ([]*category.Category, error) {
 	// TODO: Implement the specific DynamoDB Query logic here using a GSI.
 	// This might query a GSI where the PK is USER#<userID> and you filter for categories
 	// where the parent_id attribute does not exist.
 	return nil, nil // Placeholder
 }
 
-// Save implements the domain.CategoryRepository interface.
-func (r *DynamoCategoryRepository) Save(ctx context.Context, category *domain.Category) error {
+// Save implements the category.CategoryRepository interface.
+func (r *DynamoCategoryRepository) Save(ctx context.Context, category *category.Category) error {
 	// TODO: Implement the specific DynamoDB PutItem logic here.
 	// You will marshal the category struct into a DynamoDB attribute value map
 	// and call the PutItem API.
 	return nil // Placeholder
 }
 
-// Delete implements the domain.CategoryRepository interface.
-func (r *DynamoCategoryRepository) Delete(ctx context.Context, userID string, id domain.CategoryID) error {
+// Delete implements the category.CategoryRepository interface.
+func (r *DynamoCategoryRepository) Delete(ctx context.Context, userID string, id shared.CategoryID) error {
 	// TODO: Implement the specific DynamoDB DeleteItem logic here.
 	// You will build a key and call the DeleteItem API.
 	return nil // Placeholder

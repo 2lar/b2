@@ -20,6 +20,20 @@ func getUserID(r *http.Request) (string, bool) {
 	return sharedContext.GetUserIDFromContext(r.Context())
 }
 
+// validateIDParam validates that an ID parameter is present and not a JavaScript undefined/null string
+func validateIDParam(id string, resourceName string) error {
+	if id == "" {
+		return appErrors.NewValidation(resourceName + " ID is required")
+	}
+	
+	// Check for common JavaScript undefined-to-string conversion
+	if id == "undefined" || id == "null" {
+		return appErrors.NewValidation(resourceName + " must be created before operation")
+	}
+	
+	return nil
+}
+
 // handleServiceError converts service errors to appropriate HTTP responses
 func handleServiceError(w http.ResponseWriter, err error) {
 	if appErrors.IsValidation(err) {

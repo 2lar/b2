@@ -4,7 +4,10 @@ import (
 	"context"
 	"time"
 	
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 	// Store-based repository creation moved to infrastructure layer
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -671,18 +674,18 @@ type cqrsNodeRepository struct {
 }
 
 // Implement NodeRepository interface by delegating to reader/writer
-func (r *cqrsNodeRepository) CreateNodeAndKeywords(ctx context.Context, node *domain.Node) error {
+func (r *cqrsNodeRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
 	return r.writer.Save(ctx, node) // Delegate to writer
 }
 
-func (r *cqrsNodeRepository) FindNodeByID(ctx context.Context, userID, nodeID string) (*domain.Node, error) {
+func (r *cqrsNodeRepository) FindNodeByID(ctx context.Context, userID, nodeID string) (*node.Node, error) {
 	// Convert string ID to domain type and delegate to reader
-	// Note: domain.NodeID conversion depends on the domain implementation
+	// Note: node.NodeID conversion depends on the domain implementation
 	// This is a simplified implementation for consolidation
 	return nil, nil // Placeholder: would implement proper conversion and delegation
 }
 
-func (r *cqrsNodeRepository) FindNodes(ctx context.Context, query NodeQuery) ([]*domain.Node, error) {
+func (r *cqrsNodeRepository) FindNodes(ctx context.Context, query NodeQuery) ([]*node.Node, error) {
 	// Placeholder: would implement proper query conversion and delegation
 	return nil, nil
 }
@@ -697,7 +700,7 @@ func (r *cqrsNodeRepository) GetNodesPage(ctx context.Context, query NodeQuery, 
 	return nil, nil
 }
 
-func (r *cqrsNodeRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error) {
+func (r *cqrsNodeRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*shared.Graph, error) {
 	// Placeholder: would implement neighborhood discovery
 	return nil, nil
 }
@@ -708,7 +711,7 @@ func (r *cqrsNodeRepository) CountNodes(ctx context.Context, userID string) (int
 }
 
 // Phase 2 enhanced methods - simplified for consolidation
-func (r *cqrsNodeRepository) FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]*domain.Node, error) {
+func (r *cqrsNodeRepository) FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]*node.Node, error) {
 	// Placeholder: would delegate to reader
 	return nil, nil
 }
@@ -723,7 +726,7 @@ func (r *cqrsNodeRepository) ExistsBySpecification(ctx context.Context, spec Spe
 	return false, nil
 }
 
-func (r *cqrsNodeRepository) FindNodesWithOptions(ctx context.Context, query NodeQuery, opts ...QueryOption) ([]*domain.Node, error) {
+func (r *cqrsNodeRepository) FindNodesWithOptions(ctx context.Context, query NodeQuery, opts ...QueryOption) ([]*node.Node, error) {
 	// Placeholder: would delegate to reader with options
 	return nil, nil
 }
@@ -745,12 +748,12 @@ func (r *cqrsEdgeRepository) CreateEdges(ctx context.Context, userID, sourceNode
 	return nil
 }
 
-func (r *cqrsEdgeRepository) CreateEdge(ctx context.Context, edge *domain.Edge) error {
+func (r *cqrsEdgeRepository) CreateEdge(ctx context.Context, edge *edge.Edge) error {
 	// Placeholder: would delegate to writer
 	return nil
 }
 
-func (r *cqrsEdgeRepository) FindEdges(ctx context.Context, query EdgeQuery) ([]*domain.Edge, error) {
+func (r *cqrsEdgeRepository) FindEdges(ctx context.Context, query EdgeQuery) ([]*edge.Edge, error) {
 	// Placeholder: would delegate to reader
 	return nil, nil
 }
@@ -760,7 +763,7 @@ func (r *cqrsEdgeRepository) GetEdgesPage(ctx context.Context, query EdgeQuery, 
 	return nil, nil // Placeholder
 }
 
-func (r *cqrsEdgeRepository) FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]*domain.Edge, error) {
+func (r *cqrsEdgeRepository) FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]*edge.Edge, error) {
 	return nil, nil // Placeholder
 }
 
@@ -772,7 +775,7 @@ func (r *cqrsEdgeRepository) ExistsBySpecification(ctx context.Context, spec Spe
 	return false, nil // Placeholder
 }
 
-func (r *cqrsEdgeRepository) FindEdgesWithOptions(ctx context.Context, query EdgeQuery, opts ...QueryOption) ([]*domain.Edge, error) {
+func (r *cqrsEdgeRepository) FindEdgesWithOptions(ctx context.Context, query EdgeQuery, opts ...QueryOption) ([]*edge.Edge, error) {
 	return nil, nil // Placeholder
 }
 
@@ -787,26 +790,26 @@ type cqrsCategoryRepository struct {
 }
 
 // All CategoryRepository methods - simplified placeholders for consolidation
-func (r *cqrsCategoryRepository) CreateCategory(ctx context.Context, category domain.Category) error { return nil }
-func (r *cqrsCategoryRepository) UpdateCategory(ctx context.Context, category domain.Category) error { return nil }
+func (r *cqrsCategoryRepository) CreateCategory(ctx context.Context, category category.Category) error { return nil }
+func (r *cqrsCategoryRepository) UpdateCategory(ctx context.Context, category category.Category) error { return nil }
 func (r *cqrsCategoryRepository) DeleteCategory(ctx context.Context, userID, categoryID string) error { return nil }
-func (r *cqrsCategoryRepository) FindCategoryByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) FindCategories(ctx context.Context, query CategoryQuery) ([]domain.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]domain.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy domain.CategoryHierarchy) error { return nil }
+func (r *cqrsCategoryRepository) FindCategoryByID(ctx context.Context, userID, categoryID string) (*category.Category, error) { return nil, nil }
+func (r *cqrsCategoryRepository) FindCategories(ctx context.Context, query CategoryQuery) ([]category.Category, error) { return nil, nil }
+func (r *cqrsCategoryRepository) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]category.Category, error) { return nil, nil }
+func (r *cqrsCategoryRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error { return nil }
 func (r *cqrsCategoryRepository) DeleteCategoryHierarchy(ctx context.Context, userID, parentID, childID string) error { return nil }
-func (r *cqrsCategoryRepository) FindChildCategories(ctx context.Context, userID, parentID string) ([]domain.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) FindParentCategory(ctx context.Context, userID, childID string) (*domain.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) GetCategoryTree(ctx context.Context, userID string) ([]domain.Category, error) { return nil, nil }
+func (r *cqrsCategoryRepository) FindChildCategories(ctx context.Context, userID, parentID string) ([]category.Category, error) { return nil, nil }
+func (r *cqrsCategoryRepository) FindParentCategory(ctx context.Context, userID, childID string) (*category.Category, error) { return nil, nil }
+func (r *cqrsCategoryRepository) GetCategoryTree(ctx context.Context, userID string) ([]category.Category, error) { return nil, nil }
 
 // CQRS-compatible methods
-func (r *cqrsCategoryRepository) Save(ctx context.Context, category *domain.Category) error { return nil }
-func (r *cqrsCategoryRepository) FindByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) { return nil, nil }
+func (r *cqrsCategoryRepository) Save(ctx context.Context, category *category.Category) error { return nil }
+func (r *cqrsCategoryRepository) FindByID(ctx context.Context, userID, categoryID string) (*category.Category, error) { return nil, nil }
 func (r *cqrsCategoryRepository) Delete(ctx context.Context, userID, categoryID string) error { return nil }
 
-func (r *cqrsCategoryRepository) AssignNodeToCategory(ctx context.Context, mapping domain.NodeCategory) error { return nil }
+func (r *cqrsCategoryRepository) AssignNodeToCategory(ctx context.Context, mapping node.NodeCategory) error { return nil }
 func (r *cqrsCategoryRepository) RemoveNodeFromCategory(ctx context.Context, userID, nodeID, categoryID string) error { return nil }
-func (r *cqrsCategoryRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error) { return nil, nil }
-func (r *cqrsCategoryRepository) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) BatchAssignCategories(ctx context.Context, mappings []domain.NodeCategory) error { return nil }
+func (r *cqrsCategoryRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*node.Node, error) { return nil, nil }
+func (r *cqrsCategoryRepository) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]category.Category, error) { return nil, nil }
+func (r *cqrsCategoryRepository) BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error { return nil }
 func (r *cqrsCategoryRepository) UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error { return nil }

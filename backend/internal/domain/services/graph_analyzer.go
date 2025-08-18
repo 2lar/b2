@@ -6,7 +6,7 @@ import (
 	"math"
 	"sort"
 	
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/shared"
 )
 
 // GraphAnalyzer provides graph analysis domain logic.
@@ -39,13 +39,13 @@ func NewGraphAnalyzer(similarityThreshold float64, algorithm ClusteringAlgorithm
 
 // FindCommunities identifies node communities in the graph.
 // This implements a simplified Louvain algorithm for community detection.
-func (a *GraphAnalyzer) FindCommunities(graph *domain.Graph) []domain.Community {
+func (a *GraphAnalyzer) FindCommunities(graph *Graph) []shared.Community {
 	if graph == nil || len(graph.Nodes) == 0 {
-		return []domain.Community{}
+		return []shared.Community{}
 	}
 	
 	// Initialize: each node is its own community (use index as community ID)
-	communities := make(map[domain.NodeID]int)
+	communities := make(map[shared.NodeID]int)
 	for i, node := range graph.Nodes {
 		communities[node.ID] = i
 	}
@@ -89,7 +89,7 @@ func (a *GraphAnalyzer) FindCommunities(graph *domain.Graph) []domain.Community 
 }
 
 // calculateModularity calculates the modularity of a graph partition.
-func (a *GraphAnalyzer) calculateModularity(graph *domain.Graph, communities map[domain.NodeID]int) float64 {
+func (a *GraphAnalyzer) calculateModularity(graph *Graph, communities map[shared.NodeID]int) float64 {
 	if len(graph.Edges) == 0 {
 		return 0
 	}
@@ -98,7 +98,7 @@ func (a *GraphAnalyzer) calculateModularity(graph *domain.Graph, communities map
 	modularity := 0.0
 	
 	// Calculate degree for each node
-	degrees := make(map[domain.NodeID]int)
+	degrees := make(map[shared.NodeID]int)
 	for _, edge := range graph.Edges {
 		degrees[edge.SourceID]++
 		degrees[edge.TargetID]++
@@ -122,9 +122,9 @@ func (a *GraphAnalyzer) calculateModularity(graph *domain.Graph, communities map
 // ============================================================================
 
 // CalculatePageRank computes the PageRank for all nodes in the graph.
-func (a *GraphAnalyzer) CalculatePageRank(graph *domain.Graph) map[domain.NodeID]float64 {
+func (a *GraphAnalyzer) CalculatePageRank(graph *Graph) map[shared.NodeID]float64 {
 	if graph == nil || len(graph.Nodes) == 0 {
-		return make(map[domain.NodeID]float64)
+		return make(map[shared.NodeID]float64)
 	}
 	
 	const (
@@ -134,8 +134,8 @@ func (a *GraphAnalyzer) CalculatePageRank(graph *domain.Graph) map[domain.NodeID
 	)
 	
 	nodeCount := float64(len(graph.Nodes))
-	pagerank := make(map[domain.NodeID]float64)
-	newPagerank := make(map[domain.NodeID]float64)
+	pagerank := make(map[shared.NodeID]float64)
+	newPagerank := make(map[shared.NodeID]float64)
 	
 	// Initialize PageRank values
 	for _, node := range graph.Nodes {
@@ -143,8 +143,8 @@ func (a *GraphAnalyzer) CalculatePageRank(graph *domain.Graph) map[domain.NodeID
 	}
 	
 	// Build inbound links map
-	inboundLinks := make(map[domain.NodeID][]domain.NodeID)
-	outboundCount := make(map[domain.NodeID]int)
+	inboundLinks := make(map[shared.NodeID][]shared.NodeID)
+	outboundCount := make(map[shared.NodeID]int)
 	
 	for _, edge := range graph.Edges {
 		inboundLinks[edge.TargetID] = append(inboundLinks[edge.TargetID], edge.SourceID)
@@ -189,8 +189,8 @@ func (a *GraphAnalyzer) CalculatePageRank(graph *domain.Graph) map[domain.NodeID
 // ============================================================================
 
 // CalculateBetweennessCentrality computes betweenness centrality for nodes.
-func (a *GraphAnalyzer) CalculateBetweennessCentrality(graph *domain.Graph) map[domain.NodeID]float64 {
-	centrality := make(map[domain.NodeID]float64)
+func (a *GraphAnalyzer) CalculateBetweennessCentrality(graph *Graph) map[shared.NodeID]float64 {
+	centrality := make(map[shared.NodeID]float64)
 	
 	// Initialize centrality values
 	for _, node := range graph.Nodes {
@@ -231,8 +231,8 @@ func (a *GraphAnalyzer) CalculateBetweennessCentrality(graph *domain.Graph) map[
 }
 
 // CalculateClosenessCentrality computes closeness centrality for nodes.
-func (a *GraphAnalyzer) CalculateClosenessCentrality(graph *domain.Graph) map[domain.NodeID]float64 {
-	centrality := make(map[domain.NodeID]float64)
+func (a *GraphAnalyzer) CalculateClosenessCentrality(graph *Graph) map[shared.NodeID]float64 {
+	centrality := make(map[shared.NodeID]float64)
 	
 	for _, node := range graph.Nodes {
 		distances, _ := a.dijkstra(graph, node.ID)
@@ -262,7 +262,7 @@ func (a *GraphAnalyzer) CalculateClosenessCentrality(graph *domain.Graph) map[do
 // ============================================================================
 
 // FindClusters identifies clusters of similar nodes.
-func (a *GraphAnalyzer) FindClusters(graph *domain.Graph, threshold float64) []domain.Cluster {
+func (a *GraphAnalyzer) FindClusters(graph *Graph, threshold float64) []shared.Cluster {
 	switch a.clusteringAlgorithm {
 	case ClusteringLouvain:
 		return a.louvainClustering(graph, threshold)
@@ -274,14 +274,14 @@ func (a *GraphAnalyzer) FindClusters(graph *domain.Graph, threshold float64) []d
 }
 
 // louvainClustering implements Louvain clustering algorithm.
-func (a *GraphAnalyzer) louvainClustering(graph *domain.Graph, threshold float64) []domain.Cluster {
+func (a *GraphAnalyzer) louvainClustering(graph *Graph, threshold float64) []shared.Cluster {
 	communities := a.FindCommunities(graph)
-	clusters := make([]domain.Cluster, 0, len(communities))
+	clusters := make([]shared.Cluster, 0, len(communities))
 	
 	for _, community := range communities {
 		if len(community.NodeIDs) >= 2 { // Only include clusters with at least 2 nodes
-			cluster := domain.Cluster{
-				ID:       domain.ClusterID(community.ID),
+			cluster := shared.Cluster{
+				ID:       shared.ClusterID(community.ID),
 				NodeIDs:  community.NodeIDs,
 				Centroid: a.calculateCentroid(graph, community.NodeIDs),
 				Density:  a.calculateDensity(graph, community.NodeIDs),
@@ -294,17 +294,17 @@ func (a *GraphAnalyzer) louvainClustering(graph *domain.Graph, threshold float64
 }
 
 // hierarchicalClustering implements hierarchical clustering.
-func (a *GraphAnalyzer) hierarchicalClustering(graph *domain.Graph, threshold float64) []domain.Cluster {
+func (a *GraphAnalyzer) hierarchicalClustering(graph *Graph, threshold float64) []shared.Cluster {
 	if len(graph.Nodes) == 0 {
-		return []domain.Cluster{}
+		return []shared.Cluster{}
 	}
 	
 	// Initialize: each node is its own cluster
-	clusters := make([]domain.Cluster, 0, len(graph.Nodes))
+	clusters := make([]shared.Cluster, 0, len(graph.Nodes))
 	for i, node := range graph.Nodes {
-		clusters = append(clusters, domain.Cluster{
-			ID:      domain.ClusterID(i),
-			NodeIDs: []domain.NodeID{node.ID},
+		clusters = append(clusters, shared.Cluster{
+			ID:      shared.ClusterID(i),
+			NodeIDs: []shared.NodeID{node.ID},
 			Density: 1.0,
 		})
 	}
@@ -338,7 +338,7 @@ func (a *GraphAnalyzer) hierarchicalClustering(graph *domain.Graph, threshold fl
 			merged := a.mergeClusters(clusters[mergeI], clusters[mergeJ], graph)
 			
 			// Remove old clusters and add merged
-			newClusters := make([]domain.Cluster, 0, len(clusters)-1)
+			newClusters := make([]shared.Cluster, 0, len(clusters)-1)
 			for i, cluster := range clusters {
 				if i != mergeI && i != mergeJ {
 					newClusters = append(newClusters, cluster)
@@ -355,7 +355,7 @@ func (a *GraphAnalyzer) hierarchicalClustering(graph *domain.Graph, threshold fl
 }
 
 // kMeansClustering implements k-means clustering (simplified for graph data).
-func (a *GraphAnalyzer) kMeansClustering(graph *domain.Graph, threshold float64) []domain.Cluster {
+func (a *GraphAnalyzer) kMeansClustering(graph *Graph, threshold float64) []shared.Cluster {
 	// Estimate k based on graph size
 	k := int(math.Sqrt(float64(len(graph.Nodes))))
 	if k < 2 {
@@ -375,8 +375,8 @@ func (a *GraphAnalyzer) kMeansClustering(graph *domain.Graph, threshold float64)
 // ============================================================================
 
 // buildAdjacencyList builds an adjacency list from edges.
-func (a *GraphAnalyzer) buildAdjacencyList(graph *domain.Graph) map[domain.NodeID][]domain.NodeID {
-	adjacency := make(map[domain.NodeID][]domain.NodeID)
+func (a *GraphAnalyzer) buildAdjacencyList(graph *Graph) map[shared.NodeID][]shared.NodeID {
+	adjacency := make(map[shared.NodeID][]shared.NodeID)
 	
 	for _, edge := range graph.Edges {
 		adjacency[edge.SourceID] = append(adjacency[edge.SourceID], edge.TargetID)
@@ -387,24 +387,24 @@ func (a *GraphAnalyzer) buildAdjacencyList(graph *domain.Graph) map[domain.NodeI
 }
 
 // dijkstra implements Dijkstra's shortest path algorithm.
-func (a *GraphAnalyzer) dijkstra(graph *domain.Graph, source domain.NodeID) (map[domain.NodeID]float64, map[domain.NodeID][]domain.NodeID) {
-	distances := make(map[domain.NodeID]float64)
-	paths := make(map[domain.NodeID][]domain.NodeID)
-	visited := make(map[domain.NodeID]bool)
+func (a *GraphAnalyzer) dijkstra(graph *Graph, source shared.NodeID) (map[shared.NodeID]float64, map[shared.NodeID][]shared.NodeID) {
+	distances := make(map[shared.NodeID]float64)
+	paths := make(map[shared.NodeID][]shared.NodeID)
+	visited := make(map[shared.NodeID]bool)
 	
 	// Initialize distances
 	for _, node := range graph.Nodes {
 		distances[node.ID] = math.MaxFloat64
-		paths[node.ID] = []domain.NodeID{}
+		paths[node.ID] = []shared.NodeID{}
 	}
 	distances[source] = 0
-	paths[source] = []domain.NodeID{source}
+	paths[source] = []shared.NodeID{source}
 	
 	// Build adjacency list with weights
-	adjacency := make(map[domain.NodeID]map[domain.NodeID]float64)
+	adjacency := make(map[shared.NodeID]map[shared.NodeID]float64)
 	for _, edge := range graph.Edges {
 		if adjacency[edge.SourceID] == nil {
-			adjacency[edge.SourceID] = make(map[domain.NodeID]float64)
+			adjacency[edge.SourceID] = make(map[shared.NodeID]float64)
 		}
 		weight := 1.0
 		if edge.Strength > 0 {
@@ -417,7 +417,7 @@ func (a *GraphAnalyzer) dijkstra(graph *domain.Graph, source domain.NodeID) (map
 	for len(visited) < len(graph.Nodes) {
 		// Find unvisited node with minimum distance
 		minDist := math.MaxFloat64
-		var current domain.NodeID
+		var current shared.NodeID
 		found := false
 		
 		for _, node := range graph.Nodes {
@@ -450,18 +450,18 @@ func (a *GraphAnalyzer) dijkstra(graph *domain.Graph, source domain.NodeID) (map
 }
 
 // communitiesToDomain converts community map to domain objects.
-func (a *GraphAnalyzer) communitiesToDomain(communities map[domain.NodeID]int, graph *domain.Graph) []domain.Community {
+func (a *GraphAnalyzer) communitiesToDomain(communities map[shared.NodeID]int, graph *Graph) []shared.Community {
 	// Group nodes by community
-	groups := make(map[int][]domain.NodeID)
+	groups := make(map[int][]shared.NodeID)
 	for nodeID, communityID := range communities {
 		groups[communityID] = append(groups[communityID], nodeID)
 	}
 	
 	// Create Community objects
-	result := make([]domain.Community, 0, len(groups))
+	result := make([]shared.Community, 0, len(groups))
 	for communityID, nodeIDs := range groups {
-		result = append(result, domain.Community{
-			ID:      domain.CommunityID(communityID),
+		result = append(result, shared.Community{
+			ID:      shared.CommunityID(communityID),
 			NodeIDs: nodeIDs,
 			Size:    len(nodeIDs),
 		})
@@ -476,12 +476,12 @@ func (a *GraphAnalyzer) communitiesToDomain(communities map[domain.NodeID]int, g
 }
 
 // buildSimilarityMatrix builds a similarity matrix for nodes.
-func (a *GraphAnalyzer) buildSimilarityMatrix(graph *domain.Graph) map[domain.NodeID]map[domain.NodeID]float64 {
-	matrix := make(map[domain.NodeID]map[domain.NodeID]float64)
+func (a *GraphAnalyzer) buildSimilarityMatrix(graph *Graph) map[shared.NodeID]map[shared.NodeID]float64 {
+	matrix := make(map[shared.NodeID]map[shared.NodeID]float64)
 	
 	// Initialize matrix
 	for _, node := range graph.Nodes {
-		matrix[node.ID] = make(map[domain.NodeID]float64)
+		matrix[node.ID] = make(map[shared.NodeID]float64)
 	}
 	
 	// Fill matrix based on edges
@@ -494,7 +494,7 @@ func (a *GraphAnalyzer) buildSimilarityMatrix(graph *domain.Graph) map[domain.No
 }
 
 // clusterSimilarity calculates similarity between two clusters.
-func (a *GraphAnalyzer) clusterSimilarity(c1, c2 domain.Cluster, similarities map[domain.NodeID]map[domain.NodeID]float64) float64 {
+func (a *GraphAnalyzer) clusterSimilarity(c1, c2 shared.Cluster, similarities map[shared.NodeID]map[shared.NodeID]float64) float64 {
 	totalSim := 0.0
 	count := 0
 	
@@ -515,10 +515,10 @@ func (a *GraphAnalyzer) clusterSimilarity(c1, c2 domain.Cluster, similarities ma
 }
 
 // mergeClusters merges two clusters.
-func (a *GraphAnalyzer) mergeClusters(c1, c2 domain.Cluster, graph *domain.Graph) domain.Cluster {
+func (a *GraphAnalyzer) mergeClusters(c1, c2 shared.Cluster, graph *Graph) shared.Cluster {
 	nodeIDs := append(c1.NodeIDs, c2.NodeIDs...)
 	
-	return domain.Cluster{
+	return shared.Cluster{
 		ID:       c1.ID, // Keep first cluster's ID
 		NodeIDs:  nodeIDs,
 		Centroid: a.calculateCentroid(graph, nodeIDs),
@@ -527,14 +527,14 @@ func (a *GraphAnalyzer) mergeClusters(c1, c2 domain.Cluster, graph *domain.Graph
 }
 
 // calculateCentroid calculates the centroid of a cluster.
-func (a *GraphAnalyzer) calculateCentroid(graph *domain.Graph, nodeIDs []domain.NodeID) domain.NodeID {
+func (a *GraphAnalyzer) calculateCentroid(graph *Graph, nodeIDs []shared.NodeID) shared.NodeID {
 	if len(nodeIDs) == 0 {
-		return domain.NodeID{}
+		return shared.NodeID{}
 	}
 	
 	// Find node with highest average similarity to others
 	maxAvgSim := 0.0
-	var centroid domain.NodeID
+	var centroid shared.NodeID
 	
 	for _, candidate := range nodeIDs {
 		totalSim := 0.0
@@ -570,7 +570,7 @@ func (a *GraphAnalyzer) calculateCentroid(graph *domain.Graph, nodeIDs []domain.
 }
 
 // calculateDensity calculates the density of a cluster.
-func (a *GraphAnalyzer) calculateDensity(graph *domain.Graph, nodeIDs []domain.NodeID) float64 {
+func (a *GraphAnalyzer) calculateDensity(graph *Graph, nodeIDs []shared.NodeID) float64 {
 	if len(nodeIDs) <= 1 {
 		return 0
 	}

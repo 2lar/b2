@@ -10,7 +10,7 @@
 //   - Error Handling: Wraps domain errors with application context
 //
 // This service is intentionally kept thin - it orchestrates but doesn't contain business logic.
-// Business logic belongs in the domain layer (see domain.Node for examples).
+// Business logic belongs in the domain layer (see node.Node for examples).
 package services
 
 import (
@@ -21,7 +21,9 @@ import (
 
 	"brain2-backend/internal/application/commands"
 	"brain2-backend/internal/application/dto"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
@@ -34,7 +36,7 @@ type NodeService struct {
 	nodeRepo         repository.NodeRepository          // For node persistence
 	edgeRepo         repository.EdgeRepository          // For edge persistence
 	uowFactory       repository.UnitOfWorkFactory       // Factory for creating request-scoped UnitOfWork instances
-	eventBus         domain.EventBus                    // For domain event publishing
+	eventBus         shared.EventBus                    // For domain event publishing
 	connectionAnalyzer *domainServices.ConnectionAnalyzer // Domain service for complex business logic
 	idempotencyStore repository.IdempotencyStore        // For idempotent operations
 }
@@ -44,7 +46,7 @@ func NewNodeService(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
 	uowFactory repository.UnitOfWorkFactory,
-	eventBus domain.EventBus,
+	eventBus shared.EventBus,
 	connectionAnalyzer *domainServices.ConnectionAnalyzer,
 	idempotencyStore repository.IdempotencyStore,
 ) *NodeService {
@@ -115,9 +117,11 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 				if err != nil {
 					// If reconstruction fails, proceed with new creation rather than failing
 					// This ensures the API remains available even with cache issues
-					// In production, this should be logged for monitoring
-				} else {
+					log.Printf("WARN: Failed to reconstruct cached result for idempotency key, creating new node: %v", err)
+				} else if reconstructed != nil && reconstructed.Node != nil {
 					return reconstructed, nil
+				} else {
+					log.Printf("WARN: Reconstructed result is invalid (nil or nil Node), creating new node")
 				}
 			default:
 				// Unexpected type from idempotency store - proceed with new creation
@@ -128,20 +132,20 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	}
 
 	// 3. Convert application command to domain objects (Application -> Domain boundary)
-	userID, err := domain.ParseUserID(cmd.UserID)
+	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	content, err := domain.NewContent(cmd.Content)
+	content, err := shared.NewContent(cmd.Content)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid content: " + err.Error())
 	}
 
-	tags := domain.NewTags(cmd.Tags...)
+	tags := shared.NewTags(cmd.Tags...)
 
 	// 4. Create domain entity using factory method
-	node, err := domain.NewNode(userID, content, tags)
+	node, err := node.NewNode(userID, content, tags)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to create node")
 	}
@@ -168,7 +172,7 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	}
 
 	// 7. Create edges for discovered connections
-	var createdEdges []*domain.Edge
+	var createdEdges []*edge.Edge
 	for _, candidate := range potentialConnections {
 		targetNode := candidate.Node
 		
@@ -180,7 +184,7 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 		// Use the similarity score from the candidate as the edge weight
 		weight := candidate.SimilarityScore
 		
-		edge, err := domain.NewEdge(node.ID, targetNode.ID, userID, weight)
+		edge, err := edge.NewEdge(node.ID, targetNode.ID, userID, weight)
 		if err != nil {
 			continue // Skip if edge creation fails
 		}
@@ -271,12 +275,12 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 	// 2. No idempotency for updates (they are idempotent by nature)
 
 	// 3. Parse domain identifiers
-	userID, err := domain.ParseUserID(cmd.UserID)
+	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	nodeID, err := domain.ParseNodeID(cmd.NodeID)
+	nodeID, err := shared.ParseNodeID(cmd.NodeID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
 	}
@@ -301,7 +305,7 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 
 	// 6. Apply updates using domain methods
 	if cmd.Content != "" {
-		newContent, err := domain.NewContent(cmd.Content)
+		newContent, err := shared.NewContent(cmd.Content)
 		if err != nil {
 			return nil, appErrors.NewValidation("invalid content: " + err.Error())
 		}
@@ -312,7 +316,7 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 	}
 
 	if len(cmd.Tags) > 0 {
-		newTags := domain.NewTags(cmd.Tags...)
+		newTags := shared.NewTags(cmd.Tags...)
 		if err := node.UpdateTags(newTags); err != nil {
 			return nil, appErrors.Wrap(err, "failed to update node tags")
 		}
@@ -386,12 +390,12 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 	// No idempotency for deletes (they are idempotent by nature)
 
 	// 3. Parse domain identifiers
-	userID, err := domain.ParseUserID(cmd.UserID)
+	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	nodeID, err := domain.ParseNodeID(cmd.NodeID)
+	nodeID, err := shared.ParseNodeID(cmd.NodeID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
 	}
@@ -423,13 +427,13 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 	}
 
 	// 7. Create and publish deletion event using proper constructor
-	deletionEvent := domain.NewNodeDeletedEvent(
+	deletionEvent := shared.NewNodeDeletedEvent(
 		nodeID, 
 		userID, 
 		node.Content, 
 		node.Keywords(), 
 		node.Tags, 
-		domain.ParseVersion(node.Version),
+		shared.ParseVersion(node.Version),
 	)
 
 	log.Printf("DEBUG: NodeService.DeleteNode - Publishing NodeDeleted event for node %s, user %s", nodeID.String(), userID.String())
@@ -494,18 +498,18 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 	// 2. No idempotency for bulk deletes
 
 	// 3. Parse domain identifiers
-	userID, err := domain.ParseUserID(cmd.UserID)
+	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	var nodeIDs []domain.NodeID
+	var nodeIDs []shared.NodeID
 	var failedIDs []string
 	deletedCount := 0
 
 	// 4. Process each node deletion
 	for _, nodeIDStr := range cmd.NodeIDs {
-		nodeID, err := domain.ParseNodeID(nodeIDStr)
+		nodeID, err := shared.ParseNodeID(nodeIDStr)
 		if err != nil {
 			failedIDs = append(failedIDs, nodeIDStr)
 			continue
@@ -545,12 +549,12 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 
 			// Publish deletion event using proper constructor
 			// Note: For bulk operations, we might want to use default values since we don't have individual node data
-			emptyContent, _ := domain.NewContent(" ") // Create minimal valid content
-			emptyKeywords := domain.NewKeywords([]string{})
-			emptyTags := domain.NewTags()
-			emptyVersion := domain.NewVersion()
+			emptyContent, _ := shared.NewContent(" ") // Create minimal valid content
+			emptyKeywords := shared.NewKeywords([]string{})
+			emptyTags := shared.NewTags()
+			emptyVersion := shared.NewVersion()
 			
-			deletionEvent := domain.NewNodeDeletedEvent(
+			deletionEvent := shared.NewNodeDeletedEvent(
 				nodeID, 
 				userID, 
 				emptyContent,
@@ -599,6 +603,11 @@ func (s *NodeService) reconstructCreateNodeResult(data map[string]interface{}) (
 	// Reconstruct the node view
 	if nodeData, ok := data["Node"].(map[string]interface{}); ok {
 		result.Node = s.reconstructNodeView(nodeData)
+	}
+	
+	// Validate that Node was reconstructed successfully
+	if result.Node == nil {
+		return nil, fmt.Errorf("failed to reconstruct node from cached data")
 	}
 	
 	// Reconstruct connections
@@ -761,19 +770,19 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 	// 2. No idempotency for bulk creates
 
 	// 3. Parse user ID
-	userID, err := domain.ParseUserID(cmd.UserID)
+	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	var createdNodes []*domain.Node
-	var connections []*domain.Edge
+	var createdNodes []*node.Node
+	var connections []*edge.Edge
 	var errors []dto.BulkCreateError
 
 	// 4. Create nodes sequentially with error handling
 	for i, nodeReq := range cmd.Nodes {
 		// Create domain node
-		content, err := domain.NewContent(nodeReq.Content)
+		content, err := shared.NewContent(nodeReq.Content)
 		if err != nil {
 			errors = append(errors, dto.BulkCreateError{
 				Index:   i,
@@ -783,8 +792,8 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 			continue
 		}
 
-		tags := domain.NewTags(nodeReq.Tags...)
-		node, err := domain.NewNode(userID, content, tags)
+		tags := shared.NewTags(nodeReq.Tags...)
+		node, err := node.NewNode(userID, content, tags)
 		if err != nil {
 			errors = append(errors, dto.BulkCreateError{
 				Index:   i,
@@ -823,7 +832,7 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 				if err == nil && analysis.ShouldConnect {
 					// Create edge between nodes
 					weight := analysis.ForwardConnection.RelevanceScore
-					edge, err := domain.NewEdge(sourceNode.ID, targetNode.ID, userID, weight)
+					edge, err := edge.NewEdge(sourceNode.ID, targetNode.ID, userID, weight)
 					if err != nil {
 						// Log error but don't fail the entire operation
 						continue

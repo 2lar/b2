@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/shared"
 )
 
 // ConsistencyValidator validates data consistency across repository operations
@@ -60,14 +62,33 @@ func (cv *ConsistencyValidator) ValidateGraphConsistency(ctx context.Context, us
 		return fmt.Errorf("failed to get graph data for consistency check: %w", err)
 	}
 
+	// Get nodes and edges through interface methods
+	nodeInterfaces := (*graph).GetNodes()
+	edgeInterfaces := (*graph).GetEdges()
+	
+	// Convert interfaces to concrete types
+	var nodes []*node.Node
+	for _, n := range nodeInterfaces {
+		if nodePtr, ok := n.(*node.Node); ok {
+			nodes = append(nodes, nodePtr)
+		}
+	}
+	
+	var edges []*edge.Edge
+	for _, e := range edgeInterfaces {
+		if edgePtr, ok := e.(*edge.Edge); ok {
+			edges = append(edges, edgePtr)
+		}
+	}
+
 	// Create node index for fast lookup
 	nodeIndex := make(map[string]bool)
-	for _, node := range graph.Nodes {
+	for _, node := range nodes {
 		nodeIndex[node.ID.String()] = true
 	}
 
 	// Validate all edges point to existing nodes
-	for _, edge := range graph.Edges {
+	for _, edge := range edges {
 		if !nodeIndex[edge.SourceID.String()] {
 			return NewRepositoryErrorWithDetails(
 				ErrCodeDataCorruption,
@@ -96,7 +117,7 @@ func (cv *ConsistencyValidator) ValidateGraphConsistency(ctx context.Context, us
 	}
 
 	// Validate bidirectional edges
-	if err := cv.validateBidirectionalEdges(ctx, userID, graph.Edges); err != nil {
+	if err := cv.validateBidirectionalEdges(ctx, userID, edges); err != nil {
 		return err
 	}
 
@@ -126,7 +147,7 @@ func (cv *ConsistencyValidator) validateNodeKeywords(_ context.Context, userID, 
 }
 
 // validateBidirectionalEdges validates that all edges are properly bidirectional
-func (cv *ConsistencyValidator) validateBidirectionalEdges(_ context.Context, userID string, edges []*domain.Edge) error {
+func (cv *ConsistencyValidator) validateBidirectionalEdges(_ context.Context, userID string, edges []*edge.Edge) error {
 	edgeMap := make(map[string]bool)
 
 	// Build edge map
@@ -214,6 +235,25 @@ func (dcm *DataCleanupManager) CleanupUserData(ctx context.Context, userID strin
 		return nil, fmt.Errorf("failed to get user data for cleanup: %w", err)
 	}
 
+	// Get nodes and edges through interface methods
+	nodeInterfaces := (*graph).GetNodes()
+	edgeInterfaces := (*graph).GetEdges()
+	
+	// Convert interfaces to concrete types
+	var nodes []*node.Node
+	for _, n := range nodeInterfaces {
+		if nodePtr, ok := n.(*node.Node); ok {
+			nodes = append(nodes, nodePtr)
+		}
+	}
+	
+	var edges []*edge.Edge
+	for _, e := range edgeInterfaces {
+		if edgePtr, ok := e.(*edge.Edge); ok {
+			edges = append(edges, edgePtr)
+		}
+	}
+
 	// Cleanup orphaned edges
 	if options.CleanupOrphans {
 		orphanedCount, err := dcm.cleanupOrphanedEdges(ctx, userID, graph, options)
@@ -226,7 +266,7 @@ func (dcm *DataCleanupManager) CleanupUserData(ctx context.Context, userID strin
 
 	// Cleanup invalid nodes
 	if options.CleanupInvalid {
-		invalidCount, err := dcm.cleanupInvalidNodes(ctx, userID, graph.Nodes, options)
+		invalidCount, err := dcm.cleanupInvalidNodes(ctx, userID, nodes, options)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("invalid nodes cleanup failed: %v", err))
 		} else {
@@ -236,7 +276,7 @@ func (dcm *DataCleanupManager) CleanupUserData(ctx context.Context, userID strin
 
 	// Cleanup duplicate keywords
 	if options.CleanupDuplicates {
-		duplicateCount, err := dcm.cleanupDuplicateKeywords(ctx, userID, graph.Nodes, options)
+		duplicateCount, err := dcm.cleanupDuplicateKeywords(ctx, userID, nodes, options)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("duplicate keywords cleanup failed: %v", err))
 		} else {
@@ -244,22 +284,41 @@ func (dcm *DataCleanupManager) CleanupUserData(ctx context.Context, userID strin
 		}
 	}
 
-	result.NodesProcessed = len(graph.Nodes)
-	result.EdgesProcessed = len(graph.Edges)
+	result.NodesProcessed = len(nodes)
+	result.EdgesProcessed = len(edges)
 
 	return result, nil
 }
 
 // cleanupOrphanedEdges removes edges that point to non-existent nodes
-func (dcm *DataCleanupManager) cleanupOrphanedEdges(_ context.Context, _ string, graph *domain.Graph, options CleanupOptions) (int, error) {
+func (dcm *DataCleanupManager) cleanupOrphanedEdges(_ context.Context, _ string, graph *shared.Graph, options CleanupOptions) (int, error) {
+	// Get nodes and edges through interface methods
+	nodeInterfaces := (*graph).GetNodes()
+	edgeInterfaces := (*graph).GetEdges()
+	
+	// Convert interfaces to concrete types
+	var nodes []*node.Node
+	for _, n := range nodeInterfaces {
+		if nodePtr, ok := n.(*node.Node); ok {
+			nodes = append(nodes, nodePtr)
+		}
+	}
+	
+	var edges []*edge.Edge
+	for _, e := range edgeInterfaces {
+		if edgePtr, ok := e.(*edge.Edge); ok {
+			edges = append(edges, edgePtr)
+		}
+	}
+
 	nodeIndex := make(map[string]bool)
-	for _, node := range graph.Nodes {
+	for _, node := range nodes {
 		nodeIndex[node.ID.String()] = true
 	}
 
 	orphanedCount := 0
 
-	for _, edge := range graph.Edges {
+	for _, edge := range edges {
 		isOrphaned := false
 
 		if !nodeIndex[edge.SourceID.String()] {
@@ -285,7 +344,7 @@ func (dcm *DataCleanupManager) cleanupOrphanedEdges(_ context.Context, _ string,
 }
 
 // cleanupInvalidNodes removes nodes that fail validation
-func (dcm *DataCleanupManager) cleanupInvalidNodes(ctx context.Context, userID string, nodes []*domain.Node, options CleanupOptions) (int, error) {
+func (dcm *DataCleanupManager) cleanupInvalidNodes(ctx context.Context, userID string, nodes []*node.Node, options CleanupOptions) (int, error) {
 	invalidCount := 0
 
 	for _, node := range nodes {
@@ -304,7 +363,7 @@ func (dcm *DataCleanupManager) cleanupInvalidNodes(ctx context.Context, userID s
 }
 
 // cleanupDuplicateKeywords removes duplicate keywords from nodes  
-func (dcm *DataCleanupManager) cleanupDuplicateKeywords(ctx context.Context, _ string, nodes []*domain.Node, options CleanupOptions) (int, error) {
+func (dcm *DataCleanupManager) cleanupDuplicateKeywords(ctx context.Context, _ string, nodes []*node.Node, options CleanupOptions) (int, error) {
 	duplicateCount := 0
 
 	for _, node := range nodes {
@@ -365,12 +424,31 @@ func (ic *IntegrityChecker) CheckIntegrity(ctx context.Context, userID string) (
 		return nil, fmt.Errorf("failed to get user data for integrity check: %w", err)
 	}
 
-	report.TotalNodes = len(graph.Nodes)
-	report.TotalEdges = len(graph.Edges)
+	// Get nodes and edges through interface methods
+	nodeInterfaces := (*graph).GetNodes()
+	edgeInterfaces := (*graph).GetEdges()
+	
+	// Convert interfaces to concrete types
+	var nodes []*node.Node
+	for _, n := range nodeInterfaces {
+		if nodePtr, ok := n.(*node.Node); ok {
+			nodes = append(nodes, nodePtr)
+		}
+	}
+	
+	var edges []*edge.Edge
+	for _, e := range edgeInterfaces {
+		if edgePtr, ok := e.(*edge.Edge); ok {
+			edges = append(edges, edgePtr)
+		}
+	}
+
+	report.TotalNodes = len(nodes)
+	report.TotalEdges = len(edges)
 
 	// Check node integrity
 	nodeIndex := make(map[string]bool)
-	for _, node := range graph.Nodes {
+	for _, node := range nodes {
 		nodeIndex[node.ID.String()] = true
 
 		// Validate node data
@@ -390,7 +468,7 @@ func (ic *IntegrityChecker) CheckIntegrity(ctx context.Context, userID string) (
 
 	// Check edge integrity
 	edgeMap := make(map[string]bool)
-	for _, edge := range graph.Edges {
+	for _, edge := range edges {
 		// Check for orphaned edges
 		if !nodeIndex[edge.SourceID.String()] {
 			report.OrphanedEdges++
@@ -408,7 +486,7 @@ func (ic *IntegrityChecker) CheckIntegrity(ctx context.Context, userID string) (
 	}
 
 	// Check for missing bidirectional edges
-	for _, edge := range graph.Edges {
+	for _, edge := range edges {
 		reverseKey := fmt.Sprintf("%s->%s", edge.TargetID.String(), edge.SourceID.String())
 		if !edgeMap[reverseKey] {
 			report.MissingEdges++

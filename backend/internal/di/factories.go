@@ -10,11 +10,12 @@ import (
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/handlers"
-	"brain2-backend/internal/infrastructure/decorators"
+	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
+	"brain2-backend/internal/infrastructure/persistence/cache"
 	"brain2-backend/internal/repository"
 
 	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
@@ -53,13 +54,13 @@ type RepositoryContainer struct {
 // DomainServiceContainer holds domain services.
 type DomainServiceContainer struct {
 	ConnectionAnalyzer *domainServices.ConnectionAnalyzer
-	EventBus          domain.EventBus
+	EventBus          shared.EventBus
 }
 
 // InfrastructureContainer holds infrastructure services.
 type InfrastructureContainer struct {
-	Cache             decorators.Cache
-	MetricsCollector  decorators.MetricsCollector
+	Cache             cache.Cache
+	MetricsCollector  *observability.Collector
 	EventBridgeClient *awsEventbridge.Client
 	Store             persistence.Store
 }
@@ -96,11 +97,11 @@ func NewServiceFactory(
 // ============================================================================
 
 // CreateNodeService creates a fully configured NodeService.
-// This demonstrates how to apply decorators and configurations based on environment.
+// This demonstrates how to apply persistence and configurations based on environment.
 func (f *ServiceFactory) CreateNodeService() *services.NodeService {
 	f.logger.Debug("Creating NodeService with factory pattern")
 	
-	// Apply repository decorators based on configuration
+	// Apply repository persistence based on configuration
 	nodeRepo := f.decorateNodeRepository(f.repositories.Node)
 	edgeRepo := f.decorateEdgeRepository(f.repositories.Edge)
 	
@@ -230,11 +231,11 @@ func (f *ServiceFactory) CreateGraphQueryService() *queries.GraphQueryService {
 // REPOSITORY DECORATION
 // ============================================================================
 
-// decorateNodeRepository applies decorators to NodeRepository based on config.
+// decorateNodeRepository applies persistence to NodeRepository based on config.
 // This demonstrates the Decorator pattern with layered application.
 func (f *ServiceFactory) decorateNodeRepository(base repository.NodeRepository) repository.NodeRepository {
 	// Use decorator chain for clean decorator application
-	decoratorChain := decorators.NewDecoratorChain(
+	decoratorChain := persistence.NewDecoratorChain(
 		f.config,
 		f.logger,
 		f.infrastructure.Cache,
@@ -243,10 +244,10 @@ func (f *ServiceFactory) decorateNodeRepository(base repository.NodeRepository) 
 	return decoratorChain.DecorateNodeRepository(base)
 }
 
-// decorateEdgeRepository applies decorators to EdgeRepository.
+// decorateEdgeRepository applies persistence to EdgeRepository.
 func (f *ServiceFactory) decorateEdgeRepository(base repository.EdgeRepository) repository.EdgeRepository {
 	// Use decorator chain for clean decorator application
-	decoratorChain := decorators.NewDecoratorChain(
+	decoratorChain := persistence.NewDecoratorChain(
 		f.config,
 		f.logger,
 		f.infrastructure.Cache,
@@ -255,10 +256,10 @@ func (f *ServiceFactory) decorateEdgeRepository(base repository.EdgeRepository) 
 	return decoratorChain.DecorateEdgeRepository(base)
 }
 
-// decorateCategoryRepository applies decorators to CategoryRepository.
+// decorateCategoryRepository applies persistence to CategoryRepository.
 func (f *ServiceFactory) decorateCategoryRepository(base repository.CategoryRepository) repository.CategoryRepository {
 	// Use decorator chain for clean decorator application
-	decoratorChain := decorators.NewDecoratorChain(
+	decoratorChain := persistence.NewDecoratorChain(
 		f.config,
 		f.logger,
 		f.infrastructure.Cache,

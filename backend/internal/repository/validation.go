@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
 	"fmt"
 	"regexp"
 	"strings"
@@ -44,7 +44,7 @@ func IsValidationError(err error) bool {
 }
 
 // ValidateNode validates a domain node for repository operations
-func ValidateNode(node *domain.Node) error {
+func ValidateNode(node *node.Node) error {
 	// Validate node ID
 	if err := validateID(node.ID.String(), "NodeID"); err != nil {
 		return err

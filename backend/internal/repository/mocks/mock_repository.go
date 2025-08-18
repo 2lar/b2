@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"sync"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
 )
@@ -17,9 +20,9 @@ type MockRepository struct {
 	mu sync.RWMutex
 
 	// In-memory storage
-	nodes          map[string]*domain.Node     // nodeID -> Node
-	edges          map[string][]domain.Edge    // sourceNodeID -> []Edge
-	categories     map[string]*domain.Category // categoryID -> Category
+	nodes          map[string]*node.Node     // nodeID -> Node
+	edges          map[string][]edge.Edge    // sourceNodeID -> []Edge
+	categories     map[string]*category.Category // categoryID -> Category
 	nodeCategories map[string][]string         // nodeID -> []categoryID
 	categoryNodes  map[string][]string         // categoryID -> []nodeID
 
@@ -34,9 +37,9 @@ type MockRepository struct {
 // NewMockRepository creates a new mock repository instance.
 func NewMockRepository() *MockRepository {
 	return &MockRepository{
-		nodes:             make(map[string]*domain.Node),
-		edges:             make(map[string][]domain.Edge),
-		categories:        make(map[string]*domain.Category),
+		nodes:             make(map[string]*node.Node),
+		edges:             make(map[string][]edge.Edge),
+		categories:        make(map[string]*category.Category),
 		nodeCategories:    make(map[string][]string),
 		categoryNodes:     make(map[string][]string),
 		categoryHierarchy: make(map[string][]string),
@@ -70,7 +73,7 @@ func (m *MockRepository) checkError(method string) error {
 
 // Node operations
 
-func (m *MockRepository) CreateNodeAndKeywords(ctx context.Context, node *domain.Node) error {
+func (m *MockRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
 	if err := m.checkError("CreateNodeAndKeywords"); err != nil {
 		return err
 	}
@@ -104,23 +107,23 @@ func (m *MockRepository) CreateEdges(ctx context.Context, userID, sourceNodeID s
 
 		// Add edge from source to target
 		// Create rich domain edge using factory method
-		userIDVO, _ := domain.NewUserID(userID)
-		sourceNodeIDVO, _ := domain.ParseNodeID(sourceNodeID)
-		targetNodeIDVO, _ := domain.ParseNodeID(targetID)
-		edge, _ := domain.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
-		m.edges[sourceNodeID] = append(m.edges[sourceNodeID], *edge)
+		userIDVO, _ := shared.NewUserID(userID)
+		sourceNodeIDVO, _ := shared.ParseNodeID(sourceNodeID)
+		targetNodeIDVO, _ := shared.ParseNodeID(targetID)
+		newEdge, _ := edge.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
+		m.edges[sourceNodeID] = append(m.edges[sourceNodeID], *newEdge)
 
 		// Add edge from target to source (bidirectional)
 		// Create reverse edge
-		reverseEdge, _ := domain.NewEdge(targetNodeIDVO, sourceNodeIDVO, userIDVO, 1.0)
-		m.edges[targetID] = append(m.edges[targetID], *reverseEdge)
+		reverseNewEdge, _ := edge.NewEdge(targetNodeIDVO, sourceNodeIDVO, userIDVO, 1.0)
+		m.edges[targetID] = append(m.edges[targetID], *reverseNewEdge)
 	}
 
 	return nil
 }
 
 // CreateEdge creates a single edge in the mock repository
-func (m *MockRepository) CreateEdge(ctx context.Context, edge *domain.Edge) error {
+func (m *MockRepository) CreateEdge(ctx context.Context, edgeInstance *edge.Edge) error {
 	if err := m.checkError("CreateEdge"); err != nil {
 		return err
 	}
@@ -129,16 +132,16 @@ func (m *MockRepository) CreateEdge(ctx context.Context, edge *domain.Edge) erro
 	defer m.mu.Unlock()
 
 	// Store edge in both directions (bidirectional)
-	sourceID := edge.SourceID.String()
-	targetID := edge.TargetID.String()
+	sourceID := edgeInstance.SourceID.String()
+	targetID := edgeInstance.TargetID.String()
 	
-	m.edges[sourceID] = append(m.edges[sourceID], *edge)
+	m.edges[sourceID] = append(m.edges[sourceID], *edgeInstance)
 	
 	// Create reverse edge
-	userIDVO := edge.UserID()
-	sourceNodeIDVO := edge.SourceID
-	targetNodeIDVO := edge.TargetID
-	reverseEdge, err := domain.NewEdge(targetNodeIDVO, sourceNodeIDVO, userIDVO, edge.Weight())
+	userIDVO := edgeInstance.UserID()
+	sourceNodeIDVO := edgeInstance.SourceID
+	targetNodeIDVO := edgeInstance.TargetID
+	reverseEdge, err := edge.NewEdge(targetNodeIDVO, sourceNodeIDVO, userIDVO, edgeInstance.Weight())
 	if err != nil {
 		return err
 	}
@@ -147,7 +150,7 @@ func (m *MockRepository) CreateEdge(ctx context.Context, edge *domain.Edge) erro
 	return nil
 }
 
-func (m *MockRepository) CreateNodeWithEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error {
+func (m *MockRepository) CreateNodeWithEdges(ctx context.Context, node *node.Node, relatedNodeIDs []string) error {
 	if err := m.checkError("CreateNodeWithEdges"); err != nil {
 		return err
 	}
@@ -165,7 +168,7 @@ func (m *MockRepository) CreateNodeWithEdges(ctx context.Context, node *domain.N
 	return nil
 }
 
-func (m *MockRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error {
+func (m *MockRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node, relatedNodeIDs []string) error {
 	if err := m.checkError("UpdateNodeAndEdges"); err != nil {
 		return err
 	}
@@ -186,7 +189,7 @@ func (m *MockRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.No
 
 	// Remove references to this node from other nodes' edges
 	for nodeID, edges := range m.edges {
-		var filteredEdges []domain.Edge
+		var filteredEdges []edge.Edge
 		for _, edge := range edges {
 			if edge.TargetID.String() != node.ID.String() {
 				filteredEdges = append(filteredEdges, edge)
@@ -204,14 +207,14 @@ func (m *MockRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.No
 		// Add edge from source to target
 		// Create rich domain edge using factory method
 		sourceNodeIDVO := node.ID
-		targetNodeIDVO, _ := domain.ParseNodeID(targetID)
+		targetNodeIDVO, _ := shared.ParseNodeID(targetID)
 		userIDVO := node.UserID
-		edge, _ := domain.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
-		m.edges[node.ID.String()] = append(m.edges[node.ID.String()], *edge)
+		newEdge, _ := edge.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
+		m.edges[node.ID.String()] = append(m.edges[node.ID.String()], *newEdge)
 
 		// Add edge from target to source (bidirectional)
-		reverseEdge, _ := domain.NewEdge(targetNodeIDVO, sourceNodeIDVO, userIDVO, 1.0)
-		m.edges[targetID] = append(m.edges[targetID], *reverseEdge)
+		reverseNewEdge, _ := edge.NewEdge(targetNodeIDVO, sourceNodeIDVO, userIDVO, 1.0)
+		m.edges[targetID] = append(m.edges[targetID], *reverseNewEdge)
 	}
 
 	return nil
@@ -238,7 +241,7 @@ func (m *MockRepository) DeleteNode(ctx context.Context, userID, nodeID string) 
 	// Delete all edges involving this node
 	delete(m.edges, nodeID)
 	for sourceID, edges := range m.edges {
-		var filteredEdges []domain.Edge
+		var filteredEdges []edge.Edge
 		for _, edge := range edges {
 			if edge.TargetID.String() != nodeID {
 				filteredEdges = append(filteredEdges, edge)
@@ -266,7 +269,7 @@ func (m *MockRepository) DeleteNode(ctx context.Context, userID, nodeID string) 
 	return nil
 }
 
-func (m *MockRepository) FindNodeByID(ctx context.Context, userID, nodeID string) (*domain.Node, error) {
+func (m *MockRepository) FindNodeByID(ctx context.Context, userID, nodeID string) (*node.Node, error) {
 	if err := m.checkError("FindNodeByID"); err != nil {
 		return nil, err
 	}
@@ -289,7 +292,7 @@ func (m *MockRepository) FindNodeByID(ctx context.Context, userID, nodeID string
 	return &nodeCopy, nil
 }
 
-func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*domain.Node, error) {
+func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*node.Node, error) {
 	if err := m.checkError("FindNodes"); err != nil {
 		return nil, err
 	}
@@ -297,7 +300,7 @@ func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQue
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var nodes []*domain.Node
+	var nodes []*node.Node
 
 	// If specific node IDs are requested
 	if query.HasNodeIDs() {
@@ -339,7 +342,7 @@ func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQue
 	if query.HasPagination() {
 		start := query.Offset
 		if start >= len(nodes) {
-			return []*domain.Node{}, nil
+			return []*node.Node{}, nil
 		}
 
 		end := len(nodes)
@@ -353,7 +356,7 @@ func (m *MockRepository) FindNodes(ctx context.Context, query repository.NodeQue
 	return nodes, nil
 }
 
-func (m *MockRepository) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*domain.Edge, error) {
+func (m *MockRepository) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*edge.Edge, error) {
 	if err := m.checkError("FindEdges"); err != nil {
 		return nil, err
 	}
@@ -361,13 +364,13 @@ func (m *MockRepository) FindEdges(ctx context.Context, query repository.EdgeQue
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var edges []*domain.Edge
+	var edges []*edge.Edge
 
 	// If specific node IDs are requested
 	if query.HasNodeIDs() {
 		for _, nodeID := range query.NodeIDs {
 			if nodeEdges, exists := m.edges[nodeID]; exists {
-				// Convert []domain.Edge to []*domain.Edge
+				// Convert []edge.Edge to []*edge.Edge
 				for i := range nodeEdges {
 					edges = append(edges, &nodeEdges[i])
 				}
@@ -398,7 +401,7 @@ func (m *MockRepository) FindEdges(ctx context.Context, query repository.EdgeQue
 	return edges, nil
 }
 
-func (m *MockRepository) GetGraphData(ctx context.Context, query repository.GraphQuery) (*domain.Graph, error) {
+func (m *MockRepository) GetGraphData(ctx context.Context, query repository.GraphQuery) (*shared.Graph, error) {
 	if err := m.checkError("GetGraphData"); err != nil {
 		return nil, err
 	}
@@ -413,7 +416,7 @@ func (m *MockRepository) GetGraphData(ctx context.Context, query repository.Grap
 		return nil, err
 	}
 
-	var edges []*domain.Edge
+	var edges []*edge.Edge
 	if query.IncludeEdges {
 		edgeQuery := repository.EdgeQuery{UserID: query.UserID}
 		if query.HasNodeFilter() {
@@ -426,13 +429,24 @@ func (m *MockRepository) GetGraphData(ctx context.Context, query repository.Grap
 		}
 	}
 
-	return &domain.Graph{
-		Nodes: nodes,
-		Edges: edges,
+	// Convert to interface{} slices to match Graph struct definition
+	nodeInterfaces := make([]interface{}, len(nodes))
+	for i, node := range nodes {
+		nodeInterfaces[i] = node
+	}
+	
+	edgeInterfaces := make([]interface{}, len(edges))
+	for i, edge := range edges {
+		edgeInterfaces[i] = edge
+	}
+
+	return &shared.Graph{
+		Nodes: nodeInterfaces,
+		Edges: edgeInterfaces,
 	}, nil
 }
 
-func (m *MockRepository) FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]*domain.Node, error) {
+func (m *MockRepository) FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]*node.Node, error) {
 	if err := m.checkError("FindNodesByKeywords"); err != nil {
 		return nil, err
 	}
@@ -447,7 +461,7 @@ func (m *MockRepository) FindNodesByKeywords(ctx context.Context, userID string,
 
 // Category operations
 
-func (m *MockRepository) CreateCategory(ctx context.Context, category domain.Category) error {
+func (m *MockRepository) CreateCategory(ctx context.Context, category category.Category) error {
 	if err := m.checkError("CreateCategory"); err != nil {
 		return err
 	}
@@ -466,7 +480,7 @@ func (m *MockRepository) CreateCategory(ctx context.Context, category domain.Cat
 	return nil
 }
 
-func (m *MockRepository) UpdateCategory(ctx context.Context, category domain.Category) error {
+func (m *MockRepository) UpdateCategory(ctx context.Context, category category.Category) error {
 	if err := m.checkError("UpdateCategory"); err != nil {
 		return err
 	}
@@ -544,7 +558,7 @@ func (m *MockRepository) DeleteCategory(ctx context.Context, userID, categoryID 
 	return nil
 }
 
-func (m *MockRepository) FindCategoryByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+func (m *MockRepository) FindCategoryByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
 	if err := m.checkError("FindCategoryByID"); err != nil {
 		return nil, err
 	}
@@ -567,7 +581,7 @@ func (m *MockRepository) FindCategoryByID(ctx context.Context, userID, categoryI
 	return &categoryCopy, nil
 }
 
-func (m *MockRepository) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]domain.Category, error) {
+func (m *MockRepository) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]category.Category, error) {
 	if err := m.checkError("FindCategories"); err != nil {
 		return nil, err
 	}
@@ -575,7 +589,7 @@ func (m *MockRepository) FindCategories(ctx context.Context, query repository.Ca
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var categories []domain.Category
+	var categories []category.Category
 
 	for _, category := range m.categories {
 		if category.UserID == query.UserID {
@@ -587,7 +601,7 @@ func (m *MockRepository) FindCategories(ctx context.Context, query repository.Ca
 	if query.HasPagination() {
 		start := query.Offset
 		if start >= len(categories) {
-			return []domain.Category{}, nil
+			return []category.Category{}, nil
 		}
 
 		end := len(categories)
@@ -601,7 +615,7 @@ func (m *MockRepository) FindCategories(ctx context.Context, query repository.Ca
 	return categories, nil
 }
 
-func (m *MockRepository) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]domain.Category, error) {
+func (m *MockRepository) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]category.Category, error) {
 	if err := m.checkError("FindCategoriesByLevel"); err != nil {
 		return nil, err
 	}
@@ -609,7 +623,7 @@ func (m *MockRepository) FindCategoriesByLevel(ctx context.Context, userID strin
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var categories []domain.Category
+	var categories []category.Category
 
 	for _, category := range m.categories {
 		if category.UserID == userID && category.Level == level {
@@ -622,7 +636,7 @@ func (m *MockRepository) FindCategoriesByLevel(ctx context.Context, userID strin
 
 // Category hierarchy operations
 
-func (m *MockRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy domain.CategoryHierarchy) error {
+func (m *MockRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error {
 	if err := m.checkError("CreateCategoryHierarchy"); err != nil {
 		return err
 	}
@@ -668,7 +682,7 @@ func (m *MockRepository) DeleteCategoryHierarchy(ctx context.Context, userID, pa
 	return nil
 }
 
-func (m *MockRepository) FindChildCategories(ctx context.Context, userID, parentID string) ([]domain.Category, error) {
+func (m *MockRepository) FindChildCategories(ctx context.Context, userID, parentID string) ([]category.Category, error) {
 	if err := m.checkError("FindChildCategories"); err != nil {
 		return nil, err
 	}
@@ -676,7 +690,7 @@ func (m *MockRepository) FindChildCategories(ctx context.Context, userID, parent
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var categories []domain.Category
+	var categories []category.Category
 
 	if childIDs, exists := m.categoryHierarchy[parentID]; exists {
 		for _, childID := range childIDs {
@@ -689,7 +703,7 @@ func (m *MockRepository) FindChildCategories(ctx context.Context, userID, parent
 	return categories, nil
 }
 
-func (m *MockRepository) FindParentCategory(ctx context.Context, userID, childID string) (*domain.Category, error) {
+func (m *MockRepository) FindParentCategory(ctx context.Context, userID, childID string) (*category.Category, error) {
 	if err := m.checkError("FindParentCategory"); err != nil {
 		return nil, err
 	}
@@ -707,7 +721,7 @@ func (m *MockRepository) FindParentCategory(ctx context.Context, userID, childID
 	return nil, nil
 }
 
-func (m *MockRepository) GetCategoryTree(ctx context.Context, userID string) ([]domain.Category, error) {
+func (m *MockRepository) GetCategoryTree(ctx context.Context, userID string) ([]category.Category, error) {
 	if err := m.checkError("GetCategoryTree"); err != nil {
 		return nil, err
 	}
@@ -718,7 +732,7 @@ func (m *MockRepository) GetCategoryTree(ctx context.Context, userID string) ([]
 
 // Node-Category operations
 
-func (m *MockRepository) AssignNodeToCategory(ctx context.Context, mapping domain.NodeCategory) error {
+func (m *MockRepository) AssignNodeToCategory(ctx context.Context, mapping node.NodeCategory) error {
 	if err := m.checkError("AssignNodeToCategory"); err != nil {
 		return err
 	}
@@ -773,7 +787,7 @@ func (m *MockRepository) RemoveNodeFromCategory(ctx context.Context, userID, nod
 	return nil
 }
 
-func (m *MockRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error) {
+func (m *MockRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*node.Node, error) {
 	if err := m.checkError("FindNodesByCategory"); err != nil {
 		return nil, err
 	}
@@ -781,7 +795,7 @@ func (m *MockRepository) FindNodesByCategory(ctx context.Context, userID, catego
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var nodes []*domain.Node
+	var nodes []*node.Node
 
 	if nodeIDs, exists := m.categoryNodes[categoryID]; exists {
 		for _, nodeID := range nodeIDs {
@@ -794,7 +808,7 @@ func (m *MockRepository) FindNodesByCategory(ctx context.Context, userID, catego
 	return nodes, nil
 }
 
-func (m *MockRepository) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error) {
+func (m *MockRepository) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]category.Category, error) {
 	if err := m.checkError("FindCategoriesForNode"); err != nil {
 		return nil, err
 	}
@@ -802,7 +816,7 @@ func (m *MockRepository) FindCategoriesForNode(ctx context.Context, userID, node
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var categories []domain.Category
+	var categories []category.Category
 
 	if categoryIDs, exists := m.nodeCategories[nodeID]; exists {
 		for _, categoryID := range categoryIDs {
@@ -817,7 +831,7 @@ func (m *MockRepository) FindCategoriesForNode(ctx context.Context, userID, node
 
 // Batch operations
 
-func (m *MockRepository) BatchAssignCategories(ctx context.Context, mappings []domain.NodeCategory) error {
+func (m *MockRepository) BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error {
 	if err := m.checkError("BatchAssignCategories"); err != nil {
 		return err
 	}
@@ -869,7 +883,7 @@ func (m *MockRepository) GetEdgesPage(ctx context.Context, query repository.Edge
 }
 
 // GetGraphDataPaginated returns paginated graph data
-func (m *MockRepository) GetGraphDataPaginated(ctx context.Context, query repository.GraphQuery, pagination repository.Pagination) (*domain.Graph, string, error) {
+func (m *MockRepository) GetGraphDataPaginated(ctx context.Context, query repository.GraphQuery, pagination repository.Pagination) (*shared.Graph, string, error) {
 	if err := m.checkError("GetGraphDataPaginated"); err != nil {
 		return nil, "", err
 	}
@@ -884,7 +898,7 @@ func (m *MockRepository) GetGraphDataPaginated(ctx context.Context, query reposi
 }
 
 // GetNodeNeighborhood returns the neighborhood graph for a specific node within a given depth
-func (m *MockRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error) {
+func (m *MockRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*shared.Graph, error) {
 	if err := m.checkError("GetNodeNeighborhood"); err != nil {
 		return nil, err
 	}
@@ -908,9 +922,18 @@ func (m *MockRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID
 		return nil, err
 	}
 
-	return &domain.Graph{
-		Nodes: []*domain.Node{node},
-		Edges: edges,
+	// Convert to interface{} slices to match Graph struct definition
+	nodeInterfaces := make([]interface{}, 1)
+	nodeInterfaces[0] = node
+	
+	edgeInterfaces := make([]interface{}, len(edges))
+	for i, edge := range edges {
+		edgeInterfaces[i] = edge
+	}
+
+	return &shared.Graph{
+		Nodes: nodeInterfaces,
+		Edges: edgeInterfaces,
 	}, nil
 }
 
@@ -954,7 +977,7 @@ func (m *MockRepository) CountNodes(ctx context.Context, userID string) (int, er
 // Phase 2 Enhanced Methods - Added for interface compatibility
 
 // FindNodesWithOptions implements enhanced node queries with options
-func (m *MockRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*domain.Node, error) {
+func (m *MockRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
 	if err := m.checkError("FindNodesWithOptions"); err != nil {
 		return nil, err
 	}
@@ -972,7 +995,7 @@ func (m *MockRepository) FindNodesPageWithOptions(ctx context.Context, query rep
 }
 
 // FindEdgesWithOptions implements enhanced edge queries with options
-func (m *MockRepository) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*domain.Edge, error) {
+func (m *MockRepository) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*edge.Edge, error) {
 	if err := m.checkError("FindEdgesWithOptions"); err != nil {
 		return nil, err
 	}
@@ -981,27 +1004,27 @@ func (m *MockRepository) FindEdgesWithOptions(ctx context.Context, query reposit
 }
 
 // GetSubgraph implements subgraph extraction
-func (m *MockRepository) GetSubgraph(ctx context.Context, nodeIDs []string, opts ...repository.QueryOption) (*domain.Graph, error) {
+func (m *MockRepository) GetSubgraph(ctx context.Context, nodeIDs []string, opts ...repository.QueryOption) (*shared.Graph, error) {
 	if err := m.checkError("GetSubgraph"); err != nil {
 		return nil, err
 	}
 	// For consolidation phase, return empty graph
-	return &domain.Graph{Nodes: []*domain.Node{}, Edges: []*domain.Edge{}}, nil
+	return &shared.Graph{Nodes: []interface{}{}, Edges: []interface{}{}}, nil
 }
 
 // GetConnectedComponents implements graph connected components analysis
-func (m *MockRepository) GetConnectedComponents(ctx context.Context, userID string, opts ...repository.QueryOption) ([]domain.Graph, error) {
+func (m *MockRepository) GetConnectedComponents(ctx context.Context, userID string, opts ...repository.QueryOption) ([]shared.Graph, error) {
 	if err := m.checkError("GetConnectedComponents"); err != nil {
 		return nil, err
 	}
 	// For consolidation phase, return empty result
-	return []domain.Graph{}, nil
+	return []shared.Graph{}, nil
 }
 
 // CQRS-compatible methods for CategoryRepository
 
 // Save creates or updates a category (alias for CreateCategory)
-func (m *MockRepository) Save(ctx context.Context, category *domain.Category) error {
+func (m *MockRepository) Save(ctx context.Context, category *category.Category) error {
 	if err := m.checkError("Save"); err != nil {
 		return err
 	}
@@ -1009,7 +1032,7 @@ func (m *MockRepository) Save(ctx context.Context, category *domain.Category) er
 }
 
 // FindByID retrieves a category by ID (alias for FindCategoryByID)
-func (m *MockRepository) FindByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+func (m *MockRepository) FindByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
 	if err := m.checkError("FindByID"); err != nil {
 		return nil, err
 	}

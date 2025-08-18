@@ -5,7 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 )
 
 // Specification defines criteria for querying entities.
@@ -269,11 +272,11 @@ func newNotSpecification(inner Specification) Specification {
 // UserOwnedSpec ensures entities belong to a specific user
 type UserOwnedSpec struct {
 	baseSpecification
-	userID domain.UserID
+	userID shared.UserID
 }
 
 // NewUserOwnedSpec creates a specification for user-owned entities
-func NewUserOwnedSpec(userID domain.UserID) Specification {
+func NewUserOwnedSpec(userID shared.UserID) Specification {
 	return UserOwnedSpec{
 		baseSpecification: baseSpecification{
 			description:          fmt.Sprintf("owned by user %s", userID.String()),
@@ -285,11 +288,11 @@ func NewUserOwnedSpec(userID domain.UserID) Specification {
 
 func (s UserOwnedSpec) IsSatisfiedBy(entity interface{}) bool {
 	switch e := entity.(type) {
-	case *domain.Node:
+	case *node.Node:
 		return e.UserID.Equals(s.userID)
-	case *domain.Edge:
+	case *edge.Edge:
 		return e.UserID().Equals(s.userID)
-	case *domain.Category:
+	case *category.Category:
 		return e.UserID == s.userID.String()
 	default:
 		return false
@@ -338,7 +341,7 @@ func NewKeywordContainsSpec(keyword string) Specification {
 }
 
 func (s KeywordContainsSpec) IsSatisfiedBy(entity interface{}) bool {
-	if node, ok := entity.(*domain.Node); ok {
+	if node, ok := entity.(*node.Node); ok {
 		return node.HasKeyword(s.keyword)
 	}
 	return false
@@ -386,7 +389,7 @@ func NewTaggedWithSpec(tag string) Specification {
 }
 
 func (s TaggedWithSpec) IsSatisfiedBy(entity interface{}) bool {
-	if node, ok := entity.(*domain.Node); ok {
+	if node, ok := entity.(*node.Node); ok {
 		return node.HasTag(s.tag)
 	}
 	return false
@@ -435,11 +438,11 @@ func NewCreatedAfterSpec(afterTime time.Time) Specification {
 
 func (s CreatedAfterSpec) IsSatisfiedBy(entity interface{}) bool {
 	switch e := entity.(type) {
-	case *domain.Node:
+	case *node.Node:
 		return e.CreatedAt.After(s.afterTime)
-	case *domain.Edge:
+	case *edge.Edge:
 		return e.CreatedAt.After(s.afterTime)
-	case *domain.Category:
+	case *category.Category:
 		return e.CreatedAt.After(s.afterTime)
 	default:
 		return false
@@ -492,7 +495,7 @@ func NewContentContainsSpec(searchTerm string, fuzzy bool) Specification {
 }
 
 func (s ContentContainsSpec) IsSatisfiedBy(entity interface{}) bool {
-	if node, ok := entity.(*domain.Node); ok {
+	if node, ok := entity.(*node.Node); ok {
 		content := strings.ToLower(node.Content.String())
 		searchTerm := strings.ToLower(s.searchTerm)
 		
@@ -553,7 +556,7 @@ func NewArchivedSpec(archived bool) Specification {
 }
 
 func (s ArchivedSpec) IsSatisfiedBy(entity interface{}) bool {
-	if node, ok := entity.(*domain.Node); ok {
+	if node, ok := entity.(*node.Node); ok {
 		return node.IsArchived() == s.archived
 	}
 	return false
@@ -648,7 +651,7 @@ func NewSpecificationBuilder() *SpecificationBuilder {
 }
 
 // ForUser sets the user ownership requirement
-func (b *SpecificationBuilder) ForUser(userID domain.UserID) *SpecificationBuilder {
+func (b *SpecificationBuilder) ForUser(userID shared.UserID) *SpecificationBuilder {
 	userSpec := NewUserOwnedSpec(userID)
 	if b.spec == nil {
 		b.spec = userSpec

@@ -11,7 +11,10 @@ package dto
 
 import (
 	"time"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 )
 
 // NodeView represents a node optimized for read operations and API responses.
@@ -28,7 +31,7 @@ type NodeView struct {
 }
 
 // ToNodeView converts a domain Node to a NodeView.
-func ToNodeView(node *domain.Node) *NodeView {
+func ToNodeView(node *node.Node) *NodeView {
 	if node == nil {
 		return nil
 	}
@@ -47,7 +50,7 @@ func ToNodeView(node *domain.Node) *NodeView {
 }
 
 // ToNodeViews converts a slice of domain Nodes to NodeViews.
-func ToNodeViews(nodes []*domain.Node) []*NodeView {
+func ToNodeViews(nodes []*node.Node) []*NodeView {
 	views := make([]*NodeView, len(nodes))
 	for i, node := range nodes {
 		views[i] = ToNodeView(node)
@@ -65,7 +68,7 @@ type ConnectionView struct {
 }
 
 // ToConnectionView converts a domain Edge to a ConnectionView.
-func ToConnectionView(edge *domain.Edge) *ConnectionView {
+func ToConnectionView(edge *edge.Edge) *ConnectionView {
 	if edge == nil {
 		return nil
 	}
@@ -80,7 +83,7 @@ func ToConnectionView(edge *domain.Edge) *ConnectionView {
 }
 
 // ToConnectionViews converts a slice of domain Edges to ConnectionViews.
-func ToConnectionViews(edges []*domain.Edge) []*ConnectionView {
+func ToConnectionViews(edges []*edge.Edge) []*ConnectionView {
 	views := make([]*ConnectionView, len(edges))
 	for i, edge := range edges {
 		views[i] = ToConnectionView(edge)
@@ -223,7 +226,7 @@ type GraphView struct {
 }
 
 // ToGraphView converts a domain Graph to a GraphView.
-func ToGraphView(graph *domain.Graph) *GraphView {
+func ToGraphView(graph *shared.Graph) *GraphView {
 	if graph == nil {
 		return &GraphView{
 			Nodes:       []*NodeView{},
@@ -235,12 +238,31 @@ func ToGraphView(graph *domain.Graph) *GraphView {
 		}
 	}
 
-	nodeViews := ToNodeViews(graph.Nodes)
-	connectionViews := ToConnectionViews(graph.Edges)
+	// Get nodes and edges through interface methods
+	nodeInterfaces := graph.GetNodes()
+	edgeInterfaces := graph.GetEdges()
+	
+	// Convert interfaces to concrete types
+	var nodes []*node.Node
+	for _, n := range nodeInterfaces {
+		if nodePtr, ok := n.(*node.Node); ok {
+			nodes = append(nodes, nodePtr)
+		}
+	}
+	
+	var edges []*edge.Edge
+	for _, e := range edgeInterfaces {
+		if edgePtr, ok := e.(*edge.Edge); ok {
+			edges = append(edges, edgePtr)
+		}
+	}
+
+	nodeViews := ToNodeViews(nodes)
+	connectionViews := ToConnectionViews(edges)
 
 	// Calculate density
-	nodeCount := len(graph.Nodes)
-	edgeCount := len(graph.Edges)
+	nodeCount := len(nodes)
+	edgeCount := len(edges)
 	density := float64(0)
 	if nodeCount > 1 {
 		possibleEdges := nodeCount * (nodeCount - 1) / 2
@@ -299,7 +321,7 @@ type CategoryView struct {
 }
 
 // ToCategoryView converts a domain Category to a CategoryView.
-func ToCategoryView(category *domain.Category) *CategoryView {
+func ToCategoryView(category *category.Category) *CategoryView {
 	if category == nil {
 		return nil
 	}
@@ -322,7 +344,7 @@ func ToCategoryView(category *domain.Category) *CategoryView {
 }
 
 // ToCategoryViews converts a slice of domain Categories to CategoryViews.
-func ToCategoryViews(categories []*domain.Category) []*CategoryView {
+func ToCategoryViews(categories []*category.Category) []*CategoryView {
 	views := make([]*CategoryView, len(categories))
 	for i, category := range categories {
 		views[i] = ToCategoryView(category)
@@ -341,7 +363,7 @@ type CategorySuggestionView struct {
 }
 
 // ToCategorySuggestionView converts a domain CategorySuggestion to a CategorySuggestionView.
-func ToCategorySuggestionView(suggestion *domain.CategorySuggestion) *CategorySuggestionView {
+func ToCategorySuggestionView(suggestion *category.CategorySuggestion) *CategorySuggestionView {
 	if suggestion == nil {
 		return nil
 	}
@@ -358,7 +380,7 @@ func ToCategorySuggestionView(suggestion *domain.CategorySuggestion) *CategorySu
 }
 
 // ToCategorySuggestionViews converts a slice of domain CategorySuggestions to CategorySuggestionViews.
-func ToCategorySuggestionViews(suggestions []domain.CategorySuggestion) []*CategorySuggestionView {
+func ToCategorySuggestionViews(suggestions []category.CategorySuggestion) []*CategorySuggestionView {
 	views := make([]*CategorySuggestionView, len(suggestions))
 	for i, suggestion := range suggestions {
 		views[i] = ToCategorySuggestionView(&suggestion)
@@ -507,7 +529,7 @@ type EdgeView struct {
 }
 
 // ToEdgeView converts a domain Edge to an EdgeView.
-func ToEdgeView(edge *domain.Edge) *EdgeView {
+func ToEdgeView(edge *edge.Edge) *EdgeView {
 	if edge == nil {
 		return nil
 	}
@@ -526,7 +548,7 @@ func ToEdgeView(edge *domain.Edge) *EdgeView {
 }
 
 // ToEdgeViews converts a slice of domain Edges to EdgeViews.
-func ToEdgeViews(edges []*domain.Edge) []*EdgeView {
+func ToEdgeViews(edges []*edge.Edge) []*EdgeView {
 	if edges == nil {
 		return nil
 	}

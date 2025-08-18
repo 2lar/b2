@@ -93,12 +93,14 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated }) => {
         try {
             const newNode = await nodesApi.createNode(trimmedContent, tags.length > 0 ? tags : undefined);
             
-            // Auto-categorize the new node
-            try {
-                await nodesApi.categorizeNode(newNode.nodeId);
-            } catch (categorizationError) {
-                // Don't fail the whole operation if categorization fails
-                console.warn('Auto-categorization failed');
+            // Auto-categorize the new node only if we have a valid nodeId
+            if (newNode && newNode.nodeId && newNode.nodeId !== 'undefined') {
+                try {
+                    await nodesApi.categorizeNode(newNode.nodeId);
+                } catch (categorizationError) {
+                    // Don't fail the whole operation if categorization fails
+                    console.warn('Auto-categorization failed:', categorizationError);
+                }
             }
             
             showStatus('Memory saved successfully!', 'success');

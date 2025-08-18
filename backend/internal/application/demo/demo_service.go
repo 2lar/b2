@@ -18,7 +18,8 @@ import (
 	"context"
 	"time"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
 )
@@ -68,7 +69,7 @@ type DemoNodeService struct {
 	
 	// In a full implementation, these would be:
 	// - unitOfWork repository.UnitOfWork
-	// - eventBus domain.EventBus
+	// - eventBus shared.EventBus
 	// - domainServices (connection analyzer, etc.)
 }
 
@@ -96,20 +97,20 @@ func (s *DemoNodeService) CreateNode(ctx context.Context, cmd CreateNodeCommand)
 	}
 
 	// 2. Convert to domain objects (Application -> Domain boundary)
-	userID, err := domain.NewUserID(cmd.UserID)
+	userID, err := shared.NewUserID(cmd.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user_id: " + err.Error())
 	}
 
-	content, err := domain.NewContent(cmd.Content)
+	content, err := shared.NewContent(cmd.Content)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid content: " + err.Error())
 	}
 
-	tags := domain.NewTags(cmd.Tags...)
+	tags := shared.NewTags(cmd.Tags...)
 
 	// 3. Apply business logic using domain factory
-	node, err := domain.NewNode(userID, content, tags)
+	node, err := node.NewNode(userID, content, tags)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to create node")
 	}

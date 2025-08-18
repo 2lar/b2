@@ -9,7 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors" // ALIAS for our custom errors
 
@@ -143,7 +146,7 @@ func getCanonicalEdge(nodeA, nodeB string) (owner, target string) {
 }
 
 // CreateNodeAndKeywords transactionally saves a node and its keyword indexes.
-func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *domain.Node) error {
+func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
 	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID.String(), node.ID.String())
 	transactItems := []types.TransactWriteItem{}
 
@@ -186,7 +189,7 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *domain.
 }
 
 // CreateNodeWithEdges saves a node, its keywords, and its connections in a single transaction.
-func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error {
+func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *node.Node, relatedNodeIDs []string) error {
 	r.logger.Debug("creating node with edges",
 		zap.String("node_id", node.ID.String()),
 		zap.Strings("keywords", node.Keywords().ToSlice()),
@@ -260,7 +263,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *domain.No
 }
 
 // UpdateNodeAndEdges transactionally updates a node and its connections.
-func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.Node, relatedNodeIDs []string) error {
+func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node, relatedNodeIDs []string) error {
 	if err := r.clearNodeConnections(ctx, node.UserID.String(), node.ID.String()); err != nil {
 		return appErrors.Wrap(err, "failed to clear old connections for update")
 	}
@@ -328,7 +331,7 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *domain.Nod
 }
 
 // CreateEdge creates a single edge in DynamoDB using the canonical edge storage pattern.
-func (r *ddbRepository) CreateEdge(ctx context.Context, edge *domain.Edge) error {
+func (r *ddbRepository) CreateEdge(ctx context.Context, edge *edge.Edge) error {
 	if edge == nil {
 		return appErrors.NewValidation("edge cannot be nil")
 	}
@@ -366,13 +369,13 @@ func (r *ddbRepository) CreateEdge(ctx context.Context, edge *domain.Edge) error
 }
 
 // FindNodesByKeywords uses the GSI to find nodes with matching keywords.
-func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]*domain.Node, error) {
+func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, keywords []string) ([]*node.Node, error) {
 	r.logger.Debug("finding nodes by keywords",
 		zap.String("user_id", userID),
 		zap.Strings("keywords", keywords))
 	
 	nodeIdMap := make(map[string]bool)
-	var nodes []*domain.Node
+	var nodes []*node.Node
 	for _, keyword := range keywords {
 		gsiPK := fmt.Sprintf("USER#%s#KEYWORD#%s", userID, keyword)
 		r.logger.Debug("querying GSI for keyword", zap.String("gsi_pk", gsiPK))
@@ -434,7 +437,7 @@ func (r *ddbRepository) FindNodesByKeywords(ctx context.Context, userID string, 
 }
 
 // FindNodeByID retrieves a single node's metadata.
-func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string) (*domain.Node, error) {
+func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string) (*node.Node, error) {
 	pk := fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID)
 	sk := "METADATA#v0"
 	
@@ -455,7 +458,7 @@ func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string)
 	}
 	createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
 	// Use domain factory method to reconstruct node from primitives
-	node, err := domain.ReconstructNodeFromPrimitives(
+	node, err := node.ReconstructNodeFromPrimitives(
 		ddbItem.NodeID, 
 		ddbItem.UserID, 
 		ddbItem.Content,
@@ -471,8 +474,8 @@ func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string)
 }
 
 // FindEdgesByNode queries for all edges connected to a given node using optimized GSI2 query.
-func (r *ddbRepository) FindEdgesByNode(ctx context.Context, userID, nodeID string) ([]domain.Edge, error) {
-	var edges []domain.Edge
+func (r *ddbRepository) FindEdgesByNode(ctx context.Context, userID, nodeID string) ([]edge.Edge, error) {
+	var edges []edge.Edge
 	edgeMap := make(map[string]bool)
 
 	// Use GSI2 to find all edges for this user, then filter for those involving the specific node
@@ -513,10 +516,10 @@ func (r *ddbRepository) FindEdgesByNode(ctx context.Context, userID, nodeID stri
 						if !edgeMap[edgeKey] && !edgeMap[reverseKey] {
 							edgeMap[edgeKey] = true
 							// Create rich domain edge using factory method
-							userIDVO, _ := domain.NewUserID(userID)
-							sourceNodeIDVO, _ := domain.ParseNodeID(sourceID)
-							targetNodeIDVO, _ := domain.ParseNodeID(targetID)
-							edge, err := domain.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
+							userIDVO, _ := shared.NewUserID(userID)
+							sourceNodeIDVO, _ := shared.ParseNodeID(sourceID)
+							targetNodeIDVO, _ := shared.ParseNodeID(targetID)
+							edge, err := edge.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
 							if err == nil {
 								edges = append(edges, *edge)
 							}
@@ -541,13 +544,13 @@ func (r *ddbRepository) DeleteNode(ctx context.Context, userID, nodeID string) e
 }
 
 // GetAllGraphData retrieves all nodes and edges for a user using optimized parallel queries.
-func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*domain.Graph, error) {
+func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*shared.Graph, error) {
 	r.logger.Debug("starting optimized GetAllGraphData with parallel queries")
 
 	g, ctx := errgroup.WithContext(ctx)
 	
-	var nodes []*domain.Node
-	var edges []*domain.Edge
+	var nodes []*node.Node
+	var edges []*edge.Edge
 	var nodeErr, edgeErr error
 
 	// Fetch nodes in parallel using query instead of scan
@@ -572,12 +575,23 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*do
 		zap.Int("nodes_found", len(nodes)),
 		zap.Int("edges_found", len(edges)))
 
-	return &domain.Graph{Nodes: nodes, Edges: edges}, nil
+	// Convert to interface{} slices to match Graph struct definition
+	nodeInterfaces := make([]interface{}, len(nodes))
+	for i, node := range nodes {
+		nodeInterfaces[i] = node
+	}
+	
+	edgeInterfaces := make([]interface{}, len(edges))
+	for i, edge := range edges {
+		edgeInterfaces[i] = edge
+	}
+
+	return &shared.Graph{Nodes: nodeInterfaces, Edges: edgeInterfaces}, nil
 }
 
 // fetchAllNodesOptimized retrieves all nodes for a user using scan with filter
-func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID string) ([]*domain.Node, error) {
-	var nodes []*domain.Node
+func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID string) ([]*node.Node, error) {
+	var nodes []*node.Node
 	var lastEvaluatedKey map[string]types.AttributeValue
 
 	userNodePrefix := fmt.Sprintf("USER#%s#NODE#", userID)
@@ -604,7 +618,7 @@ func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID strin
 			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
 				createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
 				// Use domain factory method to reconstruct node from primitives
-				node, err := domain.ReconstructNodeFromPrimitives(
+				node, err := node.ReconstructNodeFromPrimitives(
 					ddbItem.NodeID, 
 					ddbItem.UserID, 
 					ddbItem.Content,
@@ -629,8 +643,8 @@ func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID strin
 }
 
 // fetchAllEdgesOptimized retrieves all edges for a user using GSI2 query
-func (r *ddbRepository) fetchAllEdgesOptimized(ctx context.Context, userID string) ([]*domain.Edge, error) {
-	var edges []*domain.Edge
+func (r *ddbRepository) fetchAllEdgesOptimized(ctx context.Context, userID string) ([]*edge.Edge, error) {
+	var edges []*edge.Edge
 	var lastEvaluatedKey map[string]types.AttributeValue
 	edgeMap := make(map[string]bool)
 
@@ -666,10 +680,10 @@ func (r *ddbRepository) fetchAllEdgesOptimized(ctx context.Context, userID strin
 					if !edgeMap[edgeKey] && !edgeMap[reverseKey] {
 						edgeMap[edgeKey] = true
 						// Create rich domain edge using factory method
-						userIDVO, _ := domain.NewUserID(userID)
-						sourceNodeIDVO, _ := domain.ParseNodeID(sourceID)
-						targetNodeIDVO, _ := domain.ParseNodeID(ddbItem.TargetID)
-						edge, err := domain.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
+						userIDVO, _ := shared.NewUserID(userID)
+						sourceNodeIDVO, _ := shared.ParseNodeID(sourceID)
+						targetNodeIDVO, _ := shared.ParseNodeID(ddbItem.TargetID)
+						edge, err := edge.NewEdge(sourceNodeIDVO, targetNodeIDVO, userIDVO, 1.0)
 						if err == nil {
 							edges = append(edges, edge)
 						}
@@ -755,7 +769,7 @@ func (r *ddbRepository) clearNodeConnections(ctx context.Context, userID, nodeID
 // Enhanced query methods using new query types
 
 // FindNodes implements the enhanced node querying with NodeQuery.
-func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*domain.Node, error) {
+func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*node.Node, error) {
 	r.logger.Debug("findNodes called",
 		zap.String("user_id", query.UserID),
 		zap.Strings("keywords", query.Keywords),
@@ -770,7 +784,7 @@ func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuer
 	if query.HasNodeIDs() {
 		r.logger.Debug("using nodeID-based lookup",
 			zap.Int("node_count", len(query.NodeIDs)))
-		var nodes []*domain.Node
+		var nodes []*node.Node
 		for _, nodeID := range query.NodeIDs {
 			node, err := r.FindNodeByID(ctx, query.UserID, nodeID)
 			if err != nil {
@@ -802,13 +816,19 @@ func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuer
 		return nil, err
 	}
 
-	nodes := graph.Nodes
+	// Convert interface{} slice back to []*node.Node
+	var nodes []*node.Node
+	for _, nodeInterface := range graph.Nodes {
+		if node, ok := nodeInterface.(*node.Node); ok {
+			nodes = append(nodes, node)
+		}
+	}
 
 	// Apply pagination if specified
 	if query.HasPagination() {
 		start := query.Offset
 		if start >= len(nodes) {
-			return []*domain.Node{}, nil
+			return []*node.Node{}, nil
 		}
 
 		end := len(nodes)
@@ -823,12 +843,12 @@ func (r *ddbRepository) FindNodes(ctx context.Context, query repository.NodeQuer
 }
 
 // FindEdges implements the enhanced edge querying with EdgeQuery.
-func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*domain.Edge, error) {
+func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*edge.Edge, error) {
 	if err := query.Validate(); err != nil {
 		return nil, err
 	}
 
-	var edges []*domain.Edge
+	var edges []*edge.Edge
 
 	// If specific node IDs are requested, find edges for each
 	if query.HasNodeIDs() {
@@ -837,7 +857,7 @@ func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuer
 			if err != nil {
 				return nil, err
 			}
-			// Convert []domain.Edge to []*domain.Edge
+			// Convert []edge.Edge to []*edge.Edge
 			for i := range nodeEdges {
 				edges = append(edges, &nodeEdges[i])
 			}
@@ -851,8 +871,8 @@ func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuer
 		if err != nil {
 			return nil, err
 		}
-		// Convert []domain.Edge to []*domain.Edge
-		var edges []*domain.Edge
+		// Convert []edge.Edge to []*edge.Edge
+		var edges []*edge.Edge
 		for i := range nodeEdges {
 			edges = append(edges, &nodeEdges[i])
 		}
@@ -867,10 +887,12 @@ func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuer
 			return nil, err
 		}
 
-		var edges []*domain.Edge
-		for _, edge := range graph.Edges {
-			if edge.TargetID.String() == query.TargetID {
-				edges = append(edges, edge)
+		var edges []*edge.Edge
+		for _, edgeInterface := range graph.Edges {
+			if edgeInstance, ok := edgeInterface.(*edge.Edge); ok {
+				if edgeInstance.TargetID.String() == query.TargetID {
+					edges = append(edges, edgeInstance)
+				}
 			}
 		}
 		return edges, nil
@@ -882,13 +904,18 @@ func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuer
 		return nil, err
 	}
 
-	edges = graph.Edges
+	// Convert interface{} slice back to []*edge.Edge
+	for _, edgeInterface := range graph.Edges {
+		if edgeInstance, ok := edgeInterface.(*edge.Edge); ok {
+			edges = append(edges, edgeInstance)
+		}
+	}
 
 	// Apply pagination if specified
 	if query.HasPagination() {
 		start := query.Offset
 		if start >= len(edges) {
-			return []*domain.Edge{}, nil
+			return []*edge.Edge{}, nil
 		}
 
 		end := len(edges)
@@ -903,7 +930,7 @@ func (r *ddbRepository) FindEdges(ctx context.Context, query repository.EdgeQuer
 }
 
 // GetGraphData implements the enhanced graph querying with GraphQuery.
-func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.GraphQuery) (*domain.Graph, error) {
+func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.GraphQuery) (*shared.Graph, error) {
 	if err := query.Validate(); err != nil {
 		return nil, err
 	}
@@ -912,8 +939,8 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 	// More complex depth-limiting would require additional graph traversal logic
 
 	if query.HasNodeFilter() {
-		var nodes []*domain.Node
-		var edges []*domain.Edge
+		var nodes []*node.Node
+		var edges []*edge.Edge
 
 		// Get specific nodes
 		for _, nodeID := range query.NodeIDs {
@@ -930,7 +957,7 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 					if err != nil {
 						return nil, err
 					}
-					// Convert []domain.Edge to []*domain.Edge
+					// Convert []edge.Edge to []*edge.Edge
 					for i := range nodeEdges {
 						edges = append(edges, &nodeEdges[i])
 					}
@@ -938,7 +965,18 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 			}
 		}
 
-		return &domain.Graph{Nodes: nodes, Edges: edges}, nil
+		// Convert to interface{} slices to match Graph struct definition
+		nodeInterfaces := make([]interface{}, len(nodes))
+		for i, node := range nodes {
+			nodeInterfaces[i] = node
+		}
+		
+		edgeInterfaces := make([]interface{}, len(edges))
+		for i, edge := range edges {
+			edgeInterfaces[i] = edge
+		}
+
+		return &shared.Graph{Nodes: nodeInterfaces, Edges: edgeInterfaces}, nil
 	}
 
 	// Otherwise, return all graph data
@@ -948,7 +986,7 @@ func (r *ddbRepository) GetGraphData(ctx context.Context, query repository.Graph
 // Add these new methods to ddb.go
 
 // CreateNode saves only the metadata for a node.
-func (r *ddbRepository) CreateNode(ctx context.Context, node domain.Node) error {
+func (r *ddbRepository) CreateNode(ctx context.Context, node node.Node) error {
 	// Ensure node starts with version 0
 	// Note: Version is immutable in rich domain model, using Version().Int() for DDB
 	
@@ -1032,13 +1070,13 @@ func toAttributeValueList(ss []string) []types.AttributeValue {
 // Category operations implementation
 
 // CreateCategory creates a new category with enhanced hierarchical support.
-func (r *ddbRepository) CreateCategory(ctx context.Context, category domain.Category) error {
+func (r *ddbRepository) CreateCategory(ctx context.Context, category category.Category) error {
 	// Simplified implementation for consolidation phase
 	return nil // Placeholder implementation
 }
 
 // UpdateCategory updates an existing category with enhanced hierarchical support.
-func (r *ddbRepository) UpdateCategory(ctx context.Context, category domain.Category) error {
+func (r *ddbRepository) UpdateCategory(ctx context.Context, category category.Category) error {
 	// Simplified implementation for consolidation phase
 	return nil // Placeholder implementation
 }
@@ -1088,7 +1126,7 @@ func (r *ddbRepository) DeleteCategory(ctx context.Context, userID, categoryID s
 }
 
 // FindCategoryByID retrieves a single category by ID using enhanced format.
-func (r *ddbRepository) FindCategoryByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+func (r *ddbRepository) FindCategoryByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
 	pk := fmt.Sprintf("USER#%s", userID)
 	sk := fmt.Sprintf("CATEGORY#%s", categoryID)
 
@@ -1112,8 +1150,8 @@ func (r *ddbRepository) FindCategoryByID(ctx context.Context, userID, categoryID
 	}
 
 	// Convert to domain category
-	category := domain.Category{
-		ID:          domain.CategoryID(ddbItem.CategoryID),
+	category := category.Category{
+		ID:          shared.CategoryID(ddbItem.CategoryID),
 		UserID:      ddbItem.UserID,
 		Name:        ddbItem.Title,
 		Title:       ddbItem.Title,
@@ -1123,13 +1161,13 @@ func (r *ddbRepository) FindCategoryByID(ctx context.Context, userID, categoryID
 }
 
 // FindCategories retrieves categories based on query parameters.
-func (r *ddbRepository) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]domain.Category, error) {
+func (r *ddbRepository) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]category.Category, error) {
 	if err := query.Validate(); err != nil {
 		return nil, err
 	}
 
 	// Use Query instead of Scan for better performance
-	var categories []domain.Category
+	var categories []category.Category
 	var lastEvaluatedKey map[string]types.AttributeValue
 
 	userPK := fmt.Sprintf("USER#%s", query.UserID)
@@ -1155,8 +1193,8 @@ func (r *ddbRepository) FindCategories(ctx context.Context, query repository.Cat
 			var ddbItem ddbCategory
 			if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
 				// Convert to domain category
-				category := domain.Category{
-					ID:          domain.CategoryID(ddbItem.CategoryID),
+				category := category.Category{
+					ID:          shared.CategoryID(ddbItem.CategoryID),
 					UserID:      ddbItem.UserID,
 					Name:        ddbItem.Title,
 					Title:       ddbItem.Title,
@@ -1176,7 +1214,7 @@ func (r *ddbRepository) FindCategories(ctx context.Context, query repository.Cat
 	if query.HasPagination() {
 		start := query.Offset
 		if start >= len(categories) {
-			return []domain.Category{}, nil
+			return []category.Category{}, nil
 		}
 
 		end := len(categories)
@@ -1201,7 +1239,7 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 
 	userNodePrefix := fmt.Sprintf("USER#%s#NODE#", query.UserID)
 	requestedLimit := pagination.GetEffectiveLimit()
-	nodes := make([]*domain.Node, 0, requestedLimit)
+	nodes := make([]*node.Node, 0, requestedLimit)
 	
 	var lastEvaluatedKey map[string]types.AttributeValue
 	
@@ -1251,7 +1289,7 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 				
 				// Include ALL valid nodes (removing IsLatest filter to match graph behavior)
 				createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
-				node, err := domain.ReconstructNodeFromPrimitives(
+				node, err := node.ReconstructNodeFromPrimitives(
 					ddbItem.NodeID,
 					ddbItem.UserID,
 					ddbItem.Content,
@@ -1375,13 +1413,13 @@ func (r *ddbRepository) GetNodesPageOptimized(ctx context.Context, userID string
 	}
 
 	// Convert DynamoDB items to domain nodes
-	nodes := make([]*domain.Node, 0, len(result.Items))
+	nodes := make([]*node.Node, 0, len(result.Items))
 	for _, item := range result.Items {
 		var ddbItem ddbNode
 		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
 			if ddbItem.IsLatest { // Only return latest versions
 				createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
-				node, err := domain.ReconstructNodeFromPrimitives(
+				node, err := node.ReconstructNodeFromPrimitives(
 					ddbItem.NodeID,
 					ddbItem.UserID,
 					ddbItem.Content,
@@ -1404,7 +1442,7 @@ func (r *ddbRepository) GetNodesPageOptimized(ctx context.Context, userID string
 }
 
 // GetNodeNeighborhood retrieves nodes and edges within a specified depth from a target node
-func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error) {
+func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*shared.Graph, error) {
 	if depth <= 0 {
 		depth = 1
 	}
@@ -1413,8 +1451,8 @@ func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID 
 	}
 
 	visited := make(map[string]bool)
-	nodes := make(map[string]*domain.Node)
-	edges := make([]*domain.Edge, 0)
+	nodes := make(map[string]*node.Node)
+	edges := make([]*edge.Edge, 0)
 
 	// Start with the target node
 	currentLevel := []string{nodeID}
@@ -1448,10 +1486,10 @@ func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID 
 			for _, item := range result.Items {
 				var ddbEdge ddbEdge
 				if err := attributevalue.UnmarshalMap(item, &ddbEdge); err == nil {
-					sourceNodeID, _ := domain.ParseNodeID(currentNodeID)
-					targetNodeID, _ := domain.ParseNodeID(ddbEdge.TargetID)
-					userIDVO, _ := domain.NewUserID(userID)
-					edge, err := domain.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
+					sourceNodeID, _ := shared.ParseNodeID(currentNodeID)
+					targetNodeID, _ := shared.ParseNodeID(ddbEdge.TargetID)
+					userIDVO, _ := shared.NewUserID(userID)
+					edge, err := edge.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
 					if err != nil {
 						r.logger.Error("failed to create edge", zap.Error(err))
 						continue
@@ -1470,15 +1508,26 @@ func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID 
 		currentLevel = nextLevel
 	}
 
-	// Convert nodes map to slice
-	nodeSlice := make([]*domain.Node, 0, len(nodes))
+	// Convert nodes map to slice and then to interface{} slice
+	nodeSlice := make([]*node.Node, 0, len(nodes))
 	for _, node := range nodes {
 		nodeSlice = append(nodeSlice, node)
 	}
 
-	return &domain.Graph{
-		Nodes: nodeSlice,
-		Edges: edges,
+	// Convert to interface{} slices to match Graph struct definition
+	nodeInterfaces := make([]interface{}, len(nodeSlice))
+	for i, node := range nodeSlice {
+		nodeInterfaces[i] = node
+	}
+	
+	edgeInterfaces := make([]interface{}, len(edges))
+	for i, edge := range edges {
+		edgeInterfaces[i] = edge
+	}
+
+	return &shared.Graph{
+		Nodes: nodeInterfaces,
+		Edges: edgeInterfaces,
 	}, nil
 }
 
@@ -1532,7 +1581,7 @@ func (r *ddbRepository) GetEdgesPage(ctx context.Context, query repository.EdgeQ
 	}
 
 	// Convert DynamoDB items to domain edges
-	edges := make([]*domain.Edge, 0, len(result.Items))
+	edges := make([]*edge.Edge, 0, len(result.Items))
 	for _, item := range result.Items {
 		var ddbItem ddbEdge
 		if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
@@ -1540,10 +1589,10 @@ func (r *ddbRepository) GetEdgesPage(ctx context.Context, query repository.EdgeQ
 			pkParts := strings.Split(ddbItem.PK, "#")
 			if len(pkParts) >= 4 {
 				sourceID := pkParts[3]
-				sourceNodeID, _ := domain.ParseNodeID(sourceID)
-				targetNodeID, _ := domain.ParseNodeID(ddbItem.TargetID)
-				userIDVO, _ := domain.NewUserID(query.UserID)
-				edge, err := domain.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
+				sourceNodeID, _ := shared.ParseNodeID(sourceID)
+				targetNodeID, _ := shared.ParseNodeID(ddbItem.TargetID)
+				userIDVO, _ := shared.NewUserID(query.UserID)
+				edge, err := edge.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
 				if err != nil {
 					r.logger.Error("failed to create edge", zap.Error(err))
 					continue
@@ -1562,7 +1611,7 @@ func (r *ddbRepository) GetEdgesPage(ctx context.Context, query repository.EdgeQ
 }
 
 // GetGraphDataPaginated retrieves graph data with pagination for large datasets
-func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query repository.GraphQuery, pagination repository.Pagination) (*domain.Graph, string, error) {
+func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query repository.GraphQuery, pagination repository.Pagination) (*shared.Graph, string, error) {
 	r.logger.Debug("getGraphDataPaginated called",
 		zap.String("user_id", query.UserID),
 		zap.Bool("include_edges", query.IncludeEdges),
@@ -1623,8 +1672,8 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 		zap.Int("items_returned", len(result.Items)),
 		zap.Bool("has_more_data", result.LastEvaluatedKey != nil))
 
-	var nodes []*domain.Node
-	var edges []*domain.Edge
+	var nodes []*node.Node
+	var edges []*edge.Edge
 	edgeMap := make(map[string]bool)
 
 	nodeCount := 0
@@ -1657,7 +1706,7 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 						zap.Error(parseErr))
 					createdAt = time.Now() // fallback
 				}
-				node, err := domain.ReconstructNodeFromPrimitives(
+				node, err := node.ReconstructNodeFromPrimitives(
 					ddbItem.NodeID,
 					ddbItem.UserID,
 					ddbItem.Content,
@@ -1696,10 +1745,10 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 					edgeMap[canonicalKey] = true
 					
 					// Create undirected edge using canonical ordering for consistent visualization
-					sourceNodeID, _ := domain.ParseNodeID(ownerID)
-					targetNodeID, _ := domain.ParseNodeID(targetID)
-					userIDVO, _ := domain.NewUserID(query.UserID)
-					edge, err := domain.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
+					sourceNodeID, _ := shared.ParseNodeID(ownerID)
+					targetNodeID, _ := shared.ParseNodeID(targetID)
+					userIDVO, _ := shared.NewUserID(query.UserID)
+					edge, err := edge.NewEdge(sourceNodeID, targetNodeID, userIDVO, 1.0)
 					if err != nil {
 						r.logger.Error("failed to create edge", zap.Error(err))
 						continue
@@ -1725,16 +1774,27 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 		zap.Int("edges_returned", len(edges)),
 		zap.String("next_cursor", nextCursor))
 
-	return &domain.Graph{
-		Nodes: nodes,
-		Edges: edges,
+	// Convert to interface{} slices to match Graph struct definition
+	nodeInterfaces := make([]interface{}, len(nodes))
+	for i, node := range nodes {
+		nodeInterfaces[i] = node
+	}
+	
+	edgeInterfaces := make([]interface{}, len(edges))
+	for i, edge := range edges {
+		edgeInterfaces[i] = edge
+	}
+
+	return &shared.Graph{
+		Nodes: nodeInterfaces,
+		Edges: edgeInterfaces,
 	}, nextCursor, nil
 }
 
 // Phase 2 Enhanced Methods - Added for interface compatibility
 
 // FindNodesWithOptions implements enhanced node queries with options
-func (repo *ddbRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*domain.Node, error) {
+func (repo *ddbRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
 	// For consolidation phase, delegate to existing method
 	return repo.FindNodes(ctx, query)
 }
@@ -1746,25 +1806,25 @@ func (repo *ddbRepository) FindNodesPageWithOptions(ctx context.Context, query r
 }
 
 // FindEdgesWithOptions implements enhanced edge queries with options
-func (repo *ddbRepository) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*domain.Edge, error) {
+func (repo *ddbRepository) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*edge.Edge, error) {
 	// For consolidation phase, delegate to existing method
 	return repo.FindEdges(ctx, query)
 }
 
 // GetSubgraph implements subgraph extraction  
-func (repo *ddbRepository) GetSubgraph(ctx context.Context, nodeIDs []string, opts ...repository.QueryOption) (*domain.Graph, error) {
+func (repo *ddbRepository) GetSubgraph(ctx context.Context, nodeIDs []string, opts ...repository.QueryOption) (*shared.Graph, error) {
 	// For consolidation phase, return empty graph - this would be a complex subgraph operation
-	return &domain.Graph{Nodes: []*domain.Node{}, Edges: []*domain.Edge{}}, nil
+	return &shared.Graph{Nodes: []interface{}{}, Edges: []interface{}{}}, nil
 }
 
 // GetConnectedComponents implements graph connected components analysis
-func (repo *ddbRepository) GetConnectedComponents(ctx context.Context, userID string, opts ...repository.QueryOption) ([]domain.Graph, error) {
+func (repo *ddbRepository) GetConnectedComponents(ctx context.Context, userID string, opts ...repository.QueryOption) ([]shared.Graph, error) {
 	// For consolidation phase, return empty result - this would be a complex graph analysis operation
-	return []domain.Graph{}, nil
+	return []shared.Graph{}, nil
 }
 
 // AssignNodeToCategory assigns a node to a category
-func (repo *ddbRepository) AssignNodeToCategory(ctx context.Context, mapping domain.NodeCategory) error {
+func (repo *ddbRepository) AssignNodeToCategory(ctx context.Context, mapping node.NodeCategory) error {
 	// Simplified implementation for consolidation phase
 	return nil
 }
@@ -1776,19 +1836,19 @@ func (repo *ddbRepository) RemoveNodeFromCategory(ctx context.Context, userID, n
 }
 
 // FindNodesByCategory finds all nodes in a category
-func (repo *ddbRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error) {
+func (repo *ddbRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*node.Node, error) {
 	// Simplified implementation for consolidation phase
-	return []*domain.Node{}, nil
+	return []*node.Node{}, nil
 }
 
 // FindCategoriesForNode finds all categories for a node
-func (repo *ddbRepository) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error) {
+func (repo *ddbRepository) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]category.Category, error) {
 	// Simplified implementation for consolidation phase
-	return []domain.Category{}, nil
+	return []category.Category{}, nil
 }
 
 // BatchAssignCategories assigns multiple nodes to categories in batch
-func (repo *ddbRepository) BatchAssignCategories(ctx context.Context, mappings []domain.NodeCategory) error {
+func (repo *ddbRepository) BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error {
 	// Simplified implementation for consolidation phase
 	return nil
 }
@@ -1800,7 +1860,7 @@ func (repo *ddbRepository) UpdateCategoryNoteCounts(ctx context.Context, userID 
 }
 
 // CreateCategoryHierarchy creates a hierarchy relationship between categories
-func (repo *ddbRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy domain.CategoryHierarchy) error {
+func (repo *ddbRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error {
 	// Simplified implementation for consolidation phase
 	return nil
 }
@@ -1812,39 +1872,39 @@ func (repo *ddbRepository) DeleteCategoryHierarchy(ctx context.Context, userID, 
 }
 
 // FindChildCategories finds child categories for a given parent
-func (repo *ddbRepository) FindChildCategories(ctx context.Context, userID, parentID string) ([]domain.Category, error) {
+func (repo *ddbRepository) FindChildCategories(ctx context.Context, userID, parentID string) ([]category.Category, error) {
 	// Simplified implementation for consolidation phase
-	return []domain.Category{}, nil
+	return []category.Category{}, nil
 }
 
 // FindParentCategory finds the parent category for a given child
-func (repo *ddbRepository) FindParentCategory(ctx context.Context, userID, childID string) (*domain.Category, error) {
+func (repo *ddbRepository) FindParentCategory(ctx context.Context, userID, childID string) (*category.Category, error) {
 	// Simplified implementation for consolidation phase
 	return nil, nil
 }
 
 // GetCategoryTree gets the complete category tree for a user
-func (repo *ddbRepository) GetCategoryTree(ctx context.Context, userID string) ([]domain.Category, error) {
+func (repo *ddbRepository) GetCategoryTree(ctx context.Context, userID string) ([]category.Category, error) {
 	// Simplified implementation for consolidation phase
-	return []domain.Category{}, nil
+	return []category.Category{}, nil
 }
 
 // FindCategoriesByLevel finds categories at a specific hierarchy level
-func (repo *ddbRepository) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]domain.Category, error) {
+func (repo *ddbRepository) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]category.Category, error) {
 	// Simplified implementation for consolidation phase
-	return []domain.Category{}, nil
+	return []category.Category{}, nil
 }
 
 // CQRS-compatible methods
 
 // Save creates or updates a category (alias for CreateCategory)
-func (repo *ddbRepository) Save(ctx context.Context, category *domain.Category) error {
+func (repo *ddbRepository) Save(ctx context.Context, category *category.Category) error {
 	// Convert pointer to value for CreateCategory
 	return repo.CreateCategory(ctx, *category)
 }
 
 // FindByID retrieves a category by ID (alias for FindCategoryByID)
-func (repo *ddbRepository) FindByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+func (repo *ddbRepository) FindByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
 	return repo.FindCategoryByID(ctx, userID, categoryID)
 }
 

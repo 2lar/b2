@@ -16,7 +16,8 @@ import (
 	"time"
 
 	"brain2-backend/internal/application/dto"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
 	"go.uber.org/zap"
@@ -61,12 +62,12 @@ func (s *CategoryQueryService) GetCategory(ctx context.Context, query *GetCatego
 	}
 
 	// 2. Parse and validate domain identifiers
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	categoryID, err := domain.ParseCategoryID(query.CategoryID)
+	categoryID, err := shared.ParseCategoryID(query.CategoryID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid category id: " + err.Error())
 	}
@@ -157,7 +158,7 @@ func (s *CategoryQueryService) GetCategory(ctx context.Context, query *GetCatego
 // ListCategories retrieves a paginated list of categories.
 func (s *CategoryQueryService) ListCategories(ctx context.Context, query *ListCategoriesQuery) (*dto.ListCategoriesResult, error) {
 	// 1. Parse and validate domain identifiers
-	_, err := domain.ParseUserID(query.UserID)
+	_, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
@@ -200,8 +201,8 @@ func (s *CategoryQueryService) ListCategories(ctx context.Context, query *ListCa
 	}
 
 	// 5. Convert domain categories to view models
-	// Convert []domain.Category to []*domain.Category
-	categoryPtrs := make([]*domain.Category, len(page.Items))
+	// Convert []category.Category to []*category.Category
+	categoryPtrs := make([]*category.Category, len(page.Items))
 	for i := range page.Items {
 		categoryPtrs[i] = &page.Items[i]
 	}
@@ -236,12 +237,12 @@ func (s *CategoryQueryService) ListCategories(ctx context.Context, query *ListCa
 // GetNodesInCategory retrieves nodes in a specific category.
 func (s *CategoryQueryService) GetNodesInCategory(ctx context.Context, query *GetNodesInCategoryQuery) (*dto.GetNodesInCategoryResult, error) {
 	// 1. Parse and validate domain identifiers
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	categoryID, err := domain.ParseCategoryID(query.CategoryID)
+	categoryID, err := shared.ParseCategoryID(query.CategoryID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid category id: " + err.Error())
 	}
@@ -294,12 +295,12 @@ func (s *CategoryQueryService) GetNodesInCategory(ctx context.Context, query *Ge
 // GetCategoriesForNode retrieves categories for a specific node.
 func (s *CategoryQueryService) GetCategoriesForNode(ctx context.Context, query *GetCategoriesForNodeQuery) (*dto.GetCategoriesForNodeResult, error) {
 	// 1. Parse and validate domain identifiers
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	nodeID, err := domain.ParseNodeID(query.NodeID)
+	nodeID, err := shared.ParseNodeID(query.NodeID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
 	}
@@ -317,7 +318,7 @@ func (s *CategoryQueryService) GetCategoriesForNode(ctx context.Context, query *
 	}
 
 	// 3. Get categories for the node (TODO: implement proper node-category relationships)
-	categories := []*domain.Category{} // Empty for now
+	categories := []*category.Category{} // Empty for now
 
 	// 4. Build result
 	result := &dto.GetCategoriesForNodeResult{
@@ -333,7 +334,7 @@ func (s *CategoryQueryService) GetCategoriesForNode(ctx context.Context, query *
 // This method demonstrates the AI integration pattern with graceful fallback.
 func (s *CategoryQueryService) SuggestCategories(ctx context.Context, query *SuggestCategoriesQuery) (*dto.SuggestCategoriesResult, error) {
 	// 1. Validate input
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
@@ -363,7 +364,7 @@ func (s *CategoryQueryService) SuggestCategories(ctx context.Context, query *Sug
 
 // generateFallbackSuggestions creates category suggestions using domain logic
 // when AI service is not available. This demonstrates the fallback pattern.
-func (s *CategoryQueryService) generateFallbackSuggestions(ctx context.Context, userID domain.UserID, content string, existingCategories []string) []*dto.CategorySuggestionView {
+func (s *CategoryQueryService) generateFallbackSuggestions(ctx context.Context, userID shared.UserID, content string, existingCategories []string) []*dto.CategorySuggestionView {
 	suggestions := make([]*dto.CategorySuggestionView, 0)
 	
 	// Extract keywords from content for analysis

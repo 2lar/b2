@@ -4,7 +4,8 @@ import (
 	"sort"
 	"time"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/shared"
 )
 
 // ConnectionAnalyzer is a domain service that encapsulates complex business logic
@@ -35,7 +36,7 @@ func NewConnectionAnalyzer(similarityThreshold float64, maxConnections int, rece
 
 // ConnectionCandidate represents a potential connection with its relevance score
 type ConnectionCandidate struct {
-	Node            *domain.Node
+	Node            *node.Node
 	RelevanceScore  float64
 	SimilarityScore float64
 	MatchingKeywords []string
@@ -51,17 +52,17 @@ type ConnectionCandidate struct {
 //   - Considers recency of content
 //   - Excludes archived nodes
 //   - Orders by relevance score
-func (ca *ConnectionAnalyzer) FindPotentialConnections(node *domain.Node, candidates []*domain.Node) ([]*ConnectionCandidate, error) {
+func (ca *ConnectionAnalyzer) FindPotentialConnections(sourceNode *node.Node, candidates []*node.Node) ([]*ConnectionCandidate, error) {
 	var connections []*ConnectionCandidate
 	
 	for _, candidate := range candidates {
 		// Check basic business rules for connection eligibility
-		if err := node.CanConnectTo(candidate); err != nil {
+		if err := sourceNode.CanConnectTo(candidate); err != nil {
 			continue // Skip if connection is not allowed
 		}
 		
 		// Calculate connection metrics
-		connectionCandidate := ca.analyzeConnection(node, candidate)
+		connectionCandidate := ca.analyzeConnection(sourceNode, candidate)
 		
 		// Apply similarity threshold
 		if connectionCandidate.SimilarityScore >= ca.similarityThreshold {
@@ -83,7 +84,7 @@ func (ca *ConnectionAnalyzer) FindPotentialConnections(node *domain.Node, candid
 }
 
 // analyzeConnection performs detailed analysis of connection potential between two nodes
-func (ca *ConnectionAnalyzer) analyzeConnection(source, target *domain.Node) *ConnectionCandidate {
+func (ca *ConnectionAnalyzer) analyzeConnection(source, target *node.Node) *ConnectionCandidate {
 	// Calculate similarity scores
 	keywordSimilarity := source.Keywords().Overlap(target.Keywords())
 	tagSimilarity := source.Tags.Overlap(target.Tags)
@@ -115,7 +116,7 @@ func (ca *ConnectionAnalyzer) analyzeConnection(source, target *domain.Node) *Co
 }
 
 // AnalyzeBidirectionalConnection checks if two nodes should be connected in both directions
-func (ca *ConnectionAnalyzer) AnalyzeBidirectionalConnection(node1, node2 *domain.Node) (*BidirectionalAnalysis, error) {
+func (ca *ConnectionAnalyzer) AnalyzeBidirectionalConnection(node1, node2 *node.Node) (*BidirectionalAnalysis, error) {
 	// Check if connections are allowed
 	if err := node1.CanConnectTo(node2); err != nil {
 		return nil, err
@@ -144,7 +145,7 @@ type BidirectionalAnalysis struct {
 }
 
 // CalculateGraphDensity calculates the density of connections in a node cluster
-func (ca *ConnectionAnalyzer) CalculateGraphDensity(nodes []*domain.Node) float64 {
+func (ca *ConnectionAnalyzer) CalculateGraphDensity(nodes []*node.Node) float64 {
 	if len(nodes) < 2 {
 		return 0
 	}
@@ -166,7 +167,7 @@ func (ca *ConnectionAnalyzer) CalculateGraphDensity(nodes []*domain.Node) float6
 }
 
 // FindOptimalConnections finds the best set of connections for a node considering global graph health
-func (ca *ConnectionAnalyzer) FindOptimalConnections(node *domain.Node, candidates []*domain.Node, existingConnections int) ([]*ConnectionCandidate, error) {
+func (ca *ConnectionAnalyzer) FindOptimalConnections(sourceNode *node.Node, candidates []*node.Node, existingConnections int) ([]*ConnectionCandidate, error) {
 	// Adjust max connections based on existing connections
 	maxNew := ca.maxConnectionsPerNode - existingConnections
 	if maxNew <= 0 {
@@ -174,7 +175,7 @@ func (ca *ConnectionAnalyzer) FindOptimalConnections(node *domain.Node, candidat
 	}
 	
 	// Find all potential connections
-	potentials, err := ca.FindPotentialConnections(node, candidates)
+	potentials, err := ca.FindPotentialConnections(sourceNode, candidates)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +189,7 @@ func (ca *ConnectionAnalyzer) FindOptimalConnections(node *domain.Node, candidat
 // Private helper methods
 
 // findMatchingKeywords finds keywords that appear in both sets
-func (ca *ConnectionAnalyzer) findMatchingKeywords(keywords1, keywords2 domain.Keywords) []string {
+func (ca *ConnectionAnalyzer) findMatchingKeywords(keywords1, keywords2 shared.Keywords) []string {
 	var matching []string
 	
 	for _, keyword := range keywords1.ToSlice() {
@@ -201,7 +202,7 @@ func (ca *ConnectionAnalyzer) findMatchingKeywords(keywords1, keywords2 domain.K
 }
 
 // findSharedTags finds tags that appear in both sets
-func (ca *ConnectionAnalyzer) findSharedTags(tags1, tags2 domain.Tags) []string {
+func (ca *ConnectionAnalyzer) findSharedTags(tags1, tags2 shared.Tags) []string {
 	var shared []string
 	
 	for _, tag := range tags1.ToSlice() {
@@ -302,4 +303,51 @@ func (ca *ConnectionAnalyzer) calculateDiversityScore(candidate *ConnectionCandi
 	diversityScore := candidate.RelevanceScore * (1.0 - avgSimilarity)
 	
 	return diversityScore
+}
+
+// EdgeWeightCalculator is a value object for calculating edge weights based on node similarity
+type EdgeWeightCalculator struct {
+	keywordWeight float64
+	tagWeight     float64
+	recencyWeight float64
+}
+
+// NewEdgeWeightCalculator creates a new weight calculator with specified weights
+func NewEdgeWeightCalculator(keywordWeight, tagWeight, recencyWeight float64) EdgeWeightCalculator {
+	return EdgeWeightCalculator{
+		keywordWeight: keywordWeight,
+		tagWeight:     tagWeight,
+		recencyWeight: recencyWeight,
+	}
+}
+
+// CalculateWeight calculates the edge weight between two nodes
+func (calc EdgeWeightCalculator) CalculateWeight(source, target *node.Node) float64 {
+	keywordSimilarity := source.Keywords().Overlap(target.Keywords())
+	tagSimilarity := source.Tags.Overlap(target.Tags)
+	
+	// Calculate recency factor (more recent connections get higher weight)
+	timeDiff := source.CreatedAt.Sub(target.CreatedAt)
+	if timeDiff < 0 {
+		timeDiff = -timeDiff
+	}
+	
+	// Recency score decreases as time difference increases
+	daysDiff := timeDiff.Hours() / 24
+	recencyScore := 1.0 / (1.0 + daysDiff*0.1)
+	
+	// Weighted combination
+	weight := keywordSimilarity*calc.keywordWeight + 
+			  tagSimilarity*calc.tagWeight + 
+			  recencyScore*calc.recencyWeight
+	
+	// Ensure weight is within valid range
+	if weight > 1.0 {
+		weight = 1.0
+	}
+	if weight < 0.0 {
+		weight = 0.0
+	}
+	
+	return weight
 }

@@ -3,7 +3,10 @@ package repository
 import (
 	"context"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 )
 
 // Read/Write Separation (CQRS) Implementation
@@ -32,32 +35,32 @@ import (
 // read replicas, caching, or specialized query stores
 type NodeReader interface {
 	// Single entity queries
-	FindByID(ctx context.Context, id domain.NodeID) (*domain.Node, error)
-	Exists(ctx context.Context, id domain.NodeID) (bool, error)
+	FindByID(ctx context.Context, id shared.NodeID) (*node.Node, error)
+	Exists(ctx context.Context, id shared.NodeID) (bool, error)
 	
 	// User-scoped queries
-	FindByUser(ctx context.Context, userID domain.UserID, opts ...QueryOption) ([]*domain.Node, error)
-	CountByUser(ctx context.Context, userID domain.UserID) (int, error)
+	FindByUser(ctx context.Context, userID shared.UserID, opts ...QueryOption) ([]*node.Node, error)
+	CountByUser(ctx context.Context, userID shared.UserID) (int, error)
 	
 	// Content-based queries
-	FindByKeywords(ctx context.Context, userID domain.UserID, keywords []string, opts ...QueryOption) ([]*domain.Node, error)
-	FindByTags(ctx context.Context, userID domain.UserID, tags []string, opts ...QueryOption) ([]*domain.Node, error)
-	FindByContent(ctx context.Context, userID domain.UserID, searchTerm string, fuzzy bool, opts ...QueryOption) ([]*domain.Node, error)
+	FindByKeywords(ctx context.Context, userID shared.UserID, keywords []string, opts ...QueryOption) ([]*node.Node, error)
+	FindByTags(ctx context.Context, userID shared.UserID, tags []string, opts ...QueryOption) ([]*node.Node, error)
+	FindByContent(ctx context.Context, userID shared.UserID, searchTerm string, fuzzy bool, opts ...QueryOption) ([]*node.Node, error)
 	
 	// Time-based queries
-	FindRecentlyCreated(ctx context.Context, userID domain.UserID, days int, opts ...QueryOption) ([]*domain.Node, error)
-	FindRecentlyUpdated(ctx context.Context, userID domain.UserID, days int, opts ...QueryOption) ([]*domain.Node, error)
+	FindRecentlyCreated(ctx context.Context, userID shared.UserID, days int, opts ...QueryOption) ([]*node.Node, error)
+	FindRecentlyUpdated(ctx context.Context, userID shared.UserID, days int, opts ...QueryOption) ([]*node.Node, error)
 	
 	// Specification-based queries
-	FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]*domain.Node, error)
+	FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]*node.Node, error)
 	CountBySpecification(ctx context.Context, spec Specification) (int, error)
 	
 	// Paginated queries
 	FindPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error)
 	
 	// Relationship queries
-	FindConnected(ctx context.Context, nodeID domain.NodeID, depth int, opts ...QueryOption) ([]*domain.Node, error)
-	FindSimilar(ctx context.Context, nodeID domain.NodeID, threshold float64, opts ...QueryOption) ([]*domain.Node, error)
+	FindConnected(ctx context.Context, nodeID shared.NodeID, depth int, opts ...QueryOption) ([]*node.Node, error)
+	FindSimilar(ctx context.Context, nodeID shared.NodeID, threshold float64, opts ...QueryOption) ([]*node.Node, error)
 	
 	// Query service compatibility methods
 	GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error)
@@ -67,60 +70,60 @@ type NodeReader interface {
 // EdgeReader handles read-only operations for edges
 type EdgeReader interface {
 	// Single entity queries
-	FindByID(ctx context.Context, id domain.NodeID) (*domain.Edge, error)
-	Exists(ctx context.Context, id domain.NodeID) (bool, error)
+	FindByID(ctx context.Context, id shared.NodeID) (*edge.Edge, error)
+	Exists(ctx context.Context, id shared.NodeID) (bool, error)
 	
 	// User-scoped queries
-	FindByUser(ctx context.Context, userID domain.UserID, opts ...QueryOption) ([]*domain.Edge, error)
-	CountByUser(ctx context.Context, userID domain.UserID) (int, error)
+	FindByUser(ctx context.Context, userID shared.UserID, opts ...QueryOption) ([]*edge.Edge, error)
+	CountByUser(ctx context.Context, userID shared.UserID) (int, error)
 	
 	// Node relationship queries
-	FindBySourceNode(ctx context.Context, sourceID domain.NodeID, opts ...QueryOption) ([]*domain.Edge, error)
-	FindByTargetNode(ctx context.Context, targetID domain.NodeID, opts ...QueryOption) ([]*domain.Edge, error)
-	FindByNode(ctx context.Context, nodeID domain.NodeID, opts ...QueryOption) ([]*domain.Edge, error)
-	FindBetweenNodes(ctx context.Context, node1ID, node2ID domain.NodeID) ([]*domain.Edge, error)
+	FindBySourceNode(ctx context.Context, sourceID shared.NodeID, opts ...QueryOption) ([]*edge.Edge, error)
+	FindByTargetNode(ctx context.Context, targetID shared.NodeID, opts ...QueryOption) ([]*edge.Edge, error)
+	FindByNode(ctx context.Context, nodeID shared.NodeID, opts ...QueryOption) ([]*edge.Edge, error)
+	FindBetweenNodes(ctx context.Context, node1ID, node2ID shared.NodeID) ([]*edge.Edge, error)
 	
 	// Weight-based queries
-	FindStrongConnections(ctx context.Context, userID domain.UserID, threshold float64, opts ...QueryOption) ([]*domain.Edge, error)
-	FindWeakConnections(ctx context.Context, userID domain.UserID, threshold float64, opts ...QueryOption) ([]*domain.Edge, error)
+	FindStrongConnections(ctx context.Context, userID shared.UserID, threshold float64, opts ...QueryOption) ([]*edge.Edge, error)
+	FindWeakConnections(ctx context.Context, userID shared.UserID, threshold float64, opts ...QueryOption) ([]*edge.Edge, error)
 	
 	// Specification-based queries
-	FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]*domain.Edge, error)
+	FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]*edge.Edge, error)
 	CountBySpecification(ctx context.Context, spec Specification) (int, error)
 	
 	// Paginated queries
 	FindPage(ctx context.Context, query EdgeQuery, pagination Pagination) (*EdgePage, error)
 	
 	// Query service compatibility methods
-	FindEdges(ctx context.Context, query EdgeQuery) ([]*domain.Edge, error)
-	CountBySourceID(ctx context.Context, sourceID domain.NodeID) (int, error)
+	FindEdges(ctx context.Context, query EdgeQuery) ([]*edge.Edge, error)
+	CountBySourceID(ctx context.Context, sourceID shared.NodeID) (int, error)
 }
 
 // CategoryReader handles read-only operations for categories
 type CategoryReader interface {
 	// Single entity queries
-	FindByID(ctx context.Context, userID string, categoryID string) (*domain.Category, error)
+	FindByID(ctx context.Context, userID string, categoryID string) (*category.Category, error)
 	Exists(ctx context.Context, userID string, categoryID string) (bool, error)
 	
 	// User-scoped queries
-	FindByUser(ctx context.Context, userID string, opts ...QueryOption) ([]domain.Category, error)
+	FindByUser(ctx context.Context, userID string, opts ...QueryOption) ([]category.Category, error)
 	CountByUser(ctx context.Context, userID string) (int, error)
 	
 	// Hierarchy queries
-	FindRootCategories(ctx context.Context, userID string, opts ...QueryOption) ([]domain.Category, error)
-	FindChildCategories(ctx context.Context, userID string, parentID string) ([]domain.Category, error)
-	FindCategoryPath(ctx context.Context, userID string, categoryID string) ([]domain.Category, error)
-	FindCategoryTree(ctx context.Context, userID string) ([]domain.Category, error)
+	FindRootCategories(ctx context.Context, userID string, opts ...QueryOption) ([]category.Category, error)
+	FindChildCategories(ctx context.Context, userID string, parentID string) ([]category.Category, error)
+	FindCategoryPath(ctx context.Context, userID string, categoryID string) ([]category.Category, error)
+	FindCategoryTree(ctx context.Context, userID string) ([]category.Category, error)
 	
 	// Level-based queries
-	FindByLevel(ctx context.Context, userID string, level int, opts ...QueryOption) ([]domain.Category, error)
+	FindByLevel(ctx context.Context, userID string, level int, opts ...QueryOption) ([]category.Category, error)
 	
 	// Activity queries
-	FindMostActive(ctx context.Context, userID string, limit int) ([]domain.Category, error)
-	FindRecentlyUsed(ctx context.Context, userID string, days int, opts ...QueryOption) ([]domain.Category, error)
+	FindMostActive(ctx context.Context, userID string, limit int) ([]category.Category, error)
+	FindRecentlyUsed(ctx context.Context, userID string, days int, opts ...QueryOption) ([]category.Category, error)
 	
 	// Specification-based queries
-	FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]domain.Category, error)
+	FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]category.Category, error)
 	CountBySpecification(ctx context.Context, spec Specification) (int, error)
 	
 	// Query service compatibility methods
@@ -134,53 +137,53 @@ type CategoryReader interface {
 // This interface is optimized for consistency, validation, and event publishing
 type NodeWriter interface {
 	// Create operations
-	Save(ctx context.Context, node *domain.Node) error
-	SaveBatch(ctx context.Context, nodes []*domain.Node) error
+	Save(ctx context.Context, node *node.Node) error
+	SaveBatch(ctx context.Context, nodes []*node.Node) error
 	
 	// Update operations
-	Update(ctx context.Context, node *domain.Node) error
-	UpdateBatch(ctx context.Context, nodes []*domain.Node) error
+	Update(ctx context.Context, node *node.Node) error
+	UpdateBatch(ctx context.Context, nodes []*node.Node) error
 	
 	// Delete operations
-	Delete(ctx context.Context, id domain.NodeID) error
-	DeleteBatch(ctx context.Context, ids []domain.NodeID) error
+	Delete(ctx context.Context, id shared.NodeID) error
+	DeleteBatch(ctx context.Context, ids []shared.NodeID) error
 	
 	// Soft delete operations (archiving)
-	Archive(ctx context.Context, id domain.NodeID) error
-	Unarchive(ctx context.Context, id domain.NodeID) error
+	Archive(ctx context.Context, id shared.NodeID) error
+	Unarchive(ctx context.Context, id shared.NodeID) error
 	
 	// Version management for optimistic locking
-	UpdateVersion(ctx context.Context, id domain.NodeID, expectedVersion domain.Version) error
+	UpdateVersion(ctx context.Context, id shared.NodeID, expectedVersion shared.Version) error
 }
 
 // EdgeWriter handles write operations for edges
 type EdgeWriter interface {
 	// Create operations
-	Save(ctx context.Context, edge *domain.Edge) error
-	SaveBatch(ctx context.Context, edges []*domain.Edge) error
+	Save(ctx context.Context, edge *edge.Edge) error
+	SaveBatch(ctx context.Context, edges []*edge.Edge) error
 	
 	// Update operations (edges are typically immutable, but weight can change)
-	UpdateWeight(ctx context.Context, id domain.NodeID, newWeight float64, expectedVersion domain.Version) error
+	UpdateWeight(ctx context.Context, id shared.NodeID, newWeight float64, expectedVersion shared.Version) error
 	
 	// Delete operations
-	Delete(ctx context.Context, id domain.NodeID) error
-	DeleteBatch(ctx context.Context, ids []domain.NodeID) error
-	DeleteByNode(ctx context.Context, nodeID domain.NodeID) error // Delete all edges for a node
+	Delete(ctx context.Context, id shared.NodeID) error
+	DeleteBatch(ctx context.Context, ids []shared.NodeID) error
+	DeleteByNode(ctx context.Context, nodeID shared.NodeID) error // Delete all edges for a node
 	
 	// Bulk operations for performance
-	SaveManyToOne(ctx context.Context, sourceID domain.NodeID, targetIDs []domain.NodeID, weights []float64) error
-	SaveOneToMany(ctx context.Context, sourceIDs []domain.NodeID, targetID domain.NodeID, weights []float64) error
+	SaveManyToOne(ctx context.Context, sourceID shared.NodeID, targetIDs []shared.NodeID, weights []float64) error
+	SaveOneToMany(ctx context.Context, sourceIDs []shared.NodeID, targetID shared.NodeID, weights []float64) error
 }
 
 // CategoryWriter handles write operations for categories
 type CategoryWriter interface {
 	// Create operations
-	Save(ctx context.Context, category *domain.Category) error
-	SaveBatch(ctx context.Context, categories []*domain.Category) error
+	Save(ctx context.Context, category *category.Category) error
+	SaveBatch(ctx context.Context, categories []*category.Category) error
 	
 	// Update operations
-	Update(ctx context.Context, category *domain.Category) error
-	UpdateBatch(ctx context.Context, categories []*domain.Category) error
+	Update(ctx context.Context, category *category.Category) error
+	UpdateBatch(ctx context.Context, categories []*category.Category) error
 	
 	// Delete operations
 	Delete(ctx context.Context, userID string, categoryID string) error
@@ -188,13 +191,13 @@ type CategoryWriter interface {
 	DeleteHierarchy(ctx context.Context, userID string, categoryID string) error // Delete category and all children
 	
 	// Hierarchy operations
-	CreateHierarchy(ctx context.Context, hierarchy domain.CategoryHierarchy) error
+	CreateHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error
 	DeleteHierarchyRelation(ctx context.Context, userID string, parentID string, childID string) error
 	
 	// Node-Category mapping operations
-	AssignNodeToCategory(ctx context.Context, mapping domain.NodeCategory) error
+	AssignNodeToCategory(ctx context.Context, mapping node.NodeCategory) error
 	RemoveNodeFromCategory(ctx context.Context, userID string, nodeID string, categoryID string) error
-	BatchAssignNodes(ctx context.Context, mappings []domain.NodeCategory) error
+	BatchAssignNodes(ctx context.Context, mappings []node.NodeCategory) error
 	
 	// Maintenance operations
 	UpdateNoteCounts(ctx context.Context, userID string) error
@@ -226,25 +229,25 @@ type CQRSCategoryRepository interface {
 // GraphReader provides read access to graph data across multiple entities
 type GraphReader interface {
 	// Full graph operations
-	GetGraphData(ctx context.Context, userID domain.UserID) (*domain.Graph, error)
-	GetGraphDataFiltered(ctx context.Context, userID domain.UserID, spec Specification) (*domain.Graph, error)
-	GetGraphDataPaginated(ctx context.Context, userID domain.UserID, pagination Pagination) (*domain.Graph, string, error)
+	GetGraphData(ctx context.Context, userID shared.UserID) (*shared.Graph, error)
+	GetGraphDataFiltered(ctx context.Context, userID shared.UserID, spec Specification) (*shared.Graph, error)
+	GetGraphDataPaginated(ctx context.Context, userID shared.UserID, pagination Pagination) (*shared.Graph, string, error)
 	
 	// Neighborhood operations
-	GetNeighborhood(ctx context.Context, nodeID domain.NodeID, depth int) (*domain.Graph, error)
-	GetConnectedComponents(ctx context.Context, userID domain.UserID) ([]domain.Graph, error)
+	GetNeighborhood(ctx context.Context, nodeID shared.NodeID, depth int) (*shared.Graph, error)
+	GetConnectedComponents(ctx context.Context, userID shared.UserID) ([]shared.Graph, error)
 	
 	// Analytics operations
-	GetNodeStatistics(ctx context.Context, userID domain.UserID) (*NodeStatistics, error)
-	GetConnectionStatistics(ctx context.Context, userID domain.UserID) (*ConnectionStatistics, error)
+	GetNodeStatistics(ctx context.Context, userID shared.UserID) (*NodeStatistics, error)
+	GetConnectionStatistics(ctx context.Context, userID shared.UserID) (*ConnectionStatistics, error)
 }
 
 // TransactionalWriter provides atomic write operations across multiple repositories
 type TransactionalWriter interface {
 	// Atomic operations across entities
-	CreateNodeWithEdges(ctx context.Context, node *domain.Node, edges []*domain.Edge) error
-	DeleteNodeAndEdges(ctx context.Context, nodeID domain.NodeID) error
-	MergeNodes(ctx context.Context, sourceID, targetID domain.NodeID) error
+	CreateNodeWithEdges(ctx context.Context, node *node.Node, edges []*edge.Edge) error
+	DeleteNodeAndEdges(ctx context.Context, nodeID shared.NodeID) error
+	MergeNodes(ctx context.Context, sourceID, targetID shared.NodeID) error
 	
 	// Category operations with consistency
 	MoveCategoryWithNodes(ctx context.Context, categoryID string, newParentID string) error

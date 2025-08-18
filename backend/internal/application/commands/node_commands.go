@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	
 	"github.com/go-playground/validator/v10"
@@ -19,7 +20,7 @@ import (
 type NodeCommandService struct {
 	nodeWriter   repository.NodeWriter
 	edgeWriter   repository.EdgeWriter
-	eventBus     domain.EventBus
+	eventBus     shared.EventBus
 	validator    *validator.Validate
 	logger       *zap.Logger
 }
@@ -28,7 +29,7 @@ type NodeCommandService struct {
 func NewNodeCommandService(
 	nodeWriter repository.NodeWriter,
 	edgeWriter repository.EdgeWriter,
-	eventBus domain.EventBus,
+	eventBus shared.EventBus,
 	logger *zap.Logger,
 ) *NodeCommandService {
 	return &NodeCommandService{
@@ -125,27 +126,27 @@ type BulkCreateNodesCommand struct {
 // ============================================================================
 
 // CreateNode executes the create node command with full validation.
-func (s *NodeCommandService) CreateNode(ctx context.Context, cmd CreateNodeCommand) (*domain.Node, error) {
+func (s *NodeCommandService) CreateNode(ctx context.Context, cmd CreateNodeCommand) (*node.Node, error) {
 	// 1. Validate command
 	if err := s.validator.Struct(cmd); err != nil {
 		return nil, fmt.Errorf("invalid command: %w", err)
 	}
 	
 	// 2. Create domain object with business rules validation
-	userID, err := domain.NewUserID(cmd.UserID)
+	userID, err := shared.NewUserID(cmd.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
 	}
 	
-	content, err := domain.NewContent(cmd.Content)
+	content, err := shared.NewContent(cmd.Content)
 	if err != nil {
 		return nil, fmt.Errorf("invalid content: %w", err)
 	}
 	
-	tags := domain.NewTags(cmd.Tags...)
+	tags := shared.NewTags(cmd.Tags...)
 	
 	// Use the domain factory method to create a valid node
-	node, err := domain.NewNode(userID, content, tags)
+	node, err := node.NewNode(userID, content, tags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create node: %w", err)
 	}
@@ -161,13 +162,13 @@ func (s *NodeCommandService) CreateNode(ctx context.Context, cmd CreateNodeComma
 	}
 	
 	// 5. Publish domain events
-	event := domain.NewNodeCreatedEvent(
+	event := shared.NewNodeCreatedEvent(
 		node.ID,
 		node.UserID,
 		node.Content,
 		node.Keywords(),
 		node.Tags,
-		domain.ParseVersion(node.Version),
+		shared.ParseVersion(node.Version),
 	)
 	if err := s.eventBus.Publish(ctx, event); err != nil {
 		// Log but don't fail the operation
@@ -186,7 +187,7 @@ func (s *NodeCommandService) CreateNode(ctx context.Context, cmd CreateNodeComma
 }
 
 // UpdateNode executes the update node command with optimistic locking.
-func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeCommand) (*domain.Node, error) {
+func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeCommand) (*node.Node, error) {
 	// 1. Validate command
 	if err := s.validator.Struct(cmd); err != nil {
 		return nil, fmt.Errorf("invalid command: %w", err)
@@ -196,43 +197,43 @@ func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeComma
 	// This is a command-only service, so we need to reconstruct the node with updates
 	
 	// 3. Create updated content if provided
-	var content domain.Content
+	var content shared.Content
 	if cmd.Content != "" {
 		var err error
-		content, err = domain.NewContent(cmd.Content)
+		content, err = shared.NewContent(cmd.Content)
 		if err != nil {
 			return nil, fmt.Errorf("invalid content: %w", err)
 		}
 	}
 	
 	// 4. Create updated tags if provided
-	var tags domain.Tags
+	var tags shared.Tags
 	if cmd.Tags != nil {
-		tags = domain.NewTags(cmd.Tags...)
+		tags = shared.NewTags(cmd.Tags...)
 	}
 	
 	// Create a node with the updated values for the update operation
 	// Note: This is a simplified approach since we don't have read access
-	nodeID, err := domain.ParseNodeID(cmd.NodeID)
+	nodeID, err := shared.ParseNodeID(cmd.NodeID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid node ID: %w", err)
 	}
 	
-	userID, err := domain.NewUserID(cmd.UserID)
+	userID, err := shared.NewUserID(cmd.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
 	}
 	
 	// Reconstruct node for update
-	node := domain.ReconstructNode(
+	node := node.ReconstructNode(
 		nodeID,
 		userID,
 		content,
-		domain.Keywords{}, // Will be recalculated from content
+		shared.Keywords{}, // Will be recalculated from content
 		tags,
 		time.Now(),
 		time.Now(),
-		domain.ParseVersion(cmd.Version),
+		shared.ParseVersion(cmd.Version),
 		false,
 	)
 	
@@ -255,14 +256,14 @@ func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeComma
 	
 	// 7. Publish update event
 	// Use content updated event as a general update event
-	event := domain.NewNodeContentUpdatedEvent(
+	event := shared.NewNodeContentUpdatedEvent(
 		node.ID,
 		node.UserID,
 		content, // old content (we don't have it)
 		node.Content,
-		domain.Keywords{}, // old keywords (we don't have them)
+		shared.Keywords{}, // old keywords (we don't have them)
 		node.Keywords(),
-		domain.ParseVersion(node.Version),
+		shared.ParseVersion(node.Version),
 	)
 	if err := s.eventBus.Publish(ctx, event); err != nil {
 		s.logger.Warn("Failed to publish node updated event",
@@ -287,7 +288,7 @@ func (s *NodeCommandService) DeleteNode(ctx context.Context, cmd DeleteNodeComma
 	}
 	
 	// 2. Parse the node ID
-	nodeID, err := domain.ParseNodeID(cmd.NodeID)
+	nodeID, err := shared.ParseNodeID(cmd.NodeID)
 	if err != nil {
 		return fmt.Errorf("invalid node ID: %w", err)
 	}
@@ -311,7 +312,7 @@ func (s *NodeCommandService) DeleteNode(ctx context.Context, cmd DeleteNodeComma
 	
 	// 5. Publish deletion event
 	// Note: We don't have node details without a read operation
-	// event := domain.NewNodeDeletedEvent(nodeID, userID, content, keywords, tags, version)
+	// event := node.NewNodeDeletedEvent(nodeID, userID, content, keywords, tags, version)
 	// if err := s.eventBus.Publish(ctx, event); err != nil {
 	// 	s.logger.Warn("Failed to publish node deleted event",
 	// 		zap.String("node_id", cmd.NodeID),
@@ -380,7 +381,7 @@ func (s *NodeCommandService) BulkDeleteNodes(ctx context.Context, cmd BulkDelete
 
 /*
 // CreateConnection creates a new edge between nodes.
-func (s *NodeCommandService) CreateConnection(ctx context.Context, cmd CreateConnectionCommand) (*domain.Edge, error) {
+func (s *NodeCommandService) CreateConnection(ctx context.Context, cmd CreateConnectionCommand) (*edge.Edge, error) {
 	// 1. Validate command
 	if err := s.validator.Struct(cmd); err != nil {
 		return nil, fmt.Errorf("invalid command: %w", err)
@@ -403,11 +404,11 @@ func (s *NodeCommandService) CreateConnection(ctx context.Context, cmd CreateCon
 	}
 	
 	// 4. Create edge domain object
-	edge := &domain.Edge{
-		ID:        domain.GenerateEdgeID(),
-		SourceID:  domain.NodeID(cmd.SourceID),
-		TargetID:  domain.NodeID(cmd.TargetID),
-		EdgeType:  domain.EdgeType(cmd.EdgeType),
+	edge := &edge.Edge{
+		ID:        shared.GenerateEdgeID(),
+		SourceID:  node.NodeID(cmd.SourceID),
+		TargetID:  node.NodeID(cmd.TargetID),
+		EdgeType:  edge.EdgeType(cmd.EdgeType),
 		Strength:  cmd.Strength,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -420,7 +421,7 @@ func (s *NodeCommandService) CreateConnection(ctx context.Context, cmd CreateCon
 	}
 	
 	// 6. Publish event
-	event := domain.NewEdgeCreatedEvent(edge)
+	event := edge.NewEdgeCreatedEvent(edge)
 	if err := s.eventBus.Publish(ctx, event); err != nil {
 		s.logger.Warn("Failed to publish edge created event",
 			zap.String("edge_id", string(edge.ID)),
@@ -438,7 +439,7 @@ func (s *NodeCommandService) CreateConnection(ctx context.Context, cmd CreateCon
 }
 
 // UpdateConnection updates an existing edge.
-func (s *NodeCommandService) UpdateConnection(ctx context.Context, cmd UpdateConnectionCommand) (*domain.Edge, error) {
+func (s *NodeCommandService) UpdateConnection(ctx context.Context, cmd UpdateConnectionCommand) (*edge.Edge, error) {
 	// 1. Validate command
 	if err := s.validator.Struct(cmd); err != nil {
 		return nil, fmt.Errorf("invalid command: %w", err)
@@ -461,7 +462,7 @@ func (s *NodeCommandService) UpdateConnection(ctx context.Context, cmd UpdateCon
 	}
 	
 	// 5. Publish event
-	event := domain.NewEdgeUpdatedEvent(edge)
+	event := edge.NewEdgeUpdatedEvent(edge)
 	if err := s.eventBus.Publish(ctx, event); err != nil {
 		s.logger.Warn("Failed to publish edge updated event",
 			zap.String("edge_id", cmd.EdgeID),
@@ -491,7 +492,7 @@ func (s *NodeCommandService) DeleteConnection(ctx context.Context, cmd DeleteCon
 	}
 	
 	// 4. Publish event
-	event := domain.NewEdgeDeletedEvent(edge)
+	event := edge.NewEdgeDeletedEvent(edge)
 	if err := s.eventBus.Publish(ctx, event); err != nil {
 		s.logger.Warn("Failed to publish edge deleted event",
 			zap.String("edge_id", cmd.EdgeID),

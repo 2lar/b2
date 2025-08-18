@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"brain2-backend/internal/application/dto"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/infrastructure/persistence"
 	appErrors "brain2-backend/pkg/errors"
 	"go.uber.org/zap"
@@ -56,7 +58,7 @@ func (s *GraphQueryService) GetGraph(ctx context.Context, query *GetGraphQuery) 
 	}
 
 	// 2. Validate user ID
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
@@ -113,12 +115,12 @@ func (s *GraphQueryService) GetNodeNeighborhood(ctx context.Context, query *GetN
 		zap.Int("depth", query.Depth))
 
 	// 1. Validate inputs
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	nodeID, err := domain.ParseNodeID(query.NodeID)
+	nodeID, err := shared.ParseNodeID(query.NodeID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
 	}
@@ -136,7 +138,7 @@ func (s *GraphQueryService) GetNodeNeighborhood(ctx context.Context, query *GetN
 	neighborNodes, edges := s.traverseGraph(ctx, userID.String(), nodeID.String(), query.Depth)
 
 	// 4. Include the root node in the result
-	allNodes := []*domain.Node{rootNode}
+	allNodes := []*node.Node{rootNode}
 	allNodes = append(allNodes, neighborNodes...)
 
 	// 5. Build result
@@ -173,7 +175,7 @@ func (s *GraphQueryService) GetGraphAnalytics(ctx context.Context, query *GetGra
 	}
 
 	// 2. Validate user ID
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
@@ -214,7 +216,7 @@ func (s *GraphQueryService) GetGraphAnalytics(ctx context.Context, query *GetGra
 
 // Helper methods
 
-func (s *GraphQueryService) getUserNodes(ctx context.Context, userID string, limit int) ([]*domain.Node, error) {
+func (s *GraphQueryService) getUserNodes(ctx context.Context, userID string, limit int) ([]*node.Node, error) {
 	// Query for nodes using the correct key structure:
 	// PK = USER#<userID>, SK begins with NODE#
 	sortKeyPrefix := "NODE#"
@@ -232,7 +234,7 @@ func (s *GraphQueryService) getUserNodes(ctx context.Context, userID string, lim
 		return nil, fmt.Errorf("failed to query user nodes: %w", err)
 	}
 
-	nodes := make([]*domain.Node, 0, len(result.Records))
+	nodes := make([]*node.Node, 0, len(result.Records))
 	for _, record := range result.Records {
 		node, err := s.recordToNode(&record)
 		if err != nil {
@@ -245,7 +247,7 @@ func (s *GraphQueryService) getUserNodes(ctx context.Context, userID string, lim
 	return nodes, nil
 }
 
-func (s *GraphQueryService) getUserEdges(ctx context.Context, userID string, limit int) ([]*domain.Edge, error) {
+func (s *GraphQueryService) getUserEdges(ctx context.Context, userID string, limit int) ([]*edge.Edge, error) {
 	// Edges are stored with PK = USER#<userID>#NODE#<sourceID>, SK = EDGE#RELATES_TO#<targetID>
 	// We need to scan for all edges belonging to this user
 	query := persistence.Query{
@@ -265,7 +267,7 @@ func (s *GraphQueryService) getUserEdges(ctx context.Context, userID string, lim
 		return nil, fmt.Errorf("failed to scan user edges: %w", err)
 	}
 
-	edges := make([]*domain.Edge, 0, len(result.Records))
+	edges := make([]*edge.Edge, 0, len(result.Records))
 	for _, record := range result.Records {
 		edge, err := s.recordToEdge(&record)
 		if err != nil {
@@ -278,7 +280,7 @@ func (s *GraphQueryService) getUserEdges(ctx context.Context, userID string, lim
 	return edges, nil
 }
 
-func (s *GraphQueryService) getNode(ctx context.Context, userID, nodeID string) (*domain.Node, error) {
+func (s *GraphQueryService) getNode(ctx context.Context, userID, nodeID string) (*node.Node, error) {
 	key := persistence.Key{
 		PartitionKey: fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID),
 		SortKey:      "METADATA#v0",
@@ -296,15 +298,15 @@ func (s *GraphQueryService) getNode(ctx context.Context, userID, nodeID string) 
 	return s.recordToNode(record)
 }
 
-func (s *GraphQueryService) traverseGraph(ctx context.Context, userID, startNodeID string, depth int) ([]*domain.Node, []*domain.Edge) {
+func (s *GraphQueryService) traverseGraph(ctx context.Context, userID, startNodeID string, depth int) ([]*node.Node, []*edge.Edge) {
 	// This is a simplified implementation. In a real system, you would implement
 	// proper graph traversal algorithms (BFS, DFS) with depth limiting.
 	
 	visited := make(map[string]bool)
 	visited[startNodeID] = true
 
-	var allNodes []*domain.Node
-	var allEdges []*domain.Edge
+	var allNodes []*node.Node
+	var allEdges []*edge.Edge
 
 	// Get all edges to build adjacency information
 	edges, err := s.getUserEdges(ctx, userID, 0)
@@ -315,7 +317,7 @@ func (s *GraphQueryService) traverseGraph(ctx context.Context, userID, startNode
 
 	// Build adjacency map
 	adjacency := make(map[string][]string)
-	edgeMap := make(map[string]*domain.Edge)
+	edgeMap := make(map[string]*edge.Edge)
 	
 	for _, edge := range edges {
 		sourceID := edge.SourceID.String()
@@ -365,7 +367,7 @@ func (s *GraphQueryService) traverseGraph(ctx context.Context, userID, startNode
 	return allNodes, allEdges
 }
 
-func (s *GraphQueryService) calculateGraphMetrics(nodes []*domain.Node, edges []*domain.Edge) map[string]interface{} {
+func (s *GraphQueryService) calculateGraphMetrics(nodes []*node.Node, edges []*edge.Edge) map[string]interface{} {
 	metrics := make(map[string]interface{})
 	
 	// Basic counts
@@ -414,7 +416,7 @@ func (s *GraphQueryService) calculateGraphMetrics(nodes []*domain.Node, edges []
 	return metrics
 }
 
-func (s *GraphQueryService) calculateGraphAnalytics(nodes []*domain.Node, edges []*domain.Edge) *dto.GraphAnalytics {
+func (s *GraphQueryService) calculateGraphAnalytics(nodes []*node.Node, edges []*edge.Edge) *dto.GraphAnalytics {
 	analytics := &dto.GraphAnalytics{
 		NodeCount: len(nodes),
 		EdgeCount: len(edges),
@@ -467,7 +469,7 @@ func (s *GraphQueryService) calculateGraphAnalytics(nodes []*domain.Node, edges 
 }
 
 // Helper functions for domain object reconstruction
-func (s *GraphQueryService) recordToNode(record *persistence.Record) (*domain.Node, error) {
+func (s *GraphQueryService) recordToNode(record *persistence.Record) (*node.Node, error) {
 	// Validate that this is a node record by checking the sort key
 	// Nodes have SK = NODE#<nodeID>
 	sk, ok := record.Data["SK"].(string)
@@ -544,7 +546,7 @@ func (s *GraphQueryService) recordToNode(record *persistence.Record) (*domain.No
 	}
 
 	// Reconstruct domain node
-	return domain.ReconstructNodeFromPrimitives(
+	return node.ReconstructNodeFromPrimitives(
 		nodeID,
 		userID,
 		content,
@@ -555,7 +557,7 @@ func (s *GraphQueryService) recordToNode(record *persistence.Record) (*domain.No
 	)
 }
 
-func (s *GraphQueryService) recordToEdge(record *persistence.Record) (*domain.Edge, error) {
+func (s *GraphQueryService) recordToEdge(record *persistence.Record) (*edge.Edge, error) {
 	// Try to extract sourceID and targetID directly from record fields first (EdgeIndex GSI format)
 	sourceID, hasSourceID := record.Data["SourceID"].(string)
 	targetID, hasTargetID := record.Data["TargetID"].(string)
@@ -613,7 +615,7 @@ func (s *GraphQueryService) recordToEdge(record *persistence.Record) (*domain.Ed
 	}
 
 	// Reconstruct domain edge
-	return domain.ReconstructEdgeFromPrimitives(
+	return edge.ReconstructEdgeFromPrimitives(
 		sourceID,
 		targetID,
 		userID,
@@ -622,7 +624,7 @@ func (s *GraphQueryService) recordToEdge(record *persistence.Record) (*domain.Ed
 }
 
 // filterOrphanedEdges removes edges that reference non-existent nodes
-func (s *GraphQueryService) filterOrphanedEdges(nodes []*domain.Node, edges []*domain.Edge) []*domain.Edge {
+func (s *GraphQueryService) filterOrphanedEdges(nodes []*node.Node, edges []*edge.Edge) []*edge.Edge {
 	// Create a set of existing node IDs for quick lookup
 	nodeSet := make(map[string]bool)
 	for _, node := range nodes {
@@ -630,7 +632,7 @@ func (s *GraphQueryService) filterOrphanedEdges(nodes []*domain.Node, edges []*d
 	}
 	
 	// Filter edges to only include those with valid source and target nodes
-	validEdges := make([]*domain.Edge, 0, len(edges))
+	validEdges := make([]*edge.Edge, 0, len(edges))
 	orphanedCount := 0
 	
 	for _, edge := range edges {

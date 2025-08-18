@@ -112,6 +112,13 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate result is not nil (defensive programming for idempotency issues)
+	if result == nil || result.Node == nil {
+		log.Printf("ERROR: CreateNode returned nil result or nil Node for user %s", userID)
+		api.Error(w, http.StatusInternalServerError, "Failed to create node - invalid response from service")
+		return
+	}
+
 	// Publish "NodeCreated" event to EventBridge with complete graph update
 	eventDetail, err := json.Marshal(map[string]any{
 		"type":      "nodeCreated",
@@ -259,6 +266,18 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	}
 	nodeID := chi.URLParam(r, "nodeId")
 
+	// Validate nodeID
+	if nodeID == "" {
+		api.Error(w, http.StatusBadRequest, "Node ID is required")
+		return
+	}
+
+	// Check for common JavaScript undefined-to-string conversion
+	if nodeID == "undefined" || nodeID == "null" {
+		api.Error(w, http.StatusBadRequest, "Node must be created before operation")
+		return
+	}
+
 	// Check if this is a post-cold-start request for conditional behavior
 	isPostColdStart := h.container.IsPostColdStartRequest()
 	if isPostColdStart {
@@ -346,6 +365,18 @@ func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 	}
 	nodeID := chi.URLParam(r, "nodeId")
 
+	// Validate nodeID
+	if nodeID == "" {
+		api.Error(w, http.StatusBadRequest, "Node ID is required")
+		return
+	}
+
+	// Check for common JavaScript undefined-to-string conversion
+	if nodeID == "undefined" || nodeID == "null" {
+		api.Error(w, http.StatusBadRequest, "Node must be created before operation")
+		return
+	}
+
 	var req api.UpdateNodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		api.Error(w, http.StatusBadRequest, "Invalid request body")
@@ -400,6 +431,18 @@ func (h *MemoryHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nodeID := chi.URLParam(r, "nodeId")
+
+	// Validate nodeID
+	if nodeID == "" {
+		api.Error(w, http.StatusBadRequest, "Node ID is required")
+		return
+	}
+
+	// Check for common JavaScript undefined-to-string conversion
+	if nodeID == "undefined" || nodeID == "null" {
+		api.Error(w, http.StatusBadRequest, "Node must be created before operation")
+		return
+	}
 
 	// Create command for CQRS pattern
 	cmd := &commands.DeleteNodeCommand{

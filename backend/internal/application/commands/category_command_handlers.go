@@ -5,7 +5,8 @@ import (
 	"fmt"
 
 	"brain2-backend/internal/application/dto"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
@@ -17,7 +18,7 @@ import (
 type CategoryCommandHandler struct {
 	store            persistence.Store
 	logger           *zap.Logger
-	eventBus         domain.EventBus
+	eventBus         shared.EventBus
 	idempotencyStore repository.IdempotencyStore
 }
 
@@ -25,7 +26,7 @@ type CategoryCommandHandler struct {
 func NewCategoryCommandHandler(
 	store persistence.Store,
 	logger *zap.Logger,
-	eventBus domain.EventBus,
+	eventBus shared.EventBus,
 	idempotencyStore repository.IdempotencyStore,
 ) *CategoryCommandHandler {
 	return &CategoryCommandHandler{
@@ -52,13 +53,13 @@ func (h *CategoryCommandHandler) HandleCreateCategory(ctx context.Context, cmd *
 	}
 
 	// 2. Parse and validate domain identifiers
-	userID, err := domain.ParseUserID(cmd.UserID)
+	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
 	// 3. Create domain entity using factory method
-	category, err := domain.NewCategory(userID, cmd.Title, cmd.Description)
+	category, err := category.NewCategory(userID, cmd.Title, cmd.Description)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to create category")
 	}
@@ -148,12 +149,12 @@ func (h *CategoryCommandHandler) HandleUpdateCategory(ctx context.Context, cmd *
 	}
 
 	// 2. Parse and validate domain identifiers
-	userID, err := domain.ParseUserID(cmd.UserID)
+	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	categoryID, err := domain.ParseCategoryID(cmd.CategoryID)
+	categoryID, err := shared.ParseCategoryID(cmd.CategoryID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid category id: " + err.Error())
 	}
@@ -255,12 +256,12 @@ func (h *CategoryCommandHandler) HandleDeleteCategory(ctx context.Context, cmd *
 	}
 
 	// 2. Parse and validate domain identifiers
-	userID, err := domain.ParseUserID(cmd.UserID)
+	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	categoryID, err := domain.ParseCategoryID(cmd.CategoryID)
+	categoryID, err := shared.ParseCategoryID(cmd.CategoryID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid category id: " + err.Error())
 	}
@@ -305,7 +306,7 @@ func (h *CategoryCommandHandler) HandleDeleteCategory(ctx context.Context, cmd *
 	}
 
 	// 7. Create and publish deletion event
-	deletionEvent := domain.NewCategoryDeletedEvent(categoryID, userID, category.Name, 0, 0)
+	deletionEvent := shared.NewCategoryDeletedEvent(categoryID, userID, category.Name, 0, 0)
 	if err := h.eventBus.Publish(ctx, deletionEvent); err != nil {
 		h.logger.Warn("failed to publish deletion event", zap.Error(err))
 		// Don't fail the operation for event publishing failures
@@ -331,7 +332,7 @@ func (h *CategoryCommandHandler) HandleDeleteCategory(ctx context.Context, cmd *
 
 // Helper methods
 
-func (h *CategoryCommandHandler) recordToCategory(record *persistence.Record) (*domain.Category, error) {
+func (h *CategoryCommandHandler) recordToCategory(record *persistence.Record) (*category.Category, error) {
 	// Extract required fields
 	categoryID, ok := record.Data["CategoryID"].(string)
 	if !ok {
@@ -360,8 +361,8 @@ func (h *CategoryCommandHandler) recordToCategory(record *persistence.Record) (*
 	}
 
 	// Create domain category from record data
-	category := &domain.Category{
-		ID:          domain.CategoryID(categoryID),
+	category := &category.Category{
+		ID:          shared.CategoryID(categoryID),
 		UserID:      userID,
 		Name:        name,
 		Title:       name, // Use name as title for compatibility

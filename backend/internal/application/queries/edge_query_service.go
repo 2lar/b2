@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"brain2-backend/internal/application/dto"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
 )
@@ -46,17 +47,17 @@ func (s *EdgeQueryService) GetEdge(ctx context.Context, query *GetEdgeQuery) (*d
 	}
 
 	// 2. Parse and validate domain identifiers
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	sourceID, err := domain.ParseNodeID(query.SourceNodeID)
+	sourceID, err := shared.ParseNodeID(query.SourceNodeID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid source node id: " + err.Error())
 	}
 
-	targetID, err := domain.ParseNodeID(query.TargetNodeID)
+	targetID, err := shared.ParseNodeID(query.TargetNodeID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid target node id: " + err.Error())
 	}
@@ -107,7 +108,7 @@ func (s *EdgeQueryService) GetEdge(ctx context.Context, query *GetEdgeQuery) (*d
 // ListEdges retrieves a paginated list of edges with optional filtering.
 func (s *EdgeQueryService) ListEdges(ctx context.Context, query *ListEdgesQuery) (*dto.ListEdgesResult, error) {
 	// 1. Parse and validate domain identifiers
-	_, err := domain.ParseUserID(query.UserID)
+	_, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
@@ -195,7 +196,7 @@ func (s *EdgeQueryService) GetConnectionStatistics(ctx context.Context, query *G
 	}
 
 	// 2. Parse and validate domain identifiers
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
@@ -325,18 +326,18 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 	}
 
 	// 2. Parse and validate domain identifiers
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	nodeID, err := domain.ParseNodeID(query.NodeID)
+	nodeID, err := shared.ParseNodeID(query.NodeID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
 	}
 
 	// 3. Get connections based on type
-	var edges []*domain.Edge
+	var edges []*edge.Edge
 
 	switch query.ConnectionType {
 	case "outgoing":
@@ -362,7 +363,7 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 	}
 
 	// 4. Filter by user ownership
-	var userEdges []*domain.Edge
+	var userEdges []*edge.Edge
 	for _, edge := range edges {
 		if edge.UserID().Equals(userID) {
 			userEdges = append(userEdges, edge)

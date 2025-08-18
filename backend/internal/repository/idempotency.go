@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/shared"
 )
 
 // IdempotencyKey represents a unique key for idempotent operations
@@ -92,7 +93,7 @@ func (s *InMemoryIdempotencyStore) keyToString(key IdempotencyKey) string {
 }
 
 // GenerateIdempotencyKey generates an idempotency key for a node operation
-func GenerateIdempotencyKey(userID, operation string, node domain.Node) IdempotencyKey {
+func GenerateIdempotencyKey(userID, operation string, node node.Node) IdempotencyKey {
 	// Create a hash of the node data to ensure uniqueness
 	hasher := sha256.New()
 	hasher.Write([]byte(fmt.Sprintf("%s:%s:%s:%v:%d",
@@ -142,7 +143,7 @@ func IsOptimisticLockError(err error) bool {
 
 // VersionedNode represents a node with version control
 type VersionedNode struct {
-	domain.Node
+	node.Node
 	ETag string // Entity tag for optimistic locking
 }
 
@@ -163,27 +164,28 @@ const (
 // ConflictResolver defines how to resolve conflicts
 type ConflictResolver interface {
 	// ResolveConflict resolves a conflict between two versions of a node
-	ResolveConflict(ctx context.Context, current, incoming domain.Node) (domain.Node, error)
+	ResolveConflict(ctx context.Context, current, incoming node.Node) (node.Node, error)
 }
 
 // LastWriteWinsResolver implements a simple last-write-wins strategy
 type LastWriteWinsResolver struct{}
 
 // ResolveConflict implements ConflictResolver
-func (r *LastWriteWinsResolver) ResolveConflict(ctx context.Context, current, incoming domain.Node) (domain.Node, error) {
+func (r *LastWriteWinsResolver) ResolveConflict(ctx context.Context, current, incoming node.Node) (node.Node, error) {
 	// Simple last-write-wins: we need to create a new node with incremented version
 	// since nodes are immutable value objects
-	newNode := domain.ReconstructNode(
-		incoming.ID,
-		incoming.UserID,
-		incoming.Content,
-		incoming.Keywords(),
-		incoming.Tags,
+	newNode, err := node.ReconstructNodeFromPrimitives(
+		incoming.ID.String(),
+		incoming.UserID.String(),
+		incoming.Content.String(),
+		incoming.Keywords().ToSlice(),
+		incoming.Tags.ToSlice(),
 		incoming.CreatedAt,
-		incoming.UpdatedAt,
-		domain.ParseVersion(current.Version + 1), // Increment the current version
-		incoming.IsArchived(),
+		current.Version + 1, // Increment the current version
 	)
+	if err != nil {
+		return incoming, err
+	}
 	return *newNode, nil
 }
 
@@ -191,7 +193,7 @@ func (r *LastWriteWinsResolver) ResolveConflict(ctx context.Context, current, in
 type MergeResolver struct{}
 
 // ResolveConflict implements ConflictResolver
-func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming domain.Node) (domain.Node, error) {
+func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming node.Node) (node.Node, error) {
 	// Merge strategy: combine keywords and use incoming content
 	// Merge keywords from both current and incoming nodes
 	keywordSet := make(map[string]bool)
@@ -211,7 +213,7 @@ func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming d
 	}
 	
 	// Create merged keywords and tags
-	mergedKeywords := domain.NewKeywords(mergedKeywordSlice)
+	mergedKeywords := shared.NewKeywords(mergedKeywordSlice)
 	
 	// Merge tags too
 	tagSet := make(map[string]bool)
@@ -225,20 +227,21 @@ func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming d
 	for tag := range tagSet {
 		mergedTagSlice = append(mergedTagSlice, tag)
 	}
-	mergedTags := domain.NewTags(mergedTagSlice...)
+	mergedTags := shared.NewTags(mergedTagSlice...)
 	
 	// Create new merged node with incremented version
-	mergedNode := domain.ReconstructNode(
-		incoming.ID,
-		incoming.UserID,
-		incoming.Content, // Use incoming content
-		mergedKeywords,     // Use merged keywords
-		mergedTags,         // Use merged tags
+	mergedNode, err := node.ReconstructNodeFromPrimitives(
+		incoming.ID.String(),
+		incoming.UserID.String(),
+		incoming.Content.String(), // Use incoming content
+		mergedKeywords.ToSlice(),     // Use merged keywords
+		mergedTags.ToSlice(),         // Use merged tags
 		incoming.CreatedAt,
-		incoming.UpdatedAt,
-		domain.ParseVersion(current.Version + 1), // Increment version
-		incoming.IsArchived(),
+		current.Version + 1, // Increment version
 	)
+	if err != nil {
+		return incoming, err
+	}
 
 	return *mergedNode, nil
 }

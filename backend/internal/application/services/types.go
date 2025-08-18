@@ -5,7 +5,9 @@ import (
 	"regexp"
 	"strings"
 	
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/category"
 )
 
 // ============================================================================
@@ -34,7 +36,7 @@ type UpdateNodeCommand struct {
 type CreateConnectionCommand struct {
 	SourceID string           `json:"source_id" validate:"required"`
 	TargetID string           `json:"target_id" validate:"required"`
-	EdgeType domain.EdgeType  `json:"edge_type" validate:"required"`
+	EdgeType edge.EdgeType  `json:"edge_type" validate:"required"`
 	Strength float64          `json:"strength" validate:"min=0,max=1"`
 }
 
@@ -73,8 +75,8 @@ type EdgeView struct {
 
 // GraphData represents the complete graph structure.
 type GraphData struct {
-	Nodes []*domain.Node `json:"nodes"`
-	Edges []*domain.Edge `json:"edges"`
+	Nodes []*node.Node `json:"nodes"`
+	Edges []*edge.Edge `json:"edges"`
 }
 
 // CategoryNodeView represents a node with its category associations.
@@ -115,7 +117,7 @@ func containsQuery(content, query string) bool {
 }
 
 // toNodeView converts a domain node to a view model.
-func toNodeView(node *domain.Node) *NodeView {
+func toNodeView(node *node.Node) *NodeView {
 	return &NodeView{
 		ID:        node.ID.String(),
 		UserID:    node.UserID.String(),
@@ -129,7 +131,7 @@ func toNodeView(node *domain.Node) *NodeView {
 }
 
 // toEdgeView converts a domain edge to a view model.
-func toEdgeView(edge *domain.Edge) *EdgeView {
+func toEdgeView(edge *edge.Edge) *EdgeView {
 	return &EdgeView{
 		ID:        edge.ID.String(),
 		SourceID:  edge.SourceID.String(),
@@ -142,7 +144,7 @@ func toEdgeView(edge *domain.Edge) *EdgeView {
 }
 
 // toCategoryView converts a domain category to a view model.
-func toCategoryView(category *domain.Category) *CategoryView {
+func toCategoryView(category *category.Category) *CategoryView {
 	color := ""
 	if category.Color != nil {
 		color = *category.Color

@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"sync"
 	
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	
 	"go.uber.org/zap"
@@ -28,8 +31,8 @@ type TransactionManager struct {
 	rollbacks     []func() error
 	
 	// Event handling
-	eventBus      domain.EventBus
-	pendingEvents []domain.DomainEvent
+	eventBus      shared.EventBus
+	pendingEvents []shared.DomainEvent
 	
 	logger *zap.Logger
 }
@@ -55,7 +58,7 @@ func NewTransactionManager(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
 	categoryRepo repository.CategoryRepository,
-	eventBus domain.EventBus,
+	eventBus shared.EventBus,
 	logger *zap.Logger,
 ) *TransactionManager {
 	return &TransactionManager{
@@ -65,7 +68,7 @@ func NewTransactionManager(
 		eventBus:      eventBus,
 		operations:    make([]Operation, 0),
 		rollbacks:     make([]func() error, 0),
-		pendingEvents: make([]domain.DomainEvent, 0),
+		pendingEvents: make([]shared.DomainEvent, 0),
 		logger:        logger,
 	}
 }
@@ -90,7 +93,7 @@ func (tm *TransactionManager) ExecuteInTransaction(
 	// Reset state
 	tm.operations = make([]Operation, 0)
 	tm.rollbacks = make([]func() error, 0)
-	tm.pendingEvents = make([]domain.DomainEvent, 0)
+	tm.pendingEvents = make([]shared.DomainEvent, 0)
 	
 	// Create transaction context
 	txCtx := context.WithValue(ctx, "transaction", tm)
@@ -184,7 +187,7 @@ func (tm *TransactionManager) commit(ctx context.Context) error {
 
 // CreateNode creates a node within the transaction.
 // TODO: Update to use NodeWriter interface methods
-func (tm *TransactionManager) CreateNode(ctx context.Context, node *domain.Node) error {
+func (tm *TransactionManager) CreateNode(ctx context.Context, node *node.Node) error {
 	if !tm.inTransaction {
 		return fmt.Errorf("operation must be executed within a transaction")
 	}
@@ -197,7 +200,7 @@ func (tm *TransactionManager) CreateNode(ctx context.Context, node *domain.Node)
 
 // UpdateNode updates a node within the transaction.
 // TODO: Update to use NodeWriter interface methods
-func (tm *TransactionManager) UpdateNode(ctx context.Context, node *domain.Node, originalNode *domain.Node) error {
+func (tm *TransactionManager) UpdateNode(ctx context.Context, node *node.Node, originalNode *node.Node) error {
 	if !tm.inTransaction {
 		return fmt.Errorf("operation must be executed within a transaction")
 	}
@@ -210,7 +213,7 @@ func (tm *TransactionManager) UpdateNode(ctx context.Context, node *domain.Node,
 
 // DeleteNode deletes a node within the transaction.
 // TODO: Update to use NodeWriter interface methods
-func (tm *TransactionManager) DeleteNode(ctx context.Context, node *domain.Node) error {
+func (tm *TransactionManager) DeleteNode(ctx context.Context, node *node.Node) error {
 	if !tm.inTransaction {
 		return fmt.Errorf("operation must be executed within a transaction")
 	}
@@ -227,7 +230,7 @@ func (tm *TransactionManager) DeleteNode(ctx context.Context, node *domain.Node)
 
 // CreateEdge creates an edge within the transaction.
 // TODO: Update to use EdgeWriter interface methods
-func (tm *TransactionManager) CreateEdge(ctx context.Context, edge *domain.Edge) error {
+func (tm *TransactionManager) CreateEdge(ctx context.Context, edge *edge.Edge) error {
 	if !tm.inTransaction {
 		return fmt.Errorf("operation must be executed within a transaction")
 	}
@@ -238,7 +241,7 @@ func (tm *TransactionManager) CreateEdge(ctx context.Context, edge *domain.Edge)
 
 // UpdateEdge updates an edge within the transaction.
 // TODO: Update to use EdgeWriter interface methods
-func (tm *TransactionManager) UpdateEdge(ctx context.Context, edge *domain.Edge, originalEdge *domain.Edge) error {
+func (tm *TransactionManager) UpdateEdge(ctx context.Context, edge *edge.Edge, originalEdge *edge.Edge) error {
 	if !tm.inTransaction {
 		return fmt.Errorf("operation must be executed within a transaction")
 	}
@@ -249,7 +252,7 @@ func (tm *TransactionManager) UpdateEdge(ctx context.Context, edge *domain.Edge,
 
 // DeleteEdge deletes an edge within the transaction.
 // TODO: Update to use EdgeWriter interface methods
-func (tm *TransactionManager) DeleteEdge(ctx context.Context, edge *domain.Edge) error {
+func (tm *TransactionManager) DeleteEdge(ctx context.Context, edge *edge.Edge) error {
 	if !tm.inTransaction {
 		return fmt.Errorf("operation must be executed within a transaction")
 	}
@@ -264,7 +267,7 @@ func (tm *TransactionManager) DeleteEdge(ctx context.Context, edge *domain.Edge)
 
 // CreateCategory creates a category within the transaction.
 // TODO: Update to use CategoryWriter interface methods
-func (tm *TransactionManager) CreateCategory(ctx context.Context, category *domain.Category) error {
+func (tm *TransactionManager) CreateCategory(ctx context.Context, category *category.Category) error {
 	if !tm.inTransaction {
 		return fmt.Errorf("operation must be executed within a transaction")
 	}
@@ -275,7 +278,7 @@ func (tm *TransactionManager) CreateCategory(ctx context.Context, category *doma
 
 // UpdateCategory updates a category within the transaction.
 // TODO: Update to use CategoryWriter interface methods
-func (tm *TransactionManager) UpdateCategory(ctx context.Context, category *domain.Category, originalCategory *domain.Category) error {
+func (tm *TransactionManager) UpdateCategory(ctx context.Context, category *category.Category, originalCategory *category.Category) error {
 	if !tm.inTransaction {
 		return fmt.Errorf("operation must be executed within a transaction")
 	}
@@ -286,7 +289,7 @@ func (tm *TransactionManager) UpdateCategory(ctx context.Context, category *doma
 
 // DeleteCategory deletes a category within the transaction.
 // TODO: Update to use CategoryWriter interface methods
-func (tm *TransactionManager) DeleteCategory(ctx context.Context, category *domain.Category) error {
+func (tm *TransactionManager) DeleteCategory(ctx context.Context, category *category.Category) error {
 	if !tm.inTransaction {
 		return fmt.Errorf("operation must be executed within a transaction")
 	}

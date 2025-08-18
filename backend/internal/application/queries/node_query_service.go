@@ -17,7 +17,7 @@ import (
 
 	"brain2-backend/internal/application/dto"
 	sharedContext "brain2-backend/internal/context"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
 )
@@ -61,12 +61,12 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 	}
 
 	// 2. Parse and validate domain identifiers
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	nodeID, err := domain.ParseNodeID(query.NodeID)
+	nodeID, err := shared.ParseNodeID(query.NodeID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
 	}
@@ -154,7 +154,7 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 // ListNodes retrieves a paginated list of nodes with optional filtering and sorting.
 func (s *NodeQueryService) ListNodes(ctx context.Context, query *ListNodesQuery) (*dto.ListNodesResult, error) {
 	// 1. Parse and validate domain identifiers
-	_, err := domain.ParseUserID(query.UserID)
+	_, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
@@ -237,12 +237,12 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 	}
 
 	// 2. Parse and validate domain identifiers
-	userID, err := domain.ParseUserID(query.UserID)
+	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	nodeID, err := domain.ParseNodeID(query.NodeID)
+	nodeID, err := shared.ParseNodeID(query.NodeID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
 	}
@@ -346,7 +346,7 @@ func (s *NodeQueryService) GetGraphData(ctx context.Context, query *GetGraphData
 	}
 
 	// 2. Parse and validate domain identifiers
-	_, err := domain.ParseUserID(query.UserID)
+	_, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}

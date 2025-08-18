@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/shared"
 )
 
 // QueryBuilder provides a fluent API for building complex repository queries.
@@ -39,7 +40,7 @@ import (
 //       Limit(50).
 //       Build()
 type QueryBuilder struct {
-	userID         domain.UserID
+	userID         shared.UserID
 	specifications []Specification
 	sorting        []SortCriteria
 	pagination     PaginationConfig
@@ -147,7 +148,7 @@ func NewQueryBuilder() *QueryBuilder {
 // Basic Query Building Methods
 
 // ForUser sets the user context for the query (required for most queries)
-func (qb *QueryBuilder) ForUser(userID domain.UserID) *QueryBuilder {
+func (qb *QueryBuilder) ForUser(userID shared.UserID) *QueryBuilder {
 	qb.userID = userID
 	return qb
 }
@@ -608,7 +609,7 @@ func (cqb *ComplexQueryBuilder) UnionWith(query Specification, unionType UnionTy
 // Predefined Query Templates for Common Use Cases
 
 // RecentActivityQuery builds a query for recently active nodes
-func RecentActivityQuery(userID domain.UserID, days int) *QueryBuilder {
+func RecentActivityQuery(userID shared.UserID, days int) *QueryBuilder {
 	since := time.Now().AddDate(0, 0, -days)
 	
 	return NewQueryBuilder().
@@ -620,7 +621,7 @@ func RecentActivityQuery(userID domain.UserID, days int) *QueryBuilder {
 }
 
 // PopularContentQuery builds a query for popular content (highly connected nodes)
-func PopularContentQuery(userID domain.UserID, threshold float64) *QueryBuilder {
+func PopularContentQuery(userID shared.UserID, threshold float64) *QueryBuilder {
 	// This would require additional specifications for connection counting
 	// For now, we'll create a basic query
 	return NewQueryBuilder().
@@ -631,7 +632,7 @@ func PopularContentQuery(userID domain.UserID, threshold float64) *QueryBuilder 
 }
 
 // ContentSearchQuery builds a full-text search query
-func ContentSearchQuery(userID domain.UserID, searchTerm string, fuzzy bool) *QueryBuilder {
+func ContentSearchQuery(userID shared.UserID, searchTerm string, fuzzy bool) *QueryBuilder {
 	return NewQueryBuilder().
 		ForUser(userID).
 		ContentContains(searchTerm, fuzzy).
@@ -641,7 +642,7 @@ func ContentSearchQuery(userID domain.UserID, searchTerm string, fuzzy bool) *Qu
 }
 
 // StaleContentQuery builds a query for old, unused content
-func StaleContentQuery(userID domain.UserID, olderThanDays int) *QueryBuilder {
+func StaleContentQuery(userID shared.UserID, olderThanDays int) *QueryBuilder {
 	cutoff := time.Now().AddDate(0, 0, -olderThanDays)
 	
 	return NewQueryBuilder().
@@ -800,7 +801,7 @@ func optimizeSorting(qb *QueryBuilder) *QueryBuilder {
 // Example Usage Functions
 
 // ExampleSimpleQuery demonstrates basic query building
-func ExampleSimpleQuery(userID domain.UserID) ([]*domain.Node, error) {
+func ExampleSimpleQuery(userID shared.UserID) ([]*node.Node, error) {
 	// Simple query for recent nodes with specific keywords
 	_ = NewQueryBuilder().
 		ForUser(userID).
@@ -817,7 +818,7 @@ func ExampleSimpleQuery(userID domain.UserID) ([]*domain.Node, error) {
 }
 
 // ExampleComplexQuery demonstrates advanced query building
-func ExampleComplexQuery(userID domain.UserID, searchTerm string) (Specification, error) {
+func ExampleComplexQuery(userID shared.UserID, searchTerm string) (Specification, error) {
 	// Complex query combining multiple conditions
 	validator := NewQueryValidator()
 	optimizer := NewQueryOptimizer()

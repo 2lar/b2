@@ -11,7 +11,10 @@ import (
 	"time"
 
 	infraDynamoDB "brain2-backend/infrastructure/dynamodb"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -67,7 +70,7 @@ func TestNodeOperations(t *testing.T) {
 
 	t.Run("CreateAndRetrieveNode", func(t *testing.T) {
 		// Create a test node
-		node := domain.Node{
+		node := node.Node{
 			ID:        uuid.New().String(),
 			UserID:    userID,
 			Content:   "This is a test node for integration testing",
@@ -108,7 +111,7 @@ func TestNodeOperations(t *testing.T) {
 
 	t.Run("UpdateNode", func(t *testing.T) {
 		// Create initial node
-		node := domain.Node{
+		node := node.Node{
 			ID:        uuid.New().String(),
 			UserID:    userID,
 			Content:   "Original content",
@@ -157,7 +160,7 @@ func TestEdgeOperations(t *testing.T) {
 
 	t.Run("CreateEdges", func(t *testing.T) {
 		// Create two nodes
-		node1 := domain.Node{
+		node1 := node.Node{
 			ID:        uuid.New().String(),
 			UserID:    userID,
 			Content:   "First node",
@@ -165,7 +168,7 @@ func TestEdgeOperations(t *testing.T) {
 			CreatedAt: time.Now(),
 		}
 		
-		node2 := domain.Node{
+		node2 := node.Node{
 			ID:        uuid.New().String(),
 			UserID:    userID,
 			Content:   "Second node",
@@ -214,7 +217,7 @@ func TestCategoryOperations(t *testing.T) {
 
 	t.Run("CreateAndRetrieveCategory", func(t *testing.T) {
 		// Create a test category
-		category := domain.Category{
+		category := category.Category{
 			ID:          uuid.New().String(),
 			UserID:      userID,
 			Title:       "Test Category",
@@ -244,7 +247,7 @@ func TestCategoryOperations(t *testing.T) {
 
 	t.Run("CategoryNodeAssociation", func(t *testing.T) {
 		// Create a node and category
-		node := domain.Node{
+		node := node.Node{
 			ID:        uuid.New().String(),
 			UserID:    userID,
 			Content:   "Test node for category",
@@ -252,7 +255,7 @@ func TestCategoryOperations(t *testing.T) {
 			CreatedAt: time.Now(),
 		}
 
-		category := domain.Category{
+		category := category.Category{
 			ID:          uuid.New().String(),
 			UserID:      userID,
 			Title:       "Test Category",
@@ -268,7 +271,7 @@ func TestCategoryOperations(t *testing.T) {
 		require.NoError(t, err)
 
 		// Associate node with category
-		mapping := domain.NodeCategory{
+		mapping := node.NodeCategory{
 			UserID:     userID,
 			NodeID:     node.ID,
 			CategoryID: category.ID,
@@ -314,7 +317,7 @@ func TestGraphOperations(t *testing.T) {
 
 	t.Run("GetGraphData", func(t *testing.T) {
 		// Create multiple nodes with edges
-		nodes := []domain.Node{
+		nodes := []node.Node{
 			{
 				ID:        uuid.New().String(),
 				UserID:    userID,
@@ -388,7 +391,7 @@ func BenchmarkNodeCreation(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		node := domain.Node{
+		node := node.Node{
 			ID:        uuid.New().String(),
 			UserID:    userID,
 			Content:   "Benchmark node content",

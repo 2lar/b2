@@ -101,12 +101,12 @@ export const CategorySuggestions: React.FC<CategorySuggestionsProps> = ({
     setError(null);
     
     try {
-      let endpoint = '/api/categories/suggest';
+      let endpoint = '/api/v1/categories/suggest';
       let body: any = {};
 
       if (nodeId) {
         // Use node categorization endpoint
-        endpoint = `/api/nodes/${nodeId}/categories`;
+        endpoint = `/api/v1/nodes/${nodeId}/categories`;
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: {

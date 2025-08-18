@@ -7,7 +7,7 @@ import (
 	"log"
 
 	sharedContext "brain2-backend/internal/context"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
 )
@@ -54,12 +54,12 @@ func (s *CleanupService) CleanupNodeResiduals(ctx context.Context, userID, nodeI
 	}
 
 	// Parse domain identifiers
-	userIDVO, err := domain.ParseUserID(userID)
+	userIDVO, err := shared.ParseUserID(userID)
 	if err != nil {
 		return appErrors.Wrap(err, "invalid user ID")
 	}
 
-	nodeIDVO, err := domain.ParseNodeID(nodeID)
+	nodeIDVO, err := shared.ParseNodeID(nodeID)
 	if err != nil {
 		return appErrors.Wrap(err, "invalid node ID")
 	}
@@ -163,10 +163,10 @@ func (s *CleanupService) CleanupNodeResiduals(ctx context.Context, userID, nodeI
 }
 
 // cleanupCanonicalEdges handles cleanup of edges stored in canonical format
-func (s *CleanupService) cleanupCanonicalEdges(ctx context.Context, userID domain.UserID, nodeID domain.NodeID) error {
+func (s *CleanupService) cleanupCanonicalEdges(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error {
 	// If we have access to EdgeRepositoryCQRS with DeleteByNode method, use it
 	type edgeDeleter interface {
-		DeleteByNode(ctx context.Context, nodeID domain.NodeID) error
+		DeleteByNode(ctx context.Context, nodeID shared.NodeID) error
 	}
 
 	if deleter, ok := s.edgeWriter.(edgeDeleter); ok {

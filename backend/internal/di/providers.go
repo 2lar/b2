@@ -10,14 +10,16 @@ import (
 	"time"
 
 	"brain2-backend/infrastructure/dynamodb"
-	infraDynamodb "brain2-backend/internal/infrastructure/dynamodb"
+	infraDynamodb "brain2-backend/internal/infrastructure/persistence/dynamodb"
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/handlers"
-	"brain2-backend/internal/infrastructure/decorators"
+	"brain2-backend/internal/infrastructure/observability"
+	"brain2-backend/internal/infrastructure/persistence"
+	"brain2-backend/internal/infrastructure/persistence/cache"
 	"brain2-backend/internal/repository"
 
 	aws "github.com/aws/aws-sdk-go-v2/aws"
@@ -200,32 +202,32 @@ func provideNodeRepository(
 	client *awsDynamodb.Client,
 	cfg *config.Config,
 	logger *zap.Logger,
-	cache decorators.Cache,
-	metrics decorators.MetricsCollector,
+	cache cache.Cache,
+	metrics *observability.Collector,
 ) repository.NodeRepository {
 	// Base repository implementation
 	base := dynamodb.NewNodeRepository(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
-	// Create decorator chain and apply decorators
-	decoratorChain := decorators.NewDecoratorChain(cfg, logger, cache, metrics)
+	// Create decorator chain and apply persistence
+	decoratorChain := persistence.NewDecoratorChain(cfg, logger, cache, metrics)
 	decorated := decoratorChain.DecorateNodeRepository(base)
 	
 	return decorated
 }
 
-// provideEdgeRepository creates an EdgeRepository with appropriate decorators.
+// provideEdgeRepository creates an EdgeRepository with appropriate persistence.
 func provideEdgeRepository(
 	client *awsDynamodb.Client,
 	cfg *config.Config,
 	logger *zap.Logger,
-	cache decorators.Cache,
-	metrics decorators.MetricsCollector,
+	cache cache.Cache,
+	metrics *observability.Collector,
 ) repository.EdgeRepository {
 	// Base repository implementation
 	base := dynamodb.NewEdgeRepository(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
-	// Create decorator chain and apply decorators
-	decoratorChain := decorators.NewDecoratorChain(cfg, logger, cache, metrics)
+	// Create decorator chain and apply persistence
+	decoratorChain := persistence.NewDecoratorChain(cfg, logger, cache, metrics)
 	decorated := decoratorChain.DecorateEdgeRepository(base)
 	
 	return decorated
@@ -236,14 +238,14 @@ func provideCategoryRepository(
 	client *awsDynamodb.Client,
 	cfg *config.Config,
 	logger *zap.Logger,
-	cache decorators.Cache,
-	metrics decorators.MetricsCollector,
+	cache cache.Cache,
+	metrics *observability.Collector,
 ) repository.CategoryRepository {
 	// Base repository
 	base := dynamodb.NewCategoryRepository(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
-	// Create decorator chain and apply decorators
-	decoratorChain := decorators.NewDecoratorChain(cfg, logger, cache, metrics)
+	// Create decorator chain and apply persistence
+	decoratorChain := persistence.NewDecoratorChain(cfg, logger, cache, metrics)
 	decorated := decoratorChain.DecorateCategoryRepository(base)
 	
 	return decorated
@@ -255,7 +257,7 @@ func provideCategoryRepository(
 // ============================================================================
 
 // provideCache creates a cache implementation based on configuration.
-func provideCache(cfg *config.Config, logger *zap.Logger) decorators.Cache {
+func provideCache(cfg *config.Config, logger *zap.Logger) cache.Cache {
 	// Create cache based on configuration
 	if !cfg.Features.EnableCaching {
 		return NewNoOpCache()
@@ -267,15 +269,15 @@ func provideCache(cfg *config.Config, logger *zap.Logger) decorators.Cache {
 }
 
 // provideMetricsCollector creates a metrics collector based on configuration.
-func provideMetricsCollector(cfg *config.Config, logger *zap.Logger) decorators.MetricsCollector {
+func provideMetricsCollector(cfg *config.Config, logger *zap.Logger) *observability.Collector {
 	// Create metrics collector based on configuration
 	if !cfg.Features.EnableMetrics {
-		return NewNoOpMetricsCollector()
+		return observability.NewCollector("noop") // Use observability.NewCollector instead
 	}
 	
-	// Use in-memory metrics collector for now
+	// Use observability collector for now
 	// In production, this could be Prometheus, CloudWatch, StatsD, etc.
-	return NewInMemoryMetricsCollector(logger)
+	return observability.NewCollector("brain2")
 }
 
 // ============================================================================
@@ -292,21 +294,21 @@ func provideConnectionAnalyzer(cfg *config.Config) *domainServices.ConnectionAna
 }
 
 // provideEventBus creates the event bus for domain events.
-func provideEventBus(cfg *config.Config, logger *zap.Logger) domain.EventBus {
+func provideEventBus(cfg *config.Config, logger *zap.Logger) shared.EventBus {
 	if cfg.Features.EnableEventBus {
 		// In production, would use real event bus (e.g., EventBridge, Kafka)
 		// For now, use mock event bus
-		return domain.NewMockEventBus()
+		return shared.NewMockEventBus()
 	}
 	
-	return domain.NewMockEventBus()
+	return shared.NewMockEventBus()
 }
 
 // provideUnitOfWork creates the Unit of Work for transactional consistency.
 func provideUnitOfWork(
 	client *awsDynamodb.Client,
 	cfg *config.Config,
-	eventBus domain.EventBus,
+	eventBus shared.EventBus,
 	logger *zap.Logger,
 ) repository.UnitOfWork {
 	return infraDynamodb.NewDynamoDBUnitOfWork(
@@ -327,7 +329,7 @@ func provideNodeService(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
 	uowFactory repository.UnitOfWorkFactory,
-	eventBus domain.EventBus,
+	eventBus shared.EventBus,
 	analyzer *domainServices.ConnectionAnalyzer,
 	idempotencyStore repository.IdempotencyStore,
 ) *services.NodeService {
@@ -346,7 +348,7 @@ func provideNodeService(
 func provideCategoryAppService(
 	categoryRepo repository.CategoryRepository,
 	uow repository.UnitOfWork,
-	eventBus domain.EventBus,
+	eventBus shared.EventBus,
 ) *services.CategoryService {
 	// Would implement CategoryService similar to NodeService
 	return nil // Placeholder
@@ -357,7 +359,7 @@ func provideNodeQueryService(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
 	graphRepo repository.GraphRepository,
-	cache decorators.Cache,
+	cache cache.Cache,
 ) *queries.NodeQueryService {
 	// Use repositories directly as they implement the reader interfaces
 	nodeReader := nodeRepo.(repository.NodeReader)
@@ -381,7 +383,7 @@ func provideNodeQueryService(
 func provideCategoryQueryService(
 	categoryRepo repository.CategoryRepository,
 	nodeRepo repository.NodeRepository,
-	cache decorators.Cache,
+	cache cache.Cache,
 	logger *zap.Logger,
 ) *queries.CategoryQueryService {
 	// Use repositories directly as they implement the reader interfaces
@@ -447,9 +449,9 @@ type HealthChecker interface {
 	Health(ctx context.Context) map[string]string
 }
 
-// queryCacheAdapter adapts decorators.Cache to queries.Cache.
+// queryCacheAdapter adapts cache.Cache to queries.Cache.
 type queryCacheAdapter struct {
-	inner decorators.Cache
+	inner cache.Cache
 }
 
 func (a *queryCacheAdapter) Get(ctx context.Context, key string) (interface{}, bool) {

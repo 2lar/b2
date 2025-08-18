@@ -204,6 +204,18 @@ func (h *CategoryHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	categoryID := chi.URLParam(r, "categoryId")
 
+	// Validate categoryID
+	if categoryID == "" {
+		api.Error(w, http.StatusBadRequest, "Category ID is required")
+		return
+	}
+
+	// Check for common JavaScript undefined-to-string conversion
+	if categoryID == "undefined" || categoryID == "null" {
+		api.Error(w, http.StatusBadRequest, "Category must be created before operation")
+		return
+	}
+
 	// Create query for CQRS pattern
 	categoryQuery, err := queries.NewGetCategoryQuery(userID, categoryID)
 	if err != nil {
@@ -267,6 +279,18 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 	}
 	categoryID := chi.URLParam(r, "categoryId")
 
+	// Validate categoryID
+	if categoryID == "" {
+		api.Error(w, http.StatusBadRequest, "Category ID is required")
+		return
+	}
+
+	// Check for common JavaScript undefined-to-string conversion
+	if categoryID == "undefined" || categoryID == "null" {
+		api.Error(w, http.StatusBadRequest, "Category must be created before operation")
+		return
+	}
+
 	type UpdateCategoryRequest struct {
 		Title       string `json:"title"`
 		Description string `json:"description"`
@@ -319,6 +343,18 @@ func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request)
 	}
 	categoryID := chi.URLParam(r, "categoryId")
 
+	// Validate categoryID
+	if categoryID == "" {
+		api.Error(w, http.StatusBadRequest, "Category ID is required")
+		return
+	}
+
+	// Check for common JavaScript undefined-to-string conversion
+	if categoryID == "undefined" || categoryID == "null" {
+		api.Error(w, http.StatusBadRequest, "Category must be created before operation")
+		return
+	}
+
 	// Create command for CQRS pattern
 	cmd, err := commands.NewDeleteCategoryCommand(userID, categoryID)
 	if err != nil {
@@ -336,7 +372,8 @@ func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request)
 }
 
 // AssignNodeToCategory handles POST /api/categories/{categoryId}/nodes
-// TODO: Implement after adding corresponding command handler
+// FIXME(#1): Implement after adding corresponding command handler
+// Tracked in: docs/todos.md - Item #1
 func (h *CategoryHandler) AssignNodeToCategory(w http.ResponseWriter, r *http.Request) {
 	api.Error(w, http.StatusNotImplemented, "AssignNodeToCategory not yet implemented")
 }
@@ -349,6 +386,18 @@ func (h *CategoryHandler) GetNodesInCategory(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	categoryID := chi.URLParam(r, "categoryId")
+
+	// Validate categoryID
+	if categoryID == "" {
+		api.Error(w, http.StatusBadRequest, "Category ID is required")
+		return
+	}
+
+	// Check for common JavaScript undefined-to-string conversion
+	if categoryID == "undefined" || categoryID == "null" {
+		api.Error(w, http.StatusBadRequest, "Category must be created before operation")
+		return
+	}
 
 	// Create query for CQRS pattern
 	nodesQuery, err := queries.NewGetNodesInCategoryQuery(userID, categoryID)
@@ -402,6 +451,12 @@ func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Reque
 
 	if nodeID == "" {
 		api.Error(w, http.StatusBadRequest, "Node ID is required")
+		return
+	}
+
+	// Check for common JavaScript undefined-to-string conversion
+	if nodeID == "undefined" || nodeID == "null" {
+		api.Error(w, http.StatusBadRequest, "Node must be created before it can be categorized")
 		return
 	}
 
@@ -470,6 +525,12 @@ func (h *CategoryHandler) CategorizeNode(w http.ResponseWriter, r *http.Request)
 
 	if nodeID == "" {
 		api.Error(w, http.StatusBadRequest, "Node ID is required")
+		return
+	}
+
+	// Check for common JavaScript undefined-to-string conversion
+	if nodeID == "undefined" || nodeID == "null" {
+		api.Error(w, http.StatusBadRequest, "Node must be created before it can be categorized")
 		return
 	}
 

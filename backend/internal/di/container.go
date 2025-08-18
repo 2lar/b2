@@ -11,25 +11,28 @@ import (
 	"time"
 
 	"brain2-backend/infrastructure/dynamodb"
-	infradynamodb "brain2-backend/internal/infrastructure/dynamodb"
+	infradynamodb "brain2-backend/internal/infrastructure/persistence/dynamodb"
 	"brain2-backend/internal/application/commands"
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/handlers"
-	"brain2-backend/internal/infrastructure/decorators"
-	"brain2-backend/internal/infrastructure/events"
+	"brain2-backend/internal/infrastructure/messaging"
+	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
-	"brain2-backend/internal/infrastructure/tracing"
-	"brain2-backend/internal/infrastructure/transactions"
+	"brain2-backend/internal/infrastructure/persistence/cache"
 	"brain2-backend/internal/repository"
 
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 )
 
@@ -70,9 +73,9 @@ type Container struct {
 	
 	// Cross-cutting concerns
 	Logger           *zap.Logger
-	Cache            decorators.Cache
-	MetricsCollector decorators.MetricsCollector
-	TracerProvider   *tracing.TracerProvider
+	Cache            cache.Cache
+	MetricsCollector *observability.Collector
+	TracerProvider   *observability.TracerProvider
 	Store            persistence.Store
 
 	
@@ -86,7 +89,7 @@ type Container struct {
 	
 	// Domain Services
 	ConnectionAnalyzer *domainServices.ConnectionAnalyzer
-	EventBus          domain.EventBus
+	EventBus          shared.EventBus
 	UnitOfWork        repository.UnitOfWork
 	UnitOfWorkFactory repository.UnitOfWorkFactory
 
@@ -97,6 +100,7 @@ type Container struct {
 
 	// HTTP Router
 	Router *chi.Mux
+
 
 	// Middleware components (for monitoring/observability)
 	middlewareConfig map[string]any
@@ -143,10 +147,15 @@ func (c *Container) initialize() error {
 	// 5. Initialize handler layer
 	c.initializeHandlersLegacy()
 
-	// 6. Initialize middleware configuration
+	// 6. Initialize observability
+	if err := c.initializeObservability(); err != nil {
+		return fmt.Errorf("failed to initialize observability: %w", err)
+	}
+
+	// 7. Initialize middleware configuration
 	c.initializeMiddleware()
 
-	// 7. Initialize HTTP router
+	// 8. Initialize HTTP router
 	c.initializeRouter()
 
 	// 8. Initialize tracing if enabled
@@ -221,7 +230,7 @@ func (c *Container) initializeRepository() error {
 	factoryConfig := c.getRepositoryFactoryConfig()
 	c.RepositoryFactory = repository.NewRepositoryFactory(factoryConfig)
 
-	// Initialize base repositories (without decorators)
+	// Initialize base repositories (without persistence)
 	baseNodeRepo := infradynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 	baseEdgeRepo := infradynamodb.NewEdgeRepositoryCQRS(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 	baseKeywordRepo := infradynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
@@ -230,14 +239,14 @@ func (c *Container) initializeRepository() error {
 	baseCategoryRepo := infradynamodb.NewCategoryRepositoryCQRS(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 	baseGraphRepo := infradynamodb.NewGraphRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 
-	// Phase 2: Apply decorators using the factory
+	// Phase 2: Apply persistence using the factory
 	c.NodeRepository = c.RepositoryFactory.CreateNodeRepository(baseNodeRepo, c.Logger, c.Cache, c.MetricsCollector)
 	// TODO: Uncomment when CreateEdgeRepository is implemented
 	// c.EdgeRepository = c.RepositoryFactory.CreateEdgeRepository(baseEdgeRepo, c.Logger, c.Cache, c.MetricsCollector)
 	c.EdgeRepository = baseEdgeRepo // Use base repository for now
 	c.CategoryRepository = c.RepositoryFactory.CreateCategoryRepository(baseCategoryRepo, c.Logger, c.Cache, c.MetricsCollector)
 	
-	// Repositories that don't need decorators yet (can be enhanced later)
+	// Repositories that don't need persistence yet (can be enhanced later)
 	c.KeywordRepository = baseKeywordRepo
 	c.TransactionalRepository = baseTransactionalRepo
 	c.GraphRepository = baseGraphRepo
@@ -275,7 +284,7 @@ func (c *Container) initializeCrossCuttingConcerns() {
 	c.Cache = &NoOpCache{} // Simple no-op implementation
 
 	// Initialize metrics collector (in-memory for development, would be Prometheus/StatsD in production)  
-	c.MetricsCollector = &NoOpMetricsCollector{} // Simple no-op implementation
+	c.MetricsCollector = NewNoOpMetricsCollector() // Simple no-op implementation
 }
 
 // getRepositoryFactoryConfig returns environment-appropriate factory configuration
@@ -322,7 +331,7 @@ func (c *Container) initializePhase3Services() {
 	c.ConnectionAnalyzer = domainServices.NewConnectionAnalyzer(0.3, 5, 0.2) // threshold, max connections, recency weight
 	
 	// Initialize REAL implementations instead of mocks
-	transactionProvider := transactions.NewDynamoDBTransactionProvider(c.DynamoDBClient)
+	transactionProvider := persistence.NewDynamoDBTransactionProvider(c.DynamoDBClient)
 	
 	// Get event bus name from config or environment, default to "B2EventBus" to match CDK
 	eventBusName := "B2EventBus" // Match the CDK-created event bus name
@@ -333,10 +342,10 @@ func (c *Container) initializePhase3Services() {
 	// Add debug logging for event bus configuration
 	log.Printf("DEBUG: Configuring EventBridge with bus name: %s, source: brain2-backend", eventBusName)
 	
-	eventPublisher := events.NewEventBridgePublisher(c.EventBridgeClient, eventBusName, "brain2-backend")
+	eventPublisher := messaging.NewEventBridgePublisher(c.EventBridgeClient, eventBusName, "brain2-backend")
 	
 	// Use the REAL EventBridge publisher through the adapter
-	c.EventBus = events.NewEventBusAdapter(eventPublisher)
+	c.EventBus = messaging.NewEventBusAdapter(eventPublisher)
 	
 	log.Printf("DEBUG: EventBridge publisher configured successfully")
 	
@@ -509,12 +518,23 @@ func (c *Container) initializeMiddleware() {
 func (c *Container) initializeRouter() {
 	router := chi.NewRouter()
 	
+	// Observability middleware (applied to all routes)
+	if c.MetricsCollector != nil {
+		router.Use(observability.MetricsMiddleware(c.MetricsCollector))
+	}
+	if c.TracerProvider != nil {
+		router.Use(observability.TracingMiddleware("brain2-api"))
+	}
+	
 	// Health check endpoints (public)
 	router.Get("/health", c.HealthHandler.Check)
 	router.Get("/ready", c.HealthHandler.Ready)
 	
-	// API routes (protected)
-	router.Route("/api", func(r chi.Router) {
+	// Metrics endpoint (public)
+	router.Handle("/metrics", promhttp.Handler())
+	
+	// API routes (protected) - v1
+	router.Route("/api/v1", func(r chi.Router) {
 		// Apply authentication middleware to all API routes
 		r.Use(handlers.Authenticator)
 		
@@ -550,7 +570,57 @@ func (c *Container) initializeRouter() {
 		r.Post("/nodes/{nodeId}/categories", c.CategoryHandler.CategorizeNode)
 	})
 	
+	// Backward compatibility redirects for old API routes
+	router.Route("/api", func(r chi.Router) {
+		// Redirect all /api/* to /v1/api/*
+		r.HandleFunc("/*", func(w http.ResponseWriter, req *http.Request) {
+			// Add deprecation warning header
+			w.Header().Set("X-API-Deprecated", "true")
+			w.Header().Set("X-API-Migration", "Please use /api/v1/ prefix")
+			w.Header().Set("X-API-Sunset", "2025-06-01")
+			
+			// Redirect to v1 API
+			newPath := req.URL.Path
+			if newPath == "/api" || newPath == "/api/" {
+				newPath = "/api/v1/"
+			} else {
+				newPath = "/api/v1" + newPath[4:] // Replace /api with /api/v1
+			}
+			http.Redirect(w, req, newPath, http.StatusMovedPermanently)
+		})
+	})
+	
 	c.Router = router
+}
+
+// initializeObservability sets up metrics collection and tracing.
+func (c *Container) initializeObservability() error {
+	log.Println("Initializing observability components...")
+	
+	// Initialize metrics collector
+	c.MetricsCollector = observability.NewCollector("brain2")
+	
+	// Initialize tracing provider if enabled
+	if c.Config.Tracing.Enabled {
+		tracerProvider, err := observability.InitTracing(
+			"brain2-backend",
+			string(c.Config.Environment),
+			c.Config.Tracing.Endpoint,
+		)
+		if err != nil {
+			log.Printf("WARNING: Failed to initialize tracing: %v", err)
+			// Don't fail the entire startup for tracing issues
+		} else {
+			c.TracerProvider = tracerProvider
+			// TODO: Register shutdown handler for graceful tracing shutdown
+			// c.registerShutdownHandler(func() error {
+			// 	return tracerProvider.Shutdown(context.Background())
+			// })
+		}
+	}
+	
+	log.Println("Observability initialized successfully")
+	return nil
 }
 
 // initializeTracing sets up distributed tracing if enabled.
@@ -561,7 +631,7 @@ func (c *Container) initializeTracing() error {
 	
 	log.Println("Initializing distributed tracing...")
 	
-	tracerProvider, err := tracing.InitTracing(
+	tracerProvider, err := observability.InitTracing(
 		"brain2-backend",
 		string(c.Config.Environment),
 		c.Config.Tracing.Endpoint,
@@ -747,7 +817,7 @@ func InitializeContainer() (*Container, error) {
 type NoOpCache struct{}
 
 // NewNoOpCache creates a new no-op cache
-func NewNoOpCache() decorators.Cache {
+func NewNoOpCache() cache.Cache {
 	return &NoOpCache{}
 }
 
@@ -771,8 +841,8 @@ func (c *NoOpCache) Clear(ctx context.Context, pattern string) error {
 type NoOpMetricsCollector struct{}
 
 // NewNoOpMetricsCollector creates a new no-op metrics collector
-func NewNoOpMetricsCollector() decorators.MetricsCollector {
-	return &NoOpMetricsCollector{}
+func NewNoOpMetricsCollector() *observability.Collector {
+	return nil // Return nil for no-op case
 }
 
 func (m *NoOpMetricsCollector) IncrementCounter(name string, tags map[string]string) {}
@@ -803,7 +873,7 @@ type inMemoryCacheItem struct {
 }
 
 // NewInMemoryCache creates a new in-memory cache
-func NewInMemoryCache(maxItems int, defaultTTL time.Duration) decorators.Cache {
+func NewInMemoryCache(maxItems int, defaultTTL time.Duration) cache.Cache {
 	cache := &InMemoryCache{
 		items:    make(map[string]inMemoryCacheItem),
 		maxItems: maxItems,
@@ -916,13 +986,9 @@ type InMemoryMetricsCollector struct {
 }
 
 // NewInMemoryMetricsCollector creates a new in-memory metrics collector
-func NewInMemoryMetricsCollector(logger *zap.Logger) decorators.MetricsCollector {
-	return &InMemoryMetricsCollector{
-		counters: make(map[string]float64),
-		gauges:   make(map[string]float64),
-		timings:  make(map[string][]time.Duration),
-		logger:   logger,
-	}
+func NewInMemoryMetricsCollector(logger *zap.Logger) *observability.Collector {
+	// For now, return a real observability.Collector instance
+	return observability.NewCollector("brain2")
 }
 
 func (m *InMemoryMetricsCollector) IncrementCounter(name string, tags map[string]string) {
@@ -1076,13 +1142,13 @@ type transactionalNodeWrapper struct {
 	tx   repository.Transaction
 }
 
-func (w *transactionalNodeWrapper) CreateNodeAndKeywords(ctx context.Context, node *domain.Node) error {
+func (w *transactionalNodeWrapper) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
 	// Mark context with transaction
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.CreateNodeAndKeywords(ctx, node)
 }
 
-func (w *transactionalNodeWrapper) FindNodeByID(ctx context.Context, userID, nodeID string) (*domain.Node, error) {
+func (w *transactionalNodeWrapper) FindNodeByID(ctx context.Context, userID, nodeID string) (*node.Node, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindNodeByID(ctx, userID, nodeID)
 }
@@ -1094,7 +1160,7 @@ func (w *transactionalNodeWrapper) DeleteNode(ctx context.Context, userID, nodeI
 	return w.base.DeleteNode(ctx, userID, nodeID)
 }
 
-func (w *transactionalNodeWrapper) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*domain.Node, error) {
+func (w *transactionalNodeWrapper) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*node.Node, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindNodes(ctx, query)
 }
@@ -1104,7 +1170,7 @@ func (w *transactionalNodeWrapper) GetNodesPage(ctx context.Context, query repos
 	return w.base.GetNodesPage(ctx, query, pagination)
 }
 
-func (w *transactionalNodeWrapper) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*domain.Graph, error) {
+func (w *transactionalNodeWrapper) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*shared.Graph, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.GetNodeNeighborhood(ctx, userID, nodeID, depth)
 }
@@ -1115,7 +1181,7 @@ func (w *transactionalNodeWrapper) CountNodes(ctx context.Context, userID string
 }
 
 // Add missing methods from NodeRepository interface
-func (w *transactionalNodeWrapper) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*domain.Node, error) {
+func (w *transactionalNodeWrapper) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindNodesWithOptions(ctx, query, opts...)
 }
@@ -1131,7 +1197,7 @@ type transactionalEdgeWrapper struct {
 	tx   repository.Transaction
 }
 
-func (w *transactionalEdgeWrapper) CreateEdge(ctx context.Context, edge *domain.Edge) error {
+func (w *transactionalEdgeWrapper) CreateEdge(ctx context.Context, edge *edge.Edge) error {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.CreateEdge(ctx, edge)
 }
@@ -1141,7 +1207,7 @@ func (w *transactionalEdgeWrapper) CreateEdges(ctx context.Context, userID, sour
 	return w.base.CreateEdges(ctx, userID, sourceNodeID, relatedNodeIDs)
 }
 
-func (w *transactionalEdgeWrapper) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*domain.Edge, error) {
+func (w *transactionalEdgeWrapper) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*edge.Edge, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindEdges(ctx, query)
 }
@@ -1154,7 +1220,7 @@ func (w *transactionalEdgeWrapper) GetEdgesPage(ctx context.Context, query repos
 	return w.base.GetEdgesPage(ctx, query, pagination)
 }
 
-func (w *transactionalEdgeWrapper) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*domain.Edge, error) {
+func (w *transactionalEdgeWrapper) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*edge.Edge, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindEdgesWithOptions(ctx, query, opts...)
 }
@@ -1165,17 +1231,17 @@ type transactionalCategoryWrapper struct {
 	tx   repository.Transaction
 }
 
-func (w *transactionalCategoryWrapper) CreateCategory(ctx context.Context, category domain.Category) error {
+func (w *transactionalCategoryWrapper) CreateCategory(ctx context.Context, category category.Category) error {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.CreateCategory(ctx, category)
 }
 
-func (w *transactionalCategoryWrapper) FindCategoryByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+func (w *transactionalCategoryWrapper) FindCategoryByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindCategoryByID(ctx, userID, categoryID)
 }
 
-func (w *transactionalCategoryWrapper) UpdateCategory(ctx context.Context, category domain.Category) error {
+func (w *transactionalCategoryWrapper) UpdateCategory(ctx context.Context, category category.Category) error {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.UpdateCategory(ctx, category)
 }
@@ -1185,12 +1251,12 @@ func (w *transactionalCategoryWrapper) DeleteCategory(ctx context.Context, userI
 	return w.base.DeleteCategory(ctx, userID, categoryID)
 }
 
-func (w *transactionalCategoryWrapper) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]domain.Category, error) {
+func (w *transactionalCategoryWrapper) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]category.Category, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindCategories(ctx, query)
 }
 
-func (w *transactionalCategoryWrapper) AssignNodeToCategory(ctx context.Context, mapping domain.NodeCategory) error {
+func (w *transactionalCategoryWrapper) AssignNodeToCategory(ctx context.Context, mapping node.NodeCategory) error {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.AssignNodeToCategory(ctx, mapping)
 }
@@ -1201,17 +1267,17 @@ func (w *transactionalCategoryWrapper) RemoveNodeFromCategory(ctx context.Contex
 }
 
 // Add missing methods from CategoryRepository interface
-func (w *transactionalCategoryWrapper) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]domain.Category, error) {
+func (w *transactionalCategoryWrapper) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]category.Category, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindCategoriesByLevel(ctx, userID, level)
 }
 
-func (w *transactionalCategoryWrapper) Save(ctx context.Context, category *domain.Category) error {
+func (w *transactionalCategoryWrapper) Save(ctx context.Context, category *category.Category) error {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.Save(ctx, category)
 }
 
-func (w *transactionalCategoryWrapper) FindByID(ctx context.Context, userID, categoryID string) (*domain.Category, error) {
+func (w *transactionalCategoryWrapper) FindByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindByID(ctx, userID, categoryID)
 }
@@ -1221,7 +1287,7 @@ func (w *transactionalCategoryWrapper) Delete(ctx context.Context, userID, categ
 	return w.base.Delete(ctx, userID, categoryID)
 }
 
-func (w *transactionalCategoryWrapper) CreateCategoryHierarchy(ctx context.Context, hierarchy domain.CategoryHierarchy) error {
+func (w *transactionalCategoryWrapper) CreateCategoryHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.CreateCategoryHierarchy(ctx, hierarchy)
 }
@@ -1231,32 +1297,32 @@ func (w *transactionalCategoryWrapper) DeleteCategoryHierarchy(ctx context.Conte
 	return w.base.DeleteCategoryHierarchy(ctx, userID, parentID, childID)
 }
 
-func (w *transactionalCategoryWrapper) FindChildCategories(ctx context.Context, userID, parentID string) ([]domain.Category, error) {
+func (w *transactionalCategoryWrapper) FindChildCategories(ctx context.Context, userID, parentID string) ([]category.Category, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindChildCategories(ctx, userID, parentID)
 }
 
-func (w *transactionalCategoryWrapper) FindParentCategory(ctx context.Context, userID, childID string) (*domain.Category, error) {
+func (w *transactionalCategoryWrapper) FindParentCategory(ctx context.Context, userID, childID string) (*category.Category, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindParentCategory(ctx, userID, childID)
 }
 
-func (w *transactionalCategoryWrapper) GetCategoryTree(ctx context.Context, userID string) ([]domain.Category, error) {
+func (w *transactionalCategoryWrapper) GetCategoryTree(ctx context.Context, userID string) ([]category.Category, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.GetCategoryTree(ctx, userID)
 }
 
-func (w *transactionalCategoryWrapper) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*domain.Node, error) {
+func (w *transactionalCategoryWrapper) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*node.Node, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindNodesByCategory(ctx, userID, categoryID)
 }
 
-func (w *transactionalCategoryWrapper) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]domain.Category, error) {
+func (w *transactionalCategoryWrapper) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]category.Category, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindCategoriesForNode(ctx, userID, nodeID)
 }
 
-func (w *transactionalCategoryWrapper) BatchAssignCategories(ctx context.Context, mappings []domain.NodeCategory) error {
+func (w *transactionalCategoryWrapper) BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.BatchAssignCategories(ctx, mappings)
 }
@@ -1268,7 +1334,7 @@ func (w *transactionalCategoryWrapper) UpdateCategoryNoteCounts(ctx context.Cont
 
 // SimpleMemoryCacheWrapper wraps InMemoryCache to implement queries.Cache interface
 type SimpleMemoryCacheWrapper struct {
-	cache decorators.Cache
+	cache cache.Cache
 }
 
 // Get retrieves a value from the cache

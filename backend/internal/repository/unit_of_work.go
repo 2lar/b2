@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/shared"
 )
 
 // UnitOfWork ensures transactional consistency across multiple repository operations.
@@ -26,7 +26,7 @@ import (
 //   defer uow.Rollback() // Safe to call multiple times
 //   
 //   // Use transactional repositories
-//   node := domain.NewNode(userID, content, tags)
+//   node := node.NewNode(userID, content, tags)
 //   if err := uow.Nodes().Save(ctx, node); err != nil { return err }
 //   
 //   edges := analyzer.FindPotentialConnections(node, existingNodes)
@@ -55,8 +55,8 @@ type UnitOfWork interface {
 	NodeCategories() NodeCategoryRepository
 	
 	// Event Publishing - Events are published atomically with transaction
-	PublishEvent(event domain.DomainEvent)
-	GetPendingEvents() []domain.DomainEvent
+	PublishEvent(event shared.DomainEvent)
+	GetPendingEvents() []shared.DomainEvent
 	
 	// State Queries
 	IsActive() bool
@@ -66,7 +66,7 @@ type UnitOfWork interface {
 
 // EventPublisher handles domain event publishing
 type EventPublisher interface {
-	Publish(ctx context.Context, events []domain.DomainEvent) error
+	Publish(ctx context.Context, events []shared.DomainEvent) error
 }
 
 // TransactionProvider provides database transaction capabilities
@@ -105,7 +105,7 @@ type unitOfWork struct {
 	nodeCategoryRepo NodeCategoryRepository
 	
 	// Domain events to be published atomically
-	pendingEvents []domain.DomainEvent
+	pendingEvents []shared.DomainEvent
 }
 
 // NewUnitOfWork creates a new Unit of Work instance.
@@ -121,7 +121,7 @@ func NewUnitOfWork(
 		eventPublisher:      eventPublisher,
 		repositoryFactory:   repositoryFactory,
 		transactionManager:  NewTransactionManager(), // Initialize with existing transaction manager
-		pendingEvents:       make([]domain.DomainEvent, 0),
+		pendingEvents:       make([]shared.DomainEvent, 0),
 	}
 }
 
@@ -345,15 +345,15 @@ func (uow *unitOfWork) NodeCategories() NodeCategoryRepository {
 
 // PublishEvent adds a domain event to be published when the transaction commits.
 // Events are only published if the transaction commits successfully.
-func (uow *unitOfWork) PublishEvent(event domain.DomainEvent) {
+func (uow *unitOfWork) PublishEvent(event shared.DomainEvent) {
 	uow.pendingEvents = append(uow.pendingEvents, event)
 }
 
 // GetPendingEvents returns all events scheduled for publishing.
 // This is useful for testing and debugging.
-func (uow *unitOfWork) GetPendingEvents() []domain.DomainEvent {
+func (uow *unitOfWork) GetPendingEvents() []shared.DomainEvent {
 	// Return a copy to prevent external modification
-	events := make([]domain.DomainEvent, len(uow.pendingEvents))
+	events := make([]shared.DomainEvent, len(uow.pendingEvents))
 	copy(events, uow.pendingEvents)
 	return events
 }

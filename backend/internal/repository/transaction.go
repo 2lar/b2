@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
 )
 
 type TransactionManager struct {
@@ -363,7 +363,7 @@ func (cc *ConsistencyChecker) Validate(ctx context.Context) error {
 	return nil
 }
 
-func CreateNodeWithRollback(repo Repository, node *domain.Node) (func(ctx context.Context) error, func(ctx context.Context) error) {
+func CreateNodeWithRollback(repo Repository, node *node.Node) (func(ctx context.Context) error, func(ctx context.Context) error) {
 	execute := func(ctx context.Context) error {
 		return repo.CreateNodeAndKeywords(ctx, node)
 	}

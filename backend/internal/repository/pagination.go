@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"brain2-backend/internal/domain"
+	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/category"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
@@ -68,13 +70,13 @@ type PageInfo struct {
 }
 
 // NodePage represents a paginated list of nodes
-type NodePage = PaginatedResult[*domain.Node]
+type NodePage = PaginatedResult[*node.Node]
 
 // EdgePage represents a paginated list of edges
-type EdgePage = PaginatedResult[*domain.Edge]
+type EdgePage = PaginatedResult[*edge.Edge]
 
 // CategoryPage represents a paginated list of categories
-type CategoryPage = PaginatedResult[domain.Category]
+type CategoryPage = PaginatedResult[category.Category]
 
 // CursorData represents the data stored in a pagination cursor
 type CursorData struct {
