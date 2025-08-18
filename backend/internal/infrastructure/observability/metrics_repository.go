@@ -368,6 +368,67 @@ func (r *MetricsNodeRepository) DeleteNode(ctx context.Context, userID, nodeID s
 	return err
 }
 
+// BatchDeleteNodes wraps batch node deletion with metrics
+func (r *MetricsNodeRepository) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
+	start := time.Now()
+	operation := "batch_delete_nodes"
+	
+	tags := r.buildBaseTags(operation)
+	tags["user_id"] = userID
+	tags["batch_size"] = fmt.Sprintf("%d", len(nodeIDs))
+	
+	// Track batch operations
+	if r.config.EnableThroughput {
+		r.metrics.IncrementCounter("repository.operations.total", tags)
+		r.metrics.IncrementCounter("repository.batch_operations.total", tags)
+	}
+	
+	// Business metric: track batch deletions
+	if r.config.EnableBusiness {
+		r.metrics.IncrementCounter("business.batch_deletions.total", tags)
+		// Record batch size as a value metric
+		r.metrics.RecordValue("business.batch_deletions.size", float64(len(nodeIDs)), tags)
+	}
+	
+	// Execute the operation
+	deleted, failed, err = r.inner.BatchDeleteNodes(ctx, userID, nodeIDs)
+	
+	duration := time.Since(start)
+	
+	if r.config.EnableLatency {
+		r.metrics.RecordDuration("repository.operations.duration", duration, tags)
+		r.metrics.RecordDuration("repository.batch_operations.duration", duration, tags)
+	}
+	
+	// Track success/failure counts
+	resultTags := r.copyTags(tags)
+	resultTags["deleted_count"] = fmt.Sprintf("%d", len(deleted))
+	resultTags["failed_count"] = fmt.Sprintf("%d", len(failed))
+	
+	if err != nil {
+		if r.config.EnableErrors {
+			errorTags := r.copyTags(resultTags)
+			errorTags["error_type"] = r.classifyError(err)
+			r.metrics.IncrementCounter("repository.operations.errors.total", errorTags)
+			r.metrics.IncrementCounter("repository.batch_operations.errors.total", errorTags)
+		}
+	} else {
+		if r.config.EnableThroughput {
+			r.metrics.IncrementCounter("repository.operations.success.total", resultTags)
+			r.metrics.IncrementCounter("repository.batch_operations.success.total", resultTags)
+		}
+	}
+	
+	// Track batch efficiency
+	if r.config.EnableBusiness && len(nodeIDs) > 0 {
+		efficiency := float64(len(deleted)) / float64(len(nodeIDs)) * 100
+		// Record efficiency as a value metric
+		r.metrics.RecordValue("business.batch_deletions.efficiency", efficiency, tags)
+	}
+	
+	return deleted, failed, err
+}
+
 // GetNodesPage wraps paginated queries with pagination metrics
 func (r *MetricsNodeRepository) GetNodesPage(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination) (*repository.NodePage, error) {
 	start := time.Now()

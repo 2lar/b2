@@ -355,6 +355,16 @@ func (r *CircuitBreakerNodeRepository) DeleteNode(ctx context.Context, userID, n
 	})
 }
 
+// BatchDeleteNodes wraps batch delete operation with circuit breaker.
+func (r *CircuitBreakerNodeRepository) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
+	err = r.circuitBreaker.Execute(func() error {
+		var innerErr error
+		deleted, failed, innerErr = r.inner.BatchDeleteNodes(ctx, userID, nodeIDs)
+		return innerErr
+	})
+	return deleted, failed, err
+}
+
 // GetNodesPage wraps paginated query with circuit breaker.
 func (r *CircuitBreakerNodeRepository) GetNodesPage(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination) (*repository.NodePage, error) {
 	var result *repository.NodePage

@@ -697,6 +697,139 @@ func (r *NodeRepository) DeleteBatch(ctx context.Context, ids []shared.NodeID) e
 	return nil
 }
 
+// BatchDeleteNodes implements optimized batch deletion using DynamoDB BatchWriteItem.
+// It processes nodes in chunks of 25 (DynamoDB limit) with automatic retry for unprocessed items.
+// Returns slices of successfully deleted and failed node IDs.
+func (r *NodeRepository) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
+	if len(nodeIDs) == 0 {
+		return []string{}, []string{}, nil
+	}
+
+	deleted = make([]string, 0, len(nodeIDs))
+	failed = make([]string, 0)
+
+	// Process in chunks of 25 (DynamoDB BatchWriteItem limit)
+	const batchSize = 25
+	for i := 0; i < len(nodeIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(nodeIDs) {
+			end = len(nodeIDs)
+		}
+		chunk := nodeIDs[i:end]
+
+		// Process this chunk with retry logic
+		chunkDeleted, chunkFailed := r.processBatchDeleteChunk(ctx, userID, chunk)
+		deleted = append(deleted, chunkDeleted...)
+		failed = append(failed, chunkFailed...)
+	}
+
+	r.logger.Info("batch delete completed",
+		zap.String("userID", userID),
+		zap.Int("total", len(nodeIDs)),
+		zap.Int("deleted", len(deleted)),
+		zap.Int("failed", len(failed)))
+
+	return deleted, failed, nil
+}
+
+// processBatchDeleteChunk processes a single chunk of up to 25 nodes with retry logic
+func (r *NodeRepository) processBatchDeleteChunk(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string) {
+	maxRetries := 3
+	retryDelay := time.Millisecond * 100
+	unprocessedIDs := nodeIDs
+	deleted = make([]string, 0, len(nodeIDs))
+	failed = make([]string, 0)
+
+	for attempt := 0; attempt <= maxRetries && len(unprocessedIDs) > 0; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff for retries
+			time.Sleep(retryDelay)
+			retryDelay *= 2
+			r.logger.Debug("retrying batch delete",
+				zap.Int("attempt", attempt),
+				zap.Int("unprocessed", len(unprocessedIDs)))
+		}
+
+		// Build write requests for this attempt
+		writeRequests := make([]types.WriteRequest, 0, len(unprocessedIDs))
+		requestMap := make(map[string]bool) // Track which IDs are in this request
+
+		for _, nodeID := range unprocessedIDs {
+			writeRequests = append(writeRequests, types.WriteRequest{
+				DeleteRequest: &types.DeleteRequest{
+					Key: map[string]types.AttributeValue{
+						"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
+						"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", nodeID)},
+					},
+				},
+			})
+			requestMap[nodeID] = true
+		}
+
+		// Execute batch write
+		input := &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{
+				r.tableName: writeRequests,
+			},
+		}
+
+		output, err := r.client.BatchWriteItem(ctx, input)
+		if err != nil {
+			r.logger.Error("batch write failed",
+				zap.Error(err),
+				zap.Int("attempt", attempt))
+			// On error, all items in this attempt are considered failed
+			failed = append(failed, unprocessedIDs...)
+			return deleted, failed
+		}
+
+		// Check for unprocessed items
+		newUnprocessed := make([]string, 0)
+		if output.UnprocessedItems != nil && len(output.UnprocessedItems[r.tableName]) > 0 {
+			for _, req := range output.UnprocessedItems[r.tableName] {
+				if req.DeleteRequest != nil {
+					// Extract node ID from the SK
+					sk := req.DeleteRequest.Key["SK"].(*types.AttributeValueMemberS).Value
+					if strings.HasPrefix(sk, "NODE#") {
+						nodeID := strings.TrimPrefix(sk, "NODE#")
+						newUnprocessed = append(newUnprocessed, nodeID)
+					}
+				}
+			}
+		}
+
+		// Calculate successfully deleted items in this attempt
+		for nodeID := range requestMap {
+			isUnprocessed := false
+			for _, unprocessedID := range newUnprocessed {
+				if nodeID == unprocessedID {
+					isUnprocessed = true
+					break
+				}
+			}
+			if !isUnprocessed {
+				deleted = append(deleted, nodeID)
+			}
+		}
+
+		unprocessedIDs = newUnprocessed
+
+		r.logger.Debug("batch delete attempt completed",
+			zap.Int("attempt", attempt),
+			zap.Int("processed", len(requestMap)-len(newUnprocessed)),
+			zap.Int("remaining", len(newUnprocessed)))
+	}
+
+	// Any remaining unprocessed items after all retries are considered failed
+	if len(unprocessedIDs) > 0 {
+		failed = append(failed, unprocessedIDs...)
+		r.logger.Warn("batch delete has unprocessed items after retries",
+			zap.Int("unprocessed", len(unprocessedIDs)))
+	}
+
+	return deleted, failed
+}
+
 // Archive archives a node (soft delete).
 func (r *NodeRepository) Archive(ctx context.Context, id shared.NodeID) error {
 	// Extract userID from context

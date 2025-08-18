@@ -126,6 +126,17 @@ func (r *RetryNodeRepository) DeleteNode(ctx context.Context, userID, nodeID str
 	}, true)
 }
 
+// BatchDeleteNodes retries batch deletion with caution.
+// Batch delete operations are idempotent for successful items.
+func (r *RetryNodeRepository) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
+	err = r.executeWithRetry(ctx, "BatchDeleteNodes", func() error {
+		var innerErr error
+		deleted, failed, innerErr = r.inner.BatchDeleteNodes(ctx, userID, nodeIDs)
+		return innerErr
+	}, true)
+	return deleted, failed, err
+}
+
 // GetNodesPage retries paginated queries on transient failures.
 func (r *RetryNodeRepository) GetNodesPage(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination) (*repository.NodePage, error) {
 	var result *repository.NodePage

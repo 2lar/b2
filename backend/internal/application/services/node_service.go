@@ -463,7 +463,7 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 	return result, nil
 }
 
-// BulkDeleteNodes implements the use case for deleting multiple nodes.
+// BulkDeleteNodes implements the use case for deleting multiple nodes using optimized batch operations.
 func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDeleteNodesCommand) (*dto.BulkDeleteResult, error) {
 	// 1. Create a new UnitOfWork instance for this request
 	uow, err := s.uowFactory.Create(ctx)
@@ -485,7 +485,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 			// Attempt rollback on panic
 			if rollbackErr := uow.Rollback(); rollbackErr != nil {
 				// Log error but continue with panic
-				// TODO: Add proper logging
+				log.Printf("ERROR: Failed to rollback after panic: %v", rollbackErr)
 			}
 			// Re-panic to let it bubble up
 			panic(r)
@@ -495,100 +495,121 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 		}
 	}()
 
-	// 2. No idempotency for bulk deletes
-
-	// 3. Parse domain identifiers
+	// 2. Parse domain identifiers
 	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	var nodeIDs []shared.NodeID
-	var failedIDs []string
-	deletedCount := 0
+	// 3. Validate node IDs and check ownership
+	validNodeIDs := make([]string, 0, len(cmd.NodeIDs))
+	failedIDs := make([]string, 0)
+	nodeDataMap := make(map[string]*node.Node) // Store node data for event publishing
 
-	// 4. Process each node deletion
+	log.Printf("DEBUG: BulkDeleteNodes - Validating %d node IDs for user %s", len(cmd.NodeIDs), userID.String())
+
 	for _, nodeIDStr := range cmd.NodeIDs {
+		// Validate node ID format
 		nodeID, err := shared.ParseNodeID(nodeIDStr)
 		if err != nil {
+			log.Printf("DEBUG: Invalid node ID format: %s", nodeIDStr)
 			failedIDs = append(failedIDs, nodeIDStr)
 			continue
 		}
 
 		// Verify node exists and user owns it
-		// Use FindNodeByID with userID
 		node, err := uow.Nodes().FindNodeByID(ctx, userID.String(), nodeID.String())
 		if err != nil || node == nil {
+			log.Printf("DEBUG: Node not found or error: %s, err: %v", nodeIDStr, err)
 			failedIDs = append(failedIDs, nodeIDStr)
 			continue
 		}
 
 		if !node.UserID.Equals(userID) {
+			log.Printf("DEBUG: Node ownership mismatch for node: %s", nodeIDStr)
 			failedIDs = append(failedIDs, nodeIDStr)
 			continue
 		}
 
-		nodeIDs = append(nodeIDs, nodeID)
+		validNodeIDs = append(validNodeIDs, nodeIDStr)
+		nodeDataMap[nodeIDStr] = node // Store for event publishing
 	}
 
-	// 5. Delete edges for all valid nodes
-	// TODO: Implement proper edge deletion
-	// for _, nodeID := range nodeIDs {
-	//	if err := uow.Edges().DeleteByNodeID(ctx, nodeID); err != nil {
-	//		failedIDs = append(failedIDs, nodeID.String())
-	//		continue
-	//	}
-	// }
+	log.Printf("DEBUG: BulkDeleteNodes - Validated nodes: %d valid, %d failed", len(validNodeIDs), len(failedIDs))
 
-	// 6. Delete all valid nodes
-	for _, nodeID := range nodeIDs {
-		if err := uow.Nodes().DeleteNode(ctx, userID.String(), nodeID.String()); err != nil {
-			failedIDs = append(failedIDs, nodeID.String())
+	// 4. Use optimized batch delete for valid nodes
+	var deletedIDs []string
+	var batchFailedIDs []string
+	
+	if len(validNodeIDs) > 0 {
+		// Use the new BatchDeleteNodes method for optimized deletion
+		deletedIDs, batchFailedIDs, err = uow.Nodes().BatchDeleteNodes(ctx, userID.String(), validNodeIDs)
+		if err != nil {
+			// Even on error, we may have partial success
+			log.Printf("ERROR: Batch delete encountered error: %v", err)
+		}
+		
+		// Add batch failures to the failed list
+		failedIDs = append(failedIDs, batchFailedIDs...)
+		
+		log.Printf("DEBUG: BulkDeleteNodes - Batch delete results: %d deleted, %d failed", len(deletedIDs), len(batchFailedIDs))
+	}
+
+	// 5. Publish deletion events for successfully deleted nodes
+	for _, nodeIDStr := range deletedIDs {
+		nodeID, _ := shared.ParseNodeID(nodeIDStr) // Already validated
+		
+		// Use actual node data if available, otherwise use defaults
+		var deletionEvent shared.DomainEvent
+		if nodeData, exists := nodeDataMap[nodeIDStr]; exists {
+			deletionEvent = shared.NewNodeDeletedEvent(
+				nodeID,
+				userID,
+				nodeData.Content,
+				nodeData.Keywords(),
+				nodeData.Tags,
+				shared.ParseVersion(nodeData.Version),
+			)
 		} else {
-			deletedCount++
-
-			// Publish deletion event using proper constructor
-			// Note: For bulk operations, we might want to use default values since we don't have individual node data
-			emptyContent, _ := shared.NewContent(" ") // Create minimal valid content
+			// Fallback to minimal event data
+			emptyContent, _ := shared.NewContent(" ")
 			emptyKeywords := shared.NewKeywords([]string{})
 			emptyTags := shared.NewTags()
 			emptyVersion := shared.NewVersion()
 			
-			deletionEvent := shared.NewNodeDeletedEvent(
-				nodeID, 
-				userID, 
+			deletionEvent = shared.NewNodeDeletedEvent(
+				nodeID,
+				userID,
 				emptyContent,
 				emptyKeywords,
 				emptyTags,
 				emptyVersion,
 			)
-			
-			log.Printf("DEBUG: NodeService.BulkDeleteNodes - Publishing NodeDeleted event for node %s", nodeID.String())
-			
-			if err := s.eventBus.Publish(ctx, deletionEvent); err != nil {
-				// Log but don't fail the bulk operation for event publishing failures
-				log.Printf("ERROR: NodeService.BulkDeleteNodes - Failed to publish NodeDeleted event for node %s: %v", nodeID.String(), err)
-			} else {
-				log.Printf("DEBUG: NodeService.BulkDeleteNodes - Successfully published NodeDeleted event for node %s", nodeID.String())
-			}
+		}
+		
+		// Publish event asynchronously - don't block the bulk operation
+		if err := s.eventBus.Publish(ctx, deletionEvent); err != nil {
+			log.Printf("WARN: Failed to publish NodeDeleted event for node %s: %v", nodeIDStr, err)
+			// Don't fail the operation for event publishing failures
 		}
 	}
 
-	// 7. Commit transaction
+	// 6. Commit transaction
 	commitCalled = true
 	if err := uow.Commit(); err != nil {
 		commitCalled = false // Reset if commit fails
 		return nil, appErrors.Wrap(err, "failed to commit transaction")
 	}
 
-	// 8. Convert to response DTO
+	// 7. Convert to response DTO
 	result := &dto.BulkDeleteResult{
-		DeletedCount: deletedCount,
+		DeletedCount: len(deletedIDs),
 		FailedIDs:    failedIDs,
-		Message:      fmt.Sprintf("Successfully deleted %d of %d nodes", deletedCount, len(cmd.NodeIDs)),
+		Message:      fmt.Sprintf("Successfully deleted %d of %d nodes", len(deletedIDs), len(cmd.NodeIDs)),
 	}
 
-	// 9. No idempotency storage for bulk deletes
+	log.Printf("INFO: BulkDeleteNodes completed - deleted: %d, failed: %d, total: %d", 
+		len(deletedIDs), len(failedIDs), len(cmd.NodeIDs))
 
 	return result, nil
 }

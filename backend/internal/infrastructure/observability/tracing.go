@@ -145,6 +145,29 @@ func (r *tracedNodeRepository) DeleteNode(ctx context.Context, userID, nodeID st
 	return err
 }
 
+func (r *tracedNodeRepository) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
+	ctx, span := r.tracer.Start(ctx, "repository.BatchDeleteNodes",
+		trace.WithAttributes(
+			attribute.String("user.id", userID),
+			attribute.Int("batch.size", len(nodeIDs)),
+		),
+	)
+	defer span.End()
+	
+	deleted, failed, err = r.inner.BatchDeleteNodes(ctx, userID, nodeIDs)
+	
+	span.SetAttributes(
+		attribute.Int("deleted.count", len(deleted)),
+		attribute.Int("failed.count", len(failed)),
+	)
+	
+	if err != nil {
+		span.RecordError(err)
+	}
+	
+	return deleted, failed, err
+}
+
 func (r *tracedNodeRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*node.Node, error) {
 	ctx, span := r.tracer.Start(ctx, "repository.FindNodes",
 		trace.WithAttributes(

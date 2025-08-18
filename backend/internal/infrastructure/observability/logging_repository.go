@@ -280,6 +280,43 @@ func (r *LoggingNodeRepository) DeleteNode(ctx context.Context, userID, nodeID s
 	return err
 }
 
+// BatchDeleteNodes wraps the batch delete operation with logging
+func (r *LoggingNodeRepository) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
+	start := time.Now()
+	operationID := generateOperationID()
+	
+	logFields := []zap.Field{
+		zap.String("operation", "batch_delete_nodes"),
+		zap.String("operation_id", operationID),
+		zap.String("user_id", userID),
+		zap.Int("node_count", len(nodeIDs)),
+	}
+	
+	r.logger.Info("starting batch node deletion", logFields...)
+	
+	// Execute the operation
+	deleted, failed, err = r.inner.BatchDeleteNodes(ctx, userID, nodeIDs)
+	
+	// Calculate duration
+	duration := time.Since(start)
+	logFields = append(logFields, 
+		zap.Duration("duration", duration),
+		zap.Int("deleted_count", len(deleted)),
+		zap.Int("failed_count", len(failed)),
+	)
+	
+	// Log completion
+	if err != nil {
+		if r.config.LogErrors {
+			r.logger.Error("batch node deletion failed", append(logFields, zap.Error(err))...)
+		}
+	} else {
+		r.logger.Info("batch node deletion completed", logFields...)
+	}
+	
+	return deleted, failed, err
+}
+
 // GetNodesPage wraps the paginated query with logging
 func (r *LoggingNodeRepository) GetNodesPage(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination) (*repository.NodePage, error) {
 	start := time.Now()

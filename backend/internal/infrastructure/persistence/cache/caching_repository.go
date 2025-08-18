@@ -215,6 +215,29 @@ func (r *CachingNodeRepository) DeleteNode(ctx context.Context, userID, nodeID s
 	return nil
 }
 
+// BatchDeleteNodes handles cache invalidation for batch deletion
+func (r *CachingNodeRepository) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
+	// Execute the batch delete operation
+	deleted, failed, err = r.inner.BatchDeleteNodes(ctx, userID, nodeIDs)
+	if err != nil {
+		return deleted, failed, err
+	}
+	
+	// Invalidate caches for successfully deleted nodes
+	if r.config.EnableDeletes && len(deleted) > 0 {
+		// Remove specific nodes from cache
+		for _, nodeID := range deleted {
+			nodeKey := r.buildNodeKey(userID, nodeID)
+			r.cache.Delete(ctx, nodeKey)
+		}
+		
+		// Invalidate all user-related caches
+		r.invalidateUserCaches(ctx, userID)
+	}
+	
+	return deleted, failed, nil
+}
+
 // GetNodesPage implements caching for paginated queries
 func (r *CachingNodeRepository) GetNodesPage(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination) (*repository.NodePage, error) {
 	if !r.config.EnableReads {

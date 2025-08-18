@@ -695,6 +695,11 @@ func (r *cqrsNodeRepository) DeleteNode(ctx context.Context, userID, nodeID stri
 	return nil
 }
 
+func (r *cqrsNodeRepository) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
+	// Placeholder: would delegate to writer for batch operations
+	return nil, nil, nil
+}
+
 func (r *cqrsNodeRepository) GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error) {
 	// Placeholder: would delegate to reader
 	return nil, nil

@@ -28,6 +28,9 @@ type NodeRepository interface {
 	FindNodeByID(ctx context.Context, userID, nodeID string) (*node.Node, error)
 	FindNodes(ctx context.Context, query NodeQuery) ([]*node.Node, error)
 	DeleteNode(ctx context.Context, userID, nodeID string) error
+	
+	// Batch operations for performance optimization
+	BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error)
 
 	// Enhanced node operations with pagination (existing - maintained)
 	GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error)

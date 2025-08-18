@@ -470,6 +470,162 @@ func (s *DynamoDBStore) BatchDelete(ctx context.Context, keys []Key) error {
 	return nil
 }
 
+// BatchDeleteResult contains detailed results from batch delete operation
+type BatchDeleteResult struct {
+	SuccessfulDeletes []Key
+	FailedDeletes     []Key
+	UnprocessedItems  []Key
+	TotalProcessed    int
+	TotalFailed       int
+}
+
+// BatchDeleteWithDetails removes multiple records with detailed results and automatic chunking
+func (s *DynamoDBStore) BatchDeleteWithDetails(ctx context.Context, keys []Key) (*BatchDeleteResult, error) {
+	start := time.Now()
+	defer s.recordMetrics("BatchDeleteWithDetails", start, nil)
+
+	result := &BatchDeleteResult{
+		SuccessfulDeletes: make([]Key, 0, len(keys)),
+		FailedDeletes:     make([]Key, 0),
+		UnprocessedItems:  make([]Key, 0),
+	}
+
+	// Process in chunks of 25 (DynamoDB BatchWriteItem limit)
+	const batchSize = 25
+	for i := 0; i < len(keys); i += batchSize {
+		end := i + batchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+		chunk := keys[i:end]
+
+		// Process chunk with retry logic for unprocessed items
+		if err := s.processBatchDeleteChunk(ctx, chunk, result); err != nil {
+			s.logger.Error("failed to process batch delete chunk",
+				zap.Int("chunk_start", i),
+				zap.Int("chunk_size", len(chunk)),
+				zap.Error(err))
+			// Mark all items in this chunk as failed
+			result.FailedDeletes = append(result.FailedDeletes, chunk...)
+			result.TotalFailed += len(chunk)
+		}
+	}
+
+	result.TotalProcessed = len(result.SuccessfulDeletes)
+	result.TotalFailed = len(result.FailedDeletes) + len(result.UnprocessedItems)
+
+	s.logger.Info("batch delete completed",
+		zap.Int("total_items", len(keys)),
+		zap.Int("successful", result.TotalProcessed),
+		zap.Int("failed", result.TotalFailed),
+		zap.Int("unprocessed", len(result.UnprocessedItems)))
+
+	return result, nil
+}
+
+// processBatchDeleteChunk processes a single chunk with retry logic
+func (s *DynamoDBStore) processBatchDeleteChunk(ctx context.Context, keys []Key, result *BatchDeleteResult) error {
+	maxRetries := 3
+	retryDelay := time.Millisecond * 100
+	unprocessedKeys := keys
+
+	for attempt := 0; attempt <= maxRetries && len(unprocessedKeys) > 0; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff for retries
+			time.Sleep(retryDelay)
+			retryDelay *= 2
+			s.logger.Debug("retrying batch delete",
+				zap.Int("attempt", attempt),
+				zap.Int("unprocessed_count", len(unprocessedKeys)))
+		}
+
+		// Convert keys to delete requests
+		writeRequests := make([]types.WriteRequest, len(unprocessedKeys))
+		keyMap := make(map[string]Key) // Map to track keys by their string representation
+		
+		for i, key := range unprocessedKeys {
+			writeRequests[i] = types.WriteRequest{
+				DeleteRequest: &types.DeleteRequest{
+					Key: map[string]types.AttributeValue{
+						"PK": &types.AttributeValueMemberS{Value: key.PartitionKey},
+						"SK": &types.AttributeValueMemberS{Value: key.SortKey},
+					},
+				},
+			}
+			keyMap[fmt.Sprintf("%s#%s", key.PartitionKey, key.SortKey)] = key
+		}
+
+		// Execute BatchWriteItem
+		input := &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{
+				s.config.TableName: writeRequests,
+			},
+		}
+
+		output, err := s.client.BatchWriteItem(ctx, input)
+		if err != nil {
+			return fmt.Errorf("DynamoDB BatchWriteItem failed: %w", err)
+		}
+
+		// Track successful deletes (those not in UnprocessedItems)
+		processedInThisAttempt := len(unprocessedKeys)
+		
+		// Check for unprocessed items
+		if output.UnprocessedItems != nil && len(output.UnprocessedItems[s.config.TableName]) > 0 {
+			newUnprocessedKeys := make([]Key, 0)
+			unprocessedRequests := output.UnprocessedItems[s.config.TableName]
+			
+			for _, req := range unprocessedRequests {
+				if req.DeleteRequest != nil {
+					pk := req.DeleteRequest.Key["PK"].(*types.AttributeValueMemberS).Value
+					sk := req.DeleteRequest.Key["SK"].(*types.AttributeValueMemberS).Value
+					keyStr := fmt.Sprintf("%s#%s", pk, sk)
+					if key, exists := keyMap[keyStr]; exists {
+						newUnprocessedKeys = append(newUnprocessedKeys, key)
+					}
+				}
+			}
+			
+			// Calculate successful deletes in this attempt
+			processedInThisAttempt -= len(newUnprocessedKeys)
+			
+			// Add successful items to result
+			for keyStr, key := range keyMap {
+				isUnprocessed := false
+				for _, unprocessedKey := range newUnprocessedKeys {
+					if fmt.Sprintf("%s#%s", unprocessedKey.PartitionKey, unprocessedKey.SortKey) == keyStr {
+						isUnprocessed = true
+						break
+					}
+				}
+				if !isUnprocessed {
+					result.SuccessfulDeletes = append(result.SuccessfulDeletes, key)
+				}
+			}
+			
+			unprocessedKeys = newUnprocessedKeys
+		} else {
+			// All items processed successfully
+			result.SuccessfulDeletes = append(result.SuccessfulDeletes, unprocessedKeys...)
+			unprocessedKeys = nil
+		}
+
+		s.logger.Debug("batch delete attempt completed",
+			zap.Int("attempt", attempt),
+			zap.Int("processed", processedInThisAttempt),
+			zap.Int("remaining_unprocessed", len(unprocessedKeys)))
+	}
+
+	// Any remaining unprocessed items after all retries
+	if len(unprocessedKeys) > 0 {
+		result.UnprocessedItems = append(result.UnprocessedItems, unprocessedKeys...)
+		s.logger.Warn("batch delete has unprocessed items after retries",
+			zap.Int("unprocessed_count", len(unprocessedKeys)))
+	}
+
+	return nil
+}
+
 // Transaction executes multiple operations atomically.
 func (s *DynamoDBStore) Transaction(ctx context.Context, operations []Operation) error {
 	start := time.Now()

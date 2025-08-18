@@ -328,6 +328,12 @@ func (r *TransactionalNodeRepository) DeleteNode(ctx context.Context, userID, no
 	return r.base.DeleteNode(ctx, userID, nodeID)
 }
 
+func (r *TransactionalNodeRepository) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
+	// For now, delegate to base repository - in a full implementation,
+	// this would queue the operations for transactional execution
+	return r.base.BatchDeleteNodes(ctx, userID, nodeIDs)
+}
+
 // NodeReader/NodeWriter interface methods for CQRS compatibility
 
 // FindByUser finds all nodes for a user

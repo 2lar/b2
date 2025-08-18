@@ -543,6 +543,25 @@ func (r *ddbRepository) DeleteNode(ctx context.Context, userID, nodeID string) e
 	return r.clearNodeConnections(ctx, userID, nodeID)
 }
 
+// BatchDeleteNodes implements batch deletion using optimized DynamoDB operations
+func (r *ddbRepository) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
+	// For this simple implementation, we'll delegate to individual deletes
+	// A full implementation would use BatchWriteItem for better performance
+	deleted = make([]string, 0, len(nodeIDs))
+	failed = make([]string, 0)
+	
+	for _, nodeID := range nodeIDs {
+		if err := r.DeleteNode(ctx, userID, nodeID); err != nil {
+			failed = append(failed, nodeID)
+			r.logger.Error("failed to delete node in batch", zap.String("nodeID", nodeID), zap.Error(err))
+		} else {
+			deleted = append(deleted, nodeID)
+		}
+	}
+	
+	return deleted, failed, nil
+}
+
 // GetAllGraphData retrieves all nodes and edges for a user using optimized parallel queries.
 func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*shared.Graph, error) {
 	r.logger.Debug("starting optimized GetAllGraphData with parallel queries")

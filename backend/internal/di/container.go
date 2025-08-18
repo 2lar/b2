@@ -1160,6 +1160,11 @@ func (w *transactionalNodeWrapper) DeleteNode(ctx context.Context, userID, nodeI
 	return w.base.DeleteNode(ctx, userID, nodeID)
 }
 
+func (w *transactionalNodeWrapper) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
+	ctx = context.WithValue(ctx, "tx", w.tx)
+	return w.base.BatchDeleteNodes(ctx, userID, nodeIDs)
+}
+
 func (w *transactionalNodeWrapper) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*node.Node, error) {
 	ctx = context.WithValue(ctx, "tx", w.tx)
 	return w.base.FindNodes(ctx, query)
