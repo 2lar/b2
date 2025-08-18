@@ -311,11 +311,18 @@ func provideUnitOfWork(
 	eventBus shared.EventBus,
 	logger *zap.Logger,
 ) repository.UnitOfWork {
+	// Create EventStore for domain event persistence
+	eventStore := infraDynamodb.NewDynamoDBEventStore(
+		client,
+		cfg.Database.TableName,
+	)
+	
 	return infraDynamodb.NewDynamoDBUnitOfWork(
 		client,
 		cfg.Database.TableName,
 		cfg.Database.IndexName,
 		eventBus,
+		eventStore,
 		logger,
 	)
 }

@@ -356,6 +356,12 @@ func (c *Container) initializePhase3Services() {
 		c.CategoryRepository,
 	)
 	
+	// Create EventStore for domain event persistence
+	eventStore := infradynamodb.NewDynamoDBEventStore(
+		c.DynamoDBClient,
+		c.TableName, // Reuse the same table with different partition keys
+	)
+	
 	// Create UnitOfWorkFactory instead of singleton UnitOfWork
 	// This ensures each request gets its own isolated transaction context
 	c.UnitOfWorkFactory = infradynamodb.NewDynamoDBUnitOfWorkFactory(
@@ -363,6 +369,7 @@ func (c *Container) initializePhase3Services() {
 		c.TableName,
 		c.IndexName,
 		c.EventBus,
+		eventStore,
 		c.Logger,
 	)
 	

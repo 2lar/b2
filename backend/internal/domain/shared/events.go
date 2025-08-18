@@ -80,6 +80,11 @@ func newBaseEvent(eventType, aggregateID, userID string, version int) BaseEvent 
 	}
 }
 
+// NewBaseEvent creates a new base event with common fields (exported for external packages)
+func NewBaseEvent(eventType, aggregateID, userID string, version int) BaseEvent {
+	return newBaseEvent(eventType, aggregateID, userID, version)
+}
+
 // Node Events
 
 // NodeCreatedEvent is fired when a new node is created

@@ -8,6 +8,7 @@ import (
 
 // Node represents a memory, thought, or piece of knowledge in a user's knowledge graph.
 // This is a rich domain model that encapsulates all business logic related to nodes.
+// Node is an Aggregate Root in the domain model.
 //
 // Key Design Principles Demonstrated:
 //   - Rich Domain Model: Contains behavior, not just data
@@ -16,7 +17,11 @@ import (
 //   - Domain Events: Tracks important business occurrences
 //   - Business Invariants: Ensures the node is always in a valid state
 //   - Factory Pattern: Uses factory methods for complex construction
+//   - Aggregate Root: Enforces consistency boundaries
 type Node struct {
+	// Embedded base aggregate root for common functionality
+	shared.BaseAggregateRoot
+	
 	// Private fields ensure encapsulation - external code must use methods
 	id        shared.NodeID    // Value object for type safety
 	content   shared.Content   // Value object with business rules
@@ -63,6 +68,7 @@ func NewNode(userID shared.UserID, content shared.Content, tags shared.Tags) (*N
 	keywords := content.ExtractKeywords()
 
 	node := &Node{
+		BaseAggregateRoot: shared.NewBaseAggregateRoot(nodeID.String()),
 		id:        nodeID,
 		userID:    userID,
 		content:   content,
@@ -303,15 +309,74 @@ func (n *Node) WordCount() int {
 	return n.content.WordCount()
 }
 
+// Aggregate Root Implementation
+
+// GetID returns the unique identifier of the node aggregate
+func (n *Node) GetID() string {
+	return n.id.String()
+}
+
+// GetVersion returns the current version for optimistic locking
+func (n *Node) GetVersion() int {
+	return n.version.Int()
+}
+
+// IncrementVersion increments the version after successful persistence
+func (n *Node) IncrementVersion() {
+	n.version = n.version.Next()
+	n.Version = n.version.Int()
+}
+
+// ValidateInvariants ensures all business rules are satisfied
+func (n *Node) ValidateInvariants() error {
+	// Content must not be empty
+	if err := n.content.Validate(); err != nil {
+		return shared.NewDomainError("invalid_node_state", "node content is invalid", err)
+	}
+	
+	// UserID must be valid
+	if n.userID.String() == "" {
+		return shared.NewDomainError("invalid_node_state", "node must have a valid user ID", nil)
+	}
+	
+	// Node ID must be valid
+	if n.id.String() == "" {
+		return shared.NewDomainError("invalid_node_state", "node must have a valid ID", nil)
+	}
+	
+	// Timestamps must be valid
+	if n.createdAt.IsZero() {
+		return shared.NewDomainError("invalid_node_state", "node must have a creation timestamp", nil)
+	}
+	
+	if n.updatedAt.Before(n.createdAt) {
+		return shared.NewDomainError("invalid_node_state", "node update timestamp cannot be before creation timestamp", nil)
+	}
+	
+	// Version must be non-negative
+	if n.version.Int() < 0 {
+		return shared.NewDomainError("invalid_node_state", "node version must be non-negative", nil)
+	}
+	
+	return nil
+}
+
 // Domain Events Implementation (EventAggregate interface)
 
 // GetUncommittedEvents returns events that haven't been persisted yet
 func (n *Node) GetUncommittedEvents() []shared.DomainEvent {
+	// Use the BaseAggregateRoot's implementation if events are tracked there
+	baseEvents := n.BaseAggregateRoot.GetUncommittedEvents()
+	if len(baseEvents) > 0 {
+		return baseEvents
+	}
+	// Fall back to local events for backward compatibility
 	return n.events
 }
 
 // MarkEventsAsCommitted clears the events after persistence
 func (n *Node) MarkEventsAsCommitted() {
+	n.BaseAggregateRoot.MarkEventsAsCommitted()
 	n.events = []shared.DomainEvent{}
 }
 
@@ -319,7 +384,8 @@ func (n *Node) MarkEventsAsCommitted() {
 
 // addEvent adds a domain event to the uncommitted events list
 func (n *Node) addEvent(event shared.DomainEvent) {
-	n.events = append(n.events, event)
+	n.BaseAggregateRoot.AddEvent(event)
+	n.events = append(n.events, event) // Keep for backward compatibility
 }
 
 // Helper function to compare tags (since we can't easily compare shared.Tags value objects)

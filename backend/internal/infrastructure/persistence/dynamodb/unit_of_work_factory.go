@@ -14,11 +14,12 @@ import (
 // This factory ensures that each request gets its own isolated UnitOfWork,
 // preventing state corruption in serverless environments.
 type DynamoDBUnitOfWorkFactory struct {
-	client    *dynamodb.Client
-	tableName string
-	indexName string
-	eventBus  shared.EventBus
-	logger    *zap.Logger
+	client     *dynamodb.Client
+	tableName  string
+	indexName  string
+	eventBus   shared.EventBus
+	eventStore repository.EventStore
+	logger     *zap.Logger
 }
 
 // NewDynamoDBUnitOfWorkFactory creates a new factory for DynamoDBUnitOfWork instances.
@@ -26,14 +27,16 @@ func NewDynamoDBUnitOfWorkFactory(
 	client *dynamodb.Client,
 	tableName, indexName string,
 	eventBus shared.EventBus,
+	eventStore repository.EventStore,
 	logger *zap.Logger,
 ) repository.UnitOfWorkFactory {
 	return &DynamoDBUnitOfWorkFactory{
-		client:    client,
-		tableName: tableName,
-		indexName: indexName,
-		eventBus:  eventBus,
-		logger:    logger,
+		client:     client,
+		tableName:  tableName,
+		indexName:  indexName,
+		eventBus:   eventBus,
+		eventStore: eventStore,
+		logger:     logger,
 	}
 }
 
@@ -47,6 +50,7 @@ func (f *DynamoDBUnitOfWorkFactory) Create(ctx context.Context) (repository.Unit
 		f.tableName,
 		f.indexName,
 		f.eventBus,
+		f.eventStore,
 		f.logger,
 	)
 	

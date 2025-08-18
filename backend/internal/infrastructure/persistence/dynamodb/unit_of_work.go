@@ -24,6 +24,7 @@ type DynamoDBUnitOfWork struct {
 	tableName     string
 	indexName     string
 	eventBus      shared.EventBus
+	eventStore    repository.EventStore
 	logger        *zap.Logger
 	
 	// Transaction state
@@ -44,6 +45,9 @@ type DynamoDBUnitOfWork struct {
 	
 	// Domain events to be published atomically
 	pendingEvents []shared.DomainEvent
+	
+	// Aggregates tracked for optimistic locking
+	trackedAggregates map[string]shared.AggregateRoot
 }
 
 // NewDynamoDBUnitOfWork creates a new DynamoDB Unit of Work instance.
@@ -51,16 +55,19 @@ func NewDynamoDBUnitOfWork(
 	client *dynamodb.Client,
 	tableName, indexName string,
 	eventBus shared.EventBus,
+	eventStore repository.EventStore,
 	logger *zap.Logger,
 ) repository.UnitOfWork {
 	return &DynamoDBUnitOfWork{
-		client:        client,
-		tableName:     tableName,
-		indexName:     indexName,
-		eventBus:      eventBus,
-		logger:        logger,
-		transactItems: make([]types.TransactWriteItem, 0),
-		pendingEvents: make([]shared.DomainEvent, 0),
+		client:            client,
+		tableName:         tableName,
+		indexName:         indexName,
+		eventBus:          eventBus,
+		eventStore:        eventStore,
+		logger:            logger,
+		transactItems:     make([]types.TransactWriteItem, 0),
+		pendingEvents:     make([]shared.DomainEvent, 0),
+		trackedAggregates: make(map[string]shared.AggregateRoot),
 	}
 }
 
@@ -81,6 +88,7 @@ func (uow *DynamoDBUnitOfWork) Begin(ctx context.Context) error {
 	// Create new slices to avoid any potential data leakage
 	uow.transactItems = make([]types.TransactWriteItem, 0)
 	uow.pendingEvents = make([]shared.DomainEvent, 0)
+	uow.trackedAggregates = make(map[string]shared.AggregateRoot)
 	
 	// Clear repository references to ensure fresh instances
 	uow.nodeRepo = nil
@@ -119,6 +127,34 @@ func (uow *DynamoDBUnitOfWork) Commit() error {
 		return appErrors.NewValidation("cannot commit: transaction already rolled back")
 	}
 	
+	// Validate aggregate invariants before committing
+	for _, aggregate := range uow.trackedAggregates {
+		if agg, ok := aggregate.(shared.AggregateRoot); ok {
+			if err := agg.ValidateInvariants(); err != nil {
+				uow.isRolledBack = true
+				return appErrors.Wrap(err, "aggregate invariant violation")
+			}
+		}
+	}
+	
+	// Collect all events from tracked aggregates
+	for aggregateID, aggregate := range uow.trackedAggregates {
+		if agg, ok := aggregate.(shared.AggregateRoot); ok {
+			events := agg.GetUncommittedEvents()
+			if len(events) > 0 {
+				// Persist events to event store
+				if uow.eventStore != nil {
+					if err := uow.eventStore.SaveEvents(context.Background(), aggregateID, events, agg.GetVersion()); err != nil {
+						uow.isRolledBack = true
+						return appErrors.Wrap(err, "failed to persist events to event store")
+					}
+				}
+				// Add to pending events for publishing
+				uow.pendingEvents = append(uow.pendingEvents, events...)
+			}
+		}
+	}
+	
 	// Execute all transactional items atomically
 	if len(uow.transactItems) > 0 {
 		// DynamoDB supports up to 25 items per TransactWrite operation
@@ -135,12 +171,25 @@ func (uow *DynamoDBUnitOfWork) Commit() error {
 		}
 	}
 	
+	// Mark events as committed on aggregates
+	for _, aggregate := range uow.trackedAggregates {
+		if agg, ok := aggregate.(shared.AggregateRoot); ok {
+			agg.MarkEventsAsCommitted()
+			agg.IncrementVersion()
+		}
+	}
+	
 	// Publish events after successful database commit
 	if len(uow.pendingEvents) > 0 && uow.eventBus != nil {
 		for _, event := range uow.pendingEvents {
 			if err := uow.eventBus.Publish(context.Background(), event); err != nil {
-				// Continue with other events - event publishing failures shouldn't rollback DB changes
-				// Consider adding proper logging with structured logger here
+				// Log error but continue - event publishing failures shouldn't rollback DB changes
+				if uow.logger != nil {
+					uow.logger.Error("Failed to publish domain event",
+						zap.String("eventType", event.EventType()),
+						zap.String("aggregateID", event.AggregateID()),
+						zap.Error(err))
+				}
 			}
 		}
 	}
@@ -245,6 +294,15 @@ func (uow *DynamoDBUnitOfWork) IsCommitted() bool {
 
 func (uow *DynamoDBUnitOfWork) IsRolledBack() bool {
 	return uow.isRolledBack
+}
+
+// TrackAggregate registers an aggregate for tracking within this unit of work.
+// This ensures the aggregate's events are persisted and its invariants are validated.
+func (uow *DynamoDBUnitOfWork) TrackAggregate(aggregate shared.AggregateRoot) {
+	if !uow.isActive {
+		panic("unit of work not active - call Begin() first")
+	}
+	uow.trackedAggregates[aggregate.GetID()] = aggregate
 }
 
 // Internal methods for transactional repositories
