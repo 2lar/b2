@@ -808,3 +808,6 @@ func (r *LoggingEdgeRepository) FindEdgesWithOptions(ctx context.Context, query 
 	r.logger.Check(logLevel, message).Write(logFields...)
 	return edges, err
 }
+func (r *LoggingNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	return r.inner.BatchGetNodes(ctx, userID, nodeIDs)
+}

@@ -28,6 +28,7 @@ import (
 	"brain2-backend/internal/infrastructure/persistence/cache"
 	"brain2-backend/internal/repository"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
@@ -182,20 +183,30 @@ func (c *Container) initializeAWSClients() error {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	// DynamoDB client with custom timeouts
+	// Create shared HTTP client with Keep-Alive explicitly enabled for connection reuse
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			// Explicitly enable Keep-Alive for connection reuse within the Lambda container
+			DisableKeepAlives:   false, // IMPORTANT: Reuse TCP connections on warm starts
+			MaxIdleConns:        10,    // Keep some connections ready (useful within single container)
+			MaxIdleConnsPerHost: 2,     // Per-host limit (we mainly talk to DynamoDB)
+			IdleConnTimeout:     90 * time.Second,
+			TLSHandshakeTimeout: 10 * time.Second,
+		},
+	}
+
+	// DynamoDB client with optimized HTTP client
 	c.DynamoDBClient = awsDynamodb.NewFromConfig(awsCfg, func(o *awsDynamodb.Options) {
-		// Set reasonable timeouts for DynamoDB operations
-		o.HTTPClient = &http.Client{
-			Timeout: 15 * time.Second,
-		}
+		o.HTTPClient = httpClient
+		o.RetryMaxAttempts = 3
+		o.RetryMode = aws.RetryModeAdaptive
 	})
 
-	// EventBridge client with custom timeouts
+	// EventBridge client with optimized HTTP client
 	c.EventBridgeClient = awsEventbridge.NewFromConfig(awsCfg, func(o *awsEventbridge.Options) {
-		// Set reasonable timeouts for EventBridge operations
-		o.HTTPClient = &http.Client{
-			Timeout: 10 * time.Second,
-		}
+		o.HTTPClient = httpClient
+		o.RetryMaxAttempts = 3
 	})
 
 	log.Printf("AWS clients initialized in %v", time.Since(startTime))
@@ -1379,4 +1390,7 @@ func (c *SimpleMemoryCacheWrapper) Set(ctx context.Context, key string, value in
 // Delete removes a value from the cache
 func (c *SimpleMemoryCacheWrapper) Delete(ctx context.Context, key string) {
 	c.cache.Delete(ctx, key)
+}
+func (w *transactionalNodeWrapper) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	return w.base.BatchGetNodes(ctx, userID, nodeIDs)
 }

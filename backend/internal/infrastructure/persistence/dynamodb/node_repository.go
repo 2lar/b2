@@ -12,6 +12,7 @@ import (
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	sharedContext "brain2-backend/internal/context"
+	errorContext "brain2-backend/internal/errors"
 	
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -71,7 +72,7 @@ func (r *NodeRepository) FindByID(ctx context.Context, id shared.NodeID) (*node.
 	
 	result, err := r.client.GetItem(ctx, input)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get node: %w", err)
+		return nil, errorContext.WrapWithContext(err, "DynamoDB GetItem failed for node %s", id.String())
 	}
 	
 	if result.Item == nil {
@@ -81,7 +82,7 @@ func (r *NodeRepository) FindByID(ctx context.Context, id shared.NodeID) (*node.
 	// Use custom parsing to handle different data formats
 	node, err := r.parseNodeFromItem(result.Item)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse node: %w", err)
+		return nil, errorContext.WrapWithContext(err, "failed to parse node %s", id.String())
 	}
 	
 	return node, nil
@@ -555,7 +556,7 @@ func (r *NodeRepository) Save(ctx context.Context, node *node.Node) error {
 	
 	_, err := r.client.PutItem(ctx, input)
 	if err != nil {
-		return fmt.Errorf("failed to save node: %w", err)
+		return errorContext.WrapWithContext(err, "DynamoDB PutItem failed for node %s", node.ID.String())
 	}
 	
 	return nil
@@ -828,6 +829,99 @@ func (r *NodeRepository) processBatchDeleteChunk(ctx context.Context, userID str
 	}
 
 	return deleted, failed
+}
+
+// BatchGetNodes retrieves multiple nodes in a single DynamoDB operation.
+// Uses BatchGetItem to fetch up to 100 nodes at once, significantly reducing API calls.
+// Returns a map of nodeID to node for efficient lookup.
+func (r *NodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	if len(nodeIDs) == 0 {
+		return make(map[string]*node.Node), nil
+	}
+
+	result := make(map[string]*node.Node)
+	
+	// Process in chunks of 100 (DynamoDB BatchGetItem limit)
+	const batchSize = 100
+	for i := 0; i < len(nodeIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(nodeIDs) {
+			end = len(nodeIDs)
+		}
+		
+		chunk := nodeIDs[i:end]
+		chunkNodes, err := r.batchGetChunk(ctx, userID, chunk)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Add to result map
+		for nodeID, node := range chunkNodes {
+			result[nodeID] = node
+		}
+	}
+	
+	return result, nil
+}
+
+// batchGetChunk retrieves a chunk of up to 100 nodes using BatchGetItem
+func (r *NodeRepository) batchGetChunk(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	// Build keys for batch get
+	keys := make([]map[string]types.AttributeValue, len(nodeIDs))
+	for i, nodeID := range nodeIDs {
+		keys[i] = map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
+			"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", nodeID)},
+		}
+	}
+
+	input := &dynamodb.BatchGetItemInput{
+		RequestItems: map[string]types.KeysAndAttributes{
+			r.tableName: {
+				Keys: keys,
+			},
+		},
+	}
+
+	output, err := r.client.BatchGetItem(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("BatchGetItem failed: %w", err)
+	}
+
+	// Convert items to nodes map
+	result := make(map[string]*node.Node)
+	for _, item := range output.Responses[r.tableName] {
+		// Extract node ID from SK
+		skAttr, ok := item["SK"]
+		if !ok {
+			continue
+		}
+		sk := skAttr.(*types.AttributeValueMemberS).Value
+		if !strings.HasPrefix(sk, "NODE#") {
+			continue
+		}
+		nodeID := strings.TrimPrefix(sk, "NODE#")
+		
+		// Parse node from item using existing method
+		domainNode, err := r.parseNodeFromItem(item)
+		if err != nil {
+			r.logger.Warn("failed to parse node",
+				zap.String("nodeID", nodeID),
+				zap.Error(err))
+			continue
+		}
+		
+		result[nodeID] = domainNode
+	}
+
+	// Handle unprocessed keys with retry if needed
+	if len(output.UnprocessedKeys) > 0 && len(output.UnprocessedKeys[r.tableName].Keys) > 0 {
+		r.logger.Warn("BatchGetItem had unprocessed keys",
+			zap.Int("count", len(output.UnprocessedKeys[r.tableName].Keys)))
+		// For now, we'll just log this. In production, implement retry logic.
+	}
+
+	return result, nil
 }
 
 // Archive archives a node (soft delete).

@@ -118,12 +118,27 @@ func main() {
 				response.StatusCode)
 		}
 		
-		// Log slow requests for monitoring
-		if duration > 5*time.Second {
-			log.Printf("SLOW REQUEST WARNING: %s %s took %v", 
+		// Log slow requests for monitoring with thresholds
+		if duration > 10*time.Second {
+			log.Printf("CRITICAL: VERY SLOW REQUEST: %s %s took %v (status: %d, request_id: %s)", 
 				req.RequestContext.HTTP.Method, 
 				req.RequestContext.HTTP.Path, 
-				duration)
+				duration,
+				response.StatusCode,
+				req.RequestContext.RequestID)
+		} else if duration > 5*time.Second {
+			log.Printf("WARNING: SLOW REQUEST: %s %s took %v (status: %d, request_id: %s)", 
+				req.RequestContext.HTTP.Method, 
+				req.RequestContext.HTTP.Path, 
+				duration,
+				response.StatusCode,
+				req.RequestContext.RequestID)
+		} else if duration > 2*time.Second {
+			log.Printf("NOTICE: Request taking longer than expected: %s %s took %v (status: %d)", 
+				req.RequestContext.HTTP.Method, 
+				req.RequestContext.HTTP.Path, 
+				duration,
+				response.StatusCode)
 		}
 		
 		return response, err

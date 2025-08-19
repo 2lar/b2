@@ -172,6 +172,7 @@ func (s *DynamoDBEventStore) GetEventsByType(ctx context.Context, eventType stri
 		ExpressionAttributeNames: map[string]string{
 			"#ts": "Timestamp",
 		},
+		Limit: aws.Int32(100), // Limit scan to prevent performance issues
 	})
 	
 	if err != nil {

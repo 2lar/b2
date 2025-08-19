@@ -529,3 +529,6 @@ func min(a, b int) int {
 	}
 	return b
 }
+func (r *RetryNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	return r.inner.BatchGetNodes(ctx, userID, nodeIDs)
+}

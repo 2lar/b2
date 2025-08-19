@@ -674,3 +674,6 @@ func (r *TransactionalNodeCategoryRepository) CountByCategory(ctx context.Contex
 func (r *TransactionalNodeCategoryRepository) CountByNode(ctx context.Context, userID, nodeID string) (int, error) {
 	return 0, fmt.Errorf("not implemented")
 }
+func (r *TransactionalNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	return r.base.BatchGetNodes(ctx, userID, nodeIDs)
+}

@@ -700,6 +700,11 @@ func (r *cqrsNodeRepository) BatchDeleteNodes(ctx context.Context, userID string
 	return nil, nil, nil
 }
 
+func (r *cqrsNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	// Placeholder: would delegate to reader for batch operations
+	return nil, nil
+}
+
 func (r *cqrsNodeRepository) GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error) {
 	// Placeholder: would delegate to reader
 	return nil, nil
