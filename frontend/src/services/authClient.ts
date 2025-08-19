@@ -24,6 +24,18 @@ if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY === 'undefined') {
 // Initialize Supabase client
 const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Auth retry configuration
+const AUTH_RETRY_CONFIG = {
+    maxRetries: 3,
+    baseDelay: 1000, // 1 second
+    maxDelay: 10000, // 10 seconds
+    backoffMultiplier: 2
+};
+
+// Track failed refresh attempts to prevent spam
+let consecutiveRefreshFailures = 0;
+let lastRefreshAttempt = 0;
+
 // Initialize auth state listener for React components
 function initAuth(): void {
     supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
@@ -58,21 +70,80 @@ export const auth = {
         const tokenExpiration = session.expires_at || 0;
         
         if (tokenExpiration > 0 && currentTime > (tokenExpiration - bufferTime)) {
-            console.log('Token expired or expiring soon, attempting refresh...');
-            
-            // Try to refresh the session
-            const { data, error } = await supabase.auth.refreshSession();
-            
-            if (error) {
-                console.error('Token refresh failed:', error.message);
-                return null;
+            // Check if we should attempt refresh based on retry limits
+            if (consecutiveRefreshFailures >= AUTH_RETRY_CONFIG.maxRetries) {
+                const timeSinceLastAttempt = Date.now() - lastRefreshAttempt;
+                const cooldownPeriod = Math.min(
+                    AUTH_RETRY_CONFIG.baseDelay * Math.pow(AUTH_RETRY_CONFIG.backoffMultiplier, consecutiveRefreshFailures),
+                    AUTH_RETRY_CONFIG.maxDelay
+                );
+                
+                if (timeSinceLastAttempt < cooldownPeriod) {
+                    // Still in cooldown, don't attempt refresh
+                    return null;
+                }
+                
+                // Reset failure count after cooldown
+                consecutiveRefreshFailures = 0;
             }
             
-            if (data.session) {
-                session = data.session;
-                console.log('Token refreshed successfully');
-            } else {
-                console.error('Token refresh returned no session');
+            if (import.meta.env.MODE === 'development') {
+                console.log('Token expired or expiring soon, attempting refresh...');
+            }
+            
+            lastRefreshAttempt = Date.now();
+            
+            try {
+                // Try to refresh the session
+                const { data, error } = await supabase.auth.refreshSession();
+                
+                if (error) {
+                    consecutiveRefreshFailures++;
+                    
+                    // Check if it's a network error
+                    if (error.message?.includes('fetch') || error.message?.includes('network') || 
+                        error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
+                        // Network error - don't spam console in production
+                        if (import.meta.env.MODE === 'development') {
+                            console.warn('Network error during token refresh, will retry with backoff');
+                        }
+                        return null;
+                    }
+                    
+                    // Other auth errors - log and potentially sign out
+                    if (consecutiveRefreshFailures >= AUTH_RETRY_CONFIG.maxRetries) {
+                        console.error('Max refresh attempts exceeded. User may need to re-authenticate.');
+                        // Clear the session to force re-login
+                        await supabase.auth.signOut();
+                        return null;
+                    }
+                    
+                    if (import.meta.env.MODE === 'development') {
+                        console.error('Token refresh failed:', error.message);
+                    }
+                    return null;
+                }
+                
+                if (data.session) {
+                    // Reset failure count on success
+                    consecutiveRefreshFailures = 0;
+                    session = data.session;
+                    if (import.meta.env.MODE === 'development') {
+                        console.log('Token refreshed successfully');
+                    }
+                } else {
+                    consecutiveRefreshFailures++;
+                    if (import.meta.env.MODE === 'development') {
+                        console.error('Token refresh returned no session');
+                    }
+                    return null;
+                }
+            } catch (networkError) {
+                consecutiveRefreshFailures++;
+                // Network-level errors (DNS, connection failures)
+                if (import.meta.env.MODE === 'development') {
+                    console.warn('Network error during token refresh:', (networkError as Error).message);
+                }
                 return null;
             }
         }
@@ -81,19 +152,64 @@ export const auth = {
     },
 
     async signIn(email: string, password: string): Promise<Session | null> {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        return data.session;
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) {
+                // Reset refresh failure count on successful auth attempt
+                consecutiveRefreshFailures = 0;
+                throw error;
+            }
+            // Reset refresh failure count on successful sign in
+            consecutiveRefreshFailures = 0;
+            return data.session;
+        } catch (error) {
+            if (import.meta.env.MODE === 'development') {
+                console.error('Sign in failed:', (error as Error).message);
+            }
+            throw error;
+        }
     },
 
     async signUp(email: string, password: string): Promise<Session | null> {
-        const { data, error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        return data.session;
+        try {
+            const { data, error } = await supabase.auth.signUp({ email, password });
+            if (error) {
+                throw error;
+            }
+            return data.session;
+        } catch (error) {
+            if (import.meta.env.MODE === 'development') {
+                console.error('Sign up failed:', (error as Error).message);
+            }
+            throw error;
+        }
     },
     
     async signOut(): Promise<void> {
-        await supabase.auth.signOut();
+        try {
+            // Reset refresh failure count on sign out
+            consecutiveRefreshFailures = 0;
+            lastRefreshAttempt = 0;
+            await supabase.auth.signOut();
+        } catch (error) {
+            if (import.meta.env.MODE === 'development') {
+                console.error('Sign out failed:', (error as Error).message);
+            }
+            throw error;
+        }
+    },
+
+    // Add method to check if user should be logged out due to persistent auth failures
+    shouldForceLogout(): boolean {
+        return consecutiveRefreshFailures >= AUTH_RETRY_CONFIG.maxRetries;
+    },
+
+    // Add method to get current auth state for debugging
+    getAuthDebugInfo(): { failures: number, lastAttempt: number } {
+        return {
+            failures: consecutiveRefreshFailures,
+            lastAttempt: lastRefreshAttempt
+        };
     }
 };
 

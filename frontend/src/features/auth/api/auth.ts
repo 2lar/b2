@@ -6,5 +6,7 @@ export const auth = {
     signOut: globalAuth.signOut,
     getSession: globalAuth.getSession,
     getJwtToken: globalAuth.getJwtToken,
-    supabase: globalAuth.supabase
+    supabase: globalAuth.supabase,
+    shouldForceLogout: globalAuth.shouldForceLogout,
+    getAuthDebugInfo: globalAuth.getAuthDebugInfo
 };
