@@ -122,6 +122,17 @@ func (r *NodeRepository) FindByUser(ctx context.Context, userID shared.UserID, o
 		Limit:                     aws.Int32(int32(options.Limit)),
 	}
 	
+	// Handle pagination cursor if provided
+	if options.Cursor != "" {
+		startKey, err := repository.DecodeCursor(options.Cursor)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode cursor: %w", err)
+		}
+		if startKey != nil {
+			input.ExclusiveStartKey = startKey
+		}
+	}
+	
 	if options.SortOrder == repository.SortOrderAsc {
 		input.ScanIndexForward = aws.Bool(true)
 	} else {
@@ -143,6 +154,10 @@ func (r *NodeRepository) FindByUser(ctx context.Context, userID shared.UserID, o
 		}
 		nodes = append(nodes, node)
 	}
+	
+	// Store the LastEvaluatedKey for the next page (if needed by caller)
+	// Note: The caller needs to be updated to receive this cursor
+	// For now, we'll need to update FindPage to handle this properly
 	
 	return nodes, nil
 }
@@ -296,30 +311,63 @@ func (r *NodeRepository) FindPage(ctx context.Context, query repository.NodeQuer
 		return nil, fmt.Errorf("invalid user ID: %w", err)
 	}
 	
-	opts := []repository.QueryOption{
-		repository.WithLimit(pagination.Limit),
-	}
+	// Build key condition expression
+	keyEx := expression.Key("PK").Equal(expression.Value(fmt.Sprintf("USER#%s", userID.String())))
+	keyEx = keyEx.And(expression.Key("SK").BeginsWith("NODE#"))
 	
-	if pagination.Cursor != "" {
-		opts = append(opts, repository.WithCursor(pagination.Cursor))
-	}
-	
-	nodes, err := r.FindByUser(ctx, userID, opts...)
+	// Build the expression
+	expr, err := expression.NewBuilder().
+		WithKeyCondition(keyEx).
+		Build()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build expression: %w", err)
 	}
 	
-	// Generate next cursor if we have a full page
+	input := &dynamodb.QueryInput{
+		TableName:                 aws.String(r.tableName),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		Limit:                     aws.Int32(int32(pagination.Limit)),
+		ScanIndexForward:          aws.Bool(false), // Sort descending by default
+	}
+	
+	// Handle pagination cursor if provided
+	if pagination.Cursor != "" {
+		startKey, err := repository.DecodeCursor(pagination.Cursor)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode cursor: %w", err)
+		}
+		if startKey != nil {
+			input.ExclusiveStartKey = startKey
+		}
+	}
+	
+	result, err := r.client.Query(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query nodes: %w", err)
+	}
+	
+	nodes := make([]*node.Node, 0, len(result.Items))
+	for _, item := range result.Items {
+		node, err := r.parseNodeFromItem(item)
+		if err != nil {
+			r.logger.Warn("Failed to parse node", zap.Error(err))
+			continue
+		}
+		nodes = append(nodes, node)
+	}
+	
+	// Generate next cursor from DynamoDB's LastEvaluatedKey
 	nextCursor := ""
-	if len(nodes) == pagination.Limit && len(nodes) > 0 {
-		lastNode := nodes[len(nodes)-1]
-		nextCursor = lastNode.ID.String()
+	if result.LastEvaluatedKey != nil {
+		nextCursor = repository.EncodeCursor(result.LastEvaluatedKey)
 	}
 	
 	return &repository.NodePage{
 		Items:      nodes,
 		NextCursor: nextCursor,
-		HasMore:    nextCursor != "",
+		HasMore:    result.LastEvaluatedKey != nil,
 	}, nil
 }
 

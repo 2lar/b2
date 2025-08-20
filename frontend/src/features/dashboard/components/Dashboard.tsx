@@ -73,13 +73,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     }, []);
 
     const loadMemories = async (page: number, token?: string) => {
-        console.log(`loadMemories called: page=${page}, token=${token ? 'present' : 'none'}`);
         setIsLoading(true);
         try {
             const data = await nodesApi.listNodes(MEMORIES_PER_PAGE, token);
             const pageNodes = data.nodes || [];
-            
-            console.log(`Loaded ${pageNodes.length} memories, nextToken: ${data.nextToken ? 'present' : 'none'}`);
             
             // Sort by timestamp (newest first) - backend should handle this eventually
             pageNodes.sort((a, b) => 
@@ -94,7 +91,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
             
             // Store the nextToken for the next page if it exists
             if (data.nextToken) {
-                console.log(`Storing token for page ${page + 1}`);
                 setPageTokens(prev => {
                     const newTokens = new Map(prev);
                     newTokens.set(page + 1, data.nextToken!);
@@ -208,22 +204,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     };
 
     const handlePageChange = (newPage: number) => {
-        console.log(`Changing to page ${newPage}, current page: ${currentPage}`);
-        console.log(`Available tokens:`, Array.from(pageTokens.entries()));
         
         if (newPage === 1) {
             // First page always loads without token
-            console.log('Loading page 1 without token');
             loadMemories(1);
         } else if (newPage > currentPage) {
             // Going forward - use the stored token for this page
             const tokenForPage = pageTokens.get(newPage);
-            console.log(`Going forward to page ${newPage}, token:`, tokenForPage);
             loadMemories(newPage, tokenForPage);
         } else {
             // Going backward - need to reload from page 1 and build up to target page
             // This is a limitation of token-based pagination
-            console.log(`Going backward to page ${newPage}, using loadFromPageOne`);
             loadFromPageOne(newPage);
         }
     };
