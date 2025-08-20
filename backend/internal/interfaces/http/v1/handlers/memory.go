@@ -28,7 +28,7 @@ type MemoryHandler struct {
 	nodeService       *services.NodeService      // Write operations (commands)
 	nodeQueryService  *queries.NodeQueryService  // Read operations (queries)
 	graphQueryService *queries.GraphQueryService // Graph operations (queries)
-	
+
 	// Infrastructure dependencies
 	eventBridgeClient *eventbridge.Client
 	container         interface {
@@ -60,7 +60,6 @@ func NewMemoryHandler(
 	}
 }
 
-
 // CreateNode handles POST /api/nodes
 func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	// Check if CQRS services are available
@@ -68,7 +67,7 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
 		return
 	}
-	
+
 	userID, ok := getUserID(r)
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -158,7 +157,7 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
 		return
 	}
-	
+
 	userID, ok := getUserID(r)
 	if !ok {
 		log.Printf("ERROR: ListNodes - Authentication failed, getUserID returned false")
@@ -184,14 +183,14 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	listQuery.WithPagination(limit, urlQuery.Get("nextToken"))
-	
+
 	// Add search filter if provided
 	if searchQuery := urlQuery.Get("search"); searchQuery != "" {
 		listQuery.WithSearch(searchQuery)
 	}
-	
+
 	// Add sorting if provided
 	if sortBy := urlQuery.Get("sortBy"); sortBy != "" {
 		sortDirection := urlQuery.Get("sortDirection")
@@ -251,7 +250,7 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
 		return
 	}
-	
+
 	userID, ok := getUserID(r)
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -264,7 +263,7 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	if isPostColdStart {
 		timeSince := h.container.GetTimeSinceColdStart()
 		log.Printf("GetNode: Processing post-cold-start request (%v after cold start) for node %s", timeSince, nodeID)
-		
+
 		// Add cold start headers to response
 		w.Header().Set("X-Cold-Start", "true")
 		w.Header().Set("X-Cold-Start-Age", timeSince.String())
@@ -279,7 +278,7 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	// Include connections in the query
 	nodeQuery.WithConnections()
 
@@ -308,11 +307,11 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	// Convert map to slice
-	edgeIDs := make([]string, 0, len(connectedNodeIDs))
+	connectedNodes := make([]string, 0, len(connectedNodeIDs))
 	for id := range connectedNodeIDs {
-		edgeIDs = append(edgeIDs, id)
+		connectedNodes = append(connectedNodes, id)
 	}
 
 	response := api.NodeDetailsResponse{
@@ -321,7 +320,7 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 		Tags:      result.Node.Tags,
 		Timestamp: result.Node.CreatedAt.Format(time.RFC3339),
 		Version:   result.Node.Version,
-		Edges:     edgeIDs,
+		Edges:     connectedNodes, // Edges field contains connected node IDs, not edge IDs
 	}
 
 	if isPostColdStart {
@@ -338,7 +337,7 @@ func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
 		return
 	}
-	
+
 	userID, ok := getUserID(r)
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -373,7 +372,7 @@ func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 
 	// Add idempotency key if provided
 	if idempotencyKey := r.Header.Get("Idempotency-Key"); idempotencyKey != "" {
-		// Note: UpdateNodeCommand doesn't have IdempotencyKey field, 
+		// Note: UpdateNodeCommand doesn't have IdempotencyKey field,
 		// but we'll handle it in the service layer if needed
 	}
 
@@ -393,7 +392,7 @@ func (h *MemoryHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
 		return
 	}
-	
+
 	userID, ok := getUserID(r)
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -423,7 +422,7 @@ func (h *MemoryHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) 
 		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
 		return
 	}
-	
+
 	userID, ok := getUserID(r)
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -476,7 +475,7 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
 		return
 	}
-	
+
 	userID, ok := getUserID(r)
 	if !ok {
 		log.Printf("ERROR: GetGraphData - Authentication required, getUserID returned false")
@@ -501,8 +500,6 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("DEBUG: GetGraphData succeeded, graph has %d nodes and %d edges", len(result.Nodes), len(result.Edges))
-
 	var elements []api.GraphDataResponse_Elements_Item
 
 	// Handle case where result is nil (should not happen, but defensive programming)
@@ -511,6 +508,8 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 		api.Success(w, http.StatusOK, api.GraphDataResponse{Elements: &elements})
 		return
 	}
+
+	log.Printf("DEBUG: GetGraphData succeeded, graph has %d nodes and %d edges", len(result.Nodes), len(result.Edges))
 
 	for _, nodeView := range result.Nodes {
 		label := nodeView.Content
@@ -557,16 +556,14 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 
 // checkOwnership is no longer needed as CQRS services handle ownership internally
 
-
-
 // generateIdempotencyKey creates an idempotency key from request data if not provided
 func generateIdempotencyKey(userID, operation string, payload interface{}) string {
 	hasher := sha256.New()
-	
+
 	// Include user ID and operation in the hash
 	hasher.Write([]byte(userID))
 	hasher.Write([]byte(operation))
-	
+
 	// Include payload in the hash
 	if payload != nil {
 		payloadBytes, err := json.Marshal(payload)
@@ -574,7 +571,7 @@ func generateIdempotencyKey(userID, operation string, payload interface{}) strin
 			hasher.Write(payloadBytes)
 		}
 	}
-	
+
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
@@ -584,7 +581,7 @@ func getIdempotencyKey(r *http.Request, userID, operation string, payload interf
 	if key := r.Header.Get("Idempotency-Key"); key != "" {
 		return key
 	}
-	
+
 	// Generate automatic key based on operation and payload
 	return generateIdempotencyKey(userID, operation, payload)
 }

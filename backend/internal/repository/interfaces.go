@@ -31,6 +31,7 @@ type NodeRepository interface {
 	
 	// Batch operations for performance optimization
 	BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error)
+	BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error)
 
 	// Enhanced node operations with pagination (existing - maintained)
 	GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error)

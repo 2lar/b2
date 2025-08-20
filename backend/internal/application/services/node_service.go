@@ -501,38 +501,53 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
 	}
 
-	// 3. Validate node IDs and check ownership
+	// 3. Validate node IDs and check ownership using batch operations
 	validNodeIDs := make([]string, 0, len(cmd.NodeIDs))
 	failedIDs := make([]string, 0)
 	nodeDataMap := make(map[string]*node.Node) // Store node data for event publishing
 
 	log.Printf("DEBUG: BulkDeleteNodes - Validating %d node IDs for user %s", len(cmd.NodeIDs), userID.String())
 
+	// First, validate all node ID formats
+	nodeIDsToCheck := make([]string, 0, len(cmd.NodeIDs))
 	for _, nodeIDStr := range cmd.NodeIDs {
 		// Validate node ID format
-		nodeID, err := shared.ParseNodeID(nodeIDStr)
+		_, err := shared.ParseNodeID(nodeIDStr)
 		if err != nil {
 			log.Printf("DEBUG: Invalid node ID format: %s", nodeIDStr)
 			failedIDs = append(failedIDs, nodeIDStr)
 			continue
 		}
+		nodeIDsToCheck = append(nodeIDsToCheck, nodeIDStr)
+	}
 
-		// Verify node exists and user owns it
-		node, err := uow.Nodes().FindNodeByID(ctx, userID.String(), nodeID.String())
-		if err != nil || node == nil {
-			log.Printf("DEBUG: Node not found or error: %s, err: %v", nodeIDStr, err)
-			failedIDs = append(failedIDs, nodeIDStr)
-			continue
+	// Batch retrieve all nodes at once - MASSIVE OPTIMIZATION
+	if len(nodeIDsToCheck) > 0 {
+		nodesMap, err := uow.Nodes().BatchGetNodes(ctx, userID.String(), nodeIDsToCheck)
+		if err != nil {
+			log.Printf("ERROR: BatchGetNodes failed: %v", err)
+			// Fall back to marking all as failed
+			failedIDs = append(failedIDs, nodeIDsToCheck...)
+		} else {
+			// Check which nodes exist and are owned by the user
+			for _, nodeIDStr := range nodeIDsToCheck {
+				node, exists := nodesMap[nodeIDStr]
+				if !exists || node == nil {
+					log.Printf("DEBUG: Node not found: %s", nodeIDStr)
+					failedIDs = append(failedIDs, nodeIDStr)
+					continue
+				}
+
+				if !node.UserID.Equals(userID) {
+					log.Printf("DEBUG: Node ownership mismatch for node: %s", nodeIDStr)
+					failedIDs = append(failedIDs, nodeIDStr)
+					continue
+				}
+
+				validNodeIDs = append(validNodeIDs, nodeIDStr)
+				nodeDataMap[nodeIDStr] = node // Store for event publishing
+			}
 		}
-
-		if !node.UserID.Equals(userID) {
-			log.Printf("DEBUG: Node ownership mismatch for node: %s", nodeIDStr)
-			failedIDs = append(failedIDs, nodeIDStr)
-			continue
-		}
-
-		validNodeIDs = append(validNodeIDs, nodeIDStr)
-		nodeDataMap[nodeIDStr] = node // Store for event publishing
 	}
 
 	log.Printf("DEBUG: BulkDeleteNodes - Validated nodes: %d valid, %d failed", len(validNodeIDs), len(failedIDs))

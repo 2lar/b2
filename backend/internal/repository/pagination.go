@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/edge"
@@ -90,17 +89,11 @@ func EncodeCursor(lastEvaluatedKey map[string]types.AttributeValue) string {
 		return ""
 	}
 
-	cursorData := CursorData{
-		LastEvaluatedKey: lastEvaluatedKey,
-		Timestamp:        time.Now().Unix(),
-	}
-
-	jsonData, err := json.Marshal(cursorData)
-	if err != nil {
-		return ""
-	}
-
-	return base64.URLEncoding.EncodeToString(jsonData)
+	// Convert DynamoDB AttributeValue map to serializable format
+	lek := FromDynamoDBKey(lastEvaluatedKey)
+	
+	// Use the existing EncodeNextToken function which handles serialization properly
+	return EncodeNextToken(lek)
 }
 
 // DecodeCursor decodes a base64 cursor back to DynamoDB's LastEvaluatedKey format
@@ -109,17 +102,18 @@ func DecodeCursor(cursor string) (map[string]types.AttributeValue, error) {
 		return nil, nil
 	}
 
-	jsonData, err := base64.URLEncoding.DecodeString(cursor)
+	// Use the existing DecodeNextToken function which handles deserialization properly
+	lek, err := DecodeNextToken(cursor)
 	if err != nil {
 		return nil, fmt.Errorf("invalid cursor format: %w", err)
 	}
-
-	var cursorData CursorData
-	if err := json.Unmarshal(jsonData, &cursorData); err != nil {
-		return nil, fmt.Errorf("invalid cursor data: %w", err)
+	
+	if lek == nil {
+		return nil, nil
 	}
 
-	return cursorData.LastEvaluatedKey, nil
+	// Convert back to DynamoDB AttributeValue format
+	return lek.ToDynamoDBKey(), nil
 }
 
 // CreatePageInfo creates pagination metadata for a result set

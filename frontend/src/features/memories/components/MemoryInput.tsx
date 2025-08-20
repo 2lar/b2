@@ -3,6 +3,7 @@
  * 
  * Purpose:
  * Provides an intuitive form interface for users to create new memories with content and tags.
+ * Supports both full panel mode and compact overlay mode for different UI contexts.
  * Handles automatic categorization and provides real-time feedback during the creation process.
  * 
  * Key Features:
@@ -13,6 +14,11 @@
  * - Keyboard shortcuts (Enter to submit, Shift+Enter for new line)
  * - Tag pills with easy removal functionality
  * - Status messages for success/error feedback
+ * - Compact mode for overlay positioning
+ * 
+ * Display Modes:
+ * - Full mode: Traditional panel layout with all features
+ * - Compact mode: Streamlined overlay design for graph integration
  * 
  * Tag Management:
  * - Add tags with Enter or comma key
@@ -35,7 +41,7 @@
  * Integration:
  * - Calls onMemoryCreated callback to refresh parent components
  * - Uses API client for memory creation and categorization
- * - Positioned in top-right panel of Dashboard layout
+ * - Can be positioned as overlay or in panel layout
  */
 
 import React, { useState } from 'react';
@@ -44,9 +50,13 @@ import { nodesApi } from '../api/nodes';
 interface MemoryInputProps {
     /** Callback function called after successful memory creation */
     onMemoryCreated: () => void;
+    /** Whether to render in compact mode (for overlay) */
+    isCompact?: boolean;
+    /** Whether this is the mobile bottom input */
+    isMobile?: boolean;
 }
 
-const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated }) => {
+const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = false, isMobile = false }) => {
     const [content, setContent] = useState('');
     const [tags, setTags] = useState<string[]>([]);
     const [tagInput, setTagInput] = useState('');
@@ -124,6 +134,72 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated }) => {
             }
         }
     };
+
+    if (isCompact) {
+        return (
+            <div className={`memory-input-compact ${isMobile ? 'mobile-optimized' : ''}`}>
+                <form onSubmit={handleSubmit} className="compact-form">
+                    <div className="input-row">
+                        <textarea 
+                            value={content}
+                            onChange={(e) => setContent(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder={isMobile ? "What's on your mind?" : "Write a memory, thought, or idea..."}
+                            rows={isMobile ? 1 : 2}
+                            required
+                            disabled={isSubmitting}
+                            className="compact-textarea"
+                            style={isMobile ? { fontSize: '16px' } : {}} // Prevent zoom on iOS
+                        />
+                        <button 
+                            type="submit" 
+                            className="compact-submit-btn"
+                            disabled={isSubmitting || !content.trim()}
+                            title="Save Memory"
+                        >
+                            {isSubmitting ? '⏳' : '✓'}
+                        </button>
+                    </div>
+                    
+                    {tags.length > 0 && (
+                        <div className="compact-tags">
+                            {tags.map((tag, index) => (
+                                <span key={index} className="tag-pill-compact">
+                                    {tag}
+                                    <button
+                                        type="button"
+                                        className="tag-remove-compact"
+                                        onClick={() => removeTag(tag)}
+                                        disabled={isSubmitting}
+                                    >
+                                        ×
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    
+                    <div className="compact-tag-input">
+                        <input
+                            type="text"
+                            value={tagInput}
+                            onChange={(e) => setTagInput(e.target.value)}
+                            onKeyDown={handleTagInputKeyDown}
+                            placeholder="Add tags..."
+                            disabled={isSubmitting}
+                            className="tag-input-compact"
+                            style={isMobile ? { fontSize: '16px' } : {}} // Prevent zoom on iOS
+                        />
+                    </div>
+                </form>
+                {status && (
+                    <div className={`status-message-compact ${status.type}`}>
+                        {status.message}
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="dashboard-container" id="input-container" data-container="input">

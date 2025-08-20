@@ -521,3 +521,6 @@ func (w *slidingWindow) cleanup(now time.Time) {
 
 // ErrCircuitBreakerOpen is returned when the circuit breaker is open.
 var ErrCircuitBreakerOpen = fmt.Errorf("circuit breaker is open")
+func (r *CircuitBreakerNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	return r.inner.BatchGetNodes(ctx, userID, nodeIDs)
+}

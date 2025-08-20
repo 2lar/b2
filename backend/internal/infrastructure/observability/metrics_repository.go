@@ -776,3 +776,6 @@ func (r *MetricsNodeRepository) FindNodesPageWithOptions(ctx context.Context, qu
 	
 	return page, err
 }
+func (r *MetricsNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	return r.inner.BatchGetNodes(ctx, userID, nodeIDs)
+}

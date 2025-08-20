@@ -70,6 +70,8 @@ export const useFullscreen = (elementRef: React.RefObject<HTMLElement | null>): 
                                  (document as any).msFullscreenElement;
         
         const isCurrentlyFullscreen = !!fullscreenElement && !!elementRef.current && fullscreenElement === elementRef.current;
+        const wasFullscreen = isFullscreen;
+        
         setIsFullscreen(isCurrentlyFullscreen);
         
         // Manage fullscreen class
@@ -78,6 +80,20 @@ export const useFullscreen = (elementRef: React.RefObject<HTMLElement | null>): 
                 elementRef.current.classList.add('graph-fullscreen');
             } else {
                 elementRef.current.classList.remove('graph-fullscreen');
+                
+                // If we just exited fullscreen, trigger layout restoration
+                if (wasFullscreen && !isCurrentlyFullscreen) {
+                    // Force layout recalculation by dispatching resize event
+                    setTimeout(() => {
+                        window.dispatchEvent(new Event('resize'));
+                        
+                        // Also trigger a custom layout restoration event
+                        const layoutEvent = new CustomEvent('fullscreenLayoutRestore', {
+                            detail: { element: elementRef.current }
+                        });
+                        window.dispatchEvent(layoutEvent);
+                    }, 50);
+                }
             }
         }
     };

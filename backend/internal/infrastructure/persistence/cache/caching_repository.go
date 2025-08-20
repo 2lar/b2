@@ -238,6 +238,13 @@ func (r *CachingNodeRepository) BatchDeleteNodes(ctx context.Context, userID str
 	return deleted, failed, nil
 }
 
+// BatchGetNodes implements batch retrieval with potential cache optimization
+func (r *CachingNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	// For now, pass through to inner repository
+	// TODO: Could optimize by checking cache for each node first
+	return r.inner.BatchGetNodes(ctx, userID, nodeIDs)
+}
+
 // GetNodesPage implements caching for paginated queries
 func (r *CachingNodeRepository) GetNodesPage(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination) (*repository.NodePage, error) {
 	if !r.config.EnableReads {

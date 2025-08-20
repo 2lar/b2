@@ -86,7 +86,10 @@ class ApiClient {
         const token = await auth.getJwtToken();
 
         if (!token) {
-            console.error('API request failed: No valid authentication token available');
+            // Only log in development mode
+            if (import.meta.env.MODE === 'development') {
+                console.error('API request failed: No valid authentication token available');
+            }
             
             // Check if user has a session at all
             const session = await auth.getSession();
@@ -125,14 +128,17 @@ class ApiClient {
                     errorData = { error: errorText || 'Request failed' };
                 }
                 
-                console.error('API request failed:', {
-                    status: response.status,
-                    path,
-                    error: errorData.error || errorText,
-                    retryCount,
-                    coldStart: response.headers.get('X-Cold-Start'),
-                    coldStartAge: response.headers.get('X-Cold-Start-Age')
-                });
+                // Only log detailed errors in development mode
+                if (import.meta.env.MODE === 'development') {
+                    console.error('API request failed:', {
+                        status: response.status,
+                        path,
+                        error: errorData.error || errorText,
+                        retryCount,
+                        coldStart: response.headers.get('X-Cold-Start'),
+                        coldStartAge: response.headers.get('X-Cold-Start-Age')
+                    });
+                }
 
                 // Handle authentication errors specifically
                 if (response.status === 401) {
@@ -157,7 +163,9 @@ class ApiClient {
                     const retryDelay = Math.min(baseDelay * Math.pow(2, retryCount), maxDelay);
                     
                     const retryReason = isColdStartError ? 'cold start detected' : 'service unavailable';
-                    console.log(`Retrying request in ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries + 1}) - ${retryReason}`);
+                    if (import.meta.env.MODE === 'development') {
+                        console.log(`Retrying request in ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries + 1}) - ${retryReason}`);
+                    }
                     
                     await new Promise(resolve => setTimeout(resolve, retryDelay));
                     return this.request<T>(method, path, body, retryCount + 1);
@@ -166,11 +174,13 @@ class ApiClient {
                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
             
-            // Log cold start information for successful requests
-            const coldStart = response.headers.get('X-Cold-Start');
-            const coldStartAge = response.headers.get('X-Cold-Start-Age');
-            if (coldStart === 'true') {
-                console.log(`Request served after cold start: ${path} (cold start age: ${coldStartAge})`);
+            // Log cold start information for successful requests in development
+            if (import.meta.env.MODE === 'development') {
+                const coldStart = response.headers.get('X-Cold-Start');
+                const coldStartAge = response.headers.get('X-Cold-Start-Age');
+                if (coldStart === 'true') {
+                    console.log(`Request served after cold start: ${path} (cold start age: ${coldStartAge})`);
+                }
             }
             
             // Parse and return response
@@ -186,13 +196,18 @@ class ApiClient {
             
             if (isNetworkError && retryCount < 2 && method === 'GET') {
                 const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 3000);
-                console.log(`Network error, retrying in ${retryDelay}ms (attempt ${retryCount + 1}/3): ${errorMessage}`);
+                if (import.meta.env.MODE === 'development') {
+                    console.log(`Network error, retrying in ${retryDelay}ms (attempt ${retryCount + 1}/3): ${errorMessage}`);
+                }
                 
                 await new Promise(resolve => setTimeout(resolve, retryDelay));
                 return this.request<T>(method, path, body, retryCount + 1);
             }
             
-            console.error('API request error:', errorMessage);
+            // Only log network errors in development mode
+            if (import.meta.env.MODE === 'development') {
+                console.error('API request error:', errorMessage);
+            }
             throw error;
         }
     }

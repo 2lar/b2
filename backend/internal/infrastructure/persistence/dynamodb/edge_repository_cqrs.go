@@ -98,48 +98,57 @@ func (r *EdgeRepositoryCQRS) Exists(ctx context.Context, id shared.NodeID) (bool
 
 // FindByUser retrieves all edges for a user.
 func (r *EdgeRepositoryCQRS) FindByUser(ctx context.Context, userID shared.UserID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
-	// Apply query options
-	options := repository.ApplyQueryOptions(opts...)
+	// Use EdgeIndex GSI to efficiently query all edges for the user
+	// This avoids scan operations and provides consistent performance
 	
-	// Scan for all edges belonging to this user
-	// Filter: PK begins with USER#<userID>#NODE# AND SK begins with EDGE#
-	filterEx := expression.And(
-		expression.Name("PK").BeginsWith(fmt.Sprintf("USER#%s#NODE#", userID.String())),
-		expression.Name("SK").BeginsWith("EDGE#"),
-	)
+	// Build key condition expression for GSI2 (EdgeIndex)
+	keyEx := expression.Key("GSI2PK").Equal(expression.Value(fmt.Sprintf("USER#%s#EDGE", userID.String())))
 	
 	// Build the expression
 	expr, err := expression.NewBuilder().
-		WithFilter(filterEx).
+		WithKeyCondition(keyEx).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build expression: %w", err)
+		return nil, fmt.Errorf("failed to build GSI expression: %w", err)
 	}
 	
-	input := &dynamodb.ScanInput{
-		TableName:                 aws.String(r.tableName),
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		Limit:                     aws.Int32(int32(options.Limit)),
-	}
+	var allEdges []*edge.Edge
+	var lastEvaluatedKey map[string]types.AttributeValue
 	
-	result, err := r.client.Scan(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan edges: %w", err)
-	}
-	
-	edges := make([]*edge.Edge, 0, len(result.Items))
-	for _, item := range result.Items {
-		edge, err := r.parseEdgeFromItem(item, userID.String())
-		if err != nil {
-			r.logger.Warn("Failed to parse edge", zap.Error(err))
-			continue
+	// Paginate through all results to ensure we get all edges
+	for {
+		input := &dynamodb.QueryInput{
+			TableName:                 aws.String(r.tableName),
+			IndexName:                 aws.String("EdgeIndex"), // Use EdgeIndex GSI (hardcoded like other repos)
+			KeyConditionExpression:    expr.KeyCondition(),
+			ExpressionAttributeNames:  expr.Names(),
+			ExpressionAttributeValues: expr.Values(),
+			ExclusiveStartKey:         lastEvaluatedKey,
 		}
-		edges = append(edges, edge)
+		
+		result, err := r.client.Query(ctx, input)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query EdgeIndex GSI: %w", err)
+		}
+		
+		// Parse all edges for this user
+		for _, item := range result.Items {
+			edge, err := r.parseEdgeFromItem(item, userID.String())
+			if err != nil {
+				r.logger.Warn("Failed to parse edge", zap.Error(err))
+				continue
+			}
+			allEdges = append(allEdges, edge)
+		}
+		
+		// Check if there are more results to fetch
+		lastEvaluatedKey = result.LastEvaluatedKey
+		if lastEvaluatedKey == nil {
+			break
+		}
 	}
 	
-	return edges, nil
+	return allEdges, nil
 }
 
 // CountByUser counts edges for a user.
@@ -226,48 +235,61 @@ func (r *EdgeRepositoryCQRS) FindByTargetNode(ctx context.Context, targetID shar
 		return nil, fmt.Errorf("user ID not found in context")
 	}
 	
-	// Apply query options
-	options := repository.ApplyQueryOptions(opts...)
+	// Use EdgeIndex GSI to efficiently query all edges for the user, then filter for target
+	// This avoids the scan limit issue and matches what EdgeRepository does
 	
-	// We need to scan because target node is in the SK
-	// Filter: PK begins with USER#<userID>#NODE# AND SK = EDGE#RELATES_TO#<targetID>
-	filterEx := expression.And(
-		expression.Name("PK").BeginsWith(fmt.Sprintf("USER#%s#NODE#", userID)),
-		expression.Name("SK").Equal(expression.Value(fmt.Sprintf("EDGE#RELATES_TO#%s", targetID.String()))),
-	)
+	// Build key condition expression for GSI2 (EdgeIndex)
+	keyEx := expression.Key("GSI2PK").Equal(expression.Value(fmt.Sprintf("USER#%s#EDGE", userID)))
 	
 	// Build the expression
 	expr, err := expression.NewBuilder().
-		WithFilter(filterEx).
+		WithKeyCondition(keyEx).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build expression: %w", err)
+		return nil, fmt.Errorf("failed to build GSI expression: %w", err)
 	}
 	
-	input := &dynamodb.ScanInput{
-		TableName:                 aws.String(r.tableName),
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		Limit:                     aws.Int32(int32(options.Limit)),
-	}
+	var allEdges []*edge.Edge
+	var lastEvaluatedKey map[string]types.AttributeValue
 	
-	result, err := r.client.Scan(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan edges: %w", err)
-	}
-	
-	edges := make([]*edge.Edge, 0, len(result.Items))
-	for _, item := range result.Items {
-		edge, err := r.parseEdgeFromItem(item, userID)
-		if err != nil {
-			r.logger.Warn("Failed to parse edge", zap.Error(err))
-			continue
+	// Paginate through all results to ensure we get all edges
+	for {
+		input := &dynamodb.QueryInput{
+			TableName:                 aws.String(r.tableName),
+			IndexName:                 aws.String("EdgeIndex"), // Use EdgeIndex GSI (hardcoded like other repos)
+			KeyConditionExpression:    expr.KeyCondition(),
+			ExpressionAttributeNames:  expr.Names(),
+			ExpressionAttributeValues: expr.Values(),
+			ExclusiveStartKey:         lastEvaluatedKey,
 		}
-		edges = append(edges, edge)
+		
+		result, err := r.client.Query(ctx, input)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query EdgeIndex GSI: %w", err)
+		}
+		
+		// Parse edges and filter for target node
+		for _, item := range result.Items {
+			edge, err := r.parseEdgeFromItem(item, userID)
+			if err != nil {
+				r.logger.Warn("Failed to parse edge", zap.Error(err))
+				continue
+			}
+			
+			// Check if this edge points to our target node
+			if edge.TargetID.String() == targetID.String() {
+				allEdges = append(allEdges, edge)
+			}
+		}
+		
+		// Check if there are more results to fetch
+		lastEvaluatedKey = result.LastEvaluatedKey
+		if lastEvaluatedKey == nil {
+			break
+		}
 	}
 	
-	return edges, nil
+	return allEdges, nil
 }
 
 // FindByNode finds all edges connected to a specific node.
@@ -508,9 +530,19 @@ func (r *EdgeRepositoryCQRS) Save(ctx context.Context, edge *edge.Edge) error {
 	return nil
 }
 
-// SaveBatch saves multiple edges in a batch.
+// SaveBatch saves multiple edges using BatchWriteItem for optimal performance.
 func (r *EdgeRepositoryCQRS) SaveBatch(ctx context.Context, edges []*edge.Edge) error {
-	// Process in batches of 25 (DynamoDB limit)
+	if len(edges) == 0 {
+		return nil
+	}
+	
+	// Extract userID from context
+	userID, ok := sharedContext.GetUserIDFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("user ID not found in context")
+	}
+	
+	// Process in batches of 25 (DynamoDB BatchWriteItem limit)
 	const batchSize = 25
 	
 	for i := 0; i < len(edges); i += batchSize {
@@ -520,14 +552,94 @@ func (r *EdgeRepositoryCQRS) SaveBatch(ctx context.Context, edges []*edge.Edge) 
 		}
 		
 		batch := edges[i:end]
-		for _, edge := range batch {
-			if err := r.Save(ctx, edge); err != nil {
-				return err
-			}
+		if err := r.saveBatchChunk(ctx, userID, batch); err != nil {
+			return fmt.Errorf("failed to save batch chunk: %w", err)
 		}
 	}
 	
 	return nil
+}
+
+// saveBatchChunk saves a chunk of up to 25 edges using BatchWriteItem
+func (r *EdgeRepositoryCQRS) saveBatchChunk(ctx context.Context, userID string, edges []*edge.Edge) error {
+	writeRequests := make([]types.WriteRequest, 0, len(edges)*2) // *2 for bidirectional edges
+	
+	for _, edge := range edges {
+		// Create items for both directions (bidirectional storage)
+		// Direction 1: source -> target
+		item1 := map[string]types.AttributeValue{
+			"PK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#NODE#%s", userID, edge.SourceID.String())},
+			"SK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#RELATES_TO#%s", edge.TargetID.String())},
+			"EdgeID":    &types.AttributeValueMemberS{Value: edge.ID.String()},
+			"SourceID":  &types.AttributeValueMemberS{Value: edge.SourceID.String()},
+			"TargetID":  &types.AttributeValueMemberS{Value: edge.TargetID.String()},
+			"Weight":    &types.AttributeValueMemberN{Value: fmt.Sprintf("%f", edge.Weight())},
+			"CreatedAt": &types.AttributeValueMemberS{Value: edge.CreatedAt.Format(time.RFC3339)},
+			"UpdatedAt": &types.AttributeValueMemberS{Value: edge.UpdatedAt.Format(time.RFC3339)},
+			"Version":   &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", edge.Version)},
+			"GSI2PK":    &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#EDGE", userID)},
+			"GSI2SK":    &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#%s", edge.ID.String())},
+		}
+		
+		// Direction 2: target -> source (reverse edge for bidirectional queries)
+		item2 := map[string]types.AttributeValue{
+			"PK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#NODE#%s", userID, edge.TargetID.String())},
+			"SK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#RELATES_TO#%s", edge.SourceID.String())},
+			"EdgeID":    &types.AttributeValueMemberS{Value: edge.ID.String()},
+			"SourceID":  &types.AttributeValueMemberS{Value: edge.SourceID.String()},
+			"TargetID":  &types.AttributeValueMemberS{Value: edge.TargetID.String()},
+			"Weight":    &types.AttributeValueMemberN{Value: fmt.Sprintf("%f", edge.Weight())},
+			"CreatedAt": &types.AttributeValueMemberS{Value: edge.CreatedAt.Format(time.RFC3339)},
+			"UpdatedAt": &types.AttributeValueMemberS{Value: edge.UpdatedAt.Format(time.RFC3339)},
+			"Version":   &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", edge.Version)},
+		}
+		
+		writeRequests = append(writeRequests,
+			types.WriteRequest{PutRequest: &types.PutRequest{Item: item1}},
+			types.WriteRequest{PutRequest: &types.PutRequest{Item: item2}},
+		)
+	}
+	
+	// Execute batch write with retry logic
+	maxRetries := 3
+	retryDelay := 100 * time.Millisecond
+	
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(retryDelay)
+			retryDelay *= 2
+		}
+		
+		input := &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{
+				r.tableName: writeRequests,
+			},
+		}
+		
+		output, err := r.client.BatchWriteItem(ctx, input)
+		if err != nil {
+			if attempt == maxRetries {
+				return fmt.Errorf("batch write failed after %d attempts: %w", maxRetries, err)
+			}
+			r.logger.Warn("batch write attempt failed, retrying",
+				zap.Int("attempt", attempt),
+				zap.Error(err))
+			continue
+		}
+		
+		// Check for unprocessed items
+		if output.UnprocessedItems != nil && len(output.UnprocessedItems[r.tableName]) > 0 {
+			// Update writeRequests to only contain unprocessed items for retry
+			writeRequests = output.UnprocessedItems[r.tableName]
+			r.logger.Debug("retrying unprocessed items",
+				zap.Int("count", len(writeRequests)))
+		} else {
+			// All items processed successfully
+			return nil
+		}
+	}
+	
+	return fmt.Errorf("failed to process all items after %d attempts", maxRetries)
 }
 
 // UpdateWeight updates the weight of an edge.
@@ -645,7 +757,7 @@ func (r *EdgeRepositoryCQRS) DeleteBatch(ctx context.Context, ids []shared.NodeI
 	return nil
 }
 
-// DeleteByNode deletes all edges connected to a node.
+// DeleteByNode deletes all edges connected to a node using batch operations.
 func (r *EdgeRepositoryCQRS) DeleteByNode(ctx context.Context, nodeID shared.NodeID) error {
 	// Extract userID from context
 	userID, ok := sharedContext.GetUserIDFromContext(ctx)
@@ -653,12 +765,12 @@ func (r *EdgeRepositoryCQRS) DeleteByNode(ctx context.Context, nodeID shared.Nod
 		return fmt.Errorf("user ID not found in context")
 	}
 	
-	log.Printf("DeleteByNode: Starting deletion of edges for node %s", nodeID.String())
+	log.Printf("DeleteByNode: Starting optimized batch deletion of edges for node %s", nodeID.String())
 	
-	deletedCount := 0
-	failedCount := 0
+	// Collect all edge keys to delete
+	keysToDelete := make([]map[string]types.AttributeValue, 0)
 	
-	// Method 1: Delete edges where this node is the source
+	// Method 1: Find edges where this node is the source
 	// PK = USER#<userID>#NODE#<nodeID>, SK begins with EDGE#RELATES_TO#
 	keyEx := expression.Key("PK").Equal(expression.Value(fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID.String())))
 	keyEx = keyEx.And(expression.Key("SK").BeginsWith("EDGE#RELATES_TO#"))
@@ -675,40 +787,27 @@ func (r *EdgeRepositoryCQRS) DeleteByNode(ctx context.Context, nodeID shared.Nod
 		KeyConditionExpression:    expr.KeyCondition(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
+		ProjectionExpression:      aws.String("PK, SK"), // Only fetch keys for deletion
 	}
 	
 	result, err := r.client.Query(ctx, input)
 	if err != nil {
 		log.Printf("WARNING: Failed to query source edges: %v", err)
 	} else {
-		// Delete each edge found
+		// Collect keys for batch deletion
 		for _, item := range result.Items {
 			if pk, ok := item["PK"].(*types.AttributeValueMemberS); ok {
 				if sk, ok := item["SK"].(*types.AttributeValueMemberS); ok {
-					key := map[string]types.AttributeValue{
+					keysToDelete = append(keysToDelete, map[string]types.AttributeValue{
 						"PK": &types.AttributeValueMemberS{Value: pk.Value},
 						"SK": &types.AttributeValueMemberS{Value: sk.Value},
-					}
-					
-					delInput := &dynamodb.DeleteItemInput{
-						TableName: aws.String(r.tableName),
-						Key:       key,
-					}
-					
-					_, err := r.client.DeleteItem(ctx, delInput)
-					if err != nil {
-						log.Printf("Failed to delete edge PK=%s SK=%s: %v", pk.Value, sk.Value, err)
-						failedCount++
-					} else {
-						log.Printf("Deleted edge PK=%s SK=%s", pk.Value, sk.Value)
-						deletedCount++
-					}
+					})
 				}
 			}
 		}
 	}
 	
-	// Method 2: Delete edges where this node is the target
+	// Method 2: Find edges where this node is the target
 	// Need to scan for SK = EDGE#RELATES_TO#<nodeID>
 	filterEx := expression.And(
 		expression.Name("PK").BeginsWith(fmt.Sprintf("USER#%s#NODE#", userID)),
@@ -727,35 +826,77 @@ func (r *EdgeRepositoryCQRS) DeleteByNode(ctx context.Context, nodeID shared.Nod
 		FilterExpression:          expr2.Filter(),
 		ExpressionAttributeNames:  expr2.Names(),
 		ExpressionAttributeValues: expr2.Values(),
+		ProjectionExpression:      aws.String("PK, SK"), // Only fetch keys for deletion
+		Limit:                     aws.Int32(100), // Limit scan for performance
 	}
 	
 	scanResult, err := r.client.Scan(ctx, scanInput)
 	if err != nil {
 		log.Printf("WARNING: Failed to scan target edges: %v", err)
 	} else {
-		// Delete each edge found
+		// Collect keys for batch deletion
 		for _, item := range scanResult.Items {
 			if pk, ok := item["PK"].(*types.AttributeValueMemberS); ok {
 				if sk, ok := item["SK"].(*types.AttributeValueMemberS); ok {
-					key := map[string]types.AttributeValue{
+					keysToDelete = append(keysToDelete, map[string]types.AttributeValue{
 						"PK": &types.AttributeValueMemberS{Value: pk.Value},
 						"SK": &types.AttributeValueMemberS{Value: sk.Value},
-					}
-					
-					delInput := &dynamodb.DeleteItemInput{
-						TableName: aws.String(r.tableName),
-						Key:       key,
-					}
-					
-					_, err := r.client.DeleteItem(ctx, delInput)
-					if err != nil {
-						log.Printf("Failed to delete edge PK=%s SK=%s: %v", pk.Value, sk.Value, err)
-						failedCount++
-					} else {
-						log.Printf("Deleted edge PK=%s SK=%s", pk.Value, sk.Value)
-						deletedCount++
-					}
+					})
 				}
+			}
+		}
+	}
+	
+	// Now perform batch deletion of all collected keys
+	if len(keysToDelete) == 0 {
+		log.Printf("DeleteByNode: No edges found for node %s", nodeID.String())
+		return nil
+	}
+	
+	log.Printf("DeleteByNode: Deleting %d edges for node %s", len(keysToDelete), nodeID.String())
+	
+	// Process in batches of 25 (DynamoDB BatchWriteItem limit)
+	const batchSize = 25
+	deletedCount := 0
+	failedCount := 0
+	
+	for i := 0; i < len(keysToDelete); i += batchSize {
+		end := i + batchSize
+		if end > len(keysToDelete) {
+			end = len(keysToDelete)
+		}
+		
+		batch := keysToDelete[i:end]
+		writeRequests := make([]types.WriteRequest, 0, len(batch))
+		
+		for _, key := range batch {
+			writeRequests = append(writeRequests, types.WriteRequest{
+				DeleteRequest: &types.DeleteRequest{
+					Key: key,
+				},
+			})
+		}
+		
+		// Execute batch write with retry
+		input := &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{
+				r.tableName: writeRequests,
+			},
+		}
+		
+		output, err := r.client.BatchWriteItem(ctx, input)
+		if err != nil {
+			log.Printf("ERROR: BatchWriteItem failed: %v", err)
+			failedCount += len(batch)
+		} else {
+			deletedCount += len(batch)
+			
+			// Check for unprocessed items
+			if output.UnprocessedItems != nil && len(output.UnprocessedItems[r.tableName]) > 0 {
+				unprocessed := len(output.UnprocessedItems[r.tableName])
+				deletedCount -= unprocessed
+				failedCount += unprocessed
+				log.Printf("WARNING: %d unprocessed items in batch", unprocessed)
 			}
 		}
 	}

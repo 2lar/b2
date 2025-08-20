@@ -2,28 +2,27 @@
  * Dashboard Component - Main Application Interface
  * 
  * Purpose:
- * The primary dashboard that orchestrates all main UI components in a multi-panel layout.
- * Acts as the central hub where users interact with their memory data through different views.
+ * The primary dashboard with centered graph visualization and integrated memory input.
+ * Acts as the central hub where users interact with their memory data through a streamlined interface.
  * 
  * Key Features:
- * - Multi-panel layout with resizable columns
- * - File system sidebar for browsing memories by category
- * - Interactive graph visualization of memory connections
- * - Memory input form for creating new memories
- * - Paginated memory list for browsing and management
+ * - Centered graph visualization with maximum screen space
+ * - Integrated memory input at top center of graph area
+ * - Collapsible file system sidebar on the left
+ * - Collapsible memory list panel on the right (dropdown style)
  * - Real-time synchronization between all components
  * - Automatic refresh coordination across panels
  * 
  * Layout Structure:
- * - Left: FileSystemSidebar (categories and memories in folder structure)
- * - Center: GraphVisualization (interactive node graph)
- * - Right Top: MemoryInput (creation form)
- * - Right Bottom: MemoryList (paginated list view)
+ * - Left: Collapsible FileSystemSidebar (categories and memories)
+ * - Center: Main area with GraphVisualization + integrated MemoryInput
+ * - Right: Collapsible MemoryList panel (slide-in dropdown)
  * 
  * State Management:
  * - Manages memory and category data loading
  * - Coordinates refresh triggers across all child components
  * - Handles pagination state for memory list
+ * - Manages panel visibility states (sidebar, memory list)
  * - Manages navigation between different views
  * 
  * Integration:
@@ -36,8 +35,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User } from '@supabase/supabase-js';
-import { Header } from '../../../common';
-import { GraphVisualization, type GraphVisualizationRef, MemoryInput, MemoryList, FileSystemSidebar, nodesApi } from '../../memories';
+import { Header, LeftPanel } from '../../../common';
+import { GraphVisualization, type GraphVisualizationRef, MemoryInput, nodesApi } from '../../memories';
 import { categoriesApi } from '../../categories';
 import type { Node } from '../../../services';
 import { components } from '../../../types/generated/generated-types';
@@ -60,8 +59,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     const [totalMemories, setTotalMemories] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
     const [nextToken, setNextToken] = useState<string | undefined>(undefined);
+    const [pageTokens, setPageTokens] = useState<Map<number, string>>(new Map());
     const [refreshGraph, setRefreshGraph] = useState(0);
     const [refreshSidebar, setRefreshSidebar] = useState(0);
+    const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(() => {
+        // Default to collapsed on mobile devices
+        return window.innerWidth <= 768;
+    });
     const graphRef = useRef<GraphVisualizationRef>(null);
 
     const MEMORIES_PER_PAGE = 50;
@@ -87,6 +91,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
             setTotalPages(Math.ceil((data.total || 0) / MEMORIES_PER_PAGE));
             setNextToken(data.nextToken);
             setCurrentPage(page);
+            
+            // Store the nextToken for the next page if it exists
+            if (data.nextToken) {
+                setPageTokens(prev => {
+                    const newTokens = new Map(prev);
+                    newTokens.set(page + 1, data.nextToken!);
+                    return newTokens;
+                });
+            }
         } catch (error) {
             console.error('Error loading memories:', error);
             
@@ -110,6 +123,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     };
 
     const handleMemoryCreated = () => {
+        setPageTokens(new Map()); // Clear pagination tokens when refreshing
         loadMemories(1); // Go to first page to see new memory
         loadCategories(); // Refresh categories as new memories might be auto-categorized
         // Trigger graph and sidebar refresh
@@ -118,7 +132,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     };
 
     const handleMemoryDeleted = () => {
-        loadMemories(currentPage); // Stay on current page, but reload to update counts
+        // Don't clear tokens - we want to stay on the same page
+        if (currentPage === 1) {
+            loadMemories(1); // First page, no token needed
+        } else {
+            // Use loadFromPageOne to properly reload to current page
+            loadFromPageOne(currentPage);
+        }
         loadCategories(); // Refresh categories as counts might change
         // Trigger graph and sidebar refresh
         setRefreshGraph(prev => prev + 1);
@@ -126,17 +146,80 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     };
 
     const handleMemoryUpdated = () => {
-        loadMemories(currentPage); // Stay on current page and reload
+        // Don't clear tokens - we want to stay on the same page
+        if (currentPage === 1) {
+            loadMemories(1); // First page, no token needed
+        } else {
+            // Use loadFromPageOne to properly reload to current page
+            loadFromPageOne(currentPage);
+        }
         loadCategories(); // Refresh categories as content might affect categorization
         // Trigger graph and sidebar refresh
         setRefreshGraph(prev => prev + 1);
         setRefreshSidebar(prev => prev + 1);
     };
 
+    const loadFromPageOne = async (targetPage: number) => {
+        // Helper function to load a specific page by starting from page 1
+        // This is needed for backward navigation in token-based pagination
+        setIsLoading(true);
+        try {
+            let currentToken: string | undefined = undefined;
+            const tokens = new Map<number, string>();
+            
+            // Load pages sequentially until we reach the target page
+            for (let page = 1; page <= targetPage; page++) {
+                const data = await nodesApi.listNodes(MEMORIES_PER_PAGE, currentToken);
+                
+                if (page === targetPage) {
+                    // This is our target page - display it
+                    const pageNodes = data.nodes || [];
+                    pageNodes.sort((a, b) => 
+                        new Date(b.timestamp || '').getTime() - new Date(a.timestamp || '').getTime()
+                    );
+                    
+                    setMemories(pageNodes);
+                    setTotalMemories(data.total || 0);
+                    setTotalPages(Math.ceil((data.total || 0) / MEMORIES_PER_PAGE));
+                    setNextToken(data.nextToken);
+                    setCurrentPage(page);
+                }
+                
+                // Store token for next page
+                if (data.nextToken) {
+                    tokens.set(page + 1, data.nextToken);
+                }
+                currentToken = data.nextToken;
+            }
+            
+            // Update our token cache with the tokens we collected
+            setPageTokens(tokens);
+        } catch (error) {
+            console.error('Error loading memories:', error);
+            
+            const errorMessage = (error as Error).message;
+            if (errorMessage.includes('Authentication') || errorMessage.includes('expired') || errorMessage.includes('sign in')) {
+                alert('Your session has expired. Please refresh the page or sign in again.');
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handlePageChange = (newPage: number) => {
-        // For now, we'll implement simple pagination by reloading
-        // In the future, we could cache pages for better UX
-        loadMemories(newPage);
+        
+        if (newPage === 1) {
+            // First page always loads without token
+            loadMemories(1);
+        } else if (newPage > currentPage) {
+            // Going forward - use the stored token for this page
+            const tokenForPage = pageTokens.get(newPage);
+            loadMemories(newPage, tokenForPage);
+        } else {
+            // Going backward - need to reload from page 1 and build up to target page
+            // This is a limitation of token-based pagination
+            loadFromPageOne(newPage);
+        }
     };
 
     const handleViewInGraph = (nodeId: string) => {
@@ -146,6 +229,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                 console.warn('Could not find node in graph. The graph may still be loading.');
             }
         }
+        // Memory list is now in left panel, no need to close
+    };
+
+    const toggleLeftPanel = () => {
+        setIsLeftPanelCollapsed(!isLeftPanelCollapsed);
     };
 
     // memories already contains the current page data from server
@@ -154,47 +242,60 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
         <div className="app-container">
             <Header 
                 userEmail={user.email || ''} 
-                onSignOut={onSignOut} 
+                onSignOut={onSignOut}
+                onToggleSidebar={toggleLeftPanel}
+                isSidebarCollapsed={isLeftPanelCollapsed}
+                memoryCount={totalMemories}
             />
 
-            <main className="dashboard-layout">
-                {/* Left Sidebar - File System Explorer */}
-                <FileSystemSidebar
-                    userId={user.id}
+            <main className="dashboard-layout-mobile-ready">
+                {/* Left Panel with Tabs - Mobile Overlay */}
+                <LeftPanel
+                    user={user}
+                    isCollapsed={isLeftPanelCollapsed}
+                    onToggleCollapse={toggleLeftPanel}
                     onMemorySelect={handleViewInGraph}
                     onCategorySelect={(categoryId) => navigate(`/categories/${categoryId}`)}
                     refreshTrigger={refreshSidebar}
+                    memories={memories}
+                    totalMemories={totalMemories}
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    isLoading={isLoading}
+                    onPageChange={handlePageChange}
+                    onMemoryDeleted={handleMemoryDeleted}
+                    onMemoryUpdated={handleMemoryUpdated}
                 />
 
-                {/* Column Resize Handle */}
-                <div className="resize-handle horizontal" data-resize="horizontal-left"></div>
+                {/* Main Content Area */}
+                <div className="main-content-area">
+                    {/* Memory Input - Top on Desktop, Bottom on Mobile */}
+                    <div className="memory-input-container">
+                        <div className="memory-input-overlay desktop-input">
+                            <MemoryInput 
+                                onMemoryCreated={handleMemoryCreated}
+                                isCompact={true}
+                            />
+                        </div>
+                    </div>
 
-                {/* Middle Column - Memory Graph */}
-                <GraphVisualization ref={graphRef} refreshTrigger={refreshGraph} />
+                    {/* Graph Visualization */}
+                    <div className="graph-container">
+                        <GraphVisualization 
+                            ref={graphRef} 
+                            refreshTrigger={refreshGraph}
+                            hasOverlayInput={true}
+                        />
+                    </div>
 
-                {/* Column Resize Handle */}
-                <div className="resize-handle horizontal" data-resize="horizontal-right"></div>
-
-                {/* Right Column Container */}
-                <div className="right-column">
-                    {/* Top Right - Memory Input */}
-                    <MemoryInput onMemoryCreated={handleMemoryCreated} />
-
-                    {/* Vertical Resize Handle */}
-                    <div className="resize-handle vertical" data-resize="vertical"></div>
-
-                    {/* Bottom Right - Memory List */}
-                    <MemoryList 
-                        memories={memories}
-                        totalMemories={totalMemories}
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        isLoading={isLoading}
-                        onPageChange={handlePageChange}
-                        onMemoryDeleted={handleMemoryDeleted}
-                        onMemoryUpdated={handleMemoryUpdated}
-                        onMemoryViewInGraph={handleViewInGraph}
-                    />
+                    {/* Mobile Memory Input at Bottom */}
+                    <div className="mobile-memory-input">
+                        <MemoryInput 
+                            onMemoryCreated={handleMemoryCreated}
+                            isCompact={true}
+                            isMobile={true}
+                        />
+                    </div>
                 </div>
             </main>
         </div>

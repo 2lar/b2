@@ -126,5 +126,8 @@ func getUserID(r *http.Request) (string, bool) {
 func handleServiceError(w http.ResponseWriter, err error) {
 	// This should delegate to the handlers.handleServiceError implementation
 	// For now, provide basic error handling
+	if err != nil {
+		log.Printf("Service error: %v", err)
+	}
 	api.Error(w, http.StatusInternalServerError, "Internal server error")
 }

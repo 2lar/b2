@@ -11,29 +11,38 @@ import (
 	"time"
 
 	"brain2-backend/infrastructure/dynamodb"
-	infradynamodb "brain2-backend/internal/infrastructure/persistence/dynamodb"
 	"brain2-backend/internal/application/commands"
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
-	"brain2-backend/internal/domain/node"
-	"brain2-backend/internal/domain/edge"
 	"brain2-backend/internal/domain/category"
-	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/domain/edge"
+	"brain2-backend/internal/domain/node"
 	domainServices "brain2-backend/internal/domain/services"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/handlers"
 	"brain2-backend/internal/infrastructure/messaging"
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/infrastructure/persistence/cache"
+	infradynamodb "brain2-backend/internal/infrastructure/persistence/dynamodb"
 	"brain2-backend/internal/repository"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
+)
+
+// contextKey is a type for context keys to avoid collisions
+type contextKey string
+
+const (
+	// txContextKey is the context key for transactions
+	txContextKey contextKey = "tx"
 )
 
 // Container holds all application dependencies with lifecycle management.
@@ -44,7 +53,7 @@ type Container struct {
 	Config    *config.Config
 	TableName string
 	IndexName string
-	
+
 	// Cold start tracking
 	ColdStartTime *time.Time
 	IsColdStart   bool
@@ -54,23 +63,23 @@ type Container struct {
 	EventBridgeClient *awsEventbridge.Client
 
 	// Repository Layer - Phase 2 Enhanced Architecture
-	NodeRepository         repository.NodeRepository
-	EdgeRepository         repository.EdgeRepository
-	KeywordRepository      repository.KeywordRepository
+	NodeRepository          repository.NodeRepository
+	EdgeRepository          repository.EdgeRepository
+	KeywordRepository       repository.KeywordRepository
 	TransactionalRepository repository.TransactionalRepository
-	CategoryRepository     repository.CategoryRepository
-	GraphRepository        repository.GraphRepository
-	
+	CategoryRepository      repository.CategoryRepository
+	GraphRepository         repository.GraphRepository
+
 	// Composed repository for backward compatibility
 	Repository       repository.Repository
 	IdempotencyStore repository.IdempotencyStore
-	
+
 	// Phase 2 Repository Pattern Enhancements
-	RepositoryFactory    *repository.RepositoryFactory
-	UnitOfWorkProvider   repository.UnitOfWorkProvider
-	QueryExecutor        repository.QueryExecutor
-	RepositoryManager    repository.RepositoryManager
-	
+	RepositoryFactory  *repository.RepositoryFactory
+	UnitOfWorkProvider repository.UnitOfWorkProvider
+	QueryExecutor      repository.QueryExecutor
+	RepositoryManager  repository.RepositoryManager
+
 	// Cross-cutting concerns
 	Logger           *zap.Logger
 	Cache            cache.Cache
@@ -78,7 +87,6 @@ type Container struct {
 	TracerProvider   *observability.TracerProvider
 	Store            persistence.Store
 
-	
 	// Phase 3: Application Service Layer (CQRS)
 	NodeAppService       *services.NodeService
 	CategoryAppService   *services.CategoryService
@@ -86,12 +94,12 @@ type Container struct {
 	NodeQueryService     *queries.NodeQueryService
 	CategoryQueryService *queries.CategoryQueryService
 	GraphQueryService    *queries.GraphQueryService
-	
+
 	// Domain Services
 	ConnectionAnalyzer *domainServices.ConnectionAnalyzer
-	EventBus          shared.EventBus
-	UnitOfWork        repository.UnitOfWork
-	UnitOfWorkFactory repository.UnitOfWorkFactory
+	EventBus           shared.EventBus
+	UnitOfWork         repository.UnitOfWork
+	UnitOfWorkFactory  repository.UnitOfWorkFactory
 
 	// Handler Layer
 	MemoryHandler   *handlers.MemoryHandler
@@ -100,7 +108,6 @@ type Container struct {
 
 	// HTTP Router
 	Router *chi.Mux
-
 
 	// Middleware components (for monitoring/observability)
 	middlewareConfig map[string]any
@@ -182,20 +189,30 @@ func (c *Container) initializeAWSClients() error {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	// DynamoDB client with custom timeouts
+	// Create shared HTTP client with Keep-Alive explicitly enabled for connection reuse
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			// Explicitly enable Keep-Alive for connection reuse within the Lambda container
+			DisableKeepAlives:   false, // IMPORTANT: Reuse TCP connections on warm starts
+			MaxIdleConns:        10,    // Keep some connections ready (useful within single container)
+			MaxIdleConnsPerHost: 2,     // Per-host limit (we mainly talk to DynamoDB)
+			IdleConnTimeout:     90 * time.Second,
+			TLSHandshakeTimeout: 10 * time.Second,
+		},
+	}
+
+	// DynamoDB client with optimized HTTP client
 	c.DynamoDBClient = awsDynamodb.NewFromConfig(awsCfg, func(o *awsDynamodb.Options) {
-		// Set reasonable timeouts for DynamoDB operations
-		o.HTTPClient = &http.Client{
-			Timeout: 15 * time.Second,
-		}
+		o.HTTPClient = httpClient
+		o.RetryMaxAttempts = 3
+		o.RetryMode = aws.RetryModeAdaptive
 	})
 
-	// EventBridge client with custom timeouts
+	// EventBridge client with optimized HTTP client
 	c.EventBridgeClient = awsEventbridge.NewFromConfig(awsCfg, func(o *awsEventbridge.Options) {
-		// Set reasonable timeouts for EventBridge operations
-		o.HTTPClient = &http.Client{
-			Timeout: 10 * time.Second,
-		}
+		o.HTTPClient = httpClient
+		o.RetryMaxAttempts = 3
 	})
 
 	log.Printf("AWS clients initialized in %v", time.Since(startTime))
@@ -245,7 +262,7 @@ func (c *Container) initializeRepository() error {
 	// c.EdgeRepository = c.RepositoryFactory.CreateEdgeRepository(baseEdgeRepo, c.Logger, c.Cache, c.MetricsCollector)
 	c.EdgeRepository = baseEdgeRepo // Use base repository for now
 	c.CategoryRepository = c.RepositoryFactory.CreateCategoryRepository(baseCategoryRepo, c.Logger, c.Cache, c.MetricsCollector)
-	
+
 	// Repositories that don't need persistence yet (can be enhanced later)
 	c.KeywordRepository = baseKeywordRepo
 	c.TransactionalRepository = baseTransactionalRepo
@@ -283,7 +300,7 @@ func (c *Container) initializeCrossCuttingConcerns() {
 	// Initialize cache (in-memory cache for development, would be Redis/Memcached in production)
 	c.Cache = &NoOpCache{} // Simple no-op implementation
 
-	// Initialize metrics collector (in-memory for development, would be Prometheus/StatsD in production)  
+	// Initialize metrics collector (in-memory for development, would be Prometheus/StatsD in production)
 	c.MetricsCollector = NewNoOpMetricsCollector() // Simple no-op implementation
 }
 
@@ -292,23 +309,23 @@ func (c *Container) getRepositoryFactoryConfig() repository.FactoryConfig {
 	// Determine environment and return appropriate config
 	// This would typically be based on environment variables or config
 	environment := "development" // Placeholder
-	
+
 	switch environment {
 	case "production":
 		return repository.ProductionFactoryConfig()
 	case "testing":
-		// Create testing factory config directly 
+		// Create testing factory config directly
 		return repository.FactoryConfig{
-			LoggingConfig:     repository.LoggingConfig{},
-			CachingConfig:     repository.CachingConfig{},
-			MetricsConfig:     repository.MetricsConfig{},
-			RetryConfig:       repository.DefaultRetryConfig(),
-			EnableLogging:     false,
-			EnableCaching:     false,
-			EnableMetrics:     false,
-			EnableRetries:     false,
-			StrictMode:        true,
-			EnableValidation:  true,
+			LoggingConfig:    repository.LoggingConfig{},
+			CachingConfig:    repository.CachingConfig{},
+			MetricsConfig:    repository.MetricsConfig{},
+			RetryConfig:      repository.DefaultRetryConfig(),
+			EnableLogging:    false,
+			EnableCaching:    false,
+			EnableMetrics:    false,
+			EnableRetries:    false,
+			StrictMode:       true,
+			EnableValidation: true,
 		}
 	default:
 		return repository.DevelopmentFactoryConfig()
@@ -329,39 +346,39 @@ func (c *Container) initializePhase3Services() {
 
 	// Initialize domain services first
 	c.ConnectionAnalyzer = domainServices.NewConnectionAnalyzer(0.3, 5, 0.2) // threshold, max connections, recency weight
-	
+
 	// Initialize REAL implementations instead of mocks
 	transactionProvider := persistence.NewDynamoDBTransactionProvider(c.DynamoDBClient)
-	
+
 	// Get event bus name from config or environment, default to "B2EventBus" to match CDK
 	eventBusName := "B2EventBus" // Match the CDK-created event bus name
 	if c.Config != nil && c.Config.Events.EventBusName != "" {
 		eventBusName = c.Config.Events.EventBusName
 	}
-	
+
 	// Add debug logging for event bus configuration
 	log.Printf("DEBUG: Configuring EventBridge with bus name: %s, source: brain2-backend", eventBusName)
-	
+
 	eventPublisher := messaging.NewEventBridgePublisher(c.EventBridgeClient, eventBusName, "brain2-backend")
-	
+
 	// Use the REAL EventBridge publisher through the adapter
 	c.EventBus = messaging.NewEventBusAdapter(eventPublisher)
-	
+
 	log.Printf("DEBUG: EventBridge publisher configured successfully")
-	
+
 	// Create a real transactional repository factory using the implementation below
 	repositoryFactory := NewTransactionalRepositoryFactory(
 		c.NodeRepository,
 		c.EdgeRepository,
 		c.CategoryRepository,
 	)
-	
+
 	// Create EventStore for domain event persistence
 	eventStore := infradynamodb.NewDynamoDBEventStore(
 		c.DynamoDBClient,
 		c.TableName, // Reuse the same table with different partition keys
 	)
-	
+
 	// Create UnitOfWorkFactory instead of singleton UnitOfWork
 	// This ensures each request gets its own isolated transaction context
 	c.UnitOfWorkFactory = infradynamodb.NewDynamoDBUnitOfWorkFactory(
@@ -372,10 +389,10 @@ func (c *Container) initializePhase3Services() {
 		eventStore,
 		c.Logger,
 	)
-	
+
 	// Keep singleton for backward compatibility (will be removed later)
 	c.UnitOfWork = repository.NewUnitOfWork(transactionProvider, eventPublisher, repositoryFactory)
-	
+
 	// Initialize Application Services (only NodeService for now)
 	// Use repositories directly
 	c.NodeAppService = services.NewNodeService(
@@ -386,7 +403,7 @@ func (c *Container) initializePhase3Services() {
 		c.ConnectionAnalyzer,
 		c.IdempotencyStore,
 	)
-	
+
 	// Initialize Node Query Service with cache (using InMemoryCache wrapper)
 	var queryCache queries.Cache
 	if c.Config.Features.EnableCaching {
@@ -397,7 +414,7 @@ func (c *Container) initializePhase3Services() {
 	} else {
 		queryCache = nil // NodeQueryService handles nil cache gracefully
 	}
-	
+
 	// Use repositories directly - they implement the Reader/Writer interfaces
 	c.NodeQueryService = queries.NewNodeQueryService(
 		c.NodeRepository.(repository.NodeReader),
@@ -405,7 +422,7 @@ func (c *Container) initializePhase3Services() {
 		c.GraphRepository,
 		queryCache,
 	)
-	
+
 	// Initialize CategoryQueryService with proper dependencies
 	c.CategoryQueryService = queries.NewCategoryQueryService(
 		c.CategoryRepository.(repository.CategoryReader),
@@ -413,14 +430,14 @@ func (c *Container) initializePhase3Services() {
 		c.Logger,
 		queryCache,
 	)
-	
+
 	// Initialize GraphQueryService with Store implementation
 	c.GraphQueryService = queries.NewGraphQueryService(
 		c.Store,
 		c.Logger,
 		queryCache,
 	)
-	
+
 	// Initialize CategoryAppService for command handling
 	categoryCommandHandler := commands.NewCategoryCommandHandler(
 		c.Store,
@@ -431,14 +448,14 @@ func (c *Container) initializePhase3Services() {
 	c.CategoryAppService = services.NewCategoryService(
 		categoryCommandHandler,
 	)
-	
+
 	// Initialize CleanupService for async resource cleanup
 	// Get EdgeWriter from the edge repository if it implements the interface
 	var edgeWriter repository.EdgeWriter
 	if writer, ok := c.EdgeRepository.(repository.EdgeWriter); ok {
 		edgeWriter = writer
 	}
-	
+
 	c.CleanupService = services.NewCleanupService(
 		c.NodeRepository,
 		c.EdgeRepository,
@@ -446,7 +463,7 @@ func (c *Container) initializePhase3Services() {
 		c.IdempotencyStore,
 		c.UnitOfWorkFactory,
 	)
-	
+
 	log.Printf("Phase 3 Application Services initialized in %v", time.Since(startTime))
 }
 
@@ -454,7 +471,7 @@ func (c *Container) initializePhase3Services() {
 func (c *Container) initializeServicesLegacy() {
 	// Initialize Phase 3 CQRS services
 	c.initializePhase3Services()
-	
+
 	// Legacy services have been removed - using CQRS architecture directly
 	log.Println("Using CQRS services directly - legacy services removed")
 }
@@ -474,7 +491,7 @@ func (c *Container) initializeHandlersLegacy() {
 	} else {
 		log.Println("ERROR: CQRS services not available for MemoryHandler")
 	}
-	
+
 	if c.CategoryAppService != nil && c.CategoryQueryService != nil {
 		c.CategoryHandler = handlers.NewCategoryHandler(
 			c.CategoryAppService,
@@ -484,7 +501,7 @@ func (c *Container) initializeHandlersLegacy() {
 	} else {
 		log.Println("ERROR: CQRS services not available for CategoryHandler")
 	}
-	
+
 	c.HealthHandler = handlers.NewHealthHandler()
 }
 
@@ -492,39 +509,39 @@ func (c *Container) initializeHandlersLegacy() {
 func (c *Container) initializeMiddleware() {
 	// Store middleware configuration for monitoring/observability
 	c.middlewareConfig["request_id"] = map[string]any{
-		"enabled": true,
+		"enabled":     true,
 		"header_name": "X-Request-ID",
 	}
-	
+
 	c.middlewareConfig["circuit_breaker"] = map[string]any{
 		"enabled": true,
 		"api_routes": map[string]any{
-			"name": "api-routes",
-			"max_requests": 3,
-			"interval_seconds": 10,
-			"timeout_seconds": 30,
+			"name":              "api-routes",
+			"max_requests":      3,
+			"interval_seconds":  10,
+			"timeout_seconds":   30,
 			"failure_threshold": 0.6,
-			"min_requests": 3,
+			"min_requests":      3,
 		},
 	}
-	
+
 	c.middlewareConfig["timeout"] = map[string]any{
-		"enabled": true,
+		"enabled":                 true,
 		"default_timeout_seconds": 30,
 	}
-	
+
 	c.middlewareConfig["recovery"] = map[string]any{
-		"enabled": true,
+		"enabled":         true,
 		"log_stack_trace": true,
 	}
-	
+
 	log.Println("Middleware configuration initialized")
 }
 
 // initializeRouter sets up the HTTP router with all routes.
 func (c *Container) initializeRouter() {
 	router := chi.NewRouter()
-	
+
 	// Observability middleware (applied to all routes)
 	if c.MetricsCollector != nil {
 		router.Use(observability.MetricsMiddleware(c.MetricsCollector))
@@ -532,19 +549,19 @@ func (c *Container) initializeRouter() {
 	if c.TracerProvider != nil {
 		router.Use(observability.TracingMiddleware("brain2-api"))
 	}
-	
+
 	// Health check endpoints (public)
 	router.Get("/health", c.HealthHandler.Check)
 	router.Get("/ready", c.HealthHandler.Ready)
-	
+
 	// Metrics endpoint (public)
 	router.Handle("/metrics", promhttp.Handler())
-	
+
 	// API routes (protected) - v1
 	router.Route("/api/v1", func(r chi.Router) {
 		// Apply authentication middleware to all API routes
 		r.Use(handlers.Authenticator)
-		
+
 		// Node routes
 		r.Route("/nodes", func(r chi.Router) {
 			r.Post("/", c.MemoryHandler.CreateNode)
@@ -554,10 +571,10 @@ func (c *Container) initializeRouter() {
 			r.Delete("/{nodeId}", c.MemoryHandler.DeleteNode)
 			r.Post("/bulk-delete", c.MemoryHandler.BulkDeleteNodes)
 		})
-		
+
 		// Graph routes
 		r.Get("/graph-data", c.MemoryHandler.GetGraphData)
-		
+
 		// Category routes
 		r.Route("/categories", func(r chi.Router) {
 			r.Post("/", c.CategoryHandler.CreateCategory)
@@ -565,18 +582,18 @@ func (c *Container) initializeRouter() {
 			r.Get("/{categoryId}", c.CategoryHandler.GetCategory)
 			r.Put("/{categoryId}", c.CategoryHandler.UpdateCategory)
 			r.Delete("/{categoryId}", c.CategoryHandler.DeleteCategory)
-			
+
 			// Category-Node relationships
 			r.Post("/{categoryId}/nodes", c.CategoryHandler.AssignNodeToCategory)
 			r.Get("/{categoryId}/nodes", c.CategoryHandler.GetNodesInCategory)
 			r.Delete("/{categoryId}/nodes/{nodeId}", c.CategoryHandler.RemoveNodeFromCategory)
 		})
-		
+
 		// Node categorization routes
 		r.Get("/nodes/{nodeId}/categories", c.CategoryHandler.GetNodeCategories)
 		r.Post("/nodes/{nodeId}/categories", c.CategoryHandler.CategorizeNode)
 	})
-	
+
 	// Backward compatibility redirects for old API routes
 	router.Route("/api", func(r chi.Router) {
 		// Redirect all /api/* to /v1/api/*
@@ -585,7 +602,7 @@ func (c *Container) initializeRouter() {
 			w.Header().Set("X-API-Deprecated", "true")
 			w.Header().Set("X-API-Migration", "Please use /api/v1/ prefix")
 			w.Header().Set("X-API-Sunset", "2025-06-01")
-			
+
 			// Redirect to v1 API
 			newPath := req.URL.Path
 			if newPath == "/api" || newPath == "/api/" {
@@ -596,17 +613,17 @@ func (c *Container) initializeRouter() {
 			http.Redirect(w, req, newPath, http.StatusMovedPermanently)
 		})
 	})
-	
+
 	c.Router = router
 }
 
 // initializeObservability sets up metrics collection and tracing.
 func (c *Container) initializeObservability() error {
 	log.Println("Initializing observability components...")
-	
+
 	// Initialize metrics collector
 	c.MetricsCollector = observability.NewCollector("brain2")
-	
+
 	// Initialize tracing provider if enabled
 	if c.Config.Tracing.Enabled {
 		tracerProvider, err := observability.InitTracing(
@@ -625,7 +642,7 @@ func (c *Container) initializeObservability() error {
 			// })
 		}
 	}
-	
+
 	log.Println("Observability initialized successfully")
 	return nil
 }
@@ -635,9 +652,9 @@ func (c *Container) initializeTracing() error {
 	if !c.Config.Tracing.Enabled {
 		return nil
 	}
-	
+
 	log.Println("Initializing distributed tracing...")
-	
+
 	tracerProvider, err := observability.InitTracing(
 		"brain2-backend",
 		string(c.Config.Environment),
@@ -646,14 +663,14 @@ func (c *Container) initializeTracing() error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize tracing: %w", err)
 	}
-	
+
 	c.TracerProvider = tracerProvider
 	c.addShutdownFunction(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return tracerProvider.Shutdown(ctx)
 	})
-	
+
 	log.Println("Distributed tracing initialized successfully")
 	return nil
 }
@@ -668,7 +685,7 @@ func (c *Container) Shutdown(ctx context.Context) error {
 	log.Println("Shutting down dependency injection container...")
 
 	var errors []error
-	
+
 	// Execute shutdown functions in reverse order
 	for i := len(c.shutdownFunctions) - 1; i >= 0; i-- {
 		if err := c.shutdownFunctions[i](); err != nil {
@@ -729,7 +746,7 @@ func (c *Container) Validate() error {
 	if c.EventBridgeClient == nil {
 		return fmt.Errorf("EventBridge client not initialized")
 	}
-	
+
 	// Validate segregated repositories
 	if c.NodeRepository == nil {
 		return fmt.Errorf("node repository not initialized")
@@ -749,7 +766,7 @@ func (c *Container) Validate() error {
 	if c.GraphRepository == nil {
 		return fmt.Errorf("graph repository not initialized")
 	}
-	
+
 	// Validate composed repository (backward compatibility)
 	if c.Repository == nil {
 		return fmt.Errorf("composed repository not initialized")
@@ -757,7 +774,7 @@ func (c *Container) Validate() error {
 	if c.IdempotencyStore == nil {
 		return fmt.Errorf("idempotency store not initialized")
 	}
-	
+
 	if c.MemoryHandler == nil {
 		return fmt.Errorf("memory handler not initialized")
 	}
@@ -784,23 +801,23 @@ func (c *Container) GetMiddlewareConfig() map[string]any {
 // Health returns the health status of all components.
 func (c *Container) Health(ctx context.Context) map[string]string {
 	health := make(map[string]string)
-	
+
 	health["container"] = "healthy"
 	health["config"] = "loaded"
-	
+
 	// Add health checks for individual components as needed
 	if c.DynamoDBClient != nil {
 		health["dynamodb"] = "connected"
 	} else {
 		health["dynamodb"] = "not_connected"
 	}
-	
+
 	if c.EventBridgeClient != nil {
 		health["eventbridge"] = "connected"
 	} else {
 		health["eventbridge"] = "not_connected"
 	}
-	
+
 	// Add middleware status
 	if len(c.middlewareConfig) > 0 {
 		health["middleware"] = "configured"
@@ -854,17 +871,20 @@ func NewNoOpMetricsCollector() *observability.Collector {
 
 func (m *NoOpMetricsCollector) IncrementCounter(name string, tags map[string]string) {}
 
-func (m *NoOpMetricsCollector) IncrementCounterBy(name string, value float64, tags map[string]string) {}
+func (m *NoOpMetricsCollector) IncrementCounterBy(name string, value float64, tags map[string]string) {
+}
 
 func (m *NoOpMetricsCollector) SetGauge(name string, value float64, tags map[string]string) {}
 
 func (m *NoOpMetricsCollector) IncrementGauge(name string, value float64, tags map[string]string) {}
 
-func (m *NoOpMetricsCollector) RecordDuration(name string, duration time.Duration, tags map[string]string) {}
+func (m *NoOpMetricsCollector) RecordDuration(name string, duration time.Duration, tags map[string]string) {
+}
 
 func (m *NoOpMetricsCollector) RecordValue(name string, value float64, tags map[string]string) {}
 
-func (m *NoOpMetricsCollector) RecordDistribution(name string, value float64, tags map[string]string) {}
+func (m *NoOpMetricsCollector) RecordDistribution(name string, value float64, tags map[string]string) {
+}
 
 // InMemoryCache is a simple in-memory cache implementation
 type InMemoryCache struct {
@@ -894,44 +914,44 @@ func NewInMemoryCache(maxItems int, defaultTTL time.Duration) cache.Cache {
 func (c *InMemoryCache) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	item, exists := c.items[key]
 	if !exists {
 		return nil, false, nil
 	}
-	
+
 	if time.Now().After(item.expiresAt) {
 		return nil, false, nil
 	}
-	
+
 	return item.value, true, nil
 }
 
 func (c *InMemoryCache) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	if ttl == 0 {
 		ttl = c.ttl
 	}
-	
+
 	// Evict old items if cache is full
 	if len(c.items) >= c.maxItems {
 		c.evictOldest()
 	}
-	
+
 	c.items[key] = inMemoryCacheItem{
 		value:     value,
 		expiresAt: time.Now().Add(ttl),
 	}
-	
+
 	return nil
 }
 
 func (c *InMemoryCache) Delete(ctx context.Context, key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	delete(c.items, key)
 	return nil
 }
@@ -939,29 +959,29 @@ func (c *InMemoryCache) Delete(ctx context.Context, key string) error {
 func (c *InMemoryCache) Clear(ctx context.Context, pattern string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	// Simple pattern matching (prefix only for now)
 	for key := range c.items {
-		if pattern == "*" || (len(pattern) > 0 && pattern[len(pattern)-1] == '*' && 
+		if pattern == "*" || (len(pattern) > 0 && pattern[len(pattern)-1] == '*' &&
 			len(key) >= len(pattern)-1 && key[:len(pattern)-1] == pattern[:len(pattern)-1]) {
 			delete(c.items, key)
 		}
 	}
-	
+
 	return nil
 }
 
 func (c *InMemoryCache) evictOldest() {
 	var oldestKey string
 	var oldestTime time.Time
-	
+
 	for key, item := range c.items {
 		if oldestTime.IsZero() || item.expiresAt.Before(oldestTime) {
 			oldestKey = key
 			oldestTime = item.expiresAt
 		}
 	}
-	
+
 	if oldestKey != "" {
 		delete(c.items, oldestKey)
 	}
@@ -970,7 +990,7 @@ func (c *InMemoryCache) evictOldest() {
 func (c *InMemoryCache) cleanup() {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		c.mu.Lock()
 		now := time.Now()
@@ -989,7 +1009,6 @@ type InMemoryMetricsCollector struct {
 	gauges   map[string]float64
 	timings  map[string][]time.Duration
 	mu       sync.RWMutex
-	logger   *zap.Logger
 }
 
 // NewInMemoryMetricsCollector creates a new in-memory metrics collector
@@ -1005,7 +1024,7 @@ func (m *InMemoryMetricsCollector) IncrementCounter(name string, tags map[string
 func (m *InMemoryMetricsCollector) IncrementCounterBy(name string, value float64, tags map[string]string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	key := m.buildKey(name, tags)
 	m.counters[key] += value
 }
@@ -1013,7 +1032,7 @@ func (m *InMemoryMetricsCollector) IncrementCounterBy(name string, value float64
 func (m *InMemoryMetricsCollector) SetGauge(name string, value float64, tags map[string]string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	key := m.buildKey(name, tags)
 	m.gauges[key] = value
 }
@@ -1021,7 +1040,7 @@ func (m *InMemoryMetricsCollector) SetGauge(name string, value float64, tags map
 func (m *InMemoryMetricsCollector) IncrementGauge(name string, value float64, tags map[string]string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	key := m.buildKey(name, tags)
 	m.gauges[key] += value
 }
@@ -1029,10 +1048,10 @@ func (m *InMemoryMetricsCollector) IncrementGauge(name string, value float64, ta
 func (m *InMemoryMetricsCollector) RecordDuration(name string, duration time.Duration, tags map[string]string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	key := m.buildKey(name, tags)
 	m.timings[key] = append(m.timings[key], duration)
-	
+
 	// Keep only last 1000 timings per metric
 	if len(m.timings[key]) > 1000 {
 		m.timings[key] = m.timings[key][len(m.timings[key])-1000:]
@@ -1053,7 +1072,7 @@ func (m *InMemoryMetricsCollector) buildKey(name string, tags map[string]string)
 	if len(tags) == 0 {
 		return name
 	}
-	
+
 	// Build key with tags
 	key := name
 	for k, v := range tags {
@@ -1065,7 +1084,7 @@ func (m *InMemoryMetricsCollector) buildKey(name string, tags map[string]string)
 // Placeholder implementations for Phase 3 components
 // Mock implementations have been removed - using real implementations from infrastructure packages:
 // - transactions.DynamoDBTransactionProvider for transaction management
-// - events.EventBridgePublisher for event publishing  
+// - events.EventBridgePublisher for event publishing
 // - repository.TransactionalRepositoryFactory for creating transactional repositories
 
 // Additional mock factory methods removed - using real TransactionalRepositoryFactory
@@ -1151,55 +1170,55 @@ type transactionalNodeWrapper struct {
 
 func (w *transactionalNodeWrapper) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
 	// Mark context with transaction
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.CreateNodeAndKeywords(ctx, node)
 }
 
 func (w *transactionalNodeWrapper) FindNodeByID(ctx context.Context, userID, nodeID string) (*node.Node, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindNodeByID(ctx, userID, nodeID)
 }
 
 // UpdateNode is not part of the NodeRepository interface
 
 func (w *transactionalNodeWrapper) DeleteNode(ctx context.Context, userID, nodeID string) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.DeleteNode(ctx, userID, nodeID)
 }
 
 func (w *transactionalNodeWrapper) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.BatchDeleteNodes(ctx, userID, nodeIDs)
 }
 
 func (w *transactionalNodeWrapper) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*node.Node, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindNodes(ctx, query)
 }
 
 func (w *transactionalNodeWrapper) GetNodesPage(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination) (*repository.NodePage, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.GetNodesPage(ctx, query, pagination)
 }
 
 func (w *transactionalNodeWrapper) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*shared.Graph, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.GetNodeNeighborhood(ctx, userID, nodeID, depth)
 }
 
 func (w *transactionalNodeWrapper) CountNodes(ctx context.Context, userID string) (int, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.CountNodes(ctx, userID)
 }
 
 // Add missing methods from NodeRepository interface
 func (w *transactionalNodeWrapper) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindNodesWithOptions(ctx, query, opts...)
 }
 
 func (w *transactionalNodeWrapper) FindNodesPageWithOptions(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination, opts ...repository.QueryOption) (*repository.NodePage, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindNodesPageWithOptions(ctx, query, pagination, opts...)
 }
 
@@ -1210,17 +1229,17 @@ type transactionalEdgeWrapper struct {
 }
 
 func (w *transactionalEdgeWrapper) CreateEdge(ctx context.Context, edge *edge.Edge) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.CreateEdge(ctx, edge)
 }
 
 func (w *transactionalEdgeWrapper) CreateEdges(ctx context.Context, userID, sourceNodeID string, relatedNodeIDs []string) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.CreateEdges(ctx, userID, sourceNodeID, relatedNodeIDs)
 }
 
 func (w *transactionalEdgeWrapper) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*edge.Edge, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindEdges(ctx, query)
 }
 
@@ -1228,12 +1247,12 @@ func (w *transactionalEdgeWrapper) FindEdges(ctx context.Context, query reposito
 
 // Add missing methods from EdgeRepository interface
 func (w *transactionalEdgeWrapper) GetEdgesPage(ctx context.Context, query repository.EdgeQuery, pagination repository.Pagination) (*repository.EdgePage, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.GetEdgesPage(ctx, query, pagination)
 }
 
 func (w *transactionalEdgeWrapper) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*edge.Edge, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindEdgesWithOptions(ctx, query, opts...)
 }
 
@@ -1244,103 +1263,103 @@ type transactionalCategoryWrapper struct {
 }
 
 func (w *transactionalCategoryWrapper) CreateCategory(ctx context.Context, category category.Category) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.CreateCategory(ctx, category)
 }
 
 func (w *transactionalCategoryWrapper) FindCategoryByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindCategoryByID(ctx, userID, categoryID)
 }
 
 func (w *transactionalCategoryWrapper) UpdateCategory(ctx context.Context, category category.Category) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.UpdateCategory(ctx, category)
 }
 
 func (w *transactionalCategoryWrapper) DeleteCategory(ctx context.Context, userID, categoryID string) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.DeleteCategory(ctx, userID, categoryID)
 }
 
 func (w *transactionalCategoryWrapper) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]category.Category, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindCategories(ctx, query)
 }
 
 func (w *transactionalCategoryWrapper) AssignNodeToCategory(ctx context.Context, mapping node.NodeCategory) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.AssignNodeToCategory(ctx, mapping)
 }
 
 func (w *transactionalCategoryWrapper) RemoveNodeFromCategory(ctx context.Context, userID, nodeID, categoryID string) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.RemoveNodeFromCategory(ctx, userID, nodeID, categoryID)
 }
 
 // Add missing methods from CategoryRepository interface
 func (w *transactionalCategoryWrapper) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]category.Category, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindCategoriesByLevel(ctx, userID, level)
 }
 
 func (w *transactionalCategoryWrapper) Save(ctx context.Context, category *category.Category) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.Save(ctx, category)
 }
 
 func (w *transactionalCategoryWrapper) FindByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindByID(ctx, userID, categoryID)
 }
 
 func (w *transactionalCategoryWrapper) Delete(ctx context.Context, userID, categoryID string) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.Delete(ctx, userID, categoryID)
 }
 
 func (w *transactionalCategoryWrapper) CreateCategoryHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.CreateCategoryHierarchy(ctx, hierarchy)
 }
 
 func (w *transactionalCategoryWrapper) DeleteCategoryHierarchy(ctx context.Context, userID, parentID, childID string) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.DeleteCategoryHierarchy(ctx, userID, parentID, childID)
 }
 
 func (w *transactionalCategoryWrapper) FindChildCategories(ctx context.Context, userID, parentID string) ([]category.Category, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindChildCategories(ctx, userID, parentID)
 }
 
 func (w *transactionalCategoryWrapper) FindParentCategory(ctx context.Context, userID, childID string) (*category.Category, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindParentCategory(ctx, userID, childID)
 }
 
 func (w *transactionalCategoryWrapper) GetCategoryTree(ctx context.Context, userID string) ([]category.Category, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.GetCategoryTree(ctx, userID)
 }
 
 func (w *transactionalCategoryWrapper) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*node.Node, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindNodesByCategory(ctx, userID, categoryID)
 }
 
 func (w *transactionalCategoryWrapper) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]category.Category, error) {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindCategoriesForNode(ctx, userID, nodeID)
 }
 
 func (w *transactionalCategoryWrapper) BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.BatchAssignCategories(ctx, mappings)
 }
 
 func (w *transactionalCategoryWrapper) UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error {
-	ctx = context.WithValue(ctx, "tx", w.tx)
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.UpdateCategoryNoteCounts(ctx, userID, categoryCounts)
 }
 
@@ -1350,33 +1369,36 @@ type SimpleMemoryCacheWrapper struct {
 }
 
 // Get retrieves a value from the cache
-func (c *SimpleMemoryCacheWrapper) Get(ctx context.Context, key string) (interface{}, bool) {
+func (c *SimpleMemoryCacheWrapper) Get(ctx context.Context, key string) (any, bool) {
 	data, found, err := c.cache.Get(ctx, key)
 	if err != nil || !found {
 		return nil, false
 	}
-	
+
 	// Deserialize the data
-	var value interface{}
+	var value any
 	if err := json.Unmarshal(data, &value); err != nil {
 		return nil, false
 	}
-	
+
 	return value, true
 }
 
 // Set stores a value in the cache
-func (c *SimpleMemoryCacheWrapper) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) {
+func (c *SimpleMemoryCacheWrapper) Set(ctx context.Context, key string, value any, ttl time.Duration) {
 	// Serialize the value
 	data, err := json.Marshal(value)
 	if err != nil {
 		return
 	}
-	
+
 	c.cache.Set(ctx, key, data, ttl)
 }
 
 // Delete removes a value from the cache
 func (c *SimpleMemoryCacheWrapper) Delete(ctx context.Context, key string) {
 	c.cache.Delete(ctx, key)
+}
+func (w *transactionalNodeWrapper) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	return w.base.BatchGetNodes(ctx, userID, nodeIDs)
 }

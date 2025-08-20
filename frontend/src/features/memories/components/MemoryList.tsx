@@ -3,6 +3,7 @@
  * 
  * Purpose:
  * Provides a comprehensive list view for browsing, editing, and managing memories.
+ * Supports both full panel mode and compact slide-in panel mode.
  * Offers bulk operations, individual memory actions, and seamless integration with the graph view.
  * 
  * Key Features:
@@ -14,6 +15,11 @@
  * - Timestamp display with relative time formatting
  * - Loading states and error handling
  * - Responsive design for different screen sizes
+ * - Panel mode for slide-in interface
+ * 
+ * Display Modes:
+ * - Full mode: Traditional dashboard container layout
+ * - Panel mode: Compact slide-in panel from right side
  * 
  * Memory Management:
  * - Click to edit memory content inline
@@ -38,7 +44,7 @@
  * - Receives paginated memory data from Dashboard
  * - Calls callbacks for data refresh after operations
  * - Integrates with GraphVisualization for "View in Graph" functionality
- * - Positioned in bottom-right panel of Dashboard layout
+ * - Can be positioned in panel or slide-in mode
  */
 
 import React, { useState } from 'react';
@@ -64,6 +70,8 @@ interface MemoryListProps {
     onMemoryUpdated: () => void;
     /** Optional callback to view memory in graph visualization */
     onMemoryViewInGraph?: (nodeId: string) => void;
+    /** Whether component is rendered in a slide-in panel */
+    isInPanel?: boolean;
 }
 
 const MemoryList: React.FC<MemoryListProps> = ({
@@ -75,7 +83,8 @@ const MemoryList: React.FC<MemoryListProps> = ({
     onPageChange,
     onMemoryDeleted,
     onMemoryUpdated,
-    onMemoryViewInGraph
+    onMemoryViewInGraph,
+    isInPanel = false
 }) => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editContent, setEditContent] = useState('');
@@ -174,6 +183,168 @@ const MemoryList: React.FC<MemoryListProps> = ({
         }
     };
 
+    if (isInPanel) {
+        return (
+            <div className="memory-list-panel-content">
+                <div className="memory-list">
+                    {memories.length > 0 && (
+                        <div className="memory-list-controls">
+                            <div className="controls-main">
+                                <label className="checkbox-container">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={selectedMemories.size === memories.length && memories.length > 0}
+                                        onChange={handleSelectAll}
+                                        className="select-all-checkbox"
+                                    />
+                                    <span className="checkmark"></span>
+                                    Select All (Page)
+                                </label>
+                                <span className="total-count">
+                                    {totalMemories} {totalMemories === 1 ? 'memory' : 'memories'}
+                                </span>
+                            </div>
+                            {selectedMemories.size > 0 && (
+                                <div className="controls-footer">
+                                    <button 
+                                        className="danger-btn bulk-delete-btn" 
+                                        onClick={handleBulkDelete}
+                                        disabled={isDeleting}
+                                    >
+                                        {isDeleting ? 'Deleting...' : `Delete ${selectedMemories.size} Selected`}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {isLoading ? (
+                        <div className="empty-state">Loading memories...</div>
+                    ) : memories.length === 0 ? (
+                        <div className="empty-state">No memories yet. Create your first memory above!</div>
+                    ) : (
+                        memories.map(memory => (
+                            <div 
+                                key={memory.nodeId} 
+                                className={`memory-item ${onMemoryViewInGraph ? 'memory-item-clickable' : ''}`}
+                                data-node-id={memory.nodeId}
+                                onClick={onMemoryViewInGraph && editingId !== memory.nodeId ? () => onMemoryViewInGraph(memory.nodeId || '') : undefined}
+                                style={onMemoryViewInGraph && editingId !== memory.nodeId ? { cursor: 'pointer' } : undefined}
+                            >
+                                <div className="memory-item-header">
+                                    <label className="checkbox-container" onClick={(e) => e.stopPropagation()}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedMemories.has(memory.nodeId || '')}
+                                            onChange={(e) => {
+                                                e.stopPropagation();
+                                                handleSelectMemory(memory.nodeId || '');
+                                            }}
+                                            className="memory-checkbox" 
+                                        />
+                                        <span className="checkmark"></span>
+                                    </label>
+                                    <div className="memory-item-content">
+                                        {editingId === memory.nodeId ? (
+                                            <textarea 
+                                                value={editContent}
+                                                onChange={(e) => setEditContent(e.target.value)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="edit-textarea"
+                                                autoFocus
+                                            />
+                                        ) : (
+                                            memory.content || ''
+                                        )}
+                                    </div>
+                                </div>
+                                {memory.tags && memory.tags.length > 0 && (
+                                    <div className="memory-tags">
+                                        {memory.tags.map((tag: string, index: number) => (
+                                            <span key={index} className="memory-tag">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="memory-item-meta">
+                                    {formatDate(memory.timestamp || '')}
+                                </div>
+                                <div className="memory-item-actions">
+                                    {editingId === memory.nodeId ? (
+                                        <>
+                                            <button 
+                                                className="primary-btn save-btn"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleSave(memory.nodeId || '');
+                                                }}
+                                            >
+                                                Save
+                                            </button>
+                                            <button 
+                                                className="secondary-btn cancel-btn"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCancel();
+                                                }}
+                                            >
+                                                Cancel
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button 
+                                                className="secondary-btn edit-btn"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleEdit(memory);
+                                                }}
+                                            >
+                                                Edit
+                                            </button>
+                                            <button 
+                                                className="danger-btn delete-btn"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDelete(memory.nodeId || '');
+                                                }}
+                                            >
+                                                Delete
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                {totalPages > 1 && (
+                    <div className="pagination-controls">
+                        <button 
+                            className="pagination-btn" 
+                            onClick={() => onPageChange(currentPage - 1)}
+                            disabled={currentPage <= 1}
+                        >
+                            ← Previous
+                        </button>
+                        <span id="page-info">
+                            Page {currentPage} of {totalPages}
+                        </span>
+                        <button 
+                            className="pagination-btn" 
+                            onClick={() => onPageChange(currentPage + 1)}
+                            disabled={currentPage >= totalPages}
+                        >
+                            Next →
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
     return (
         <div className="dashboard-container" id="list-container" data-container="list">
             <div className="container-header" data-drag-handle>
@@ -189,7 +360,7 @@ const MemoryList: React.FC<MemoryListProps> = ({
                 <div className="memory-list">
                     {memories.length > 0 && (
                         <div className="memory-list-controls">
-                            <div className="select-controls">
+                            <div className="controls-main">
                                 <label className="checkbox-container">
                                     <input 
                                         type="checkbox" 
@@ -200,19 +371,21 @@ const MemoryList: React.FC<MemoryListProps> = ({
                                     <span className="checkmark"></span>
                                     Select All (Page)
                                 </label>
-                                <span className="selected-count">
-                                    {selectedMemories.size} selected
+                                <span className="total-count">
+                                    {totalMemories} {totalMemories === 1 ? 'memory' : 'memories'}
                                 </span>
                             </div>
-                            <div className="bulk-actions">
-                                <button 
-                                    className="danger-btn bulk-delete-btn" 
-                                    onClick={handleBulkDelete}
-                                    disabled={selectedMemories.size === 0 || isDeleting}
-                                >
-                                    {isDeleting ? 'Deleting...' : 'Delete Selected'}
-                                </button>
-                            </div>
+                            {selectedMemories.size > 0 && (
+                                <div className="controls-footer">
+                                    <button 
+                                        className="danger-btn bulk-delete-btn" 
+                                        onClick={handleBulkDelete}
+                                        disabled={isDeleting}
+                                    >
+                                        {isDeleting ? 'Deleting...' : `Delete ${selectedMemories.size} Selected`}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
 

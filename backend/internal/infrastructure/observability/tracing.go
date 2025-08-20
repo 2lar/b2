@@ -270,3 +270,6 @@ func (r *tracedNodeRepository) FindNodesPageWithOptions(ctx context.Context, que
 	
 	return page, err
 }
+func (r *tracedNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	return r.inner.BatchGetNodes(ctx, userID, nodeIDs)
+}

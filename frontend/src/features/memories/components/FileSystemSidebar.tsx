@@ -3,11 +3,13 @@
  * 
  * Purpose:
  * Provides a file system-like interface for browsing and organizing memories within categories.
+ * Supports both expanded and collapsed states for optimal space utilization.
  * Mimics Windows File Explorer with expandable folders (categories) containing files (memories)
  * and includes advanced features like drag-and-drop, search, and context menus.
  * 
  * Key Features:
  * - Windows Explorer-style hierarchical folder structure
+ * - Collapsible sidebar with icon-only mode
  * - Expandable categories showing memories as files within folders
  * - Drag-and-drop memory movement between categories
  * - Real-time search across categories and memories
@@ -16,6 +18,10 @@
  * - Visual indicators for AI-generated categories
  * - Memory count badges on category folders
  * - Efficient caching system for performance
+ * 
+ * Sidebar States:
+ * - Expanded: Full sidebar with labels, search, and complete tree view
+ * - Collapsed: Icon-only mode with tooltips for space efficiency
  * 
  * File System Structure:
  * - Categories displayed as expandable folders with icons
@@ -77,6 +83,8 @@ interface FileSystemSidebarProps {
     onCategorySelect: (categoryId: string) => void;
     /** Optional trigger number that causes refresh when changed */
     refreshTrigger?: number;
+    /** Whether the sidebar is in collapsed state */
+    isCollapsed?: boolean;
 }
 
 interface CategoryWithMemories {
@@ -100,7 +108,8 @@ const FileSystemSidebar: React.FC<FileSystemSidebarProps> = ({
     userId,
     onMemorySelect,
     onCategorySelect,
-    refreshTrigger
+    refreshTrigger,
+    isCollapsed = false
 }) => {
     const [categories, setCategories] = useState<CategoryWithMemories[]>([]);
     const [uncategorizedMemories, setUncategorizedMemories] = useState<Node[]>([]);

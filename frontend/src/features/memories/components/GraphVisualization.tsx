@@ -58,6 +58,8 @@ cytoscape.use(cola);
 interface GraphVisualizationProps {
     /** Trigger number that causes graph refresh when changed */
     refreshTrigger: number;
+    /** Whether the graph has an overlay input (affects layout) */
+    hasOverlayInput?: boolean;
 }
 
 export interface GraphVisualizationRef {
@@ -92,7 +94,7 @@ const NODE_COLORS = [
     '#f72585', // supernova red
 ];
 
-const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationProps>(({ refreshTrigger }, ref) => {
+const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationProps>(({ refreshTrigger, hasOverlayInput = false }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const graphContainerRef = useRef<HTMLDivElement>(null);
     const cyRef = useRef<Core | null>(null);
@@ -134,6 +136,15 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             return true;
         }
     }), []);
+
+    // Force resize on mobile to ensure proper dimensions
+    useEffect(() => {
+        if (cyRef.current && window.innerWidth <= 480) {
+            setTimeout(() => {
+                cyRef.current?.resize();
+            }, 100);
+        }
+    }, []);
 
     // Initialize cytoscape once on component mount
     useEffect(() => {
@@ -217,6 +228,11 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         });
 
         cyRef.current = cy;
+
+        // Ensure proper sizing, especially on mobile
+        if (window.innerWidth <= 480) {
+            setTimeout(() => cy.resize(), 200);
+        }
 
         // Set up event handlers
         setupEventHandlers(cy);
@@ -350,13 +366,14 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             });
 
             // Process connected memories
+            // nodeData.edges contains node IDs of connected memories, not edge IDs
             if (nodeData.edges && nodeData.edges.length > 0 && cyRef.current) {
                 const cy = cyRef.current;
-                const connectedNodesInfo = nodeData.edges.map(edgeId => {
-                    const connectedNode = cy.getElementById(edgeId);
+                const connectedNodesInfo = nodeData.edges.map(connectedNodeId => {
+                    const connectedNode = cy.getElementById(connectedNodeId);
                     if (connectedNode && connectedNode.length > 0) {
                         return {
-                            id: edgeId,
+                            id: connectedNodeId,
                             label: connectedNode.data('label') || 'Untitled'
                         };
                     }
@@ -405,12 +422,55 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
     // Handle fullscreen changes - resize cytoscape when entering/exiting fullscreen
     useEffect(() => {
         if (cyRef.current) {
-            // Small delay to allow fullscreen transition to complete
+            // Different delays for entering vs exiting fullscreen
+            const delay = isFullscreen ? 100 : 500; // Even longer delay for exit to ensure proper restoration
+            
             const timer = setTimeout(() => {
+                // Enhanced layout restoration for fullscreen exit
+                if (!isFullscreen && graphContainerRef.current) {
+                    // Reset container dimensions explicitly
+                    const container = graphContainerRef.current;
+                    container.style.width = '';
+                    container.style.height = '';
+                    container.style.maxWidth = '';
+                    container.style.maxHeight = '';
+                    
+                    // Force layout recalculation for parent containers
+                    const mainContentArea = container.closest('.main-content-area');
+                    const dashboardLayout = container.closest('.dashboard-layout-refined');
+                    
+                    [mainContentArea, dashboardLayout].forEach(parent => {
+                        if (parent) {
+                            const element = parent as HTMLElement;
+                            const display = element.style.display;
+                            element.style.display = 'none';
+                            element.offsetHeight; // Force reflow
+                            element.style.display = display || 'flex';
+                        }
+                    });
+                    
+                    // Multiple resize events to ensure all components update
+                    setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
+                    setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+                    setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+                }
+                
+                // Resize cytoscape after layout restoration
                 cyRef.current?.resize();
-                cyRef.current?.fit();
-                cyRef.current?.center();
-            }, 100);
+                
+                // Handle viewport positioning
+                if (cyRef.current && cyRef.current.elements().length > 0) {
+                    if (isFullscreen) {
+                        cyRef.current.fit();
+                        cyRef.current.center();
+                    } else {
+                        // Additional resize after a small delay to ensure proper dimensions
+                        setTimeout(() => {
+                            cyRef.current?.resize();
+                        }, 100);
+                    }
+                }
+            }, delay);
 
             return () => clearTimeout(timer);
         }
@@ -844,28 +904,53 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         }
     };
 
+    const containerClass = hasOverlayInput ? "graph-main-container" : "dashboard-container";
+    const contentClass = hasOverlayInput ? "graph-main-content" : "container-content graph-content";
+    
     return (
-        <div className="dashboard-container" id="graph-container" data-container="graph" ref={graphContainerRef}>
-            <div className="container-header" data-drag-handle>
-                <span className="container-title">Memory Graph</span>
-                <div className="container-controls">
-                    <button 
-                        className="secondary-btn"
-                        onClick={loadGraphData}
-                    >
-                        Refresh
-                    </button>
-                    <button 
-                        className="fullscreen-btn"
-                        onClick={toggleFullscreen}
-                    >
-                        {isFullscreen ? '🗗 Exit Fullscreen' : '⛶ Fullscreen'}
-                    </button>
-                    <span className="drag-handle">⋮⋮</span>
+        <div className={containerClass} id="graph-container" data-container="graph" ref={graphContainerRef}>
+            {!hasOverlayInput && (
+                <div className="container-header" data-drag-handle>
+                    <span className="container-title">Memory Graph</span>
+                    <div className="container-controls">
+                        <button 
+                            className="secondary-btn"
+                            onClick={loadGraphData}
+                        >
+                            Refresh
+                        </button>
+                        <button 
+                            className="fullscreen-btn"
+                            onClick={toggleFullscreen}
+                        >
+                            {isFullscreen ? '🗗 Exit Fullscreen' : '⛶ Fullscreen'}
+                        </button>
+                        <span className="drag-handle">⋮⋮</span>
+                    </div>
                 </div>
-            </div>
-            <div className="container-content graph-content">
-                <div ref={containerRef} className="graph-container"></div>
+            )}
+            
+            {hasOverlayInput && (
+                <div className="graph-controls-overlay">
+                    <button 
+                        className="graph-control-btn"
+                        onClick={loadGraphData}
+                        title="Refresh Graph"
+                    >
+                        🔄
+                    </button>
+                    <button 
+                        className="graph-control-btn"
+                        onClick={toggleFullscreen}
+                        title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                    >
+                        {isFullscreen ? '🗗' : '⛶'}
+                    </button>
+                </div>
+            )}
+            
+            <div className={contentClass}>
+                <div ref={containerRef} className="cytoscape-container"></div>
                 
                 {/* Node Details Panel */}
                 {selectedNode && (
@@ -910,10 +995,12 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                                     ) : (
                                         <p className="no-connections">No connections yet</p>
                                     )}
-                                    <div className="memory-metadata">
-                                        <p>Created: {formatDate(selectedNode.timestamp)}</p>
-                                    </div>
                                 </div>
+                            </div>
+                        </div>
+                        <div className="panel-footer">
+                            <div className="memory-metadata">
+                                <p>Created: {formatDate(selectedNode.timestamp)}</p>
                             </div>
                         </div>
                     </div>

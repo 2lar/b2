@@ -14,8 +14,11 @@ import (
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
+	"brain2-backend/internal/domain/events"
+	eventHandlers "brain2-backend/internal/domain/events/handlers"
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
+	"brain2-backend/internal/features"
 	"brain2-backend/internal/handlers"
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
@@ -78,6 +81,7 @@ var InfrastructureProviders = wire.NewSet(
 // DomainProviders provides domain services and business logic components.
 // This layer has no external dependencies (Pure Domain).
 var DomainProviders = wire.NewSet(
+	provideFeatureService,
 	provideConnectionAnalyzer,
 	provideEventBus,
 	provideUnitOfWork,
@@ -284,6 +288,11 @@ func provideMetricsCollector(cfg *config.Config, logger *zap.Logger) *observabil
 // DOMAIN PROVIDERS
 // ============================================================================
 
+// provideFeatureService creates the enhanced feature flag service.
+func provideFeatureService(cfg *config.Config) *features.FeatureService {
+	return features.NewFeatureService(&cfg.Features)
+}
+
 // provideConnectionAnalyzer creates the domain service for connection analysis.
 func provideConnectionAnalyzer(cfg *config.Config) *domainServices.ConnectionAnalyzer {
 	return domainServices.NewConnectionAnalyzer(
@@ -296,11 +305,21 @@ func provideConnectionAnalyzer(cfg *config.Config) *domainServices.ConnectionAna
 // provideEventBus creates the event bus for domain events.
 func provideEventBus(cfg *config.Config, logger *zap.Logger) shared.EventBus {
 	if cfg.Features.EnableEventBus {
-		// In production, would use real event bus (e.g., EventBridge, Kafka)
-		// For now, use mock event bus
-		return shared.NewMockEventBus()
+		// Use our new EventBus implementation with Observer pattern
+		eventBus := events.NewEventBus(logger)
+		
+		// Register event handlers
+		// Example: Register category created handler
+		categoryHandler := eventHandlers.NewCategoryCreatedHandler(logger)
+		eventBus.Subscribe("CategoryCreated", categoryHandler)
+		
+		// In production, you might also forward events to external systems
+		// like EventBridge, Kafka, etc.
+		
+		return eventBus
 	}
 	
+	// Fall back to mock event bus when feature is disabled
 	return shared.NewMockEventBus()
 }
 

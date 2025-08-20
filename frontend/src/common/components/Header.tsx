@@ -2,13 +2,15 @@
  * Header Component - Application Navigation Bar
  * 
  * Purpose:
- * Provides the top navigation bar with user controls and application-wide settings.
- * Displays user information and provides access to key application functions.
+ * Provides the top navigation bar with user controls, application-wide settings,
+ * and quick access to main features like sidebar and memory list toggles.
  * 
  * Key Features:
  * - Dark/Light theme toggle with persistence
  * - User profile dropdown with email display
  * - Sign-out functionality
+ * - Sidebar collapse/expand toggle
+ * - Memory counter display in center
  * - Responsive design that adapts to screen size
  * - Click-outside detection for dropdown management
  * 
@@ -22,8 +24,9 @@
  * - isDropdownOpen: Controls visibility of user dropdown menu
  * 
  * Integration:
- * - Receives user email from parent Dashboard
- * - Calls onSignOut callback when user signs out
+ * - Receives user email and controls from parent Dashboard
+ * - Calls callback for sidebar toggle
+ * - Displays live memory count
  * - Works with CSS custom properties for theming
  */
 
@@ -34,9 +37,21 @@ interface HeaderProps {
     userEmail: string;
     /** Callback function to handle user sign-out */
     onSignOut: () => void;
+    /** Callback to toggle sidebar visibility */
+    onToggleSidebar?: () => void;
+    /** Whether sidebar is currently collapsed */
+    isSidebarCollapsed?: boolean;
+    /** Total number of memories for display */
+    memoryCount?: number;
 }
 
-const Header: React.FC<HeaderProps> = ({ userEmail, onSignOut }) => {
+const Header: React.FC<HeaderProps> = ({ 
+    userEmail, 
+    onSignOut, 
+    onToggleSidebar, 
+    isSidebarCollapsed, 
+    memoryCount 
+}) => {
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -64,7 +79,31 @@ const Header: React.FC<HeaderProps> = ({ userEmail, onSignOut }) => {
 
     return (
         <header>
-            <h1>Memory Book</h1>
+            {/* Mobile Menu Button */}
+            <div className="header-left">
+                {onToggleSidebar && (
+                    <button 
+                        className="mobile-menu-toggle" 
+                        onClick={onToggleSidebar}
+                        title={isSidebarCollapsed ? 'Open Menu' : 'Close Menu'}
+                        aria-label={isSidebarCollapsed ? 'Open Menu' : 'Close Menu'}
+                    >
+                        <span className="hamburger-icon">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </span>
+                    </button>
+                )}
+            </div>
+
+            <div className="header-center">
+                <h1>Memory Book</h1>
+                {memoryCount !== undefined && (
+                    <span className="memory-counter-mobile">{memoryCount}</span>
+                )}
+            </div>
+            
             <div className="header-actions">
                 <button 
                     className="theme-toggle" 
