@@ -79,25 +79,8 @@ const Header: React.FC<HeaderProps> = ({
 
     return (
         <header>
-            <div className="header-left">
-                <h1>Memory Book</h1>
-                {onToggleSidebar && (
-                    <button 
-                        className="sidebar-toggle"
-                        onClick={onToggleSidebar}
-                        title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-                    >
-                        {isSidebarCollapsed ? '▶️' : '◀️'}
-                    </button>
-                )}
-            </div>
-            
             <div className="header-center">
-                {memoryCount !== undefined && (
-                    <span className="memory-counter">
-                        {memoryCount} {memoryCount === 1 ? 'memory' : 'memories'}
-                    </span>
-                )}
+                <h1>Memory Book</h1>
             </div>
             
             <div className="header-actions">

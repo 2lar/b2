@@ -3,7 +3,7 @@
 /* Updated Header Layout */
 header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
     margin-bottom: 1rem;
     padding: 0.75rem 1rem;
@@ -11,6 +11,7 @@ header {
     flex-shrink: 0;
     background: var(--surface);
     border-radius: 8px;
+    position: relative;
 }
 
 .header-left {
@@ -40,8 +41,13 @@ header {
 }
 
 .header-center {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     display: flex;
     align-items: center;
+    justify-content: center;
 }
 
 .memory-counter {
@@ -351,6 +357,11 @@ header {
     flex-shrink: 0;
 }
 
+/* Center the collapse button when panel is collapsed */
+.left-panel.collapsed .left-panel-header {
+    justify-content: center;
+}
+
 .left-panel-tabs {
     display: flex;
     gap: 0.25rem;
@@ -413,6 +424,15 @@ header {
     transition: all 0.2s;
     font-size: 0.9rem;
     margin-left: 0.5rem;
+}
+
+/* Remove margin when panel is collapsed to center the button */
+.left-panel.collapsed .collapse-toggle {
+    margin-left: 0;
+    width: 100%;
+    max-width: 3rem;
+    height: 2.5rem;
+    font-size: 1.2rem;
 }
 
 .collapse-toggle:hover {
@@ -602,11 +622,132 @@ header {
     }
 }
 
+/* User Dropdown Styles */
+.user-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.user-dropdown-toggle {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.user-dropdown-toggle:hover {
+    background: var(--background);
+    border-color: var(--primary-color);
+}
+
+.user-email {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.dropdown-arrow {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+}
+
+.user-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    padding: 0.5rem 0;
+    min-width: 200px;
+    z-index: 1000;
+    opacity: 0;
+    transform: translateY(-10px);
+    animation: dropdownFadeIn 0.2s ease-out forwards;
+}
+
+@keyframes dropdownFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: none;
+    border: none;
+    text-align: left;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background-color 0.2s;
+    font-size: 0.9rem;
+}
+
+.dropdown-item:hover {
+    background: var(--background);
+}
+
+.dropdown-icon {
+    font-size: 1rem;
+    opacity: 0.8;
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 0.5rem 0;
+}
+
+.sign-out-item {
+    color: var(--error);
+}
+
+.sign-out-item:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.theme-toggle {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: all 0.2s;
+    font-size: 0.9rem;
+    margin-right: 0.75rem;
+}
+
+.theme-toggle:hover {
+    background: var(--background);
+    border-color: var(--primary-color);
+}
+
 /* Focus states and accessibility */
 .memory-list-toggle:focus,
 .graph-control-btn:focus,
 .compact-submit-btn:focus,
-.sidebar-toggle:focus {
+.sidebar-toggle:focus,
+.user-dropdown-toggle:focus,
+.theme-toggle:focus {
     outline: 2px solid var(--primary-color);
     outline-offset: 2px;
 }
