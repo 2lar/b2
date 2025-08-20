@@ -1,3 +1,38 @@
+/*
+ARCHITECTURAL REFERENCE FILE - KEEP BUT DISABLED
+
+This file demonstrates an advanced middleware pipeline architecture that follows SOLID principles
+and implements the Open/Closed Principle for HTTP handlers. It showcases enterprise-grade patterns
+that could be valuable for future development.
+
+WHY THIS FILE IS KEPT:
+- Demonstrates clean middleware pipeline pattern using Chain of Responsibility
+- Shows proper CQRS handler separation (queries vs commands with different middleware stacks)
+- Implements cross-cutting concerns abstraction (auth, logging, validation, etc.)
+- Provides a scalable approach for handling complex middleware requirements
+- Follows enterprise design patterns that could be needed as the system grows
+
+CURRENT STATUS: DISABLED
+This file is currently disabled due to type compatibility issues between DTO packages.
+It should remain disabled until:
+1. DTO type conflicts are resolved between application/dto and interfaces/http/v1/dto packages
+2. The middleware pipeline pattern is actually needed (when current handlers become unwieldy)
+3. Complex cross-cutting concerns need to be added (rate limiting, caching, circuit breakers)
+
+TO RE-ENABLE:
+1. Fix type compatibility between CategoryView types in different packages
+2. Rename file to remove .disabled extension
+3. Update imports and test thoroughly
+4. Consider migrating other handlers to use the same pattern for consistency
+
+ARCHITECTURAL BENEFITS WHEN ENABLED:
+- Handler methods focus purely on business logic
+- Middleware components are reusable and testable in isolation
+- Easy to add/remove/reorder cross-cutting concerns without touching business logic
+- Consistent request processing pipeline across all handlers
+- Better separation of concerns and adherence to Single Responsibility Principle
+*/
+
 // Package handlers demonstrates the use of middleware pipeline following Open/Closed Principle.
 package handlers
 
@@ -24,12 +59,12 @@ type CategoryHandlerWithPipeline struct {
 	// Core CQRS services
 	categoryService      *services.CategoryService
 	categoryQueryService *queries.CategoryQueryService
-	
+
 	// Focused components
 	validator *validation.CategoryValidator
 	converter *dto.CategoryConverter
 	logger    *zap.Logger
-	
+
 	// Middleware pipelines for different operation types
 	queryPipeline   *middleware.Pipeline
 	commandPipeline *middleware.Pipeline
@@ -44,14 +79,14 @@ func NewCategoryHandlerWithPipeline(
 	handler := &CategoryHandlerWithPipeline{
 		categoryService:      categoryService,
 		categoryQueryService: categoryQueryService,
-		validator:           validation.NewCategoryValidator(),
-		converter:           dto.NewCategoryConverter(),
-		logger:              logger,
+		validator:            validation.NewCategoryValidator(),
+		converter:            dto.NewCategoryConverter(),
+		logger:               logger,
 	}
-	
+
 	// Build specialized pipelines for different operation types
 	handler.buildPipelines()
-	
+
 	return handler
 }
 
@@ -63,8 +98,8 @@ func (h *CategoryHandlerWithPipeline) buildPipelines() {
 		h.logger,
 		func() bool { return h.categoryQueryService != nil },
 	)
-	
-	// Command pipeline: Error Recovery -> Logging -> Auth -> Service Check -> Validation  
+
+	// Command pipeline: Error Recovery -> Logging -> Auth -> Service Check -> Validation
 	h.commandPipeline = middleware.BuildCQRSCommandMiddleware(
 		h.logger,
 		func() bool { return h.categoryService != nil },
@@ -89,23 +124,23 @@ func (h *CategoryHandlerWithPipeline) listCategoriesCore(w http.ResponseWriter, 
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	// Create query using CQRS pattern
 	listQuery, err := queries.NewListCategoriesQuery(userID)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	listQuery.WithNodeCounts()
-	
+
 	// Execute query
 	result, err := h.categoryQueryService.ListCategories(r.Context(), listQuery)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	// Convert and respond
 	response := h.converter.FromCategoryViews(result.Categories)
 	api.Success(w, http.StatusOK, response)
@@ -124,22 +159,22 @@ func (h *CategoryHandlerWithPipeline) getCategoryCore(w http.ResponseWriter, r *
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	categoryID := chi.URLParam(r, "categoryId")
-	
+
 	// Create and execute query
 	categoryQuery, err := queries.NewGetCategoryQuery(userID, categoryID)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	result, err := h.categoryQueryService.GetCategory(r.Context(), categoryQuery)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	// Convert and respond
 	response := h.converter.FromCategoryView(result.Category)
 	api.Success(w, http.StatusOK, response)
@@ -159,7 +194,7 @@ func (h *CategoryHandlerWithPipeline) CreateCategory(w http.ResponseWriter, r *h
 		WithServiceAvailability("CategoryService", func() bool { return h.categoryService != nil }).
 		WithValidation(h.validateCreateCategoryRequest).
 		Build()
-	
+
 	handler := pipeline.Build(h.createCategoryCore)
 	handler(w, r)
 }
@@ -180,23 +215,23 @@ func (h *CategoryHandlerWithPipeline) createCategoryCore(w http.ResponseWriter, 
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	// Re-validate to get the parsed request (validation middleware only validates)
 	req, _ := h.validator.ValidateCreateCategoryRequest(r)
-	
+
 	// Create and execute command
 	cmd, err := commands.NewCreateCategoryCommand(userID, req.Title, req.Description)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	result, err := h.categoryService.CreateCategory(r.Context(), cmd)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	// Convert and respond
 	response := h.converter.FromCategoryView(result.Category)
 	api.Success(w, http.StatusCreated, response)
@@ -212,7 +247,7 @@ func (h *CategoryHandlerWithPipeline) UpdateCategory(w http.ResponseWriter, r *h
 		WithServiceAvailability("CategoryService", func() bool { return h.categoryService != nil }).
 		WithValidation(h.validateUpdateCategoryRequest).
 		Build()
-	
+
 	handler := pipeline.Build(h.updateCategoryCore)
 	handler(w, r)
 }
@@ -233,25 +268,25 @@ func (h *CategoryHandlerWithPipeline) updateCategoryCore(w http.ResponseWriter, 
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	categoryID := chi.URLParam(r, "categoryId")
 	req, _ := h.validator.ValidateUpdateCategoryRequest(r)
-	
+
 	// Create and execute command
 	cmd, err := commands.NewUpdateCategoryCommand(userID, categoryID)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	cmd.WithTitle(req.Title).WithDescription(req.Description)
-	
+
 	result, err := h.categoryService.UpdateCategory(r.Context(), cmd)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	api.Success(w, http.StatusOK, map[string]interface{}{
 		"message":    "Category updated successfully",
 		"categoryId": result.Category.ID,
@@ -271,22 +306,22 @@ func (h *CategoryHandlerWithPipeline) deleteCategoryCore(w http.ResponseWriter, 
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	categoryID := chi.URLParam(r, "categoryId")
-	
+
 	// Create and execute command
 	cmd, err := commands.NewDeleteCategoryCommand(userID, categoryID)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	_, err = h.categoryService.DeleteCategory(r.Context(), cmd)
 	if err != nil {
 		handleServiceError(w, err)
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusNoContent)
 }
 

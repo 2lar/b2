@@ -256,17 +256,6 @@ func (f *ServiceFactory) decorateEdgeRepository(base repository.EdgeRepository) 
 	return decoratorChain.DecorateEdgeRepository(base)
 }
 
-// decorateCategoryRepository applies persistence to CategoryRepository.
-func (f *ServiceFactory) decorateCategoryRepository(base repository.CategoryRepository) repository.CategoryRepository {
-	// Use decorator chain for clean decorator application
-	decoratorChain := persistence.NewDecoratorChain(
-		f.config,
-		f.logger,
-		f.infrastructure.Cache,
-		f.infrastructure.MetricsCollector,
-	)
-	return decoratorChain.DecorateCategoryRepository(base)
-}
 
 // ============================================================================
 // HANDLER FACTORY - Creates HTTP handlers
@@ -497,9 +486,10 @@ func (rf *RouterFactory) setupRoutes(router *chi.Mux) {
 func (rf *RouterFactory) getMiddlewareCount() int {
 	count := 2 // RequestID and Recovery are always present
 	
-	if rf.config.Environment == config.Development {
+	switch rf.config.Environment {
+	case config.Development:
 		count += 2 // Logger and Profiler
-	} else if rf.config.Environment == config.Production {
+	case config.Production:
 		count += 2 // Compress and RateLimiter
 	}
 	
