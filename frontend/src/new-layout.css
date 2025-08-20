@@ -184,10 +184,10 @@ header {
     box-shadow: var(--shadow);
 }
 
-/* Memory Input Overlay - Centered in main content area */
+/* Memory Input Overlay - Fixed at bottom for all screen sizes */
 .memory-input-overlay {
-    position: absolute;
-    top: 1rem;
+    position: fixed;
+    bottom: 1rem;
     left: 50%;
     transform: translateX(-50%);
     z-index: 150;
@@ -201,7 +201,7 @@ header {
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 1rem;
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15), 0 -2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .compact-form {
@@ -662,8 +662,8 @@ header {
     .memory-input-overlay {
         width: 95%;
         max-width: none;
-        position: absolute;
-        top: 1rem;
+        position: fixed;
+        bottom: 0.5rem;
         left: 50%;
         transform: translateX(-50%);
     }
@@ -727,8 +727,8 @@ header {
     .memory-input-overlay {
         width: 95%;
         max-width: none;
-        position: absolute;
-        top: 0.5rem;
+        position: fixed;
+        bottom: 0.5rem;
         left: 50%;
         transform: translateX(-50%);
     }

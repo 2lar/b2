@@ -270,16 +270,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
 
                 {/* Main Content Area */}
                 <div className="main-content-area">
-                    {/* Memory Input - Top on Desktop, Bottom on Mobile */}
-                    <div className="memory-input-container">
-                        <div className="memory-input-overlay desktop-input">
-                            <MemoryInput 
-                                onMemoryCreated={handleMemoryCreated}
-                                isCompact={true}
-                            />
-                        </div>
-                    </div>
-
                     {/* Graph Visualization */}
                     <div className="graph-container">
                         <GraphVisualization 
@@ -289,7 +279,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                         />
                     </div>
 
-                    {/* Mobile Memory Input at Bottom */}
+                    {/* Memory Input - Now at bottom for all screen sizes */}
+                    <div className="memory-input-container">
+                        <div className="memory-input-overlay desktop-input">
+                            <MemoryInput 
+                                onMemoryCreated={handleMemoryCreated}
+                                isCompact={true}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Mobile Memory Input at Bottom (legacy support) */}
                     <div className="mobile-memory-input">
                         <MemoryInput 
                             onMemoryCreated={handleMemoryCreated}
