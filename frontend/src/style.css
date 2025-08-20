@@ -1049,10 +1049,10 @@ header h1 {
     overflow: hidden;
 }
 
-#graph-container:fullscreen .graph-container,
-#graph-container:-webkit-full-screen .graph-container,
-#graph-container:-moz-full-screen .graph-container,
-#graph-container:-ms-fullscreen .graph-container {
+#graph-container:fullscreen .cytoscape-container,
+#graph-container:-webkit-full-screen .cytoscape-container,
+#graph-container:-moz-full-screen .cytoscape-container,
+#graph-container:-ms-fullscreen .cytoscape-container {
     width: 100%;
     height: 100%;
     min-height: auto;
@@ -1253,7 +1253,7 @@ header h1 {
     flex-direction: column !important;
 }
 
-#graph-container:not(:fullscreen):not(:-webkit-full-screen):not(:-moz-full-screen):not(:-ms-fullscreen) .graph-container {
+#graph-container:not(:fullscreen):not(:-webkit-full-screen):not(:-moz-full-screen):not(:-ms-fullscreen) .cytoscape-container {
     width: 100% !important;
     height: 100% !important;
     min-height: 400px !important;
@@ -1793,13 +1793,509 @@ header h1 {
     }
 }
 
+/* ================================
+   MOBILE-FIRST RESPONSIVE DESIGN
+   ================================ */
+
+/* Mobile Header Styles */
+.header-left {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.mobile-menu-toggle {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    margin-right: 0.5rem;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+
+.mobile-menu-toggle:hover {
+    background-color: var(--surface);
+}
+
+.hamburger-icon {
+    display: flex;
+    flex-direction: column;
+    width: 20px;
+    height: 15px;
+    justify-content: space-between;
+}
+
+.hamburger-icon span {
+    display: block;
+    height: 2px;
+    width: 100%;
+    background-color: var(--text-primary);
+    border-radius: 1px;
+    transition: all 0.2s;
+}
+
+.memory-counter-mobile {
+    display: none;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    background: var(--surface);
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    margin-left: 0.5rem;
+    border: 1px solid var(--border);
+}
+
+/* Mobile Backdrop */
+.mobile-backdrop {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 998;
+    /* Remove blur for better performance and visibility on mobile */
+}
+
+/* Dashboard Layout Updates */
+.dashboard-layout-mobile-ready {
+    display: flex;
+    height: calc(100vh - 80px);
+    gap: 1rem;
+    position: relative;
+}
+
+.main-content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    min-width: 0;
+}
+
+.graph-container {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Cytoscape container for the actual graph */
+.cytoscape-container {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    /* Enhanced cosmic space background */
+    background: radial-gradient(ellipse at center, 
+        rgba(255, 203, 203, 0.3) 0%,
+        rgba(40, 75, 173, 0.2) 1%,
+        rgba(17, 24, 39, 0.9) 10%,
+        rgba(0, 0, 0, 1) 100%
+    );
+    overflow: hidden;
+}
+
+.memory-input-container {
+    position: relative;
+    z-index: 10;
+}
+
+.desktop-input {
+    display: block;
+}
+
+.mobile-memory-input {
+    display: none;
+}
+
+/* Phone Styles (up to 480px) */
 @media (max-width: 480px) {
+    /* Header adjustments */
+    header {
+        padding: 0.5rem 1rem;
+        height: 60px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0;
+    }
+    
+    .mobile-menu-toggle {
+        display: flex;
+    }
+    
+    .header-center h1 {
+        font-size: 1.2rem;
+        position: static;
+        transform: none;
+    }
+    
+    .memory-counter-mobile {
+        display: inline-block;
+    }
+    
+    .header-actions {
+        gap: 0.5rem;
+    }
+    
+    /* Hide desktop elements on mobile */
+    .theme-toggle,
+    .user-email {
+        display: none;
+    }
+    
+    .user-dropdown-toggle {
+        padding: 0.5rem;
+        min-width: 44px;
+        justify-content: center;
+    }
+    
+    .dropdown-arrow {
+        font-size: 0.8rem;
+    }
+
+    /* App container adjustments */
+    .app-container {
+        padding: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    /* Dashboard layout for mobile */
+    .dashboard-layout-mobile-ready {
+        flex: 1;
+        height: auto;
+        gap: 0;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+    
+    /* Left panel mobile overlay */
+    .left-panel {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        z-index: 999 !important;
+        background: var(--background);
+        transform: translateX(-100%) !important;
+        transition: transform 0.3s ease-in-out;
+        width: 100vw !important;
+        height: 100vh !important;
+        overflow: hidden;
+        right: auto !important;
+    }
+    
+    .left-panel.expanded {
+        transform: translateX(0) !important;
+    }
+    
+    .left-panel.collapsed {
+        transform: translateX(-100%) !important;
+    }
+    
+    .mobile-backdrop {
+        display: block;
+    }
+    
+    .left-panel-header {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        min-height: 60px;
+    }
+    
+    .collapse-toggle {
+        font-size: 1.2rem;
+        padding: 0.5rem;
+        min-width: 44px;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .left-panel-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0;
+        height: 100vh !important;
+        padding-top: 0;
+    }
+    
+    .left-panel-tabs {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .tab-button {
+        padding: 0.75rem 1rem;
+        min-height: 44px;
+        font-size: 0.9rem;
+        border-radius: 8px;
+    }
+    
+    /* Main content area mobile */
+    .main-content-area {
+        flex: 1;
+        height: 100%;
+        padding: 0;
+        position: relative !important;
+        left: auto !important;
+        right: auto !important;
+        top: auto !important;
+        display: flex;
+        flex-direction: column;
+        width: 100% !important;
+    }
+    
+    /* Hide desktop memory input on mobile */
+    .desktop-input,
+    .memory-input-overlay {
+        display: none;
+    }
+    
+    /* Show mobile memory input */
+    .mobile-memory-input {
+        display: block;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        background: var(--background);
+        border-top: 1px solid var(--border);
+        padding: 0.75rem 1rem;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+        max-height: 25vh;
+        overflow-y: auto;
+    }
+    
+    /* Graph container mobile */
+    .graph-container {
+        flex: 1;
+        height: calc(100vh - 60px - 90px); /* Header height - Input height */
+        min-height: 250px;
+        position: relative;
+        overflow: hidden;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    /* Cytoscape container mobile */
+    .cytoscape-container {
+        flex: 1 !important;
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 200px !important;
+        position: relative !important;
+    }
+    
+    /* Memory input compact mobile styling */
+    .memory-input-compact {
+        margin: 0;
+    }
+    
+    .compact-form {
+        gap: 0.75rem;
+    }
+    
+    .input-row {
+        display: flex;
+        gap: 0.75rem;
+        align-items: flex-start;
+    }
+    
+    .compact-textarea {
+        flex: 1;
+        min-height: 44px;
+        font-size: 16px; /* Prevent zoom on iOS */
+        border-radius: 8px;
+        padding: 0.75rem;
+        resize: none;
+    }
+    
+    .compact-submit-btn {
+        min-width: 44px;
+        min-height: 44px;
+        border-radius: 8px;
+        font-size: 1.2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .compact-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .tag-pill-compact {
+        padding: 0.4rem 0.75rem;
+        font-size: 0.85rem;
+        min-height: 32px;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .tag-input-compact {
+        width: 100%;
+        min-height: 44px;
+        font-size: 16px; /* Prevent zoom on iOS */
+        padding: 0.75rem;
+        border-radius: 8px;
+    }
+    
+    /* Ensure all interactive elements meet 44px minimum */
+    button, 
+    input, 
+    textarea,
+    .tab-button,
+    .dropdown-item {
+        min-height: 44px;
+        touch-action: manipulation;
+    }
+    
+    /* Improve touch targets */
+    .dropdown-item {
+        padding: 0.75rem 1rem;
+        font-size: 0.95rem;
+    }
+    
+    .user-dropdown-menu {
+        right: 0.5rem;
+        min-width: 200px;
+    }
+    
+    /* Controls adjustments */
     .controls-main .checkbox-container {
         font-size: 0.9rem;
+        min-height: 44px;
     }
     
     .controls-main {
         padding: 0.75rem;
+    }
+}
+
+/* Tablet Styles (481px to 768px) */
+@media (min-width: 481px) and (max-width: 768px) {
+    /* Show desktop layout but with mobile-friendly adjustments */
+    .mobile-menu-toggle {
+        display: flex;
+    }
+    
+    .theme-toggle {
+        display: none;
+    }
+    
+    .header-actions {
+        gap: 0.5rem;
+    }
+    
+    /* Left panel as overlay on tablets too */
+    .left-panel {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 320px;
+        z-index: 999 !important;
+        transform: translateX(-100%) !important;
+        transition: transform 0.3s ease-in-out;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
+        background: var(--background);
+        overflow: hidden;
+    }
+    
+    .left-panel.expanded {
+        transform: translateX(0) !important;
+    }
+    
+    .left-panel.collapsed {
+        transform: translateX(-100%) !important;
+    }
+    
+    .mobile-backdrop {
+        display: block;
+    }
+    
+    /* Adjust main content area */
+    .main-content-area {
+        width: 100%;
+    }
+    
+    /* Keep desktop input visible on tablets */
+    .desktop-input {
+        display: block;
+    }
+    
+    .mobile-memory-input {
+        display: none;
+    }
+}
+
+/* Additional Mobile Optimizations */
+.mobile-optimized {
+    /* Better touch scrolling */
+    -webkit-overflow-scrolling: touch;
+}
+
+.mobile-optimized .compact-textarea {
+    /* Auto-resize for better mobile experience */
+    overflow: hidden;
+    min-height: 44px;
+    max-height: 120px;
+    resize: none;
+}
+
+.mobile-optimized .compact-textarea:focus {
+    /* Expand when focused for easier typing */
+    min-height: 60px;
+}
+
+/* Prevent viewport zooming on form inputs on iOS */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+    input[type="text"], 
+    input[type="email"], 
+    input[type="password"], 
+    textarea,
+    select {
+        font-size: 16px !important;
+    }
+}
+
+/* Safe area handling for devices with notches */
+@supports (padding-top: env(safe-area-inset-top)) {
+    @media (max-width: 480px) {
+        .app-container {
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        
+        .mobile-memory-input {
+            padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+        }
+        
+        header {
+            padding-top: calc(0.5rem + env(safe-area-inset-top));
+        }
     }
 }
 

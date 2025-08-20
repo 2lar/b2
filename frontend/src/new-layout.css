@@ -605,6 +605,7 @@ header {
     }
 }
 
+/* DISABLED - Conflicts with mobile-first styles in style.css
 @media (max-width: 968px) {
     .dashboard-layout-refined {
         flex-direction: column;
@@ -613,7 +614,6 @@ header {
         padding: 0.25rem;
     }
     
-    /* On tablet, make panels smaller */
     .left-panel {
         position: relative !important;
         width: 100% !important;
@@ -668,7 +668,9 @@ header {
         transform: translateX(-50%);
     }
 }
+*/
 
+/* DISABLED - Conflicts with mobile-first styles in style.css
 @media (max-width: 768px) {
     .dashboard-layout-refined {
         flex-direction: column;
@@ -677,7 +679,6 @@ header {
         padding: 0.25rem;
     }
     
-    /* On mobile, further optimize layout */
     .left-panel {
         position: relative !important;
         width: 100% !important;
@@ -735,6 +736,8 @@ header {
     .header-center {
         display: none;
     }
+}
+*/
     
     .header-left,
     .header-actions {

@@ -62,7 +62,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     const [pageTokens, setPageTokens] = useState<Map<number, string>>(new Map());
     const [refreshGraph, setRefreshGraph] = useState(0);
     const [refreshSidebar, setRefreshSidebar] = useState(0);
-    const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
+    const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(() => {
+        // Default to collapsed on mobile devices
+        return window.innerWidth <= 768;
+    });
     const graphRef = useRef<GraphVisualizationRef>(null);
 
     const MEMORIES_PER_PAGE = 50;
@@ -245,8 +248,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                 memoryCount={totalMemories}
             />
 
-            <main className="dashboard-layout-refined">
-                {/* Left Panel with Tabs */}
+            <main className="dashboard-layout-mobile-ready">
+                {/* Left Panel with Tabs - Mobile Overlay */}
                 <LeftPanel
                     user={user}
                     isCollapsed={isLeftPanelCollapsed}
@@ -264,22 +267,35 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                     onMemoryUpdated={handleMemoryUpdated}
                 />
 
-                {/* Main Center Area - Graph with Integrated Memory Input */}
+                {/* Main Content Area */}
                 <div className="main-content-area">
-                    {/* Integrated Memory Input at Top */}
-                    <div className="memory-input-overlay">
-                        <MemoryInput 
-                            onMemoryCreated={handleMemoryCreated}
-                            isCompact={true}
-                        />
+                    {/* Memory Input - Top on Desktop, Bottom on Mobile */}
+                    <div className="memory-input-container">
+                        <div className="memory-input-overlay desktop-input">
+                            <MemoryInput 
+                                onMemoryCreated={handleMemoryCreated}
+                                isCompact={true}
+                            />
+                        </div>
                     </div>
 
                     {/* Graph Visualization */}
-                    <GraphVisualization 
-                        ref={graphRef} 
-                        refreshTrigger={refreshGraph}
-                        hasOverlayInput={true}
-                    />
+                    <div className="graph-container">
+                        <GraphVisualization 
+                            ref={graphRef} 
+                            refreshTrigger={refreshGraph}
+                            hasOverlayInput={true}
+                        />
+                    </div>
+
+                    {/* Mobile Memory Input at Bottom */}
+                    <div className="mobile-memory-input">
+                        <MemoryInput 
+                            onMemoryCreated={handleMemoryCreated}
+                            isCompact={true}
+                            isMobile={true}
+                        />
+                    </div>
                 </div>
             </main>
         </div>

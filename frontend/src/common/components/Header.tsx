@@ -79,8 +79,29 @@ const Header: React.FC<HeaderProps> = ({
 
     return (
         <header>
+            {/* Mobile Menu Button */}
+            <div className="header-left">
+                {onToggleSidebar && (
+                    <button 
+                        className="mobile-menu-toggle" 
+                        onClick={onToggleSidebar}
+                        title={isSidebarCollapsed ? 'Open Menu' : 'Close Menu'}
+                        aria-label={isSidebarCollapsed ? 'Open Menu' : 'Close Menu'}
+                    >
+                        <span className="hamburger-icon">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </span>
+                    </button>
+                )}
+            </div>
+
             <div className="header-center">
                 <h1>Memory Book</h1>
+                {memoryCount !== undefined && (
+                    <span className="memory-counter-mobile">{memoryCount}</span>
+                )}
             </div>
             
             <div className="header-actions">

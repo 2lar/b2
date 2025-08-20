@@ -52,9 +52,11 @@ interface MemoryInputProps {
     onMemoryCreated: () => void;
     /** Whether to render in compact mode (for overlay) */
     isCompact?: boolean;
+    /** Whether this is the mobile bottom input */
+    isMobile?: boolean;
 }
 
-const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = false }) => {
+const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = false, isMobile = false }) => {
     const [content, setContent] = useState('');
     const [tags, setTags] = useState<string[]>([]);
     const [tagInput, setTagInput] = useState('');
@@ -135,18 +137,19 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = 
 
     if (isCompact) {
         return (
-            <div className="memory-input-compact">
+            <div className={`memory-input-compact ${isMobile ? 'mobile-optimized' : ''}`}>
                 <form onSubmit={handleSubmit} className="compact-form">
                     <div className="input-row">
                         <textarea 
                             value={content}
                             onChange={(e) => setContent(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder="Write a memory, thought, or idea..."
-                            rows={2}
+                            placeholder={isMobile ? "What's on your mind?" : "Write a memory, thought, or idea..."}
+                            rows={isMobile ? 1 : 2}
                             required
                             disabled={isSubmitting}
                             className="compact-textarea"
+                            style={isMobile ? { fontSize: '16px' } : {}} // Prevent zoom on iOS
                         />
                         <button 
                             type="submit" 
@@ -185,6 +188,7 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = 
                             placeholder="Add tags..."
                             disabled={isSubmitting}
                             className="tag-input-compact"
+                            style={isMobile ? { fontSize: '16px' } : {}} // Prevent zoom on iOS
                         />
                     </div>
                 </form>

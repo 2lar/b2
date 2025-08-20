@@ -101,99 +101,110 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
     };
 
     return (
-        <div className={`left-panel ${isCollapsed ? 'collapsed' : ''}`}>
-            {/* Panel Header with Tabs */}
-            <div className="left-panel-header">
-                {!isCollapsed && (
-                    <div className="left-panel-tabs">
-                        <button
-                            className={`tab-button ${activeTab === 'explorer' ? 'active' : ''}`}
-                            onClick={() => handleTabChange('explorer')}
-                            onKeyDown={(e) => handleKeyDown(e, 'explorer')}
-                            title="File Explorer"
-                            aria-label="File Explorer"
-                        >
-                            <span className="tab-icon">📁</span>
-                            <span className="tab-label">Explorer</span>
-                        </button>
-                        <button
-                            className={`tab-button ${activeTab === 'memories' ? 'active' : ''}`}
-                            onClick={() => handleTabChange('memories')}
-                            onKeyDown={(e) => handleKeyDown(e, 'memories')}
-                            title={`Memory List (${totalMemories})`}
-                            aria-label={`Memory List (${totalMemories} memories)`}
-                        >
-                            <span className="tab-icon">📋</span>
-                            <span className="tab-label">
-                                Memories
-                                <span className="tab-count">({totalMemories})</span>
-                            </span>
-                        </button>
-                    </div>
-                )}
-                
-                <button
-                    className="collapse-toggle"
+        <>
+            {/* Mobile Backdrop */}
+            {!isCollapsed && (
+                <div 
+                    className="mobile-backdrop"
                     onClick={onToggleCollapse}
-                    title={isCollapsed ? 'Expand Panel' : 'Collapse Panel'}
-                    aria-label={isCollapsed ? 'Expand Panel' : 'Collapse Panel'}
-                >
-                    {isCollapsed ? '▶️' : '◀️'}
-                </button>
-            </div>
-
-            {/* Panel Content */}
-            <div className="left-panel-content">
-                {!isCollapsed && (
-                    <>
-                        {activeTab === 'explorer' && (
-                            <FileSystemSidebar
-                                userId={user.id}
-                                onMemorySelect={onMemorySelect}
-                                onCategorySelect={onCategorySelect}
-                                refreshTrigger={refreshTrigger}
-                                isCollapsed={false}
-                            />
-                        )}
-                        
-                        {activeTab === 'memories' && (
-                            <MemoryList
-                                memories={memories}
-                                totalMemories={totalMemories}
-                                currentPage={currentPage}
-                                totalPages={totalPages}
-                                isLoading={isLoading}
-                                onPageChange={onPageChange}
-                                onMemoryDeleted={onMemoryDeleted}
-                                onMemoryUpdated={onMemoryUpdated}
-                                onMemoryViewInGraph={onMemorySelect}
-                                isInPanel={true}
-                            />
-                        )}
-                    </>
-                )}
-                
-                {isCollapsed && (
-                    <div className="collapsed-content">
-                        <div className="collapsed-indicators">
-                            <div 
-                                className={`collapsed-tab ${activeTab === 'explorer' ? 'active' : ''}`}
+                    aria-hidden="true"
+                />
+            )}
+            
+            <div className={`left-panel ${isCollapsed ? 'collapsed' : 'expanded'}`}>
+                {/* Panel Header with Tabs */}
+                <div className="left-panel-header">
+                    {!isCollapsed && (
+                        <div className="left-panel-tabs">
+                            <button
+                                className={`tab-button ${activeTab === 'explorer' ? 'active' : ''}`}
+                                onClick={() => handleTabChange('explorer')}
+                                onKeyDown={(e) => handleKeyDown(e, 'explorer')}
                                 title="File Explorer"
+                                aria-label="File Explorer"
                             >
-                                📁
-                            </div>
-                            <div 
-                                className={`collapsed-tab ${activeTab === 'memories' ? 'active' : ''}`}
+                                <span className="tab-icon">📁</span>
+                                <span className="tab-label">Explorer</span>
+                            </button>
+                            <button
+                                className={`tab-button ${activeTab === 'memories' ? 'active' : ''}`}
+                                onClick={() => handleTabChange('memories')}
+                                onKeyDown={(e) => handleKeyDown(e, 'memories')}
                                 title={`Memory List (${totalMemories})`}
+                                aria-label={`Memory List (${totalMemories} memories)`}
                             >
-                                📋
-                                <span className="collapsed-count">{totalMemories}</span>
+                                <span className="tab-icon">📋</span>
+                                <span className="tab-label">
+                                    Memories
+                                    <span className="tab-count">({totalMemories})</span>
+                                </span>
+                            </button>
+                        </div>
+                    )}
+                    
+                    <button
+                        className="collapse-toggle"
+                        onClick={onToggleCollapse}
+                        title={isCollapsed ? 'Expand Panel' : 'Collapse Panel'}
+                        aria-label={isCollapsed ? 'Expand Panel' : 'Collapse Panel'}
+                    >
+                        {isCollapsed ? '▶️' : '❌'}
+                    </button>
+                </div>
+
+                {/* Panel Content */}
+                <div className="left-panel-content">
+                    {!isCollapsed && (
+                        <>
+                            {activeTab === 'explorer' && (
+                                <FileSystemSidebar
+                                    userId={user.id}
+                                    onMemorySelect={onMemorySelect}
+                                    onCategorySelect={onCategorySelect}
+                                    refreshTrigger={refreshTrigger}
+                                    isCollapsed={false}
+                                />
+                            )}
+                            
+                            {activeTab === 'memories' && (
+                                <MemoryList
+                                    memories={memories}
+                                    totalMemories={totalMemories}
+                                    currentPage={currentPage}
+                                    totalPages={totalPages}
+                                    isLoading={isLoading}
+                                    onPageChange={onPageChange}
+                                    onMemoryDeleted={onMemoryDeleted}
+                                    onMemoryUpdated={onMemoryUpdated}
+                                    onMemoryViewInGraph={onMemorySelect}
+                                    isInPanel={true}
+                                />
+                            )}
+                        </>
+                    )}
+                    
+                    {isCollapsed && (
+                        <div className="collapsed-content">
+                            <div className="collapsed-indicators">
+                                <div 
+                                    className={`collapsed-tab ${activeTab === 'explorer' ? 'active' : ''}`}
+                                    title="File Explorer"
+                                >
+                                    📁
+                                </div>
+                                <div 
+                                    className={`collapsed-tab ${activeTab === 'memories' ? 'active' : ''}`}
+                                    title={`Memory List (${totalMemories})`}
+                                >
+                                    📋
+                                    <span className="collapsed-count">{totalMemories}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
-        </div>
+        </>
     );
 };
 

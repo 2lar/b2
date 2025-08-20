@@ -137,6 +137,15 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         }
     }), []);
 
+    // Force resize on mobile to ensure proper dimensions
+    useEffect(() => {
+        if (cyRef.current && window.innerWidth <= 480) {
+            setTimeout(() => {
+                cyRef.current?.resize();
+            }, 100);
+        }
+    }, []);
+
     // Initialize cytoscape once on component mount
     useEffect(() => {
         if (!containerRef.current) return;
@@ -219,6 +228,11 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         });
 
         cyRef.current = cy;
+
+        // Ensure proper sizing, especially on mobile
+        if (window.innerWidth <= 480) {
+            setTimeout(() => cy.resize(), 200);
+        }
 
         // Set up event handlers
         setupEventHandlers(cy);
@@ -936,7 +950,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             )}
             
             <div className={contentClass}>
-                <div ref={containerRef} className="graph-container"></div>
+                <div ref={containerRef} className="cytoscape-container"></div>
                 
                 {/* Node Details Panel */}
                 {selectedNode && (
