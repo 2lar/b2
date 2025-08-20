@@ -44,13 +44,16 @@
  * - Positioned in center panel of Dashboard layout
  */
 
-import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
+import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, memo, useMemo, useCallback } from 'react';
 import cytoscape, { Core, ElementDefinition, NodeSingular, NodeCollection } from 'cytoscape';
 import cola from 'cytoscape-cola';
 import { nodesApi } from '../api/nodes';
 import type { NodeDetails } from '../../../services';
 import { useFullscreen } from '../../../common/hooks/useFullscreen';
 import { throttle } from 'lodash-es';
+import GraphControls from './GraphControls';
+import NodeDetailsPanel from './NodeDetailsPanel';
+import StarField from './StarField';
 
 // Register the cola layout
 cytoscape.use(cola);
@@ -92,7 +95,7 @@ const NODE_COLORS = [
     '#ff4081', // plasma pink
     '#7209b7', // galaxy purple
     '#f72585', // supernova red
-];
+] as const;
 
 const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationProps>(({ refreshTrigger, hasOverlayInput = false }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -251,20 +254,30 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         };
     }, []);
 
-    const setupEventHandlers = (cy: Core) => {
-        cy.on('tap', 'node', (evt) => {
+    // Memoized event handlers to prevent recreation on every render
+    const setupEventHandlers = useCallback((cy: Core) => {
+        const handleNodeTap = (evt: any) => {
             const node = evt.target;
             highlightConnectedNodes(node);
             showNodeDetails(node.id());
-        });
+        };
 
-        cy.on('tap', (evt) => {
+        const handleBackgroundTap = (evt: any) => {
             if (evt.target === cy) {
                 hideNodeDetails();
                 unhighlightAll();
             }
-        });
-    };
+        };
+
+        cy.on('tap', 'node', handleNodeTap);
+        cy.on('tap', handleBackgroundTap);
+
+        // Return cleanup function
+        return () => {
+            cy.off('tap', 'node', handleNodeTap);
+            cy.off('tap', handleBackgroundTap);
+        };
+    }, []);
 
     const preventViewportReset = (cy: Core) => {
         // Create a custom viewport manager that keeps track of user's view
@@ -339,7 +352,8 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         });
     };
 
-    function highlightConnectedNodes(node: cytoscape.NodeSingular): void {
+    // Memoized graph manipulation functions
+    const highlightConnectedNodes = useCallback((node: cytoscape.NodeSingular): void => {
         if (!cyRef.current) return;
         const cy = cyRef.current;
         cy.batch(() => {
@@ -347,12 +361,12 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             node.addClass('highlighted');
             node.neighborhood().addClass('highlighted');
         });
-    }
+    }, []);
 
-    function unhighlightAll(): void {
+    const unhighlightAll = useCallback((): void => {
         if (!cyRef.current) return;
         cyRef.current.elements().removeClass('highlighted');
-    }
+    }, []);
 
     async function showNodeDetails(nodeId: string): Promise<void> {
         try {
@@ -390,12 +404,12 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         }
     }
 
-    function hideNodeDetails(): void {
+    const hideNodeDetails = useCallback((): void => {
         setSelectedNode(null);
         setConnectedMemories([]);
-    }
+    }, []);
 
-    function handleConnectedMemoryClick(memoryId: string): void {
+    const handleConnectedMemoryClick = useCallback((memoryId: string): void => {
         if (!cyRef.current) return;
         
         const cy = cyRef.current;
@@ -417,7 +431,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             // Show details for the connected node
             showNodeDetails(memoryId);
         }
-    }
+    }, []);
 
     // Handle fullscreen changes - resize cytoscape when entering/exiting fullscreen
     useEffect(() => {
@@ -566,7 +580,8 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         }
     };
 
-    function preprocessGraphData(elements: any[]): any[] {
+    // Memoized graph preprocessing to avoid recalculating on every render
+    const preprocessGraphData = useCallback((elements: any[]): any[] => {
         const nodes = elements.filter(el => el.data && !el.data.source);
         const edges = elements.filter(el => el.data && el.data.source);
         
@@ -629,9 +644,9 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         });
         
         return [...processedNodes, ...validEdges];
-    }
+    }, []);
 
-    const setupDragBehavior = (cy: Core) => {
+    const setupDragBehavior = useCallback((cy: Core) => {
         let draggedNode: NodeSingular | null = null;
         let connectedNodes: NodeCollection = cy.collection();
         
@@ -692,7 +707,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             draggedNode = null;
             connectedNodes = cy.collection();
         });
-    };
+    }, []);
 
     const animateNodes = () => {
         if (!cyRef.current) return;
@@ -760,251 +775,50 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         }, 700);
     };
 
-    const addBackgroundEffects = () => {
-        if (!graphContainerRef.current) return;
-        
-        // Clear any existing canvas
-        const existingCanvas = graphContainerRef.current.querySelector('.star-background');
-        if (existingCanvas) {
-            existingCanvas.remove();
-        }
-        
-        // Create canvas
-        const canvas = document.createElement('canvas');
-        canvas.setAttribute('class', 'star-background');
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.style.pointerEvents = 'none';
-        canvas.style.zIndex = '0';
-        
-        graphContainerRef.current.appendChild(canvas);
-        
-        // Set canvas size
-        canvas.width = graphContainerRef.current.clientWidth;
-        canvas.height = graphContainerRef.current.clientHeight;
-        
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        
-        // Create enhanced cosmic stars with varied sizes
-        const stars: {x: number, y: number, size: number, opacity: number, twinkleSpeed: number, type: 'normal' | 'bright' | 'distant'}[] = [];
-        
-        for (let i = 0; i < 200; i++) {
-            const starType = Math.random();
-            let size, opacity, twinkleSpeed, type: 'normal' | 'bright' | 'distant';
-            
-            if (starType < 0.1) {
-                // Bright stars (10%)
-                size = Math.random() * 2 + 1.5;
-                opacity = Math.random() * 0.4 + 0.6;
-                twinkleSpeed = Math.random() * 2000 + 1000;
-                type = 'bright';
-            } else if (starType < 0.7) {
-                // Normal stars (60%)
-                size = Math.random() * 1 + 0.5;
-                opacity = Math.random() * 0.6 + 0.3;
-                twinkleSpeed = Math.random() * 3000 + 2000;
-                type = 'normal';
-            } else {
-                // Distant stars (30%)
-                size = Math.random() * 0.5 + 0.2;
-                opacity = Math.random() * 0.4 + 0.1;
-                twinkleSpeed = Math.random() * 4000 + 3000;
-                type = 'distant';
-            }
-            
-            stars.push({
-                x: Math.random() * canvas.width,
-                y: Math.random() * canvas.height,
-                size,
-                opacity,
-                twinkleSpeed,
-                type
-            });
-        }
-        
-        // Animation loop
-        const animate = () => {
-            if (!ctx) return;
-            
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Draw enhanced cosmic stars
-            stars.forEach(star => {
-                ctx.beginPath();
-                
-                // Enhanced twinkling effect based on star type
-                const time = Date.now();
-                const twinkle = Math.sin(time / star.twinkleSpeed) * 0.5 + 0.5;
-                const currentOpacity = star.opacity * (0.3 + twinkle * 0.7);
-                
-                // Different colors for different star types
-                let color;
-                switch (star.type) {
-                    case 'bright':
-                        color = `rgba(255, 255, 255, ${currentOpacity})`;
-                        // Add subtle glow for bright stars
-                        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-                        ctx.shadowBlur = star.size * 2;
-                        break;
-                    case 'normal':
-                        color = `rgba(200, 220, 255, ${currentOpacity})`;
-                        ctx.shadowColor = 'rgba(200, 220, 255, 0.3)';
-                        ctx.shadowBlur = star.size;
-                        break;
-                    case 'distant':
-                        color = `rgba(150, 150, 200, ${currentOpacity})`;
-                        ctx.shadowColor = 'transparent';
-                        ctx.shadowBlur = 0;
-                        break;
-                }
-                
-                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-                ctx.fillStyle = color;
-                ctx.fill();
-                
-                // Reset shadow for next star
-                ctx.shadowColor = 'transparent';
-                ctx.shadowBlur = 0;
-                
-                // Slowly move stars (slower for distant stars)
-                const moveSpeed = star.type === 'distant' ? 0.02 : star.type === 'bright' ? 0.08 : 0.05;
-                star.y -= moveSpeed;
-                
-                // Reset stars that go off screen
-                if (star.y < -star.size) {
-                    star.y = canvas.height + star.size;
-                    star.x = Math.random() * canvas.width;
-                }
-            });
-            
-            requestAnimationFrame(animate);
-        };
-        
-        animate();
-    };
-
-    const formatDate = (dateString: string): string => {
-        if (!dateString) return '';
-
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString(undefined, {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        } catch (e) {
-            return dateString;
-        }
-    };
+    const addBackgroundEffects = useCallback(() => {
+        // Background effects are now handled by the StarField component
+        // This function is kept for backward compatibility but does nothing
+    }, []);
 
     const containerClass = hasOverlayInput ? "graph-main-container" : "dashboard-container";
     const contentClass = hasOverlayInput ? "graph-main-content" : "container-content graph-content";
     
     return (
         <div className={containerClass} id="graph-container" data-container="graph" ref={graphContainerRef}>
-            {!hasOverlayInput && (
-                <div className="container-header" data-drag-handle>
-                    <span className="container-title">Memory Graph</span>
-                    <div className="container-controls">
-                        <button 
-                            className="secondary-btn"
-                            onClick={loadGraphData}
-                        >
-                            Refresh
-                        </button>
-                        <button 
-                            className="fullscreen-btn"
-                            onClick={toggleFullscreen}
-                        >
-                            {isFullscreen ? '🗗 Exit Fullscreen' : '⛶ Fullscreen'}
-                        </button>
-                        <span className="drag-handle">⋮⋮</span>
-                    </div>
-                </div>
-            )}
-            
-            {hasOverlayInput && (
-                <div className="graph-controls-overlay">
-                    <button 
-                        className="graph-control-btn"
-                        onClick={loadGraphData}
-                        title="Refresh Graph"
-                    >
-                        🔄
-                    </button>
-                    <button 
-                        className="graph-control-btn"
-                        onClick={toggleFullscreen}
-                        title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-                    >
-                        {isFullscreen ? '🗗' : '⛶'}
-                    </button>
-                </div>
-            )}
+            <GraphControls
+                isOverlay={hasOverlayInput}
+                isFullscreen={isFullscreen}
+                onRefresh={loadGraphData}
+                onToggleFullscreen={toggleFullscreen}
+                onFitToScreen={() => {
+                    if (cyRef.current && cyRef.current.elements().length > 0) {
+                        cyRef.current.fit();
+                        cyRef.current.center();
+                    }
+                }}
+                onResetZoom={() => {
+                    if (cyRef.current) {
+                        cyRef.current.zoom(0.8);
+                        cyRef.current.center();
+                    }
+                }}
+            />
             
             <div className={contentClass}>
+                <StarField 
+                    width={graphContainerRef.current?.clientWidth}
+                    height={graphContainerRef.current?.clientHeight}
+                    starCount={200}
+                    animate={true}
+                />
                 <div ref={containerRef} className="cytoscape-container"></div>
                 
-                {/* Node Details Panel */}
-                {selectedNode && (
-                    <div className="node-details floating-panel">
-                        <div className="panel-header">
-                            <h3>Memory Details</h3>
-                            <button 
-                                className="close-btn"
-                                onClick={() => setSelectedNode(null)}
-                            >
-                                ×
-                            </button>
-                        </div>
-                        <div className="panel-content">
-                            <div className="node-content-section">
-                                {selectedNode.content}
-                            </div>
-                            {selectedNode.tags && selectedNode.tags.length > 0 && (
-                                <div className="memory-tags">
-                                    {selectedNode.tags.map((tag, index) => (
-                                        <span key={index} className="memory-tag">
-                                            {tag}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                            <div className="connections-section">
-                                <h4>Connected Memories ({connectedMemories.length})</h4>
-                                <div className="scrollable-connections">
-                                    {connectedMemories.length > 0 ? (
-                                        <ul className="connected-memories-list">
-                                            {connectedMemories.map(memory => (
-                                                <li 
-                                                    key={memory.id}
-                                                    className="connected-memory-item"
-                                                    onClick={() => handleConnectedMemoryClick(memory.id)}
-                                                >
-                                                    • {memory.label}
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    ) : (
-                                        <p className="no-connections">No connections yet</p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="panel-footer">
-                            <div className="memory-metadata">
-                                <p>Created: {formatDate(selectedNode.timestamp)}</p>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <NodeDetailsPanel
+                    selectedNode={selectedNode}
+                    connectedMemories={connectedMemories}
+                    onConnectedMemoryClick={handleConnectedMemoryClick}
+                    onClose={hideNodeDetails}
+                />
             </div>
         </div>
     );
@@ -1012,4 +826,9 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
 
 GraphVisualization.displayName = 'GraphVisualization';
 
-export default GraphVisualization;
+// Optimize with React.memo and custom comparison
+export default memo(GraphVisualization, (prevProps, nextProps) => {
+    // Only re-render if refresh trigger changes
+    return prevProps.refreshTrigger === nextProps.refreshTrigger && 
+           prevProps.hasOverlayInput === nextProps.hasOverlayInput;
+});

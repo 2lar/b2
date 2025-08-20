@@ -265,6 +265,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                     onPageChange={handlePageChange}
                     onMemoryDeleted={handleMemoryDeleted}
                     onMemoryUpdated={handleMemoryUpdated}
+                    useVirtualScrolling={totalMemories > 100}
                 />
 
                 {/* Main Content Area */}

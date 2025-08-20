@@ -47,9 +47,12 @@
  * - Can be positioned in panel or slide-in mode
  */
 
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { nodesApi } from '../api/nodes';
 import type { Node } from '../../../services';
+import VirtualMemoryList from './VirtualMemoryList';
+import { useDeleteMemory, useBulkDeleteMemories } from '../hooks/useDeleteMemory';
+import { useUpdateMemory } from '../hooks/useUpdateMemory';
 
 interface MemoryListProps {
     /** Array of memory objects to display */
@@ -72,6 +75,8 @@ interface MemoryListProps {
     onMemoryViewInGraph?: (nodeId: string) => void;
     /** Whether component is rendered in a slide-in panel */
     isInPanel?: boolean;
+    /** Whether to use virtual scrolling for better performance */
+    useVirtualScrolling?: boolean;
 }
 
 const MemoryList: React.FC<MemoryListProps> = ({
@@ -84,12 +89,34 @@ const MemoryList: React.FC<MemoryListProps> = ({
     onMemoryDeleted,
     onMemoryUpdated,
     onMemoryViewInGraph,
-    isInPanel = false
+    isInPanel = false,
+    useVirtualScrolling = false
 }) => {
+    // Use virtual scrolling for better performance with large lists
+    if (useVirtualScrolling) {
+        return (
+            <VirtualMemoryList
+                memories={memories}
+                totalMemories={totalMemories}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                isLoading={isLoading}
+                onPageChange={onPageChange}
+                onMemoryDeleted={onMemoryDeleted}
+                onMemoryUpdated={onMemoryUpdated}
+                onMemoryViewInGraph={onMemoryViewInGraph}
+                isInPanel={isInPanel}
+            />
+        );
+    }
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editContent, setEditContent] = useState('');
     const [selectedMemories, setSelectedMemories] = useState<Set<string>>(new Set());
-    const [isDeleting, setIsDeleting] = useState(false);
+    
+    // Optimistic mutation hooks
+    const updateMemoryMutation = useUpdateMemory();
+    const deleteMemoryMutation = useDeleteMemory();
+    const bulkDeleteMutation = useBulkDeleteMemories();
 
     const formatDate = (dateString: string): string => {
         const date = new Date(dateString);
@@ -115,14 +142,20 @@ const MemoryList: React.FC<MemoryListProps> = ({
     const handleSave = async (nodeId: string) => {
         if (!editContent.trim()) return;
 
-        try {
-            await nodesApi.updateNode(nodeId, editContent.trim());
-            setEditingId(null);
-            setEditContent('');
-            onMemoryUpdated();
-        } catch (error) {
-            console.error('Failed to update memory:', error);
-        }
+        updateMemoryMutation.mutate(
+            { nodeId, content: editContent.trim() },
+            {
+                onSuccess: () => {
+                    setEditingId(null);
+                    setEditContent('');
+                    onMemoryUpdated();
+                },
+                onError: (error) => {
+                    console.error('Failed to update memory:', error);
+                    // Keep editing mode active on error
+                }
+            }
+        );
     };
 
     const handleCancel = () => {
@@ -135,12 +168,17 @@ const MemoryList: React.FC<MemoryListProps> = ({
             return;
         }
 
-        try {
-            await nodesApi.deleteNode(nodeId);
-            onMemoryDeleted();
-        } catch (error) {
-            console.error('Failed to delete memory:', error);
-        }
+        deleteMemoryMutation.mutate(
+            { nodeId },
+            {
+                onSuccess: () => {
+                    onMemoryDeleted();
+                },
+                onError: (error) => {
+                    console.error('Failed to delete memory:', error);
+                }
+            }
+        );
     };
 
     const handleSelectAll = () => {
@@ -171,16 +209,15 @@ const MemoryList: React.FC<MemoryListProps> = ({
 
         if (!confirm(message)) return;
 
-        setIsDeleting(true);
-        try {
-            await nodesApi.bulkDeleteNodes(selectedIds);
-            setSelectedMemories(new Set());
-            onMemoryDeleted();
-        } catch (error) {
-            console.error('Failed to bulk delete memories:', error);
-        } finally {
-            setIsDeleting(false);
-        }
+        bulkDeleteMutation.mutate(selectedIds, {
+            onSuccess: () => {
+                setSelectedMemories(new Set());
+                onMemoryDeleted();
+            },
+            onError: (error) => {
+                console.error('Failed to bulk delete memories:', error);
+            }
+        });
     };
 
     if (isInPanel) {
@@ -209,9 +246,9 @@ const MemoryList: React.FC<MemoryListProps> = ({
                                     <button 
                                         className="danger-btn bulk-delete-btn" 
                                         onClick={handleBulkDelete}
-                                        disabled={isDeleting}
+                                        disabled={bulkDeleteMutation.isPending}
                                     >
-                                        {isDeleting ? 'Deleting...' : `Delete ${selectedMemories.size} Selected`}
+                                        {bulkDeleteMutation.isPending ? 'Deleting...' : `Delete ${selectedMemories.size} Selected`}
                                     </button>
                                 </div>
                             )}
@@ -380,9 +417,9 @@ const MemoryList: React.FC<MemoryListProps> = ({
                                     <button 
                                         className="danger-btn bulk-delete-btn" 
                                         onClick={handleBulkDelete}
-                                        disabled={isDeleting}
+                                        disabled={bulkDeleteMutation.isPending}
                                     >
-                                        {isDeleting ? 'Deleting...' : `Delete ${selectedMemories.size} Selected`}
+                                        {bulkDeleteMutation.isPending ? 'Deleting...' : `Delete ${selectedMemories.size} Selected`}
                                     </button>
                                 </div>
                             )}
@@ -517,4 +554,5 @@ const MemoryList: React.FC<MemoryListProps> = ({
     );
 };
 
-export default MemoryList;
+// Optimize with React.memo to prevent unnecessary re-renders
+export default memo(MemoryList);

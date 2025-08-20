@@ -31,6 +31,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useAuth, AuthSection } from '../features/auth';
 import { webSocketClient } from '../services';
 import { useGraphStore } from '../stores/graphStore';
+import { ErrorBoundary } from '../common';
 
 // Lazy load heavy components
 const Dashboard = lazy(() => import('../features/dashboard').then(module => ({ default: module.Dashboard })));
@@ -96,30 +97,62 @@ const App: React.FC = () => {
     }
 
     return (
-        <Router>
-            <div style={{ display: 'flex' }}>
-                {isSidebarOpen && (
-                    <div style={{ width: '200px', background: '#f0f0f0', padding: '1rem' }}>
-                        <h2>Sidebar</h2>
-                        <p>This is the sidebar content.</p>
-                    </div>
-                )}
-                <div style={{ flex: 1 }}>
-                    {session && session.user?.email ? (
-                        <Suspense fallback={<LoadingFallback />}>
-                            <Routes>
-                                <Route path="/" element={<Dashboard user={session.user} onSignOut={handleSignOut} />} />
-                                <Route path="/categories" element={<CategoriesList />} />
-                                <Route path="/categories/:categoryId" element={<CategoryDetail />} />
-                                <Route path="*" element={<Navigate to="/" replace />} />
-                            </Routes>
-                        </Suspense>
-                    ) : (
-                        <AuthSection />
+        <ErrorBoundary 
+            name="Application Root"
+            onError={(error, errorInfo) => {
+                console.error('Critical application error:', error, errorInfo);
+            }}
+        >
+            <Router>
+                <div style={{ display: 'flex' }}>
+                    {isSidebarOpen && (
+                        <div style={{ width: '200px', background: '#f0f0f0', padding: '1rem' }}>
+                            <h2>Sidebar</h2>
+                            <p>This is the sidebar content.</p>
+                        </div>
                     )}
+                    <div style={{ flex: 1 }}>
+                        {session && session.user?.email ? (
+                            <ErrorBoundary name="Authenticated Routes">
+                                <Suspense fallback={<LoadingFallback />}>
+                                    <Routes>
+                                        <Route 
+                                            path="/" 
+                                            element={
+                                                <ErrorBoundary name="Dashboard">
+                                                    <Dashboard user={session.user} onSignOut={handleSignOut} />
+                                                </ErrorBoundary>
+                                            } 
+                                        />
+                                        <Route 
+                                            path="/categories" 
+                                            element={
+                                                <ErrorBoundary name="Categories List">
+                                                    <CategoriesList />
+                                                </ErrorBoundary>
+                                            } 
+                                        />
+                                        <Route 
+                                            path="/categories/:categoryId" 
+                                            element={
+                                                <ErrorBoundary name="Category Detail">
+                                                    <CategoryDetail />
+                                                </ErrorBoundary>
+                                            } 
+                                        />
+                                        <Route path="*" element={<Navigate to="/" replace />} />
+                                    </Routes>
+                                </Suspense>
+                            </ErrorBoundary>
+                        ) : (
+                            <ErrorBoundary name="Authentication">
+                                <AuthSection />
+                            </ErrorBoundary>
+                        )}
+                    </div>
                 </div>
-            </div>
-        </Router>
+            </Router>
+        </ErrorBoundary>
     );
 };
 
