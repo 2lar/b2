@@ -2,28 +2,27 @@
  * Dashboard Component - Main Application Interface
  * 
  * Purpose:
- * The primary dashboard that orchestrates all main UI components in a multi-panel layout.
- * Acts as the central hub where users interact with their memory data through different views.
+ * The primary dashboard with centered graph visualization and integrated memory input.
+ * Acts as the central hub where users interact with their memory data through a streamlined interface.
  * 
  * Key Features:
- * - Multi-panel layout with resizable columns
- * - File system sidebar for browsing memories by category
- * - Interactive graph visualization of memory connections
- * - Memory input form for creating new memories
- * - Paginated memory list for browsing and management
+ * - Centered graph visualization with maximum screen space
+ * - Integrated memory input at top center of graph area
+ * - Collapsible file system sidebar on the left
+ * - Collapsible memory list panel on the right (dropdown style)
  * - Real-time synchronization between all components
  * - Automatic refresh coordination across panels
  * 
  * Layout Structure:
- * - Left: FileSystemSidebar (categories and memories in folder structure)
- * - Center: GraphVisualization (interactive node graph)
- * - Right Top: MemoryInput (creation form)
- * - Right Bottom: MemoryList (paginated list view)
+ * - Left: Collapsible FileSystemSidebar (categories and memories)
+ * - Center: Main area with GraphVisualization + integrated MemoryInput
+ * - Right: Collapsible MemoryList panel (slide-in dropdown)
  * 
  * State Management:
  * - Manages memory and category data loading
  * - Coordinates refresh triggers across all child components
  * - Handles pagination state for memory list
+ * - Manages panel visibility states (sidebar, memory list)
  * - Manages navigation between different views
  * 
  * Integration:
@@ -36,8 +35,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User } from '@supabase/supabase-js';
-import { Header } from '../../../common';
-import { GraphVisualization, type GraphVisualizationRef, MemoryInput, MemoryList, FileSystemSidebar, nodesApi } from '../../memories';
+import { Header, LeftPanel } from '../../../common';
+import { GraphVisualization, type GraphVisualizationRef, MemoryInput, nodesApi } from '../../memories';
 import { categoriesApi } from '../../categories';
 import type { Node } from '../../../services';
 import { components } from '../../../types/generated/generated-types';
@@ -62,6 +61,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     const [nextToken, setNextToken] = useState<string | undefined>(undefined);
     const [refreshGraph, setRefreshGraph] = useState(0);
     const [refreshSidebar, setRefreshSidebar] = useState(0);
+    const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
     const graphRef = useRef<GraphVisualizationRef>(null);
 
     const MEMORIES_PER_PAGE = 50;
@@ -146,6 +146,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                 console.warn('Could not find node in graph. The graph may still be loading.');
             }
         }
+        // Memory list is now in left panel, no need to close
+    };
+
+    const toggleLeftPanel = () => {
+        setIsLeftPanelCollapsed(!isLeftPanelCollapsed);
     };
 
     // memories already contains the current page data from server
@@ -154,46 +159,46 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
         <div className="app-container">
             <Header 
                 userEmail={user.email || ''} 
-                onSignOut={onSignOut} 
+                onSignOut={onSignOut}
+                onToggleSidebar={toggleLeftPanel}
+                isSidebarCollapsed={isLeftPanelCollapsed}
+                memoryCount={totalMemories}
             />
 
-            <main className="dashboard-layout">
-                {/* Left Sidebar - File System Explorer */}
-                <FileSystemSidebar
-                    userId={user.id}
+            <main className="dashboard-layout-refined">
+                {/* Left Panel with Tabs */}
+                <LeftPanel
+                    user={user}
+                    isCollapsed={isLeftPanelCollapsed}
+                    onToggleCollapse={toggleLeftPanel}
                     onMemorySelect={handleViewInGraph}
                     onCategorySelect={(categoryId) => navigate(`/categories/${categoryId}`)}
                     refreshTrigger={refreshSidebar}
+                    memories={memories}
+                    totalMemories={totalMemories}
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    isLoading={isLoading}
+                    onPageChange={handlePageChange}
+                    onMemoryDeleted={handleMemoryDeleted}
+                    onMemoryUpdated={handleMemoryUpdated}
                 />
 
-                {/* Column Resize Handle */}
-                <div className="resize-handle horizontal" data-resize="horizontal-left"></div>
+                {/* Main Center Area - Graph with Integrated Memory Input */}
+                <div className="main-content-area">
+                    {/* Integrated Memory Input at Top */}
+                    <div className="memory-input-overlay">
+                        <MemoryInput 
+                            onMemoryCreated={handleMemoryCreated}
+                            isCompact={true}
+                        />
+                    </div>
 
-                {/* Middle Column - Memory Graph */}
-                <GraphVisualization ref={graphRef} refreshTrigger={refreshGraph} />
-
-                {/* Column Resize Handle */}
-                <div className="resize-handle horizontal" data-resize="horizontal-right"></div>
-
-                {/* Right Column Container */}
-                <div className="right-column">
-                    {/* Top Right - Memory Input */}
-                    <MemoryInput onMemoryCreated={handleMemoryCreated} />
-
-                    {/* Vertical Resize Handle */}
-                    <div className="resize-handle vertical" data-resize="vertical"></div>
-
-                    {/* Bottom Right - Memory List */}
-                    <MemoryList 
-                        memories={memories}
-                        totalMemories={totalMemories}
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        isLoading={isLoading}
-                        onPageChange={handlePageChange}
-                        onMemoryDeleted={handleMemoryDeleted}
-                        onMemoryUpdated={handleMemoryUpdated}
-                        onMemoryViewInGraph={handleViewInGraph}
+                    {/* Graph Visualization */}
+                    <GraphVisualization 
+                        ref={graphRef} 
+                        refreshTrigger={refreshGraph}
+                        hasOverlayInput={true}
                     />
                 </div>
             </main>

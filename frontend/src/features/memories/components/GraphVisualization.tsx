@@ -58,6 +58,8 @@ cytoscape.use(cola);
 interface GraphVisualizationProps {
     /** Trigger number that causes graph refresh when changed */
     refreshTrigger: number;
+    /** Whether the graph has an overlay input (affects layout) */
+    hasOverlayInput?: boolean;
 }
 
 export interface GraphVisualizationRef {
@@ -92,7 +94,7 @@ const NODE_COLORS = [
     '#f72585', // supernova red
 ];
 
-const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationProps>(({ refreshTrigger }, ref) => {
+const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationProps>(({ refreshTrigger, hasOverlayInput = false }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const graphContainerRef = useRef<HTMLDivElement>(null);
     const cyRef = useRef<Core | null>(null);
@@ -844,27 +846,52 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         }
     };
 
+    const containerClass = hasOverlayInput ? "graph-main-container" : "dashboard-container";
+    const contentClass = hasOverlayInput ? "graph-main-content" : "container-content graph-content";
+    
     return (
-        <div className="dashboard-container" id="graph-container" data-container="graph" ref={graphContainerRef}>
-            <div className="container-header" data-drag-handle>
-                <span className="container-title">Memory Graph</span>
-                <div className="container-controls">
-                    <button 
-                        className="secondary-btn"
-                        onClick={loadGraphData}
-                    >
-                        Refresh
-                    </button>
-                    <button 
-                        className="fullscreen-btn"
-                        onClick={toggleFullscreen}
-                    >
-                        {isFullscreen ? '🗗 Exit Fullscreen' : '⛶ Fullscreen'}
-                    </button>
-                    <span className="drag-handle">⋮⋮</span>
+        <div className={containerClass} id="graph-container" data-container="graph" ref={graphContainerRef}>
+            {!hasOverlayInput && (
+                <div className="container-header" data-drag-handle>
+                    <span className="container-title">Memory Graph</span>
+                    <div className="container-controls">
+                        <button 
+                            className="secondary-btn"
+                            onClick={loadGraphData}
+                        >
+                            Refresh
+                        </button>
+                        <button 
+                            className="fullscreen-btn"
+                            onClick={toggleFullscreen}
+                        >
+                            {isFullscreen ? '🗗 Exit Fullscreen' : '⛶ Fullscreen'}
+                        </button>
+                        <span className="drag-handle">⋮⋮</span>
+                    </div>
                 </div>
-            </div>
-            <div className="container-content graph-content">
+            )}
+            
+            {hasOverlayInput && (
+                <div className="graph-controls-overlay">
+                    <button 
+                        className="graph-control-btn"
+                        onClick={loadGraphData}
+                        title="Refresh Graph"
+                    >
+                        🔄
+                    </button>
+                    <button 
+                        className="graph-control-btn"
+                        onClick={toggleFullscreen}
+                        title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                    >
+                        {isFullscreen ? '🗗' : '⛶'}
+                    </button>
+                </div>
+            )}
+            
+            <div className={contentClass}>
                 <div ref={containerRef} className="graph-container"></div>
                 
                 {/* Node Details Panel */}
