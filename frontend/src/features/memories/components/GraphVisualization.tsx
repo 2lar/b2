@@ -937,10 +937,12 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                                     ) : (
                                         <p className="no-connections">No connections yet</p>
                                     )}
-                                    <div className="memory-metadata">
-                                        <p>Created: {formatDate(selectedNode.timestamp)}</p>
-                                    </div>
                                 </div>
+                            </div>
+                        </div>
+                        <div className="panel-footer">
+                            <div className="memory-metadata">
+                                <p>Created: {formatDate(selectedNode.timestamp)}</p>
                             </div>
                         </div>
                     </div>
