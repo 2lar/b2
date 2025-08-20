@@ -309,9 +309,9 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert map to slice
-	edgeIDs := make([]string, 0, len(connectedNodeIDs))
+	connectedNodes := make([]string, 0, len(connectedNodeIDs))
 	for id := range connectedNodeIDs {
-		edgeIDs = append(edgeIDs, id)
+		connectedNodes = append(connectedNodes, id)
 	}
 
 	response := api.NodeDetailsResponse{
@@ -320,7 +320,7 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 		Tags:      result.Node.Tags,
 		Timestamp: result.Node.CreatedAt.Format(time.RFC3339),
 		Version:   result.Node.Version,
-		Edges:     edgeIDs,
+		Edges:     connectedNodes, // Edges field contains connected node IDs, not edge IDs
 	}
 
 	if isPostColdStart {

@@ -352,13 +352,14 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             });
 
             // Process connected memories
+            // nodeData.edges contains node IDs of connected memories, not edge IDs
             if (nodeData.edges && nodeData.edges.length > 0 && cyRef.current) {
                 const cy = cyRef.current;
-                const connectedNodesInfo = nodeData.edges.map(edgeId => {
-                    const connectedNode = cy.getElementById(edgeId);
+                const connectedNodesInfo = nodeData.edges.map(connectedNodeId => {
+                    const connectedNode = cy.getElementById(connectedNodeId);
                     if (connectedNode && connectedNode.length > 0) {
                         return {
-                            id: edgeId,
+                            id: connectedNodeId,
                             label: connectedNode.data('label') || 'Untitled'
                         };
                     }

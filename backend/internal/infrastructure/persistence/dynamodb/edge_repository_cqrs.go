@@ -98,48 +98,57 @@ func (r *EdgeRepositoryCQRS) Exists(ctx context.Context, id shared.NodeID) (bool
 
 // FindByUser retrieves all edges for a user.
 func (r *EdgeRepositoryCQRS) FindByUser(ctx context.Context, userID shared.UserID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
-	// Apply query options
-	options := repository.ApplyQueryOptions(opts...)
+	// Use EdgeIndex GSI to efficiently query all edges for the user
+	// This avoids scan operations and provides consistent performance
 	
-	// Scan for all edges belonging to this user
-	// Filter: PK begins with USER#<userID>#NODE# AND SK begins with EDGE#
-	filterEx := expression.And(
-		expression.Name("PK").BeginsWith(fmt.Sprintf("USER#%s#NODE#", userID.String())),
-		expression.Name("SK").BeginsWith("EDGE#"),
-	)
+	// Build key condition expression for GSI2 (EdgeIndex)
+	keyEx := expression.Key("GSI2PK").Equal(expression.Value(fmt.Sprintf("USER#%s#EDGE", userID.String())))
 	
 	// Build the expression
 	expr, err := expression.NewBuilder().
-		WithFilter(filterEx).
+		WithKeyCondition(keyEx).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build expression: %w", err)
+		return nil, fmt.Errorf("failed to build GSI expression: %w", err)
 	}
 	
-	input := &dynamodb.ScanInput{
-		TableName:                 aws.String(r.tableName),
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		Limit:                     aws.Int32(int32(options.Limit)),
-	}
+	var allEdges []*edge.Edge
+	var lastEvaluatedKey map[string]types.AttributeValue
 	
-	result, err := r.client.Scan(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan edges: %w", err)
-	}
-	
-	edges := make([]*edge.Edge, 0, len(result.Items))
-	for _, item := range result.Items {
-		edge, err := r.parseEdgeFromItem(item, userID.String())
-		if err != nil {
-			r.logger.Warn("Failed to parse edge", zap.Error(err))
-			continue
+	// Paginate through all results to ensure we get all edges
+	for {
+		input := &dynamodb.QueryInput{
+			TableName:                 aws.String(r.tableName),
+			IndexName:                 aws.String("EdgeIndex"), // Use EdgeIndex GSI (hardcoded like other repos)
+			KeyConditionExpression:    expr.KeyCondition(),
+			ExpressionAttributeNames:  expr.Names(),
+			ExpressionAttributeValues: expr.Values(),
+			ExclusiveStartKey:         lastEvaluatedKey,
 		}
-		edges = append(edges, edge)
+		
+		result, err := r.client.Query(ctx, input)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query EdgeIndex GSI: %w", err)
+		}
+		
+		// Parse all edges for this user
+		for _, item := range result.Items {
+			edge, err := r.parseEdgeFromItem(item, userID.String())
+			if err != nil {
+				r.logger.Warn("Failed to parse edge", zap.Error(err))
+				continue
+			}
+			allEdges = append(allEdges, edge)
+		}
+		
+		// Check if there are more results to fetch
+		lastEvaluatedKey = result.LastEvaluatedKey
+		if lastEvaluatedKey == nil {
+			break
+		}
 	}
 	
-	return edges, nil
+	return allEdges, nil
 }
 
 // CountByUser counts edges for a user.
@@ -226,48 +235,61 @@ func (r *EdgeRepositoryCQRS) FindByTargetNode(ctx context.Context, targetID shar
 		return nil, fmt.Errorf("user ID not found in context")
 	}
 	
-	// Apply query options
-	options := repository.ApplyQueryOptions(opts...)
+	// Use EdgeIndex GSI to efficiently query all edges for the user, then filter for target
+	// This avoids the scan limit issue and matches what EdgeRepository does
 	
-	// We need to scan because target node is in the SK
-	// Filter: PK begins with USER#<userID>#NODE# AND SK = EDGE#RELATES_TO#<targetID>
-	filterEx := expression.And(
-		expression.Name("PK").BeginsWith(fmt.Sprintf("USER#%s#NODE#", userID)),
-		expression.Name("SK").Equal(expression.Value(fmt.Sprintf("EDGE#RELATES_TO#%s", targetID.String()))),
-	)
+	// Build key condition expression for GSI2 (EdgeIndex)
+	keyEx := expression.Key("GSI2PK").Equal(expression.Value(fmt.Sprintf("USER#%s#EDGE", userID)))
 	
 	// Build the expression
 	expr, err := expression.NewBuilder().
-		WithFilter(filterEx).
+		WithKeyCondition(keyEx).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build expression: %w", err)
+		return nil, fmt.Errorf("failed to build GSI expression: %w", err)
 	}
 	
-	input := &dynamodb.ScanInput{
-		TableName:                 aws.String(r.tableName),
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		Limit:                     aws.Int32(int32(options.Limit)),
-	}
+	var allEdges []*edge.Edge
+	var lastEvaluatedKey map[string]types.AttributeValue
 	
-	result, err := r.client.Scan(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan edges: %w", err)
-	}
-	
-	edges := make([]*edge.Edge, 0, len(result.Items))
-	for _, item := range result.Items {
-		edge, err := r.parseEdgeFromItem(item, userID)
-		if err != nil {
-			r.logger.Warn("Failed to parse edge", zap.Error(err))
-			continue
+	// Paginate through all results to ensure we get all edges
+	for {
+		input := &dynamodb.QueryInput{
+			TableName:                 aws.String(r.tableName),
+			IndexName:                 aws.String("EdgeIndex"), // Use EdgeIndex GSI (hardcoded like other repos)
+			KeyConditionExpression:    expr.KeyCondition(),
+			ExpressionAttributeNames:  expr.Names(),
+			ExpressionAttributeValues: expr.Values(),
+			ExclusiveStartKey:         lastEvaluatedKey,
 		}
-		edges = append(edges, edge)
+		
+		result, err := r.client.Query(ctx, input)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query EdgeIndex GSI: %w", err)
+		}
+		
+		// Parse edges and filter for target node
+		for _, item := range result.Items {
+			edge, err := r.parseEdgeFromItem(item, userID)
+			if err != nil {
+				r.logger.Warn("Failed to parse edge", zap.Error(err))
+				continue
+			}
+			
+			// Check if this edge points to our target node
+			if edge.TargetID.String() == targetID.String() {
+				allEdges = append(allEdges, edge)
+			}
+		}
+		
+		// Check if there are more results to fetch
+		lastEvaluatedKey = result.LastEvaluatedKey
+		if lastEvaluatedKey == nil {
+			break
+		}
 	}
 	
-	return edges, nil
+	return allEdges, nil
 }
 
 // FindByNode finds all edges connected to a specific node.
