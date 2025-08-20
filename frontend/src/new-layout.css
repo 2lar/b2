@@ -1,5 +1,12 @@
 /* New Layout Styles for Reorganized Frontend */
 
+/* CSS Variables for Layout Calculations */
+:root {
+    --left-panel-width-expanded: 320px;
+    --left-panel-width-collapsed: 70px;
+    --dashboard-gap: 1rem;
+}
+
 /* Updated Header Layout */
 header {
     display: flex;
@@ -116,12 +123,12 @@ header {
     padding: 0.5rem;
 }
 
-/* Left Panel */
+/* Left Panel - Overlay Design */
 .left-panel {
-    width: 320px;
-    transition: width 0.3s ease;
+    width: var(--left-panel-width-collapsed);
+    position: relative;
     flex-shrink: 0;
-    z-index: 10;
+    z-index: 100;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -129,18 +136,47 @@ header {
     flex-direction: column;
     overflow: hidden;
     box-shadow: var(--shadow);
+    transition: none; /* Remove width transition since we're using overlay */
+}
+
+/* When expanded, overlay over the content */
+.left-panel:not(.collapsed) {
+    position: absolute;
+    width: var(--left-panel-width-expanded);
+    height: calc(100% - 1rem); /* Account for parent padding */
+    left: 0.5rem; /* Match parent padding */
+    top: 0.5rem; /* Match parent padding */
+    z-index: 200;
+    box-shadow: var(--shadow-lg);
+}
+
+/* Optional subtle backdrop when panel is expanded */
+.left-panel:not(.collapsed)::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.1);
+    z-index: -1;
+    pointer-events: none;
 }
 
 .left-panel.collapsed {
-    width: 70px;
+    width: var(--left-panel-width-collapsed);
+    position: relative;
 }
 
-/* Main Content Area */
+/* Main Content Area - Fixed position, not affected by panel expansion */
 .main-content-area {
-    flex: 1;
+    position: absolute;
+    left: calc(var(--left-panel-width-collapsed) + var(--dashboard-gap) + 0.5rem);
+    right: 0.5rem;
+    top: 0.5rem;
+    bottom: 0.5rem;
     display: flex;
     flex-direction: column;
-    position: relative;
     overflow: hidden;
     background: var(--surface);
     border-radius: 12px;
@@ -148,13 +184,13 @@ header {
     box-shadow: var(--shadow);
 }
 
-/* Memory Input Overlay */
+/* Memory Input Overlay - Centered in main content area */
 .memory-input-overlay {
     position: absolute;
     top: 1rem;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 100;
+    z-index: 150;
     width: 90%;
     max-width: 600px;
 }
@@ -542,8 +578,10 @@ header {
         gap: 0.5rem;
     }
     
+    /* On mobile, revert to flex layout */
     .left-panel {
-        width: 100%;
+        position: relative !important;
+        width: 100% !important;
         height: auto;
         max-height: 300px;
     }
@@ -551,6 +589,29 @@ header {
     .left-panel.collapsed {
         height: 80px;
         max-height: 80px;
+        width: 100% !important;
+        position: relative !important;
+    }
+    
+    .left-panel:not(.collapsed) {
+        position: relative !important;
+        width: 100% !important;
+        height: auto !important;
+        left: auto !important;
+        top: auto !important;
+    }
+    
+    .left-panel:not(.collapsed)::before {
+        display: none;
+    }
+    
+    .main-content-area {
+        position: relative !important;
+        left: auto !important;
+        right: auto !important;
+        top: auto !important;
+        bottom: auto !important;
+        flex: 1;
     }
     
     .left-panel-tabs {
@@ -564,6 +625,10 @@ header {
     .memory-input-overlay {
         width: 95%;
         max-width: none;
+        position: absolute;
+        top: 1rem;
+        left: 50%;
+        transform: translateX(-50%);
     }
     
     .header-center {

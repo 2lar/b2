@@ -1177,6 +1177,27 @@ header h1 {
     );
 }
 
+/* Graph fullscreen class for proper layout restoration */
+.graph-fullscreen {
+    transition: width 0.3s ease, height 0.3s ease;
+}
+
+/* Ensure proper layout restoration after fullscreen exit */
+#graph-container:not(:fullscreen):not(:-webkit-full-screen):not(:-moz-full-screen):not(:-ms-fullscreen) .main-content-area,
+#graph-container:not(:fullscreen):not(:-webkit-full-screen):not(:-moz-full-screen):not(:-ms-fullscreen) .graph-main-container {
+    width: 100% !important;
+    flex: 1 !important;
+    max-width: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+#graph-container:not(:fullscreen):not(:-webkit-full-screen):not(:-moz-full-screen):not(:-ms-fullscreen) .graph-container {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 400px !important;
+}
+
 /* Node Details */
 .node-details {
     /* position: static; is the default, no need to declare */

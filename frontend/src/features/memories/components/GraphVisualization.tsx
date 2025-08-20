@@ -407,12 +407,55 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
     // Handle fullscreen changes - resize cytoscape when entering/exiting fullscreen
     useEffect(() => {
         if (cyRef.current) {
-            // Small delay to allow fullscreen transition to complete
+            // Different delays for entering vs exiting fullscreen
+            const delay = isFullscreen ? 100 : 500; // Even longer delay for exit to ensure proper restoration
+            
             const timer = setTimeout(() => {
+                // Enhanced layout restoration for fullscreen exit
+                if (!isFullscreen && graphContainerRef.current) {
+                    // Reset container dimensions explicitly
+                    const container = graphContainerRef.current;
+                    container.style.width = '';
+                    container.style.height = '';
+                    container.style.maxWidth = '';
+                    container.style.maxHeight = '';
+                    
+                    // Force layout recalculation for parent containers
+                    const mainContentArea = container.closest('.main-content-area');
+                    const dashboardLayout = container.closest('.dashboard-layout-refined');
+                    
+                    [mainContentArea, dashboardLayout].forEach(parent => {
+                        if (parent) {
+                            const element = parent as HTMLElement;
+                            const display = element.style.display;
+                            element.style.display = 'none';
+                            element.offsetHeight; // Force reflow
+                            element.style.display = display || 'flex';
+                        }
+                    });
+                    
+                    // Multiple resize events to ensure all components update
+                    setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
+                    setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+                    setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+                }
+                
+                // Resize cytoscape after layout restoration
                 cyRef.current?.resize();
-                cyRef.current?.fit();
-                cyRef.current?.center();
-            }, 100);
+                
+                // Handle viewport positioning
+                if (cyRef.current && cyRef.current.elements().length > 0) {
+                    if (isFullscreen) {
+                        cyRef.current.fit();
+                        cyRef.current.center();
+                    } else {
+                        // Additional resize after a small delay to ensure proper dimensions
+                        setTimeout(() => {
+                            cyRef.current?.resize();
+                        }, 100);
+                    }
+                }
+            }, delay);
 
             return () => clearTimeout(timer);
         }
