@@ -186,13 +186,10 @@ const MemoryList: React.FC<MemoryListProps> = ({
     if (isInPanel) {
         return (
             <div className="memory-list-panel-content">
-                <div className="panel-memory-count">
-                    {totalMemories === 1 ? '1 memory' : `${totalMemories} memories`}
-                </div>
                 <div className="memory-list">
                     {memories.length > 0 && (
                         <div className="memory-list-controls">
-                            <div className="select-controls">
+                            <div className="controls-main">
                                 <label className="checkbox-container">
                                     <input 
                                         type="checkbox" 
@@ -203,19 +200,21 @@ const MemoryList: React.FC<MemoryListProps> = ({
                                     <span className="checkmark"></span>
                                     Select All (Page)
                                 </label>
-                                <span className="selected-count">
-                                    {selectedMemories.size} selected
+                                <span className="total-count">
+                                    {totalMemories} {totalMemories === 1 ? 'memory' : 'memories'}
                                 </span>
                             </div>
-                            <div className="bulk-actions">
-                                <button 
-                                    className="danger-btn bulk-delete-btn" 
-                                    onClick={handleBulkDelete}
-                                    disabled={selectedMemories.size === 0 || isDeleting}
-                                >
-                                    {isDeleting ? 'Deleting...' : 'Delete Selected'}
-                                </button>
-                            </div>
+                            {selectedMemories.size > 0 && (
+                                <div className="controls-footer">
+                                    <button 
+                                        className="danger-btn bulk-delete-btn" 
+                                        onClick={handleBulkDelete}
+                                        disabled={isDeleting}
+                                    >
+                                        {isDeleting ? 'Deleting...' : `Delete ${selectedMemories.size} Selected`}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -361,7 +360,7 @@ const MemoryList: React.FC<MemoryListProps> = ({
                 <div className="memory-list">
                     {memories.length > 0 && (
                         <div className="memory-list-controls">
-                            <div className="select-controls">
+                            <div className="controls-main">
                                 <label className="checkbox-container">
                                     <input 
                                         type="checkbox" 
@@ -372,19 +371,21 @@ const MemoryList: React.FC<MemoryListProps> = ({
                                     <span className="checkmark"></span>
                                     Select All (Page)
                                 </label>
-                                <span className="selected-count">
-                                    {selectedMemories.size} selected
+                                <span className="total-count">
+                                    {totalMemories} {totalMemories === 1 ? 'memory' : 'memories'}
                                 </span>
                             </div>
-                            <div className="bulk-actions">
-                                <button 
-                                    className="danger-btn bulk-delete-btn" 
-                                    onClick={handleBulkDelete}
-                                    disabled={selectedMemories.size === 0 || isDeleting}
-                                >
-                                    {isDeleting ? 'Deleting...' : 'Delete Selected'}
-                                </button>
-                            </div>
+                            {selectedMemories.size > 0 && (
+                                <div className="controls-footer">
+                                    <button 
+                                        className="danger-btn bulk-delete-btn" 
+                                        onClick={handleBulkDelete}
+                                        disabled={isDeleting}
+                                    >
+                                        {isDeleting ? 'Deleting...' : `Delete ${selectedMemories.size} Selected`}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
 

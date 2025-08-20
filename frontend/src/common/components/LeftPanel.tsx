@@ -84,7 +84,7 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
     onMemoryDeleted,
     onMemoryUpdated
 }) => {
-    const [activeTab, setActiveTab] = useState<TabType>('explorer');
+    const [activeTab, setActiveTab] = useState<TabType>('memories');
 
     const handleTabChange = (tab: TabType) => {
         // Don't allow tab switching when collapsed

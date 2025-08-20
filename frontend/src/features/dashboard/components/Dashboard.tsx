@@ -59,6 +59,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     const [totalMemories, setTotalMemories] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
     const [nextToken, setNextToken] = useState<string | undefined>(undefined);
+    const [pageTokens, setPageTokens] = useState<Map<number, string>>(new Map());
     const [refreshGraph, setRefreshGraph] = useState(0);
     const [refreshSidebar, setRefreshSidebar] = useState(0);
     const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
@@ -72,10 +73,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     }, []);
 
     const loadMemories = async (page: number, token?: string) => {
+        console.log(`loadMemories called: page=${page}, token=${token ? 'present' : 'none'}`);
         setIsLoading(true);
         try {
             const data = await nodesApi.listNodes(MEMORIES_PER_PAGE, token);
             const pageNodes = data.nodes || [];
+            
+            console.log(`Loaded ${pageNodes.length} memories, nextToken: ${data.nextToken ? 'present' : 'none'}`);
             
             // Sort by timestamp (newest first) - backend should handle this eventually
             pageNodes.sort((a, b) => 
@@ -87,6 +91,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
             setTotalPages(Math.ceil((data.total || 0) / MEMORIES_PER_PAGE));
             setNextToken(data.nextToken);
             setCurrentPage(page);
+            
+            // Store the nextToken for the next page if it exists
+            if (data.nextToken) {
+                console.log(`Storing token for page ${page + 1}`);
+                setPageTokens(prev => {
+                    const newTokens = new Map(prev);
+                    newTokens.set(page + 1, data.nextToken!);
+                    return newTokens;
+                });
+            }
         } catch (error) {
             console.error('Error loading memories:', error);
             
@@ -110,6 +124,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     };
 
     const handleMemoryCreated = () => {
+        setPageTokens(new Map()); // Clear pagination tokens when refreshing
         loadMemories(1); // Go to first page to see new memory
         loadCategories(); // Refresh categories as new memories might be auto-categorized
         // Trigger graph and sidebar refresh
@@ -118,7 +133,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     };
 
     const handleMemoryDeleted = () => {
-        loadMemories(currentPage); // Stay on current page, but reload to update counts
+        // Don't clear tokens - we want to stay on the same page
+        if (currentPage === 1) {
+            loadMemories(1); // First page, no token needed
+        } else {
+            // Use loadFromPageOne to properly reload to current page
+            loadFromPageOne(currentPage);
+        }
         loadCategories(); // Refresh categories as counts might change
         // Trigger graph and sidebar refresh
         setRefreshGraph(prev => prev + 1);
@@ -126,17 +147,85 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     };
 
     const handleMemoryUpdated = () => {
-        loadMemories(currentPage); // Stay on current page and reload
+        // Don't clear tokens - we want to stay on the same page
+        if (currentPage === 1) {
+            loadMemories(1); // First page, no token needed
+        } else {
+            // Use loadFromPageOne to properly reload to current page
+            loadFromPageOne(currentPage);
+        }
         loadCategories(); // Refresh categories as content might affect categorization
         // Trigger graph and sidebar refresh
         setRefreshGraph(prev => prev + 1);
         setRefreshSidebar(prev => prev + 1);
     };
 
+    const loadFromPageOne = async (targetPage: number) => {
+        // Helper function to load a specific page by starting from page 1
+        // This is needed for backward navigation in token-based pagination
+        setIsLoading(true);
+        try {
+            let currentToken: string | undefined = undefined;
+            const tokens = new Map<number, string>();
+            
+            // Load pages sequentially until we reach the target page
+            for (let page = 1; page <= targetPage; page++) {
+                const data = await nodesApi.listNodes(MEMORIES_PER_PAGE, currentToken);
+                
+                if (page === targetPage) {
+                    // This is our target page - display it
+                    const pageNodes = data.nodes || [];
+                    pageNodes.sort((a, b) => 
+                        new Date(b.timestamp || '').getTime() - new Date(a.timestamp || '').getTime()
+                    );
+                    
+                    setMemories(pageNodes);
+                    setTotalMemories(data.total || 0);
+                    setTotalPages(Math.ceil((data.total || 0) / MEMORIES_PER_PAGE));
+                    setNextToken(data.nextToken);
+                    setCurrentPage(page);
+                }
+                
+                // Store token for next page
+                if (data.nextToken) {
+                    tokens.set(page + 1, data.nextToken);
+                }
+                currentToken = data.nextToken;
+            }
+            
+            // Update our token cache with the tokens we collected
+            setPageTokens(tokens);
+        } catch (error) {
+            console.error('Error loading memories:', error);
+            
+            const errorMessage = (error as Error).message;
+            if (errorMessage.includes('Authentication') || errorMessage.includes('expired') || errorMessage.includes('sign in')) {
+                alert('Your session has expired. Please refresh the page or sign in again.');
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handlePageChange = (newPage: number) => {
-        // For now, we'll implement simple pagination by reloading
-        // In the future, we could cache pages for better UX
-        loadMemories(newPage);
+        console.log(`Changing to page ${newPage}, current page: ${currentPage}`);
+        console.log(`Available tokens:`, Array.from(pageTokens.entries()));
+        
+        if (newPage === 1) {
+            // First page always loads without token
+            console.log('Loading page 1 without token');
+            loadMemories(1);
+        } else if (newPage > currentPage) {
+            // Going forward - use the stored token for this page
+            const tokenForPage = pageTokens.get(newPage);
+            console.log(`Going forward to page ${newPage}, token:`, tokenForPage);
+            loadMemories(newPage, tokenForPage);
+        } else {
+            // Going backward - need to reload from page 1 and build up to target page
+            // This is a limitation of token-based pagination
+            console.log(`Going backward to page ${newPage}, using loadFromPageOne`);
+            loadFromPageOne(newPage);
+        }
     };
 
     const handleViewInGraph = (nodeId: string) => {
