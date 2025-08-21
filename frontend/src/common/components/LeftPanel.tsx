@@ -66,6 +66,8 @@ interface LeftPanelProps {
     onMemoryDeleted: () => void;
     /** Callback after memory update */
     onMemoryUpdated: () => void;
+    /** Whether to use virtual scrolling for better performance */
+    useVirtualScrolling?: boolean;
 }
 
 const LeftPanel: React.FC<LeftPanelProps> = ({
@@ -82,7 +84,8 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
     isLoading,
     onPageChange,
     onMemoryDeleted,
-    onMemoryUpdated
+    onMemoryUpdated,
+    useVirtualScrolling = false
 }) => {
     const [activeTab, setActiveTab] = useState<TabType>('memories');
 
@@ -178,6 +181,7 @@ const LeftPanel: React.FC<LeftPanelProps> = ({
                                     onMemoryUpdated={onMemoryUpdated}
                                     onMemoryViewInGraph={onMemorySelect}
                                     isInPanel={true}
+                                    useVirtualScrolling={useVirtualScrolling}
                                 />
                             )}
                         </>
