@@ -236,6 +236,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
         setIsLeftPanelCollapsed(!isLeftPanelCollapsed);
     };
 
+    const handleDocumentModeOpen = () => {
+        // Close any open node details panels when document mode opens
+        graphRef.current?.hideNodeDetails();
+    };
+
     // memories already contains the current page data from server
 
     return (
@@ -285,6 +290,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                             <MemoryInput 
                                 onMemoryCreated={handleMemoryCreated}
                                 isCompact={true}
+                                onDocumentModeOpen={handleDocumentModeOpen}
                             />
                         </div>
                     </div>
@@ -295,6 +301,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                             onMemoryCreated={handleMemoryCreated}
                             isCompact={true}
                             isMobile={true}
+                            onDocumentModeOpen={handleDocumentModeOpen}
                         />
                     </div>
                 </div>

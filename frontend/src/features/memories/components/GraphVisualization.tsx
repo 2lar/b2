@@ -53,6 +53,7 @@ import { useFullscreen } from '../../../common/hooks/useFullscreen';
 import { throttle } from 'lodash-es';
 import GraphControls from './GraphControls';
 import NodeDetailsPanel from './NodeDetailsPanel';
+import DocumentModeView from './NodeDetailsPanel/DocumentModeView';
 import StarField from './StarField';
 
 // Register the cola layout
@@ -68,6 +69,8 @@ interface GraphVisualizationProps {
 export interface GraphVisualizationRef {
     /** Programmatically select and center a specific node */
     selectAndCenterNode: (nodeId: string) => boolean;
+    /** Programmatically hide/close the node details panel */
+    hideNodeDetails: () => void;
 }
 
 interface DisplayNode {
@@ -105,8 +108,19 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
     const [connectedMemories, setConnectedMemories] = useState<ConnectedMemory[]>([]);
     const [currentElementCount, setCurrentElementCount] = useState(0);
     
+    // Document mode state
+    const [isDocumentMode, setIsDocumentMode] = useState(false);
+    const [documentModeNode, setDocumentModeNode] = useState<DisplayNode | null>(null);
+    const [documentModeConnections, setDocumentModeConnections] = useState<ConnectedMemory[]>([]);
+    
     // Fullscreen functionality
     const { isFullscreen, toggleFullscreen } = useFullscreen(graphContainerRef);
+
+    // Define hideNodeDetails early to avoid initialization errors
+    const hideNodeDetails = useCallback((): void => {
+        setSelectedNode(null);
+        setConnectedMemories([]);
+    }, []);
 
     // Expose methods to parent component via ref
     useImperativeHandle(ref, () => ({
@@ -137,8 +151,9 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             showNodeDetails(nodeId);
             
             return true;
-        }
-    }), []);
+        },
+        hideNodeDetails
+    }), [hideNodeDetails]);
 
     // Force resize on mobile to ensure proper dimensions
     useEffect(() => {
@@ -404,9 +419,22 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         }
     }
 
-    const hideNodeDetails = useCallback((): void => {
-        setSelectedNode(null);
-        setConnectedMemories([]);
+    // Handle opening document mode
+    const handleOpenDocumentMode = useCallback((node: DisplayNode, connections: ConnectedMemory[]): void => {
+        // Save the node data for document mode
+        setDocumentModeNode(node);
+        setDocumentModeConnections(connections);
+        setIsDocumentMode(true);
+        
+        // Clear the node details panel
+        hideNodeDetails();
+    }, [hideNodeDetails]);
+    
+    // Handle closing document mode
+    const handleCloseDocumentMode = useCallback((): void => {
+        setIsDocumentMode(false);
+        setDocumentModeNode(null);
+        setDocumentModeConnections([]);
     }, []);
 
     const handleConnectedMemoryClick = useCallback((memoryId: string): void => {
@@ -818,7 +846,18 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                     connectedMemories={connectedMemories}
                     onConnectedMemoryClick={handleConnectedMemoryClick}
                     onClose={hideNodeDetails}
+                    onOpenDocumentMode={handleOpenDocumentMode}
                 />
+                
+                {/* Document Mode View - Rendered separately from NodeDetailsPanel */}
+                {isDocumentMode && documentModeNode && (
+                    <DocumentModeView
+                        selectedNode={documentModeNode}
+                        connectedMemories={documentModeConnections}
+                        onConnectedMemoryClick={handleConnectedMemoryClick}
+                        onClose={handleCloseDocumentMode}
+                    />
+                )}
             </div>
         </div>
     );

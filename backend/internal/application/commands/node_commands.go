@@ -48,7 +48,7 @@ func NewNodeCommandService(
 // CreateNodeCommand encapsulates a node creation request.
 type CreateNodeCommand struct {
 	UserID         string                 `validate:"required,uuid"`
-	Content        string                 `validate:"required,min=1,max=10000"`
+	Content        string                 `validate:"required,min=1,max=20000"`
 	Tags           []string               `validate:"max=10,dive,min=1,max=50"`
 	Metadata       map[string]interface{} `validate:"max=20"`
 	IdempotencyKey string                 `validate:"max=100"`
@@ -58,7 +58,7 @@ type CreateNodeCommand struct {
 type UpdateNodeCommand struct {
 	NodeID   string                 `validate:"required"`
 	UserID   string                 `validate:"required,uuid"`
-	Content  string                 `validate:"omitempty,min=1,max=10000"`
+	Content  string                 `validate:"omitempty,min=1,max=20000"`
 	Tags     []string               `validate:"omitempty,max=10,dive,min=1,max=50"`
 	Metadata map[string]interface{} `validate:"omitempty,max=20"`
 	Version  int                    `validate:"min=0"`
@@ -115,7 +115,7 @@ type ConnectNodesCommand struct {
 type BulkCreateNodesCommand struct {
 	UserID string `validate:"required,uuid"`
 	Nodes  []struct {
-		Content  string                 `validate:"required,min=1,max=10000"`
+		Content  string                 `validate:"required,min=1,max=20000"`
 		Tags     []string               `validate:"max=10,dive,min=1,max=50"`
 		Metadata map[string]interface{} `validate:"max=20"`
 	} `validate:"required,min=1,max=100,dive"`

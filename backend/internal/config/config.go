@@ -123,6 +123,8 @@ type Domain struct {
 	SimilarityThreshold   float64 `yaml:"similarity_threshold" json:"similarity_threshold" validate:"min=0,max=1"`
 	MaxConnectionsPerNode int     `yaml:"max_connections_per_node" json:"max_connections_per_node" validate:"min=1,max=1000"`
 	MaxContentLength      int     `yaml:"max_content_length" json:"max_content_length" validate:"min=100,max=100000"`
+	DocumentThreshold     int     `yaml:"document_threshold" json:"document_threshold" validate:"min=100,max=10000"`
+	DocumentAutoOpen      int     `yaml:"document_auto_open" json:"document_auto_open" validate:"min=500,max=15000"`
 	MinKeywordLength      int     `yaml:"min_keyword_length" json:"min_keyword_length" validate:"min=2,max=50"`
 	RecencyWeight         float64 `yaml:"recency_weight" json:"recency_weight" validate:"min=0,max=1"`
 	DiversityThreshold    float64 `yaml:"diversity_threshold" json:"diversity_threshold" validate:"min=0,max=1"`
@@ -625,7 +627,9 @@ func loadDomainConfig() Domain {
 	return Domain{
 		SimilarityThreshold:   getEnvFloat("DOMAIN_SIMILARITY_THRESHOLD", 0.3),
 		MaxConnectionsPerNode: getEnvInt("DOMAIN_MAX_CONNECTIONS", 10),
-		MaxContentLength:      getEnvInt("DOMAIN_MAX_CONTENT_LENGTH", 10000),
+		MaxContentLength:      getEnvInt("DOMAIN_MAX_CONTENT_LENGTH", 20000),
+		DocumentThreshold:     getEnvInt("DOMAIN_DOCUMENT_THRESHOLD", 800),
+		DocumentAutoOpen:      getEnvInt("DOMAIN_DOCUMENT_AUTO_OPEN", 1200),
 		MinKeywordLength:      getEnvInt("DOMAIN_MIN_KEYWORD_LENGTH", 3),
 		RecencyWeight:         getEnvFloat("DOMAIN_RECENCY_WEIGHT", 0.2),
 		DiversityThreshold:    getEnvFloat("DOMAIN_DIVERSITY_THRESHOLD", 0.5),

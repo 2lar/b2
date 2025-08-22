@@ -33,9 +33,16 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
     selectedNode,
     connectedMemories,
     onConnectedMemoryClick,
-    onClose
+    onClose,
+    onOpenDocumentMode
 }) => {
     const panelRef = useRef<HTMLDivElement>(null);
+    
+    // Check if desktop
+    const isDesktop = useMemo(() => {
+        if (typeof window === 'undefined') return false;
+        return window.innerWidth > 1024;
+    }, []);
     
     // Use a responsive default position that works for all screen sizes
     const defaultPosition = useMemo(() => {
@@ -88,6 +95,13 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
         resetPosition();
     }, [resetPosition]);
 
+    // Handle document mode toggle
+    const handleDocumentMode = useCallback(() => {
+        if (selectedNode && onOpenDocumentMode) {
+            onOpenDocumentMode(selectedNode, connectedMemories);
+        }
+    }, [selectedNode, connectedMemories, onOpenDocumentMode]);
+
     // Handle global keyboard shortcuts
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === KEYBOARD_KEYS.ESCAPE) {
@@ -134,6 +148,8 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
                     onMouseDown={onMouseDown}
                     onDoubleClick={handleHeaderDoubleClick}
                     isDragging={isDragging}
+                    onDocumentMode={handleDocumentMode}
+                    isDesktop={isDesktop}
                 />
                 
                 <PanelContent

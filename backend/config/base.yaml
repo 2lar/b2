@@ -42,7 +42,9 @@ aws:
 domain:
   similarity_threshold: 0.3      # Minimum similarity for auto-connections
   max_connections_per_node: 10   # Maximum edges per node
-  max_content_length: 10000      # Maximum characters per node
+  max_content_length: 20000      # Maximum characters per node (~4 pages)
+  document_threshold: 800        # Characters before suggesting document mode
+  document_auto_open: 1200       # Characters before auto-opening document editor
   min_keyword_length: 3          # Minimum keyword length for extraction
   recency_weight: 0.2            # Weight for recent nodes in connections
   diversity_threshold: 0.5       # Threshold for connection diversity

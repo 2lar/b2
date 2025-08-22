@@ -1,0 +1,802 @@
+/* Document Editor and Smart Memory Input Styles */
+
+/* ============================================================================
+   SMART INPUT CONTAINER
+   ============================================================================ */
+
+.smart-input-container {
+  position: relative;
+  transition: all 0.3s ease;
+  width: 100%;
+}
+
+/* Transition Hint */
+.transition-hint {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  animation: slideIn 0.3s ease-out;
+}
+
+.hint-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.hint-icon {
+  font-size: 20px;
+}
+
+.switch-btn {
+  margin-left: auto;
+  background: white;
+  color: #667eea;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.switch-btn:hover {
+  transform: scale(1.05);
+}
+
+.progress-bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: white;
+  transition: width 0.3s ease;
+}
+
+/* Input Wrapper */
+.input-wrapper {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.memory-input {
+  width: 100%;
+  min-height: 120px;
+  padding: 16px;
+  border: none;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  transition: all 0.3s ease;
+  background: transparent;
+}
+
+.memory-input.with-hint {
+  border-left: 4px solid #667eea;
+  background: rgba(102, 126, 234, 0.02);
+}
+
+.memory-input:focus {
+  background: rgba(102, 126, 234, 0.05);
+}
+
+/* Tag Input Section */
+.tag-input-section {
+  padding: 12px 16px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.tag-input-section label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.tag-input-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #e5e7eb;
+  color: #374151;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.tag-remove {
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tag-remove:hover {
+  color: #ef4444;
+}
+
+.tag-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 4px 8px;
+  font-size: 14px;
+  min-width: 120px;
+  flex: 1;
+}
+
+/* Input Footer */
+.input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.char-counter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.char-counter .warning {
+  color: #f59e0b;
+  font-weight: 500;
+}
+
+.threshold-indicator {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.document-mode-btn {
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.document-mode-btn:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+.save-btn {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.save-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* ============================================================================
+   DOCUMENT EDITOR
+   ============================================================================ */
+
+/* Morphing Container - The magic happens here */
+.memory-input-morph-container {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+/* Compact State - Normal input appearance with padding */
+.memory-input-morph-container.compact-state {
+  /* Original compact input styling */
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: relative;
+  width: 100%;
+  height: auto;
+  padding: 1rem; /* Add padding for proper spacing */
+  overflow: hidden; /* Keep overflow hidden for compact state */
+}
+
+/* Ensure form doesn't add extra padding in compact state */
+.memory-input-morph-container.compact-state .compact-form {
+  padding: 0;
+}
+
+/* Document State - Expanded document editor */
+.memory-input-morph-container.document-state {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 900px;
+  height: 70vh; /* Reduced from 80vh for better fit */
+  max-height: calc(100vh - 60px); /* Ensure 30px margins top and bottom */
+  z-index: 10000;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border);
+  padding: 0; /* No padding in document state - editor handles its own */
+  overflow: visible; /* Allow content to be properly visible */
+}
+
+/* Override parent container positioning when in document mode */
+.memory-input-overlay:has(.memory-input-morph-container.document-state) {
+  position: static !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+  width: auto !important;
+  max-width: none !important;
+}
+
+/* Fallback for browsers without :has() support - use JavaScript to add this class */
+.memory-input-overlay.document-mode-active {
+  position: static !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+  width: auto !important;
+  max-width: none !important;
+}
+
+/* Modal Backdrop for Document Mode */
+.document-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.document-editor {
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+.document-editor--modal {
+  width: 100%;
+  height: 100%;
+}
+
+.document-editor--embedded {
+  width: 100%;
+  height: 100%;
+  /* No border needed - container handles it */
+}
+
+.document-editor--fullscreen,
+.document-editor.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  z-index: 10000;
+}
+
+/* Editor Header */
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  min-height: 60px;
+}
+
+.header-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.title-input {
+  font-size: 20px;
+  font-weight: 600;
+  border: none;
+  outline: none;
+  background: transparent;
+  width: 100%;
+  color: var(--text-primary);
+}
+
+.title-input::placeholder {
+  color: var(--text-secondary);
+}
+
+/* Header center removed - stats moved to footer */
+
+.stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.separator {
+  color: var(--border);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fullscreen-btn,
+.close-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.fullscreen-btn:hover,
+.close-btn:hover {
+  background: var(--border);
+  opacity: 0.8;
+}
+
+/* Content Progress Bar */
+.content-progress {
+  height: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.content-progress .progress-bar {
+  height: 100%;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+/* Editor Body */
+.editor-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.document-textarea {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  padding: 20px;
+  font-size: 16px;
+  line-height: 1.6;
+  resize: none;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.document-textarea::placeholder {
+  color: var(--text-secondary);
+}
+
+/* Save Indicator */
+.save-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.save-indicator--saved {
+  color: #10b981;
+  background: #f0fdf4;
+}
+
+.save-indicator--saving {
+  color: #3b82f6;
+  background: #eff6ff;
+}
+
+.save-indicator--unsaved {
+  color: #f59e0b;
+  background: #fffbeb;
+}
+
+.save-indicator .icon {
+  font-size: 16px;
+}
+
+.save-indicator .icon.spinning {
+  animation: spin 1s linear infinite;
+}
+
+/* Editor Footer */
+.editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  gap: 16px;
+}
+
+.footer-left {
+  flex-shrink: 0;
+}
+
+.footer-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.footer-center .stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.footer-center .save-indicator {
+  display: inline-flex;
+  margin: 0;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.shortcut-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.footer-right {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.clear-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-btn:hover {
+  background: var(--border);
+  opacity: 0.8;
+}
+
+/* Status Messages */
+.status-message {
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-top: 12px;
+  font-size: 14px;
+  animation: slideIn 0.3s ease-out;
+}
+
+.status-message.success {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.status-message.error {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+/* ============================================================================
+   ANIMATIONS
+   ============================================================================ */
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================================
+   DOCUMENT MODE SPLIT VIEW
+   ============================================================================ */
+
+/* Document Mode Container - Split View */
+.document-mode-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  z-index: 10001;
+  background: var(--surface);
+}
+
+/* Document Mode Backdrop */
+.document-mode-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+}
+
+/* Left Sidebar - Connected Memories */
+.document-mode-sidebar {
+  width: 30%;
+  max-width: 400px;
+  min-width: 280px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+  flex-shrink: 0;
+}
+
+.sidebar-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+/* Right Side - Document Editor */
+.document-mode-editor {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Panel Header Button Styles */
+.panel-header-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.document-mode-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+
+.document-mode-btn:hover {
+  background: var(--border);
+  transform: translateY(-1px);
+}
+
+/* ============================================================================
+   RESPONSIVE DESIGN
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  /* Adjust morphing container for mobile */
+  .memory-input-morph-container.document-state {
+    width: 95%;
+    height: 85vh;
+    max-height: calc(100vh - 40px); /* Ensure it fits with 20px margins */
+  }
+  
+  .document-editor--modal {
+    width: 95%;
+    height: 90vh;
+  }
+  
+  .editor-header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .footer-center {
+    order: 2;
+    width: 100%;
+    margin: 8px 0 0 0;
+  }
+  
+  .footer-center .stats {
+    font-size: 11px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .title-input {
+    font-size: 18px;
+  }
+  
+  .document-textarea {
+    padding: 16px;
+    font-size: 15px;
+  }
+  
+  .editor-footer {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .shortcut-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .input-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .char-counter {
+    justify-content: center;
+  }
+  
+  .transition-hint .hint-content {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .switch-btn {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* ============================================================================
+   COMPACT INPUT FOOTER STYLES
+   ============================================================================ */
+
+/* Compact Footer */
+.compact-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.document-mode-btn-compact {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.document-mode-btn-compact:hover:not(:disabled) {
+  background: var(--border);
+  opacity: 0.8;
+  transform: translateY(-1px);
+}
+
+.document-mode-btn-compact:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

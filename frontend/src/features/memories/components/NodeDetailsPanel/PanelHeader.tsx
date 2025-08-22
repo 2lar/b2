@@ -7,7 +7,9 @@ const PanelHeader: React.FC<PanelHeaderProps> = ({
     onClose,
     onMouseDown,
     onDoubleClick,
-    isDragging
+    isDragging,
+    onDocumentMode,
+    isDesktop
 }) => {
     return (
         <div 
@@ -20,15 +22,29 @@ const PanelHeader: React.FC<PanelHeaderProps> = ({
             tabIndex={0}
         >
             <h3>{title}</h3>
-            <button 
-                className="close-btn"
-                onClick={onClose}
-                onMouseDown={(e) => e.stopPropagation()}
-                aria-label={ARIA_LABELS.CLOSE_PANEL}
-                type="button"
-            >
-                ×
-            </button>
+            <div className="panel-header-buttons">
+                {isDesktop && onDocumentMode && (
+                    <button 
+                        className="document-mode-btn"
+                        onClick={onDocumentMode}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        aria-label="Open in Document Mode"
+                        type="button"
+                        title="Open in Document Mode"
+                    >
+                        📄
+                    </button>
+                )}
+                <button 
+                    className="close-btn"
+                    onClick={onClose}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    aria-label={ARIA_LABELS.CLOSE_PANEL}
+                    type="button"
+                >
+                    ×
+                </button>
+            </div>
         </div>
     );
 };

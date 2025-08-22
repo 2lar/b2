@@ -16,6 +16,7 @@ export interface NodeDetailsPanelProps {
     connectedMemories: ConnectedMemory[];
     onConnectedMemoryClick: (memoryId: string) => void;
     onClose: () => void;
+    onOpenDocumentMode?: (node: DisplayNode, connections: ConnectedMemory[]) => void;
 }
 
 export interface PanelHeaderProps {
@@ -24,6 +25,8 @@ export interface PanelHeaderProps {
     onMouseDown: (event: React.MouseEvent) => void;
     onDoubleClick: () => void;
     isDragging: boolean;
+    onDocumentMode?: () => void;
+    isDesktop?: boolean;
 }
 
 export interface PanelContentProps {

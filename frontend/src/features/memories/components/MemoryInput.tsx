@@ -1,50 +1,31 @@
 /**
- * MemoryInput Component - Memory Creation Form
+ * MemoryInput Component - Enhanced Memory Creation Interface
  * 
  * Purpose:
- * Provides an intuitive form interface for users to create new memories with content and tags.
- * Supports both full panel mode and compact overlay mode for different UI contexts.
- * Handles automatic categorization and provides real-time feedback during the creation process.
+ * Provides an intelligent memory creation interface that automatically adapts to content length.
+ * Uses SmartMemoryInput for auto-transition between simple input and rich document editing.
+ * Maintains backward compatibility while offering enhanced user experience.
  * 
  * Key Features:
- * - Rich text area for memory content input
- * - Dynamic tag management with keyboard shortcuts
- * - Auto-categorization using AI after memory creation
- * - Real-time form validation and submission feedback
- * - Keyboard shortcuts (Enter to submit, Shift+Enter for new line)
- * - Tag pills with easy removal functionality
- * - Status messages for success/error feedback
- * - Compact mode for overlay positioning
+ * - Smart auto-transition between input modes based on content length
+ * - Traditional compact mode for overlay use cases
+ * - Enhanced document editing for longer content
+ * - Auto-categorization and tag management
+ * - Real-time content analysis and suggestions
  * 
  * Display Modes:
- * - Full mode: Traditional panel layout with all features
- * - Compact mode: Streamlined overlay design for graph integration
- * 
- * Tag Management:
- * - Add tags with Enter or comma key
- * - Remove tags with backspace when input is empty
- * - Prevents duplicate tags
- * - Case-insensitive tag handling
- * 
- * Auto-categorization:
- * - Automatically triggers AI categorization after memory creation
- * - Fails gracefully if categorization service is unavailable
- * - Does not block memory creation if categorization fails
- * 
- * State Management:
- * - content: Main memory text content
- * - tags: Array of user-defined tags
- * - tagInput: Current tag input field value
- * - isSubmitting: Loading state during memory creation
- * - status: Success/error message display
+ * - Smart mode: Auto-transitions between simple and document editing
+ * - Compact mode: Traditional streamlined interface for overlays
  * 
  * Integration:
- * - Calls onMemoryCreated callback to refresh parent components
- * - Uses API client for memory creation and categorization
- * - Can be positioned as overlay or in panel layout
+ * - Backward compatible with existing usage patterns
+ * - Enhanced with new document editing capabilities
+ * - Maintains all existing callback patterns
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { SmartMemoryInput } from '../../../components/SmartMemoryInput';
+import { DocumentEditor } from '../../../components/DocumentEditor';
 import { nodesApi } from '../api/nodes';
 
 interface MemoryInputProps {
@@ -54,20 +35,100 @@ interface MemoryInputProps {
     isCompact?: boolean;
     /** Whether this is the mobile bottom input */
     isMobile?: boolean;
+    /** Callback function called when document mode is opened */
+    onDocumentModeOpen?: () => void;
 }
 
-const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = false, isMobile = false }) => {
+const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = false, isMobile = false, onDocumentModeOpen }) => {
+    // State for compact mode (only used when isCompact = true)
     const [content, setContent] = useState('');
+    const [title, setTitle] = useState('');
     const [tags, setTags] = useState<string[]>([]);
     const [tagInput, setTagInput] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [status, setStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [isDocumentMode, setIsDocumentMode] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     const showStatus = (message: string, type: 'success' | 'error') => {
         setStatus({ message, type });
         setTimeout(() => setStatus(null), 3000);
     };
 
+    // Add/remove class on parent when document mode changes
+    useEffect(() => {
+        if (isCompact && containerRef.current) {
+            const parent = containerRef.current.closest('.memory-input-overlay');
+            if (parent) {
+                if (isDocumentMode) {
+                    parent.classList.add('document-mode-active');
+                } else {
+                    parent.classList.remove('document-mode-active');
+                }
+            }
+        }
+    }, [isDocumentMode, isCompact]);
+
+    // Document mode handlers (used by compact mode)
+    const openDocumentMode = () => {
+        setIsDocumentMode(true);
+        // Call the callback to hide any open node details
+        onDocumentModeOpen?.();
+    };
+
+    const handleDocumentClose = (savedContent: string, savedTitle: string) => {
+        setContent(savedContent);
+        setTitle(savedTitle);
+        setIsDocumentMode(false);
+    };
+
+    const handleDocumentSave = async (savedContent: string, savedTitle?: string) => {
+        setContent(savedContent);
+        setTitle(savedTitle || '');
+        
+        try {
+            const newNode = await nodesApi.createNode(savedContent, tags.length > 0 ? tags : undefined);
+            
+            if (newNode && newNode.nodeId && newNode.nodeId !== 'undefined') {
+                try {
+                    await nodesApi.categorizeNode(newNode.nodeId);
+                } catch (categorizationError) {
+                    console.warn('Auto-categorization failed:', categorizationError);
+                }
+            }
+            
+            showStatus('Document saved successfully!', 'success');
+            
+            // Reset form
+            setContent('');
+            setTitle('');
+            setTags([]);
+            setTagInput('');
+            setIsDocumentMode(false);
+            
+            onMemoryCreated();
+        } catch (error) {
+            showStatus('Failed to save document. Please try again.', 'error');
+            console.error('Error creating memory:', error);
+        }
+    };
+
+    // For non-compact mode, use the new SmartMemoryInput
+    if (!isCompact) {
+        return (
+            <div className="dashboard-container" id="input-container" data-container="input">
+                <div className="container-header" data-drag-handle>
+                    <span className="container-title">Create a Memory</span>
+                    <span className="drag-handle">⋮⋮</span>
+                </div>
+                <div className="container-content">
+                    <SmartMemoryInput onMemoryCreated={onMemoryCreated} />
+                </div>
+            </div>
+        );
+    }
+
+    // For compact mode handlers and functions
     const addTag = (tag: string) => {
         const trimmedTag = tag.trim().toLowerCase();
         if (trimmedTag && !tags.includes(trimmedTag)) {
@@ -136,133 +197,120 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = 
     };
 
     if (isCompact) {
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        
         return (
-            <div className={`memory-input-compact ${isMobile ? 'mobile-optimized' : ''}`}>
-                <form onSubmit={handleSubmit} className="compact-form">
-                    <div className="input-row">
-                        <textarea 
-                            value={content}
-                            onChange={(e) => setContent(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder={isMobile ? "What's on your mind?" : "Write a memory, thought, or idea..."}
-                            rows={isMobile ? 1 : 2}
-                            required
-                            disabled={isSubmitting}
-                            className="compact-textarea"
-                            style={isMobile ? { fontSize: '16px' } : {}} // Prevent zoom on iOS
+            <>
+                {/* Backdrop for document mode */}
+                {isDocumentMode && (
+                    <div 
+                        className="document-modal-backdrop" 
+                        onClick={(e) => {
+                            if (e.target === e.currentTarget) {
+                                handleDocumentClose(content, title);
+                            }
+                        }}
+                        style={isDevelopment ? { border: '3px solid blue' } : undefined}
+                    />
+                )}
+                
+                {/* Morphing container - single container that transforms */}
+                <div ref={containerRef}
+                     className={`memory-input-morph-container ${isDocumentMode ? 'document-state' : 'compact-state'} ${isMobile ? 'mobile-optimized' : ''}`}
+                     style={isDevelopment && isDocumentMode ? { border: '2px solid red' } : undefined}>
+                    {isDocumentMode ? (
+                        // Document editor mode
+                        <DocumentEditor
+                            initialContent={content}
+                            initialTitle={title}
+                            onClose={handleDocumentClose}
+                            onSave={handleDocumentSave}
+                            mode="embedded"
                         />
-                        <button 
-                            type="submit" 
-                            className="compact-submit-btn"
-                            disabled={isSubmitting || !content.trim()}
-                            title="Save Memory"
-                        >
-                            {isSubmitting ? '⏳' : '✓'}
-                        </button>
-                    </div>
-                    
-                    {tags.length > 0 && (
-                        <div className="compact-tags">
-                            {tags.map((tag, index) => (
-                                <span key={index} className="tag-pill-compact">
-                                    {tag}
+                    ) : (
+                        // Compact input mode
+                        <>
+                            <form onSubmit={handleSubmit} className="compact-form">
+                                <div className="input-row">
+                                    <textarea 
+                                        value={content}
+                                        onChange={(e) => setContent(e.target.value)}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder={isMobile ? "What's on your mind?" : "Write a memory, thought, or idea..."}
+                                        rows={isMobile ? 1 : 2}
+                                        required
+                                        disabled={isSubmitting}
+                                        className="compact-textarea"
+                                        style={isMobile ? { fontSize: '16px' } : {}} // Prevent zoom on iOS
+                                    />
+                                    <button 
+                                        type="submit" 
+                                        className="compact-submit-btn"
+                                        disabled={isSubmitting || !content.trim()}
+                                        title="Save Memory"
+                                    >
+                                        {isSubmitting ? '⏳' : '✓'}
+                                    </button>
+                                </div>
+                                
+                                {tags.length > 0 && (
+                                    <div className="compact-tags">
+                                        {tags.map((tag, index) => (
+                                            <span key={index} className="tag-pill-compact">
+                                                {tag}
+                                                <button
+                                                    type="button"
+                                                    className="tag-remove-compact"
+                                                    onClick={() => removeTag(tag)}
+                                                    disabled={isSubmitting}
+                                                >
+                                                    ×
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                
+                                <div className="compact-tag-input">
+                                    <input
+                                        type="text"
+                                        value={tagInput}
+                                        onChange={(e) => setTagInput(e.target.value)}
+                                        onKeyDown={handleTagInputKeyDown}
+                                        placeholder="Add tags..."
+                                        disabled={isSubmitting}
+                                        className="tag-input-compact"
+                                        style={isMobile ? { fontSize: '16px' } : {}} // Prevent zoom on iOS
+                                    />
+                                </div>
+                                
+                                {/* Action Footer - New Addition */}
+                                <div className="compact-footer">
                                     <button
                                         type="button"
-                                        className="tag-remove-compact"
-                                        onClick={() => removeTag(tag)}
+                                        onClick={openDocumentMode}
+                                        className="document-mode-btn-compact"
                                         disabled={isSubmitting}
+                                        title="Open document editor for longer content"
                                     >
-                                        ×
+                                        📄 Document Mode
                                     </button>
-                                </span>
-                            ))}
-                        </div>
+                                </div>
+                            </form>
+                            {status && (
+                                <div className={`status-message-compact ${status.type}`}>
+                                    {status.message}
+                                </div>
+                            )}
+                        </>
                     )}
-                    
-                    <div className="compact-tag-input">
-                        <input
-                            type="text"
-                            value={tagInput}
-                            onChange={(e) => setTagInput(e.target.value)}
-                            onKeyDown={handleTagInputKeyDown}
-                            placeholder="Add tags..."
-                            disabled={isSubmitting}
-                            className="tag-input-compact"
-                            style={isMobile ? { fontSize: '16px' } : {}} // Prevent zoom on iOS
-                        />
-                    </div>
-                </form>
-                {status && (
-                    <div className={`status-message-compact ${status.type}`}>
-                        {status.message}
-                    </div>
-                )}
-            </div>
+                </div>
+            </>
         );
     }
 
-    return (
-        <div className="dashboard-container" id="input-container" data-container="input">
-            <div className="container-header" data-drag-handle>
-                <span className="container-title">Create a Memory</span>
-                <span className="drag-handle">⋮⋮</span>
-            </div>
-            <div className="container-content">
-                <form onSubmit={handleSubmit}>
-                    <textarea 
-                        value={content}
-                        onChange={(e) => setContent(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Write your memory, thought, or idea here... The system will automatically connect it to related memories."
-                        rows={4}
-                        required
-                        disabled={isSubmitting}
-                    />
-                    
-                    <div className="tag-input-section">
-                        <label htmlFor="tag-input">Tags (optional)</label>
-                        <div className="tag-input-container">
-                            {tags.map((tag, index) => (
-                                <span key={index} className="tag-pill">
-                                    {tag}
-                                    <button
-                                        type="button"
-                                        className="tag-remove"
-                                        onClick={() => removeTag(tag)}
-                                        disabled={isSubmitting}
-                                    >
-                                        ×
-                                    </button>
-                                </span>
-                            ))}
-                            <input
-                                id="tag-input"
-                                type="text"
-                                value={tagInput}
-                                onChange={(e) => setTagInput(e.target.value)}
-                                onKeyDown={handleTagInputKeyDown}
-                                placeholder={tags.length === 0 ? "Add tags (press Enter or comma to add)" : "Add tag..."}
-                                disabled={isSubmitting}
-                                className="tag-input"
-                            />
-                        </div>
-                    </div>
-                    <button 
-                        type="submit" 
-                        className="primary-btn"
-                        disabled={isSubmitting || !content.trim()}
-                    >
-                        {isSubmitting ? 'Saving...' : 'Save Memory'}
-                    </button>
-                </form>
-                {status && (
-                    <div className={`status-message ${status.type}`}>
-                        {status.message}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+    // This should never be reached since compact mode is handled above
+    return null;
 };
 
 export default MemoryInput;

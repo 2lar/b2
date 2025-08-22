@@ -32,6 +32,7 @@
     "@vitejs/plugin-react": "^4.7.0",
     "cytoscape": "^3.32.0",
     "cytoscape-cola": "^2.5.1",
+    "framer-motion": "^12.23.12",
     "lodash-es": "^4.17.21",
     "normalizr": "^3.6.2",
     "react": "^19.1.0",
