@@ -1589,7 +1589,8 @@ header h1 {
         right: 0.5rem !important;
         width: 90% !important;
         max-width: 300px !important;
-        max-height: 300px !important;
+        max-height: 60vh !important;
+        min-height: 300px !important;
     }
 }
 
@@ -1634,13 +1635,15 @@ header h1 {
     
     .floating-panel {
         position: fixed !important;
-        bottom: 1rem !important;
+        bottom: 2rem !important;
         left: 0.5rem !important;
         right: 0.5rem !important;
         width: auto !important;
         max-width: none !important;
-        max-height: 250px !important;
+        max-height: 70vh !important;
+        min-height: 300px !important;
         z-index: 1001 !important;
+        transform: none !important; /* Override JS transform positioning on mobile */
     }
     
     .resize-handle {

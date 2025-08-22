@@ -4,6 +4,11 @@
  * Provides type-safe HTTP communication with the backend API using
  * generated TypeScript types from OpenAPI specification.
  * Handles authentication, error handling, and request/response processing.
+ * 
+ * Configuration Notes:
+ * - Server endpoint: Controlled by useLocalServer flag (which backend to connect to)
+ * - Development logging: Controlled by import.meta.env.MODE (when to show detailed logs)
+ * - These are independent: you can develop locally with production API + dev logging
  */
 
 import { auth } from './authClient';
@@ -11,16 +16,24 @@ import { components, operations } from '../types/generated/generated-types';
 
 // Dynamic API Configuration
 function getApiBaseUrl(): string {
-    // Environment detection for automatic URL selection
+    // Server endpoint selection - controls which backend API to use
+    // Note: This is separate from development mode logging (controlled by import.meta.env.MODE)
     
-    const isLocal = false;
-    
-    // const isLocal = import.meta.env.DEV || 
-    //                window.location.hostname === 'localhost' || 
-    //                window.location.hostname === '127.0.0.1' ||
-    //                window.location.hostname.includes('local');
+    // For now, always use production API since we don't have a local backend
+    // This allows frontend development with production API + development logging
+    // 
+    // TODO: Enable automatic detection when local backend is available:
+    // const useLocalServer = import.meta.env.DEV || 
+    //                        window.location.hostname === 'localhost' || 
+    //                        window.location.hostname === '127.0.0.1' ||
+    //                        window.location.hostname.includes('local');
+    // 
+    // Alternative: Use environment variable override:
+    // const useLocalServer = (import.meta.env.DEV || window.location.hostname === 'localhost') && 
+    //                        !import.meta.env.VITE_FORCE_PRODUCTION_API;
+    const useLocalServer = false;
 
-    if (isLocal) {
+    if (useLocalServer) {
         // Use local development URL from environment
         const localUrl = import.meta.env.VITE_API_BASE_URL_LOCAL;
         if (!localUrl || localUrl === 'undefined') {

@@ -83,6 +83,11 @@ export function useDraggable(
     const [position, setPositionState] = useState<Position>(defaultPosition);
     const [isDragging, setIsDragging] = useState(false);
     
+    // Check if we're on mobile (disable dragging on mobile screens)
+    const isMobile = useMemo(() => {
+        return typeof window !== 'undefined' && window.innerWidth <= 768;
+    }, []);
+    
     // Use refs to avoid stale closures
     const dragStateRef = useRef<{
         startX: number;
@@ -189,7 +194,7 @@ export function useDraggable(
 
     // Handle mouse down on drag handle
     const onMouseDown = useCallback((event: React.MouseEvent) => {
-        if (!enabled || !elementRef.current) return;
+        if (!enabled || !elementRef.current || isMobile) return;
 
         event.preventDefault();
         event.stopPropagation();
@@ -233,7 +238,7 @@ export function useDraggable(
         };
 
         setIsDragging(true);
-    }, [enabled, position]);
+    }, [enabled, position, isMobile]);
 
     // Reset to default position
     const resetPosition = useCallback(() => {
@@ -243,7 +248,7 @@ export function useDraggable(
 
     // Handle touch start
     const onTouchStart = useCallback((event: React.TouchEvent) => {
-        if (!enabled || !enableTouch || !elementRef.current) return;
+        if (!enabled || !enableTouch || !elementRef.current || isMobile) return;
 
         event.preventDefault();
         event.stopPropagation();
@@ -284,11 +289,11 @@ export function useDraggable(
         };
 
         setIsDragging(true);
-    }, [enabled, enableTouch, position]);
+    }, [enabled, enableTouch, position, isMobile]);
 
     // Handle keyboard navigation
     const onKeyDown = useCallback((event: React.KeyboardEvent) => {
-        if (!enabled || !enableKeyboard || !elementRef.current) return;
+        if (!enabled || !enableKeyboard || !elementRef.current || isMobile) return;
 
         const step = event.shiftKey ? DRAGGABLE_CONSTANTS.KEYBOARD_MOVE_STEP_LARGE : DRAGGABLE_CONSTANTS.KEYBOARD_MOVE_STEP;
         let newPosition = { ...position };
@@ -326,7 +331,7 @@ export function useDraggable(
             setPositionState(constrainedPosition);
             savePosition(constrainedPosition);
         }
-    }, [enabled, enableKeyboard, position, constrainPosition, savePosition, resetPosition]);
+    }, [enabled, enableKeyboard, position, constrainPosition, savePosition, resetPosition, isMobile]);
 
     // Set up global event listeners during drag
     useEffect(() => {

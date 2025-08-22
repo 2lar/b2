@@ -37,11 +37,35 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
 }) => {
     const panelRef = useRef<HTMLDivElement>(null);
     
-    // Use a conservative default position that works for all screen sizes
-    const defaultPosition = useMemo(() => ({
-        x: typeof window !== 'undefined' ? Math.min(window.innerWidth - 450, window.innerWidth * 0.6) : 400,
-        y: typeof window !== 'undefined' ? Math.min(window.innerHeight - 300, window.innerHeight * 0.3) : 100
-    }), []);
+    // Use a responsive default position that works for all screen sizes
+    const defaultPosition = useMemo(() => {
+        if (typeof window === 'undefined') {
+            return { x: 400, y: 100 };
+        }
+        
+        const isMobile = window.innerWidth <= 768;
+        
+        if (isMobile) {
+            // On mobile, panel is positioned via CSS (fixed bottom), so position doesn't matter
+            // Use centered coordinates to avoid any edge case issues
+            return {
+                x: window.innerWidth / 2 - 150, // Roughly center for 300px max-width panel
+                y: window.innerHeight - 250     // Bottom positioning
+            };
+        } else {
+            // Desktop positioning - get actual panel width from CSS breakpoints
+            let panelWidth = 400; // default
+            if (window.innerWidth <= 1600) panelWidth = 350;
+            if (window.innerWidth <= 1400) panelWidth = 300;
+            if (window.innerWidth <= 1300) panelWidth = 280;
+            if (window.innerWidth <= 1200) panelWidth = 260;
+            
+            return {
+                x: Math.min(window.innerWidth - panelWidth - 20, window.innerWidth * 0.6),
+                y: Math.min(window.innerHeight - 300, window.innerHeight * 0.3)
+            };
+        }
+    }, []);
     
     // Setup draggable functionality
     const { 
