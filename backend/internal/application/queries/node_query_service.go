@@ -88,7 +88,7 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 	}
 
 	// 4. Verify ownership
-	if !node.UserID.Equals(userID) {
+	if !node.UserID().Equals(userID) {
 		return nil, appErrors.NewUnauthorized("node belongs to different user")
 	}
 
@@ -138,12 +138,12 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 		}
 
 		result.Metadata = &dto.NodeMetadata{
-			WordCount:       node.Content.WordCount(),
+			WordCount:       node.Content().WordCount(),
 			KeywordCount:    len(node.Keywords().ToSlice()),
-			TagCount:        len(node.Tags.ToSlice()),
+			TagCount:        len(node.Tags().ToSlice()),
 			ConnectionCount: connectionCount,
-			LastModified:    node.UpdatedAt,
-			Version:         node.Version,
+			LastModified:    node.UpdatedAt(),
+			Version:         node.Version(),
 		}
 	}
 
@@ -264,7 +264,7 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 	if node == nil {
 		return nil, appErrors.NewNotFound("node not found")
 	}
-	if !node.UserID.Equals(userID) {
+	if !node.UserID().Equals(userID) {
 		return nil, appErrors.NewUnauthorized("node belongs to different user")
 	}
 

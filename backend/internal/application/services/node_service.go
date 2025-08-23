@@ -187,7 +187,7 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 		// Use the similarity score from the candidate as the edge weight
 		weight := candidate.SimilarityScore
 		
-		edge, err := edge.NewEdge(node.ID, targetNode.ID, userID, weight)
+		edge, err := edge.NewEdge(node.ID(), targetNode.ID(), userID, weight)
 		if err != nil {
 			continue // Skip if edge creation fails
 		}
@@ -302,7 +302,7 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 	if node == nil {
 		return nil, appErrors.NewNotFound("node not found")
 	}
-	if !node.UserID.Equals(userID) {
+	if !node.UserID().Equals(userID) {
 		return nil, appErrors.NewUnauthorized("node belongs to different user")
 	}
 
@@ -422,7 +422,7 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 		return nil, appErrors.NewNotFound("node not found")
 	}
 
-	if !node.UserID.Equals(userID) {
+	if !node.UserID().Equals(userID) {
 		return nil, appErrors.NewUnauthorized("node belongs to different user")
 	}
 
@@ -442,10 +442,10 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 	deletionEvent := shared.NewNodeDeletedEvent(
 		nodeID, 
 		userID, 
-		node.Content, 
+		node.Content(), 
 		node.Keywords(), 
-		node.Tags, 
-		shared.ParseVersion(node.Version),
+		node.Tags(), 
+		shared.ParseVersion(node.Version()),
 	)
 
 	// Publishing NodeDeleted event
@@ -550,7 +550,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 					continue
 				}
 
-				if !node.UserID.Equals(userID) {
+				if !node.UserID().Equals(userID) {
 					// Node ownership mismatch
 					failedIDs = append(failedIDs, nodeIDStr)
 					continue
@@ -592,10 +592,10 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 			deletionEvent = shared.NewNodeDeletedEvent(
 				nodeID,
 				userID,
-				nodeData.Content,
+				nodeData.Content(),
 				nodeData.Keywords(),
-				nodeData.Tags,
-				shared.ParseVersion(nodeData.Version),
+				nodeData.Tags(),
+				shared.ParseVersion(nodeData.Version()),
 			)
 		} else {
 			// Fallback to minimal event data
@@ -880,7 +880,7 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 				if err == nil && analysis.ShouldConnect {
 					// Create edge between nodes
 					weight := analysis.ForwardConnection.RelevanceScore
-					edge, err := edge.NewEdge(sourceNode.ID, targetNode.ID, userID, weight)
+					edge, err := edge.NewEdge(sourceNode.ID(), targetNode.ID(), userID, weight)
 					if err != nil {
 						// Log error but don't fail the entire operation
 						continue

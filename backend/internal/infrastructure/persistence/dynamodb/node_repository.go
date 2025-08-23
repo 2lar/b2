@@ -268,7 +268,7 @@ func (r *NodeRepository) FindRecentlyCreated(ctx context.Context, userID shared.
 	cutoff := time.Now().AddDate(0, 0, -days)
 	filtered := make([]*node.Node, 0)
 	for _, node := range nodes {
-		if node.CreatedAt.After(cutoff) {
+		if node.CreatedAt().After(cutoff) {
 			filtered = append(filtered, node)
 		}
 	}
@@ -286,7 +286,7 @@ func (r *NodeRepository) FindRecentlyUpdated(ctx context.Context, userID shared.
 	cutoff := time.Now().AddDate(0, 0, -days)
 	filtered := make([]*node.Node, 0)
 	for _, node := range nodes {
-		if node.UpdatedAt.After(cutoff) {
+		if node.UpdatedAt().After(cutoff) {
 			filtered = append(filtered, node)
 		}
 	}
@@ -530,7 +530,7 @@ func (r *NodeRepository) FindNodesPageWithOptions(ctx context.Context, query rep
 	nextCursor := ""
 	if len(nodes) == pagination.Limit && len(nodes) > 0 {
 		lastNode := nodes[len(nodes)-1]
-		nextCursor = lastNode.ID.String()
+		nextCursor = lastNode.ID().String()
 	}
 	
 	return &repository.NodePage{
@@ -560,9 +560,9 @@ func (r *NodeRepository) Save(ctx context.Context, node *node.Node) error {
 		"NodeID":    &types.AttributeValueMemberS{Value: node.GetID()},
 		"UserID":    &types.AttributeValueMemberS{Value: node.GetUserID().String()},
 		"Content":   &types.AttributeValueMemberS{Value: node.GetContent().String()},
-		"CreatedAt": &types.AttributeValueMemberS{Value: node.CreatedAt.Format(time.RFC3339)},
-		"UpdatedAt": &types.AttributeValueMemberS{Value: node.UpdatedAt.Format(time.RFC3339)},
-		"Version":   &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version)},
+		"CreatedAt": &types.AttributeValueMemberS{Value: node.CreatedAt().Format(time.RFC3339)},
+		"UpdatedAt": &types.AttributeValueMemberS{Value: node.UpdatedAt().Format(time.RFC3339)},
+		"Version":   &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version())},
 	}
 	
 	// Add title if present
@@ -596,8 +596,8 @@ func (r *NodeRepository) Save(ctx context.Context, node *node.Node) error {
 	}
 	
 	// Add metadata if present
-	if node.Metadata != nil {
-		metaMap, err := attributevalue.Marshal(node.Metadata)
+	if node.Metadata() != nil {
+		metaMap, err := attributevalue.Marshal(node.Metadata())
 		if err == nil {
 			item["Metadata"] = metaMap
 		}
@@ -659,8 +659,8 @@ func (r *NodeRepository) Update(ctx context.Context, node *node.Node) error {
 	
 	// Build update expression
 	update := expression.Set(expression.Name("Content"), expression.Value(node.GetContent().String())).
-		Set(expression.Name("UpdatedAt"), expression.Value(node.UpdatedAt.Format(time.RFC3339))).
-		Set(expression.Name("Version"), expression.Value(node.Version))
+		Set(expression.Name("UpdatedAt"), expression.Value(node.UpdatedAt().Format(time.RFC3339))).
+		Set(expression.Name("Version"), expression.Value(node.Version()))
 	
 	// Add title if present, otherwise remove it
 	if !node.GetTitle().IsEmpty() {
@@ -682,7 +682,7 @@ func (r *NodeRepository) Update(ctx context.Context, node *node.Node) error {
 	}
 	
 	// Build condition expression for optimistic locking
-	condition := expression.Equal(expression.Name("Version"), expression.Value(node.Version-1))
+	condition := expression.Equal(expression.Name("Version"), expression.Value(node.Version()-1))
 	
 	expr, err := expression.NewBuilder().
 		WithUpdate(update).

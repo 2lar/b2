@@ -280,7 +280,7 @@ func (s *CleanupService) nodeExists(ctx context.Context, userID, nodeID string) 
 
 	// Check if the specific node ID matches
 	for _, node := range nodes {
-		if node.ID.String() == nodeID {
+		if node.ID().String() == nodeID {
 			return true
 		}
 	}

@@ -701,7 +701,7 @@ func (s *GraphQueryService) filterOrphanedEdges(nodes []*node.Node, edges []*edg
 	// Create a set of existing node IDs for quick lookup
 	nodeSet := make(map[string]bool)
 	for _, node := range nodes {
-		nodeSet[node.ID.String()] = true
+		nodeSet[node.ID().String()] = true
 	}
 	
 	// Filter edges to only include those with valid source and target nodes

@@ -66,8 +66,8 @@ func handler(ctx context.Context, event events.EventBridgeEvent) error {
 
 	var relatedNodeIDs []string
 	for _, rn := range relatedNodes {
-		if rn.ID.String() != detail.NodeID { // Don't connect a node to itself
-			relatedNodeIDs = append(relatedNodeIDs, rn.ID.String())
+		if rn.ID().String() != detail.NodeID { // Don't connect a node to itself
+			relatedNodeIDs = append(relatedNodeIDs, rn.ID().String())
 		}
 	}
 
