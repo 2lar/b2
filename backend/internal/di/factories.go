@@ -513,12 +513,9 @@ func (rf *RouterFactory) getMiddlewareCount() int {
 // HELPER FUNCTIONS AND INTERFACES
 // ============================================================================
 
-// createQueryCache creates a cache wrapper for query services.
+// createQueryCache returns the cache directly since interfaces are unified.
 func (f *ServiceFactory) createQueryCache() queries.Cache {
-	return &queryCacheAdapter{
-		inner: f.infrastructure.Cache,
-		// ttl:   f.config.Cache.QueryTTL, // Need to add this field to the wrapper
-	}
+	return f.infrastructure.Cache
 }
 
 // createNodeReader creates a read-optimized node reader.

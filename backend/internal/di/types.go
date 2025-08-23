@@ -54,7 +54,6 @@ type Container struct {
 	// Phase 2 Repository Pattern Enhancements
 	RepositoryFactory  *repository.RepositoryFactory
 	UnitOfWorkProvider repository.UnitOfWorkProvider
-	QueryExecutor      repository.QueryExecutor
 	RepositoryManager  repository.RepositoryManager
 
 	// Cross-cutting concerns
@@ -104,25 +103,4 @@ type HealthChecker interface {
 	Health(ctx context.Context) map[string]string
 }
 
-// queryCacheAdapter adapts cache.Cache to queries.Cache.
-type queryCacheAdapter struct {
-	inner cache.Cache
-}
-
-func (a *queryCacheAdapter) Get(ctx context.Context, key string) (interface{}, bool) {
-	data, found, _ := a.inner.Get(ctx, key)
-	if !found {
-		return nil, false
-	}
-	return data, true
-}
-
-func (a *queryCacheAdapter) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) {
-	// Would need to serialize value to []byte
-	a.inner.Set(ctx, key, nil, ttl)
-}
-
-func (a *queryCacheAdapter) Delete(ctx context.Context, key string) {
-	a.inner.Delete(ctx, key)
-}
 

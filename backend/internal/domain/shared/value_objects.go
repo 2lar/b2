@@ -173,6 +173,51 @@ func (c Content) ExtractKeywords() Keywords {
 	return Keywords{words: uniqueWords}
 }
 
+// Title is a value object with business rules for node titles
+type Title struct {
+	value string
+}
+
+// NewTitle creates a new Title value object with validation
+func NewTitle(value string) (Title, error) {
+	value = strings.TrimSpace(value)
+	
+	// Title is optional, so empty is allowed
+	if len(value) == 0 {
+		return Title{value: ""}, nil
+	}
+	
+	if len(value) > MaxTitleLength {
+		return Title{}, ErrTitleTooLong
+	}
+	
+	// Basic content validation - no profanity check for titles
+	return Title{value: value}, nil
+}
+
+// String returns the string representation of the title
+func (t Title) String() string {
+	return t.value
+}
+
+// IsEmpty checks if the title is empty
+func (t Title) IsEmpty() bool {
+	return t.value == ""
+}
+
+// Equals checks if two Title objects have the same value
+func (t Title) Equals(other Title) bool {
+	return t.value == other.value
+}
+
+// Validate checks if the title is still valid (for updates)
+func (t Title) Validate() error {
+	if len(t.value) > MaxTitleLength {
+		return ErrTitleTooLong
+	}
+	return nil
+}
+
 // Keywords value object encapsulates keyword logic
 type Keywords struct {
 	words map[string]bool

@@ -14,6 +14,9 @@ const (
 	
 	// MaxInlineLength is the absolute maximum for inline input mode
 	MaxInlineLength = 1500
+	
+	// MaxTitleLength is the maximum allowed title length in characters
+	MaxTitleLength = 200
 )
 
 // Legacy constants for backward compatibility

@@ -21,6 +21,7 @@ import (
 type NodeView struct {
 	ID        string    `json:"id"`
 	Content   string    `json:"content"`
+	Title     string    `json:"title,omitempty"`
 	Keywords  []string  `json:"keywords"`
 	Tags      []string  `json:"tags"`
 	UserID    string    `json:"user_id"`
@@ -39,6 +40,7 @@ func ToNodeView(node *node.Node) *NodeView {
 	return &NodeView{
 		ID:        node.ID.String(),
 		Content:   node.Content.String(),
+		Title:     node.Title.String(),
 		Keywords:  node.Keywords().ToSlice(),
 		Tags:      node.Tags.ToSlice(),
 		UserID:    node.UserID.String(),

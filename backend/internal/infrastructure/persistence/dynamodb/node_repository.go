@@ -250,7 +250,7 @@ func (r *NodeRepository) FindByContent(ctx context.Context, userID shared.UserID
 	lowerSearchTerm := strings.ToLower(searchTerm)
 	for _, node := range nodes {
 		// Check if search term is in content
-		if strings.Contains(strings.ToLower(node.Content.String()), lowerSearchTerm) {
+		if strings.Contains(strings.ToLower(node.GetContent().String()), lowerSearchTerm) {
 			filtered = append(filtered, node)
 		}
 	}
@@ -464,7 +464,7 @@ func (r *NodeRepository) FindNodes(ctx context.Context, query repository.NodeQue
 	if query.SearchText != "" {
 		filtered := make([]*node.Node, 0)
 		for _, node := range nodes {
-			if strings.Contains(strings.ToLower(node.Content.String()), strings.ToLower(query.SearchText)) {
+			if strings.Contains(strings.ToLower(node.GetContent().String()), strings.ToLower(query.SearchText)) {
 				filtered = append(filtered, node)
 			}
 		}
@@ -555,19 +555,24 @@ func (r *NodeRepository) Save(ctx context.Context, node *node.Node) error {
 	// Build the item with composite keys
 	item := map[string]types.AttributeValue{
 		"PK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
-		"SK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", node.ID.String())},
+		"SK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", node.GetID())},
 		"EntityType": &types.AttributeValueMemberS{Value: "NODE"},
-		"NodeID":    &types.AttributeValueMemberS{Value: node.ID.String()},
-		"UserID":    &types.AttributeValueMemberS{Value: node.UserID.String()},
-		"Content":   &types.AttributeValueMemberS{Value: node.Content.String()},
+		"NodeID":    &types.AttributeValueMemberS{Value: node.GetID()},
+		"UserID":    &types.AttributeValueMemberS{Value: node.GetUserID().String()},
+		"Content":   &types.AttributeValueMemberS{Value: node.GetContent().String()},
 		"CreatedAt": &types.AttributeValueMemberS{Value: node.CreatedAt.Format(time.RFC3339)},
 		"UpdatedAt": &types.AttributeValueMemberS{Value: node.UpdatedAt.Format(time.RFC3339)},
 		"Version":   &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version)},
 	}
 	
+	// Add title if present
+	if !node.GetTitle().IsEmpty() {
+		item["Title"] = &types.AttributeValueMemberS{Value: node.GetTitle().String()}
+	}
+	
 	// Add tags if present
-	if node.Tags.Count() > 0 {
-		tagSlice := node.Tags.ToSlice()
+	if node.GetTags().Count() > 0 {
+		tagSlice := node.GetTags().ToSlice()
 		tagList := &types.AttributeValueMemberL{
 			Value: make([]types.AttributeValue, len(tagSlice)),
 		}
@@ -606,7 +611,7 @@ func (r *NodeRepository) Save(ctx context.Context, node *node.Node) error {
 	
 	_, err := r.client.PutItem(ctx, input)
 	if err != nil {
-		return errorContext.WrapWithContext(err, "DynamoDB PutItem failed for node %s", node.ID.String())
+		return errorContext.WrapWithContext(err, "DynamoDB PutItem failed for node %s", node.GetID())
 	}
 	
 	return nil
@@ -653,13 +658,20 @@ func (r *NodeRepository) Update(ctx context.Context, node *node.Node) error {
 	}
 	
 	// Build update expression
-	update := expression.Set(expression.Name("Content"), expression.Value(node.Content.String())).
+	update := expression.Set(expression.Name("Content"), expression.Value(node.GetContent().String())).
 		Set(expression.Name("UpdatedAt"), expression.Value(node.UpdatedAt.Format(time.RFC3339))).
 		Set(expression.Name("Version"), expression.Value(node.Version))
 	
+	// Add title if present, otherwise remove it
+	if !node.GetTitle().IsEmpty() {
+		update = update.Set(expression.Name("Title"), expression.Value(node.GetTitle().String()))
+	} else {
+		update = update.Remove(expression.Name("Title"))
+	}
+	
 	// Add tags if present
-	if node.Tags.Count() > 0 {
-		tags := node.Tags.ToSlice()
+	if node.GetTags().Count() > 0 {
+		tags := node.GetTags().ToSlice()
 		update = update.Set(expression.Name("Tags"), expression.Value(tags))
 	}
 	
@@ -682,7 +694,7 @@ func (r *NodeRepository) Update(ctx context.Context, node *node.Node) error {
 	
 	key := map[string]types.AttributeValue{
 		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
-		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", node.ID.String())},
+		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", node.GetID())},
 	}
 	
 	input := &dynamodb.UpdateItemInput{
@@ -1124,6 +1136,7 @@ func (r *NodeRepository) parseNodeFromItem(item map[string]types.AttributeValue)
 	nodeID := r.extractNodeID(item)
 	userIDStr := r.extractUserID(item)
 	contentStr := r.extractStringField(item, "Content")
+	titleStr := r.extractStringField(item, "Title")
 	version := r.extractVersion(item)
 	
 	// Parse timestamps using helper method
@@ -1145,6 +1158,11 @@ func (r *NodeRepository) parseNodeFromItem(item map[string]types.AttributeValue)
 		return nil, fmt.Errorf("invalid content: %w", err)
 	}
 	
+	title, err := shared.NewTitle(titleStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid title: %w", err)
+	}
+	
 	// Parse collections using helper methods
 	tags := r.extractStringArray(item, "Tags")
 	keywords := r.extractStringArray(item, "Keywords")
@@ -1154,6 +1172,7 @@ func (r *NodeRepository) parseNodeFromItem(item map[string]types.AttributeValue)
 		nid,
 		uid,
 		content,
+		title,
 		shared.NewKeywords(keywords),
 		shared.NewTags(tags...),
 		createdAt,

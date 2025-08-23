@@ -49,6 +49,7 @@ func NewNodeCommandService(
 type CreateNodeCommand struct {
 	UserID         string                 `validate:"required,uuid"`
 	Content        string                 `validate:"required,min=1,max=20000"`
+	Title          string                 `validate:"max=200"`
 	Tags           []string               `validate:"max=10,dive,min=1,max=50"`
 	Metadata       map[string]interface{} `validate:"max=20"`
 	IdempotencyKey string                 `validate:"max=100"`
@@ -59,6 +60,7 @@ type UpdateNodeCommand struct {
 	NodeID   string                 `validate:"required"`
 	UserID   string                 `validate:"required,uuid"`
 	Content  string                 `validate:"omitempty,min=1,max=20000"`
+	Title    string                 `validate:"max=200"`
 	Tags     []string               `validate:"omitempty,max=10,dive,min=1,max=50"`
 	Metadata map[string]interface{} `validate:"omitempty,max=20"`
 	Version  int                    `validate:"min=0"`
@@ -66,7 +68,7 @@ type UpdateNodeCommand struct {
 
 // HasChanges returns true if the update command contains changes.
 func (c *UpdateNodeCommand) HasChanges() bool {
-	return c.Content != "" || len(c.Tags) > 0 || len(c.Metadata) > 0
+	return c.Content != "" || c.Title != "" || len(c.Tags) > 0 || len(c.Metadata) > 0
 }
 
 // DeleteNodeCommand encapsulates a node deletion request.
@@ -143,10 +145,15 @@ func (s *NodeCommandService) CreateNode(ctx context.Context, cmd CreateNodeComma
 		return nil, fmt.Errorf("invalid content: %w", err)
 	}
 	
+	title, err := shared.NewTitle(cmd.Title)
+	if err != nil {
+		return nil, fmt.Errorf("invalid title: %w", err)
+	}
+	
 	tags := shared.NewTags(cmd.Tags...)
 	
 	// Use the domain factory method to create a valid node
-	node, err := node.NewNode(userID, content, tags)
+	node, err := node.NewNode(userID, content, title, tags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create node: %w", err)
 	}
@@ -206,7 +213,17 @@ func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeComma
 		}
 	}
 	
-	// 4. Create updated tags if provided
+	// 4. Create updated title if provided
+	var title shared.Title
+	if cmd.Title != "" {
+		var err error
+		title, err = shared.NewTitle(cmd.Title)
+		if err != nil {
+			return nil, fmt.Errorf("invalid title: %w", err)
+		}
+	}
+	
+	// 5. Create updated tags if provided
 	var tags shared.Tags
 	if cmd.Tags != nil {
 		tags = shared.NewTags(cmd.Tags...)
@@ -229,6 +246,7 @@ func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeComma
 		nodeID,
 		userID,
 		content,
+		title,
 		shared.Keywords{}, // Will be recalculated from content
 		tags,
 		time.Now(),

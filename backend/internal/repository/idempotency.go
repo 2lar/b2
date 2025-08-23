@@ -178,6 +178,7 @@ func (r *LastWriteWinsResolver) ResolveConflict(ctx context.Context, current, in
 		incoming.ID.String(),
 		incoming.UserID.String(),
 		incoming.Content.String(),
+		incoming.Title.String(), // Add title parameter
 		incoming.Keywords().ToSlice(),
 		incoming.Tags.ToSlice(),
 		incoming.CreatedAt,
@@ -234,6 +235,7 @@ func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming n
 		incoming.ID.String(),
 		incoming.UserID.String(),
 		incoming.Content.String(), // Use incoming content
+		incoming.Title.String(),   // Use incoming title
 		mergedKeywords.ToSlice(),     // Use merged keywords
 		mergedTags.ToSlice(),         // Use merged tags
 		incoming.CreatedAt,

@@ -110,7 +110,8 @@ func (s *DemoNodeService) CreateNode(ctx context.Context, cmd CreateNodeCommand)
 	tags := shared.NewTags(cmd.Tags...)
 
 	// 3. Apply business logic using domain factory
-	node, err := node.NewNode(userID, content, tags)
+	title, _ := shared.NewTitle("") // Empty title for demo nodes
+	node, err := node.NewNode(userID, content, title, tags)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to create node")
 	}

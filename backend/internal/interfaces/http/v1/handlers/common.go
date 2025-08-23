@@ -3,7 +3,6 @@ package handlers
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"strings"
 
@@ -23,24 +22,17 @@ func getUserID(r *http.Request) (string, bool) {
 // handleServiceError converts service errors to appropriate HTTP responses
 func handleServiceError(w http.ResponseWriter, err error) {
 	if appErrors.IsValidation(err) {
-		log.Printf("VALIDATION ERROR: %v", err)
 		api.Error(w, http.StatusBadRequest, err.Error())
 	} else if appErrors.IsNotFound(err) {
-		log.Printf("NOT FOUND ERROR: %v", err)
 		api.Error(w, http.StatusNotFound, err.Error())
 	} else if repository.IsConflict(err) {
-		log.Printf("CONFLICT ERROR: %v", err)
 		api.Error(w, http.StatusConflict, "The resource has been modified by another request. Please retry with the latest version.")
 	} else if isTimeoutError(err) {
-		log.Printf("TIMEOUT ERROR: %v", err)
 		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable")
 	} else if isConnectionError(err) {
-		log.Printf("CONNECTION ERROR: %v", err)
 		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable")
 	} else {
-		// Log the full error details for debugging while hiding sensitive info from client
-		log.Printf("INTERNAL ERROR (full): %+v", err)
-		log.Printf("INTERNAL ERROR (type): %T", err)
+		// Internal server error
 		api.Error(w, http.StatusInternalServerError, "An internal error occurred")
 	}
 }
@@ -75,27 +67,27 @@ func Authenticator(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		proxyCtx, ok := core.GetAPIGatewayV2ContextFromContext(r.Context())
 		if !ok {
-			log.Println("Error: could not get proxy request context from context")
+			// Could not get proxy request context
 			api.Error(w, http.StatusInternalServerError, "Authentication context not available")
 			return
 		}
 
 		if proxyCtx.Authorizer == nil || proxyCtx.Authorizer.Lambda == nil {
-			log.Println("Error: missing authorizer context")
+			// Missing authorizer context
 			api.Error(w, http.StatusUnauthorized, "Authentication required")
 			return
 		}
 
 		subValue := proxyCtx.Authorizer.Lambda["sub"]
 		if subValue == nil {
-			log.Println("Error: missing user ID in authorizer context")
+			// Missing user ID in authorizer context
 			api.Error(w, http.StatusUnauthorized, "Invalid authentication")
 			return
 		}
 		
 		userID, ok := subValue.(string)
 		if !ok || userID == "" {
-			log.Printf("Error: invalid user ID in authorizer context - expected string, got %T", subValue)
+			// Invalid user ID in authorizer context
 			api.Error(w, http.StatusUnauthorized, "Invalid authentication")
 			return
 		}

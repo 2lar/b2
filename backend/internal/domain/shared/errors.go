@@ -21,6 +21,9 @@ var (
 	ErrContentTooLong       = errors.New("content exceeds maximum length")
 	ErrInappropriateContent = errors.New("content contains inappropriate material")
 	
+	// Title errors
+	ErrTitleTooLong = errors.New("title exceeds maximum length")
+	
 	// Node business rule errors
 	ErrCannotUpdateArchivedNode   = errors.New("cannot update archived node")
 	ErrCannotConnectToSelf        = errors.New("cannot connect node to itself")

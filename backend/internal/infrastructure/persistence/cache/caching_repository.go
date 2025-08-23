@@ -390,6 +390,7 @@ func (r *CachingNodeRepository) marshalNode(node *node.Node) ([]byte, error) {
 		ID        string    `json:"id"`
 		UserID    string    `json:"user_id"`
 		Content   string    `json:"content"`
+		Title     string    `json:"title"`
 		Keywords  []string  `json:"keywords"`
 		Tags      []string  `json:"tags"`
 		CreatedAt time.Time `json:"created_at"`
@@ -400,6 +401,7 @@ func (r *CachingNodeRepository) marshalNode(node *node.Node) ([]byte, error) {
 		ID:        node.ID.String(),
 		UserID:    node.UserID.String(),
 		Content:   node.Content.String(),
+		Title:     node.Title.String(),
 		Keywords:  node.Keywords().ToSlice(),
 		Tags:      node.Tags.ToSlice(),
 		CreatedAt: node.CreatedAt,
@@ -416,6 +418,7 @@ func (r *CachingNodeRepository) unmarshalNode(data []byte) (*node.Node, error) {
 		ID        string    `json:"id"`
 		UserID    string    `json:"user_id"`
 		Content   string    `json:"content"`
+		Title     string    `json:"title"`
 		Keywords  []string  `json:"keywords"`
 		Tags      []string  `json:"tags"`
 		CreatedAt time.Time `json:"created_at"`
@@ -433,6 +436,7 @@ func (r *CachingNodeRepository) unmarshalNode(data []byte) (*node.Node, error) {
 		serializable.ID,
 		serializable.UserID,
 		serializable.Content,
+		serializable.Title,
 		serializable.Keywords,
 		serializable.Tags,
 		serializable.CreatedAt,
@@ -447,6 +451,7 @@ func (r *CachingNodeRepository) marshalNodeSlice(nodes []*node.Node) ([]byte, er
 			"id":         node.ID.String(),
 			"user_id":    node.UserID.String(),
 			"content":    node.Content.String(),
+			"title":      node.Title.String(),
 			"keywords":   node.Keywords().ToSlice(),
 			"tags":       node.Tags.ToSlice(),
 			"created_at": node.CreatedAt,
@@ -471,6 +476,7 @@ func (r *CachingNodeRepository) unmarshalNodeSlice(data []byte) ([]*node.Node, e
 			item["id"].(string),
 			item["user_id"].(string),
 			item["content"].(string),
+			item["title"].(string),
 			interfaceToStringSlice(item["keywords"]),
 			interfaceToStringSlice(item["tags"]),
 			parseTime(item["created_at"]),

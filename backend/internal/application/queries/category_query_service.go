@@ -11,6 +11,7 @@ package queries
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -56,8 +57,11 @@ func (s *CategoryQueryService) GetCategory(ctx context.Context, query *GetCatego
 		query.UserID, query.CategoryID, query.IncludeNodes, query.IncludeStats)
 	
 	if s.cache != nil {
-		if cached, found := s.cache.Get(ctx, cacheKey); found {
-			return cached.(*dto.GetCategoryResult), nil
+		if cachedData, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
+			var result dto.GetCategoryResult
+			if err := json.Unmarshal(cachedData, &result); err == nil {
+				return &result, nil
+			}
 		}
 	}
 
@@ -149,7 +153,9 @@ func (s *CategoryQueryService) GetCategory(ctx context.Context, query *GetCatego
 
 	// 7. Cache the result
 	if s.cache != nil {
-		s.cache.Set(ctx, cacheKey, result, 5*time.Minute)
+		if data, err := json.Marshal(result); err == nil {
+			s.cache.Set(ctx, cacheKey, data, 5*time.Minute)
+		}
 	}
 
 	return result, nil

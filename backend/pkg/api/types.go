@@ -3,12 +3,14 @@ package api
 // CreateNodeRequest represents the request to create a node
 type CreateNodeRequest struct {
 	Content string   `json:"content"`
+	Title   string   `json:"title,omitempty"`
 	Tags    []string `json:"tags,omitempty"`
 }
 
 // UpdateNodeRequest represents the request to update a node
 type UpdateNodeRequest struct {
 	Content string   `json:"content,omitempty"`
+	Title   string   `json:"title,omitempty"`
 	Tags    []string `json:"tags,omitempty"`
 }
 
@@ -56,6 +58,7 @@ type Node struct {
 	NodeID    string                 `json:"nodeId"`
 	UserID    string                 `json:"user_id"`
 	Content   string                 `json:"content"`
+	Title     string                 `json:"title,omitempty"`
 	Tags      []string               `json:"tags,omitempty"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 	Timestamp string                 `json:"timestamp"`

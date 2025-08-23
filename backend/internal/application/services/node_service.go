@@ -16,7 +16,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"brain2-backend/internal/application/commands"
@@ -117,11 +116,11 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 				if err != nil {
 					// If reconstruction fails, proceed with new creation rather than failing
 					// This ensures the API remains available even with cache issues
-					log.Printf("WARN: Failed to reconstruct cached result for idempotency key, creating new node: %v", err)
+					// Failed to reconstruct cached result, creating new node
 				} else if reconstructed != nil && reconstructed.Node != nil {
 					return reconstructed, nil
 				} else {
-					log.Printf("WARN: Reconstructed result is invalid (nil or nil Node), creating new node")
+					// Reconstructed result is invalid, creating new node
 				}
 			default:
 				// Unexpected type from idempotency store - proceed with new creation
@@ -145,10 +144,14 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	tags := shared.NewTags(cmd.Tags...)
 
 	// 4. Create domain entity using factory method
-	node, err := node.NewNode(userID, content, tags)
+	// Creating title value object from command
+	title, _ := shared.NewTitle(cmd.Title) // Use title from command
+	// Title value object created
+	node, err := node.NewNode(userID, content, title, tags)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to create node")
 	}
+	// Node created with title
 
 	// 5. Find potential connections using domain service
 	query := repository.NodeQuery{
@@ -321,6 +324,15 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 			return nil, appErrors.Wrap(err, "failed to update node tags")
 		}
 	}
+	if cmd.Title != "" {
+		newTitle, err := shared.NewTitle(cmd.Title)
+		if err != nil {
+			return nil, appErrors.NewValidation("invalid title: " + err.Error())
+		}
+		if err := node.UpdateTitle(newTitle); err != nil {
+			return nil, appErrors.Wrap(err, "failed to update node title")
+		}
+	}
 
 	// 7. Save updated node
 	// Use CreateNodeAndKeywords which handles both create and update
@@ -436,14 +448,14 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 		shared.ParseVersion(node.Version),
 	)
 
-	log.Printf("DEBUG: NodeService.DeleteNode - Publishing NodeDeleted event for node %s, user %s", nodeID.String(), userID.String())
+	// Publishing NodeDeleted event
 	
 	if err := s.eventBus.Publish(ctx, deletionEvent); err != nil {
-		log.Printf("ERROR: NodeService.DeleteNode - Failed to publish NodeDeleted event: %v", err)
+		// Failed to publish NodeDeleted event
 		return nil, appErrors.Wrap(err, "failed to publish deletion event")
 	}
 	
-	log.Printf("DEBUG: NodeService.DeleteNode - Successfully published NodeDeleted event for node %s", nodeID.String())
+	// Successfully published NodeDeleted event
 
 	// 8. Commit transaction
 	commitCalled = true
@@ -485,7 +497,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 			// Attempt rollback on panic
 			if rollbackErr := uow.Rollback(); rollbackErr != nil {
 				// Log error but continue with panic
-				log.Printf("ERROR: Failed to rollback after panic: %v", rollbackErr)
+				// Failed to rollback after panic
 			}
 			// Re-panic to let it bubble up
 			panic(r)
@@ -506,7 +518,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 	failedIDs := make([]string, 0)
 	nodeDataMap := make(map[string]*node.Node) // Store node data for event publishing
 
-	log.Printf("DEBUG: BulkDeleteNodes - Validating %d node IDs for user %s", len(cmd.NodeIDs), userID.String())
+	// Validating node IDs and ownership
 
 	// First, validate all node ID formats
 	nodeIDsToCheck := make([]string, 0, len(cmd.NodeIDs))
@@ -514,7 +526,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 		// Validate node ID format
 		_, err := shared.ParseNodeID(nodeIDStr)
 		if err != nil {
-			log.Printf("DEBUG: Invalid node ID format: %s", nodeIDStr)
+			// Invalid node ID format
 			failedIDs = append(failedIDs, nodeIDStr)
 			continue
 		}
@@ -525,7 +537,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 	if len(nodeIDsToCheck) > 0 {
 		nodesMap, err := uow.Nodes().BatchGetNodes(ctx, userID.String(), nodeIDsToCheck)
 		if err != nil {
-			log.Printf("ERROR: BatchGetNodes failed: %v", err)
+			// Failed to retrieve nodes for validation
 			// Fall back to marking all as failed
 			failedIDs = append(failedIDs, nodeIDsToCheck...)
 		} else {
@@ -533,13 +545,13 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 			for _, nodeIDStr := range nodeIDsToCheck {
 				node, exists := nodesMap[nodeIDStr]
 				if !exists || node == nil {
-					log.Printf("DEBUG: Node not found: %s", nodeIDStr)
+					// Node not found
 					failedIDs = append(failedIDs, nodeIDStr)
 					continue
 				}
 
 				if !node.UserID.Equals(userID) {
-					log.Printf("DEBUG: Node ownership mismatch for node: %s", nodeIDStr)
+					// Node ownership mismatch
 					failedIDs = append(failedIDs, nodeIDStr)
 					continue
 				}
@@ -550,7 +562,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 		}
 	}
 
-	log.Printf("DEBUG: BulkDeleteNodes - Validated nodes: %d valid, %d failed", len(validNodeIDs), len(failedIDs))
+	// Node validation completed
 
 	// 4. Use optimized batch delete for valid nodes
 	var deletedIDs []string
@@ -561,13 +573,13 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 		deletedIDs, batchFailedIDs, err = uow.Nodes().BatchDeleteNodes(ctx, userID.String(), validNodeIDs)
 		if err != nil {
 			// Even on error, we may have partial success
-			log.Printf("ERROR: Batch delete encountered error: %v", err)
+			// Batch delete encountered error
 		}
 		
 		// Add batch failures to the failed list
 		failedIDs = append(failedIDs, batchFailedIDs...)
 		
-		log.Printf("DEBUG: BulkDeleteNodes - Batch delete results: %d deleted, %d failed", len(deletedIDs), len(batchFailedIDs))
+		// Batch delete completed
 	}
 
 	// 5. Publish deletion events for successfully deleted nodes
@@ -604,7 +616,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 		
 		// Publish event asynchronously - don't block the bulk operation
 		if err := s.eventBus.Publish(ctx, deletionEvent); err != nil {
-			log.Printf("WARN: Failed to publish NodeDeleted event for node %s: %v", nodeIDStr, err)
+			// Failed to publish event for deleted node
 			// Don't fail the operation for event publishing failures
 		}
 	}
@@ -623,8 +635,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 		Message:      fmt.Sprintf("Successfully deleted %d of %d nodes", len(deletedIDs), len(cmd.NodeIDs)),
 	}
 
-	log.Printf("INFO: BulkDeleteNodes completed - deleted: %d, failed: %d, total: %d", 
-		len(deletedIDs), len(failedIDs), len(cmd.NodeIDs))
+	// Bulk delete operation completed
 
 	return result, nil
 }
@@ -829,7 +840,8 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 		}
 
 		tags := shared.NewTags(nodeReq.Tags...)
-		node, err := node.NewNode(userID, content, tags)
+		title, _ := shared.NewTitle("") // Empty title for bulk create (struct has no Title field)
+		node, err := node.NewNode(userID, content, title, tags)
 		if err != nil {
 			errors = append(errors, dto.BulkCreateError{
 				Index:   i,

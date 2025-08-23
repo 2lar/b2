@@ -146,14 +146,6 @@ type GraphRepository interface {
 
 // Advanced Repository Interfaces for Phase 2 Excellence
 
-// SpecificationRepository provides specification-based query capabilities
-// This interface can be implemented by any repository to provide advanced querying
-type SpecificationRepository interface {
-	FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]interface{}, error)
-	CountBySpecification(ctx context.Context, spec Specification) (int, error)
-	ExistsBySpecification(ctx context.Context, spec Specification) (bool, error)
-	DeleteBySpecification(ctx context.Context, spec Specification) (int, error)
-}
 
 // UnitOfWorkProvider provides access to Unit of Work instances
 // This interface enables transactional operations across multiple repositories
@@ -174,7 +166,6 @@ type RepositoryProvider interface {
 	
 	// Phase 2 additions
 	GetUnitOfWorkProvider() UnitOfWorkProvider
-	GetSpecificationRepository() SpecificationRepository
 }
 
 // RepositoryManager provides high-level repository management
@@ -194,31 +185,3 @@ type RepositoryManager interface {
 	GetConfiguration() interface{}
 }
 
-// QueryExecutor provides advanced query execution capabilities
-// This interface demonstrates the Command pattern for complex queries
-type QueryExecutor interface {
-	ExecuteQuery(ctx context.Context, query interface{}, opts ...QueryOption) (interface{}, error)
-	ExecuteQueryBuilder(ctx context.Context, builder *QueryBuilder) (interface{}, error)
-	ExecuteBatch(ctx context.Context, queries []interface{}, opts ...QueryOption) ([]interface{}, error)
-	
-	// Query planning and optimization
-	ExplainQuery(ctx context.Context, query interface{}) (interface{}, error)
-	OptimizeQuery(ctx context.Context, query interface{}) (interface{}, error)
-}
-
-// EventDrivenRepository provides event-based repository operations
-// This interface demonstrates integration with domain events and CQRS
-type EventDrivenRepository interface {
-	// Event handling
-	OnEntityCreated(ctx context.Context, entity interface{}) error
-	OnEntityUpdated(ctx context.Context, entity interface{}) error
-	OnEntityDeleted(ctx context.Context, entityID string) error
-	
-	// Event publishing
-	PublishEvents(ctx context.Context, events []shared.DomainEvent) error
-	GetPendingEvents(ctx context.Context) ([]shared.DomainEvent, error)
-	
-	// Event sourcing support
-	ReplayEvents(ctx context.Context, entityID string) error
-	GetEventHistory(ctx context.Context, entityID string) ([]shared.DomainEvent, error)
-}

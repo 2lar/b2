@@ -2,6 +2,7 @@ package queries
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -41,8 +42,11 @@ func (s *EdgeQueryService) GetEdge(ctx context.Context, query *GetEdgeQuery) (*d
 		query.UserID, query.SourceNodeID, query.TargetNodeID, query.IncludeNodes)
 
 	if s.cache != nil {
-		if cached, found := s.cache.Get(ctx, cacheKey); found {
-			return cached.(*dto.GetEdgeResult), nil
+		if cachedData, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
+			var result dto.GetEdgeResult
+			if err := json.Unmarshal(cachedData, &result); err == nil {
+				return &result, nil
+			}
 		}
 	}
 
@@ -99,7 +103,9 @@ func (s *EdgeQueryService) GetEdge(ctx context.Context, query *GetEdgeQuery) (*d
 
 	// 7. Cache the result
 	if s.cache != nil {
-		s.cache.Set(ctx, cacheKey, result, 5*time.Minute)
+		if data, err := json.Marshal(result); err == nil {
+			s.cache.Set(ctx, cacheKey, data, 5*time.Minute)
+		}
 	}
 
 	return result, nil
@@ -190,8 +196,11 @@ func (s *EdgeQueryService) GetConnectionStatistics(ctx context.Context, query *G
 		query.UserID, query.StrongConnectionThreshold, query.WeakConnectionThreshold)
 
 	if s.cache != nil {
-		if cached, found := s.cache.Get(ctx, cacheKey); found {
-			return cached.(*dto.ConnectionStatisticsResult), nil
+		if cachedData, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
+			var result dto.ConnectionStatisticsResult
+			if err := json.Unmarshal(cachedData, &result); err == nil {
+				return &result, nil
+			}
 		}
 	}
 
@@ -307,7 +316,9 @@ func (s *EdgeQueryService) GetConnectionStatistics(ctx context.Context, query *G
 
 	// 8. Cache the result - statistics change less frequently
 	if s.cache != nil {
-		s.cache.Set(ctx, cacheKey, result, 15*time.Minute)
+		if data, err := json.Marshal(result); err == nil {
+			s.cache.Set(ctx, cacheKey, data, 15*time.Minute)
+		}
 	}
 
 	return result, nil
@@ -320,8 +331,11 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 		query.UserID, query.NodeID, query.ConnectionType, query.Limit)
 
 	if s.cache != nil {
-		if cached, found := s.cache.Get(ctx, cacheKey); found {
-			return cached.(*dto.GetNodeConnectionsResult), nil
+		if cachedData, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
+			var result dto.GetNodeConnectionsResult
+			if err := json.Unmarshal(cachedData, &result); err == nil {
+				return &result, nil
+			}
 		}
 	}
 
@@ -404,7 +418,9 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 
 	// 8. Cache the result
 	if s.cache != nil {
-		s.cache.Set(ctx, cacheKey, result, 3*time.Minute)
+		if data, err := json.Marshal(result); err == nil {
+			s.cache.Set(ctx, cacheKey, data, 3*time.Minute)
+		}
 	}
 
 	return result, nil

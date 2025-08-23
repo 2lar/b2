@@ -6,7 +6,6 @@ package di
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -1302,35 +1301,23 @@ type SimpleMemoryCacheWrapper struct {
 }
 
 // Get retrieves a value from the cache
-func (c *SimpleMemoryCacheWrapper) Get(ctx context.Context, key string) (any, bool) {
-	data, found, err := c.cache.Get(ctx, key)
-	if err != nil || !found {
-		return nil, false
-	}
-
-	// Deserialize the data
-	var value any
-	if err := json.Unmarshal(data, &value); err != nil {
-		return nil, false
-	}
-
-	return value, true
+func (c *SimpleMemoryCacheWrapper) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	return c.cache.Get(ctx, key)
 }
 
 // Set stores a value in the cache
-func (c *SimpleMemoryCacheWrapper) Set(ctx context.Context, key string, value any, ttl time.Duration) {
-	// Serialize the value
-	data, err := json.Marshal(value)
-	if err != nil {
-		return
-	}
-
-	c.cache.Set(ctx, key, data, ttl)
+func (c *SimpleMemoryCacheWrapper) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	return c.cache.Set(ctx, key, value, ttl)
 }
 
 // Delete removes a value from the cache
-func (c *SimpleMemoryCacheWrapper) Delete(ctx context.Context, key string) {
-	c.cache.Delete(ctx, key)
+func (c *SimpleMemoryCacheWrapper) Delete(ctx context.Context, key string) error {
+	return c.cache.Delete(ctx, key)
+}
+
+// Clear removes all values matching the pattern from the cache
+func (c *SimpleMemoryCacheWrapper) Clear(ctx context.Context, pattern string) error {
+	return c.cache.Clear(ctx, pattern)
 }
 func (w *transactionalNodeWrapper) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
 	return w.base.BatchGetNodes(ctx, userID, nodeIDs)

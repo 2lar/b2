@@ -43,6 +43,7 @@ func ErrorWithData(w http.ResponseWriter, statusCode int, message string, data i
 type NodeResponse struct {
 	NodeID    string   `json:"nodeId"`
 	Content   string   `json:"content"`
+	Title     string   `json:"title,omitempty"`
 	Tags      []string `json:"tags,omitempty"`
 	Timestamp string   `json:"timestamp"`
 	Version   int      `json:"version"`
@@ -52,6 +53,7 @@ type NodeResponse struct {
 type NodeDetailsResponse struct {
 	NodeID    string   `json:"nodeId"`
 	Content   string   `json:"content"`
+	Title     string   `json:"title,omitempty"`
 	Tags      []string `json:"tags,omitempty"`
 	Timestamp string   `json:"timestamp"`
 	Version   int      `json:"version"`

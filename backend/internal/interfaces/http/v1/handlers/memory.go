@@ -62,6 +62,7 @@ func NewMemoryHandler(
 
 // CreateNode handles POST /api/nodes
 func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
+	// Process create node request
 	// Check if CQRS services are available
 	if h.nodeService == nil {
 		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable - CQRS migration in progress")
@@ -78,6 +79,7 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		api.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	// Request decoded successfully
 
 	if req.Content == "" {
 		api.Error(w, http.StatusBadRequest, "Content cannot be empty")
@@ -93,8 +95,10 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	cmd := &commands.CreateNodeCommand{
 		UserID:  userID,
 		Content: req.Content,
+		Title:   req.Title,
 		Tags:    tags,
 	}
+	// Command created for node creation
 
 	// Add idempotency key if provided
 	if idempotencyKey := r.Header.Get("Idempotency-Key"); idempotencyKey != "" {
@@ -117,6 +121,7 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		"userId":    result.Node.UserID,
 		"nodeId":    result.Node.ID,
 		"content":   result.Node.Content,
+		"title":     result.Node.Title,
 		"keywords":  result.Node.Keywords,
 		"edges":     result.Connections, // Use connections from CQRS result
 		"timestamp": time.Now(),
@@ -144,6 +149,7 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	api.Success(w, http.StatusCreated, api.NodeResponse{
 		NodeID:    result.Node.ID,
 		Content:   result.Node.Content,
+		Title:     result.Node.Title,
 		Tags:      result.Node.Tags,
 		Timestamp: result.Node.CreatedAt.Format(time.RFC3339),
 		Version:   result.Node.Version,
@@ -160,7 +166,7 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 
 	userID, ok := getUserID(r)
 	if !ok {
-		log.Printf("ERROR: ListNodes - Authentication failed, getUserID returned false")
+		// Authentication failed
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
@@ -174,12 +180,12 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("DEBUG: ListNodes called for userID: %s, limit: %d, nextToken: %s", userID, limit, urlQuery.Get("nextToken"))
+	// Processing list nodes request
 
 	// Create query for CQRS pattern
 	listQuery, err := queries.NewListNodesQuery(userID)
 	if err != nil {
-		log.Printf("ERROR: ListNodes - failed to create query: %v", err)
+		// Failed to create query
 		handleServiceError(w, err)
 		return
 	}
@@ -202,18 +208,18 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.nodeQueryService.ListNodes(r.Context(), listQuery)
 	if err != nil {
-		log.Printf("ERROR: ListNodes - nodeQueryService.ListNodes failed: %v", err)
+		// Query service failed
 		handleServiceError(w, err)
 		return
 	}
 
 	if response == nil {
-		log.Printf("ERROR: ListNodes - received nil response from service")
+		// Received nil response from service
 		api.Error(w, http.StatusInternalServerError, "Service returned no data")
 		return
 	}
 
-	log.Printf("DEBUG: ListNodes - received response with %d total items, hasMore: %v", response.Total, response.HasMore)
+	// Query executed successfully
 
 	// Convert NodeView DTOs to API response format
 	apiNodes := make([]api.Node, len(response.Nodes))
@@ -222,6 +228,7 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 			NodeID:    nodeView.ID,
 			UserID:    nodeView.UserID,
 			Content:   nodeView.Content,
+			Title:     nodeView.Title,
 			Tags:      nodeView.Tags,
 			Metadata:  nil, // NodeView doesn't include metadata field
 			Timestamp: nodeView.CreatedAt.Format(time.RFC3339),
@@ -230,7 +237,7 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("DEBUG: ListNodes - successfully converted %d nodes to API format", len(apiNodes))
+	// Response prepared successfully
 
 	nodesResponse := map[string]interface{}{
 		"nodes":     apiNodes,
@@ -239,7 +246,7 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		"nextToken": response.NextToken,
 	}
 
-	log.Printf("DEBUG: ListNodes - returning response with %d nodes, total: %d, hasMore: %v", len(apiNodes), response.Total, response.HasMore)
+	// Response prepared successfully
 	api.Success(w, http.StatusOK, nodesResponse)
 }
 
@@ -262,7 +269,7 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	isPostColdStart := h.container.IsPostColdStartRequest()
 	if isPostColdStart {
 		timeSince := h.container.GetTimeSinceColdStart()
-		log.Printf("GetNode: Processing post-cold-start request (%v after cold start) for node %s", timeSince, nodeID)
+		// Processing post-cold-start request
 
 		// Add cold start headers to response
 		w.Header().Set("X-Cold-Start", "true")
@@ -273,7 +280,7 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	nodeQuery, err := queries.NewGetNodeQuery(userID, nodeID)
 	if err != nil {
 		if isPostColdStart {
-			log.Printf("GetNode: Error creating query during post-cold-start request for node %s: %v", nodeID, err)
+			// Error creating query during post-cold-start request
 		}
 		handleServiceError(w, err)
 		return
@@ -285,7 +292,7 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	result, err := h.nodeQueryService.GetNode(r.Context(), nodeQuery)
 	if err != nil {
 		if isPostColdStart {
-			log.Printf("GetNode: Error during post-cold-start request for node %s: %v", nodeID, err)
+			// Error during post-cold-start request
 		}
 		handleServiceError(w, err)
 		return
@@ -317,6 +324,7 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	response := api.NodeDetailsResponse{
 		NodeID:    result.Node.ID,
 		Content:   result.Node.Content,
+		Title:     result.Node.Title,
 		Tags:      result.Node.Tags,
 		Timestamp: result.Node.CreatedAt.Format(time.RFC3339),
 		Version:   result.Node.Version,
@@ -352,8 +360,8 @@ func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add server-side validation
-	if len(req.Content) == 0 || len(req.Content) > 5000 {
-		api.Error(w, http.StatusBadRequest, "Content must be between 1 and 5000 characters.")
+	if req.Content != "" && len(req.Content) > 5000 {
+		api.Error(w, http.StatusBadRequest, "Content must not exceed 5000 characters.")
 		return
 	}
 
@@ -367,6 +375,7 @@ func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 		NodeID:  nodeID,
 		UserID:  userID,
 		Content: req.Content,
+		Title:   req.Title,
 		Tags:    tags,
 	}
 
@@ -512,7 +521,10 @@ func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 	log.Printf("DEBUG: GetGraphData succeeded, graph has %d nodes and %d edges", len(result.Nodes), len(result.Edges))
 
 	for _, nodeView := range result.Nodes {
-		label := nodeView.Content
+		label := nodeView.Title
+		if label == "" {
+			label = nodeView.Content
+		}
 		if len(label) > 50 {
 			label = label[:47] + "..."
 		}

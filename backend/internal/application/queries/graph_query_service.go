@@ -11,6 +11,7 @@ package queries
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -51,9 +52,12 @@ func (s *GraphQueryService) GetGraph(ctx context.Context, query *GetGraphQuery) 
 	// 1. Check cache first if enabled
 	cacheKey := fmt.Sprintf("graph:%s:limit=%d", query.UserID, query.Limit)
 	if s.cache != nil {
-		if cached, found := s.cache.Get(ctx, cacheKey); found {
-			s.logger.Debug("returning cached graph result")
-			return cached.(*dto.GetGraphResult), nil
+		if cachedData, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
+			var result dto.GetGraphResult
+			if err := json.Unmarshal(cachedData, &result); err == nil {
+				s.logger.Debug("returning cached graph result")
+				return &result, nil
+			}
 		}
 	}
 
@@ -96,7 +100,9 @@ func (s *GraphQueryService) GetGraph(ctx context.Context, query *GetGraphQuery) 
 
 	// 8. Cache the result
 	if s.cache != nil {
-		s.cache.Set(ctx, cacheKey, result, 10*time.Minute)
+		if data, err := json.Marshal(result); err == nil {
+			s.cache.Set(ctx, cacheKey, data, 10*time.Minute)
+		}
 	}
 
 	s.logger.Debug("graph retrieved successfully",
@@ -168,9 +174,12 @@ func (s *GraphQueryService) GetGraphAnalytics(ctx context.Context, query *GetGra
 	// 1. Check cache first
 	cacheKey := fmt.Sprintf("analytics:%s", query.UserID)
 	if s.cache != nil {
-		if cached, found := s.cache.Get(ctx, cacheKey); found {
-			s.logger.Debug("returning cached analytics result")
-			return cached.(*dto.GetGraphAnalyticsResult), nil
+		if cachedData, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
+			var result dto.GetGraphAnalyticsResult
+			if err := json.Unmarshal(cachedData, &result); err == nil {
+				s.logger.Debug("returning cached analytics result")
+				return &result, nil
+			}
 		}
 	}
 
@@ -203,7 +212,9 @@ func (s *GraphQueryService) GetGraphAnalytics(ctx context.Context, query *GetGra
 
 	// 6. Cache the result
 	if s.cache != nil {
-		s.cache.Set(ctx, cacheKey, result, 30*time.Minute) // Cache longer for analytics
+		if data, err := json.Marshal(result); err == nil {
+			s.cache.Set(ctx, cacheKey, data, 30*time.Minute) // Cache longer for analytics
+		}
 	}
 
 	s.logger.Debug("graph analytics calculated",
@@ -298,6 +309,23 @@ func (s *GraphQueryService) getNode(ctx context.Context, userID, nodeID string) 
 	return s.recordToNode(record)
 }
 
+func (s *GraphQueryService) getBatchNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
+	nodeMap := make(map[string]*node.Node)
+	
+	// For now, use individual queries - this could be optimized with batch operations
+	for _, nodeID := range nodeIDs {
+		node, err := s.getNode(ctx, userID, nodeID)
+		if err != nil {
+			continue // Skip nodes that can't be retrieved
+		}
+		if node != nil {
+			nodeMap[nodeID] = node
+		}
+	}
+	
+	return nodeMap, nil
+}
+
 func (s *GraphQueryService) traverseGraph(ctx context.Context, userID, startNodeID string, depth int) ([]*node.Node, []*edge.Edge) {
 	// This is a simplified implementation. In a real system, you would implement
 	// proper graph traversal algorithms (BFS, DFS) with depth limiting.
@@ -330,8 +358,9 @@ func (s *GraphQueryService) traverseGraph(ctx context.Context, userID, startNode
 		edgeMap[edgeKey] = edge
 	}
 
-	// Simple BFS traversal with depth limit
+	// Simple BFS traversal with depth limit - collect node IDs first to avoid N+1 queries
 	currentLevel := []string{startNodeID}
+	nodeIDsToFetch := make(map[string]bool)
 	
 	for d := 0; d < depth && len(currentLevel) > 0; d++ {
 		nextLevel := []string{}
@@ -342,11 +371,7 @@ func (s *GraphQueryService) traverseGraph(ctx context.Context, userID, startNode
 				if !visited[neighborID] {
 					visited[neighborID] = true
 					nextLevel = append(nextLevel, neighborID)
-					
-					// Add the node
-					if node, err := s.getNode(ctx, userID, neighborID); err == nil && node != nil {
-						allNodes = append(allNodes, node)
-					}
+					nodeIDsToFetch[neighborID] = true
 					
 					// Add the edge
 					edgeKey1 := fmt.Sprintf("%s-%s", nodeID, neighborID)
@@ -362,6 +387,31 @@ func (s *GraphQueryService) traverseGraph(ctx context.Context, userID, startNode
 		}
 		
 		currentLevel = nextLevel
+	}
+	
+	// Batch load all nodes at once to avoid N+1 queries
+	if len(nodeIDsToFetch) > 0 {
+		nodeIDs := make([]string, 0, len(nodeIDsToFetch))
+		for nodeID := range nodeIDsToFetch {
+			nodeIDs = append(nodeIDs, nodeID)
+		}
+		
+		// Use batch get if available in store interface
+		nodeMap, err := s.getBatchNodes(ctx, userID, nodeIDs)
+		if err == nil {
+			for _, node := range nodeMap {
+				if node != nil {
+					allNodes = append(allNodes, node)
+				}
+			}
+		} else {
+			// Fallback to individual queries if batch not available
+			for _, nodeID := range nodeIDs {
+				if node, err := s.getNode(ctx, userID, nodeID); err == nil && node != nil {
+					allNodes = append(allNodes, node)
+				}
+			}
+		}
 	}
 
 	return allNodes, allEdges
@@ -546,10 +596,12 @@ func (s *GraphQueryService) recordToNode(record *persistence.Record) (*node.Node
 	}
 
 	// Reconstruct domain node
+	title := ""  // Default empty title for graph queries
 	return node.ReconstructNodeFromPrimitives(
 		nodeID,
 		userID,
 		content,
+		title,
 		keywords,
 		tags,
 		createdAt,

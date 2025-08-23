@@ -10,6 +10,7 @@ import (
 type NodeView struct {
 	ID          string
 	Content     string
+	Title       string
 	Tags        []string
 	Keywords    []string
 	CreatedAt   time.Time
@@ -23,6 +24,7 @@ type NodeView struct {
 type NodeResponse struct {
 	NodeID    string   `json:"nodeId"`
 	Content   string   `json:"content"`
+	Title     string   `json:"title,omitempty"`
 	Tags      []string `json:"tags,omitempty"`
 	Keywords  []string `json:"keywords,omitempty"`
 	Timestamp string   `json:"timestamp"`
@@ -59,6 +61,7 @@ func (c *NodeConverter) FromNodeView(view NodeView) NodeResponse {
 	return NodeResponse{
 		NodeID:    view.ID,
 		Content:   view.Content,
+		Title:     view.Title,
 		Tags:      view.Tags,
 		Keywords:  view.Keywords,
 		Timestamp: view.CreatedAt.Format(time.RFC3339),

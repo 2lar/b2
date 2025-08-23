@@ -12,6 +12,7 @@ package queries
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -55,8 +56,11 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 		query.UserID, query.NodeID, query.IncludeConnections, query.IncludeMetadata)
 	
 	if s.cache != nil {
-		if cached, found := s.cache.Get(ctx, cacheKey); found {
-			return cached.(*dto.GetNodeResult), nil
+		if cachedData, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
+			var result dto.GetNodeResult
+			if err := json.Unmarshal(cachedData, &result); err == nil {
+				return &result, nil
+			}
 		}
 	}
 
@@ -145,7 +149,9 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 
 	// 8. Cache the result for future requests
 	if s.cache != nil {
-		s.cache.Set(ctx, cacheKey, result, 5*time.Minute)
+		if data, err := json.Marshal(result); err == nil {
+			s.cache.Set(ctx, cacheKey, data, 5*time.Minute)
+		}
 	}
 
 	return result, nil
@@ -231,8 +237,11 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 		query.UserID, query.NodeID, query.ConnectionType, query.Limit)
 	
 	if s.cache != nil {
-		if cached, found := s.cache.Get(ctx, cacheKey); found {
-			return cached.(*dto.GetNodeConnectionsResult), nil
+		if cachedData, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
+			var result dto.GetNodeConnectionsResult
+			if err := json.Unmarshal(cachedData, &result); err == nil {
+				return &result, nil
+			}
 		}
 	}
 
@@ -304,7 +313,9 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 
 		// Cache the result
 		if s.cache != nil {
-			s.cache.Set(ctx, cacheKey, result, 2*time.Minute)
+			if data, err := json.Marshal(result); err == nil {
+				s.cache.Set(ctx, cacheKey, data, 2*time.Minute)
+			}
 		}
 
 		return result, nil
@@ -327,7 +338,9 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 
 	// 7. Cache the result
 	if s.cache != nil {
-		s.cache.Set(ctx, cacheKey, result, 2*time.Minute)
+		if data, err := json.Marshal(result); err == nil {
+			s.cache.Set(ctx, cacheKey, data, 2*time.Minute)
+		}
 	}
 
 	return result, nil
@@ -340,8 +353,11 @@ func (s *NodeQueryService) GetGraphData(ctx context.Context, query *GetGraphData
 		query.UserID, query.IncludeArchived, query.MaxNodes, query.MaxEdges)
 	
 	if s.cache != nil {
-		if cached, found := s.cache.Get(ctx, cacheKey); found {
-			return cached.(*dto.GetGraphDataResult), nil
+		if cachedData, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
+			var result dto.GetGraphDataResult
+			if err := json.Unmarshal(cachedData, &result); err == nil {
+				return &result, nil
+			}
 		}
 	}
 
@@ -380,7 +396,9 @@ func (s *NodeQueryService) GetGraphData(ctx context.Context, query *GetGraphData
 
 	// 6. Cache the result - graph data changes less frequently
 	if s.cache != nil {
-		s.cache.Set(ctx, cacheKey, result, 10*time.Minute)
+		if data, err := json.Marshal(result); err == nil {
+			s.cache.Set(ctx, cacheKey, data, 10*time.Minute)
+		}
 	}
 
 	return result, nil

@@ -25,6 +25,7 @@ type Node struct {
 	// Private fields ensure encapsulation - external code must use methods
 	id        shared.NodeID    // Value object for type safety
 	content   shared.Content   // Value object with business rules
+	title     shared.Title     // Value object for optional title
 	keywords  shared.Keywords  // Value object with keyword logic
 	tags      shared.Tags      // Value object for tag management
 	userID    shared.UserID    // Value object for user identification
@@ -33,10 +34,11 @@ type Node struct {
 	version   shared.Version   // For optimistic locking
 	archived  bool      // Whether the node is archived
 
-	// Public fields for compatibility with existing code
+	// Public fields for compatibility with existing code (TODO: migrate to private)
 	ID        shared.NodeID                 `json:"id"`
 	UserID    shared.UserID                 `json:"user_id"`
 	Content   shared.Content                `json:"content"`
+	Title     shared.Title                  `json:"title"`
 	Tags      shared.Tags                   `json:"tags"`
 	Metadata  map[string]interface{} `json:"metadata"`
 	CreatedAt time.Time              `json:"created_at"`
@@ -53,14 +55,20 @@ type Node struct {
 // Business Rules Enforced:
 //   - UserID must be valid
 //   - Content must pass validation (length, profanity, etc.)
+//   - Title is optional and must pass validation if provided
 //   - Tags are normalized and validated
 //   - Keywords are automatically extracted from content
 //   - Version always starts at 0 for new nodes
 //   - Domain events are generated for the creation
-func NewNode(userID shared.UserID, content shared.Content, tags shared.Tags) (*Node, error) {
+func NewNode(userID shared.UserID, content shared.Content, title shared.Title, tags shared.Tags) (*Node, error) {
 	// Validate content (already done in Content value object, but explicit check)
 	if err := content.Validate(); err != nil {
 		return nil, shared.NewDomainError("invalid_content", "node content validation failed", err)
+	}
+
+	// Validate title if provided
+	if err := title.Validate(); err != nil {
+		return nil, shared.NewDomainError("invalid_title", "node title validation failed", err)
 	}
 
 	now := time.Now()
@@ -72,6 +80,7 @@ func NewNode(userID shared.UserID, content shared.Content, tags shared.Tags) (*N
 		id:        nodeID,
 		userID:    userID,
 		content:   content,
+		title:     title,
 		keywords:  keywords,
 		tags:      tags,
 		createdAt: now,
@@ -79,10 +88,11 @@ func NewNode(userID shared.UserID, content shared.Content, tags shared.Tags) (*N
 		version:   shared.NewVersion(), // Always start at 0
 		archived:  false,
 		events:    []shared.DomainEvent{},
-		// Initialize public fields
+		// Initialize public fields for compatibility
 		ID:        nodeID,
 		UserID:    userID,
 		Content:   content,
+		Title:     title,
 		Tags:      tags,
 		Metadata:  make(map[string]interface{}),
 		CreatedAt: now,
@@ -98,13 +108,14 @@ func NewNode(userID shared.UserID, content shared.Content, tags shared.Tags) (*N
 }
 
 // Factory method for reconstructing nodes from persistence (no events generated)
-func ReconstructNode(id shared.NodeID, userID shared.UserID, content shared.Content, keywords shared.Keywords, tags shared.Tags,
+func ReconstructNode(id shared.NodeID, userID shared.UserID, content shared.Content, title shared.Title, keywords shared.Keywords, tags shared.Tags,
 	createdAt, updatedAt time.Time, version shared.Version, archived bool) *Node {
 	return &Node{
-		// Private fields
+		BaseAggregateRoot: shared.NewBaseAggregateRoot(id.String()),
 		id:        id,
 		userID:    userID,
 		content:   content,
+		title:     title,
 		keywords:  keywords,
 		tags:      tags,
 		createdAt: createdAt,
@@ -116,6 +127,7 @@ func ReconstructNode(id shared.NodeID, userID shared.UserID, content shared.Cont
 		ID:        id,
 		UserID:    userID,
 		Content:   content,
+		Title:     title,
 		Tags:      tags,
 		Metadata:  make(map[string]interface{}),
 		CreatedAt: createdAt,
@@ -125,7 +137,7 @@ func ReconstructNode(id shared.NodeID, userID shared.UserID, content shared.Cont
 }
 
 // ReconstructNodeFromPrimitives creates a node from primitive types (for repository layer)
-func ReconstructNodeFromPrimitives(id, userID, content string, keywords, tags []string, createdAt time.Time, version int) (*Node, error) {
+func ReconstructNodeFromPrimitives(id, userID, content, title string, keywords, tags []string, createdAt time.Time, version int) (*Node, error) {
 	nodeID, err := shared.ParseNodeID(id)
 	if err != nil {
 		return nil, err
@@ -141,12 +153,17 @@ func ReconstructNodeFromPrimitives(id, userID, content string, keywords, tags []
 		return nil, err
 	}
 
+	titleVO, err := shared.NewTitle(title)
+	if err != nil {
+		return nil, err
+	}
+
 	keywordsVO := shared.NewKeywords(keywords)
 	tagsVO := shared.NewTags(tags...)
 	versionVO := shared.ParseVersion(version)
 
 	// Use ReconstructNode which now properly initializes both private and public fields
-	return ReconstructNode(nodeID, userIDVO, contentVO, keywordsVO, tagsVO,
+	return ReconstructNode(nodeID, userIDVO, contentVO, titleVO, keywordsVO, tagsVO,
 		createdAt, createdAt, versionVO, false), nil
 }
 
@@ -160,6 +177,36 @@ func (n *Node) Keywords() shared.Keywords {
 // IsArchived returns whether the node is archived
 func (n *Node) IsArchived() bool {
 	return n.archived
+}
+
+// GetContent returns the node's content
+func (n *Node) GetContent() shared.Content {
+	return n.content
+}
+
+// GetTitle returns the node's title
+func (n *Node) GetTitle() shared.Title {
+	return n.title
+}
+
+// GetUserID returns the node's user ID
+func (n *Node) GetUserID() shared.UserID {
+	return n.userID
+}
+
+// GetTags returns the node's tags
+func (n *Node) GetTags() shared.Tags {
+	return n.tags
+}
+
+// GetCreatedAt returns when the node was created
+func (n *Node) GetCreatedAt() time.Time {
+	return n.createdAt
+}
+
+// GetUpdatedAt returns when the node was last updated
+func (n *Node) GetUpdatedAt() time.Time {
+	return n.updatedAt
 }
 
 // Business Methods (encapsulated business logic)
@@ -197,6 +244,40 @@ func (n *Node) UpdateContent(newContent shared.Content) error {
 	// Generate domain event
 	event := shared.NewNodeContentUpdatedEvent(n.id, n.userID, oldContent, newContent, oldKeywords, n.keywords, n.version)
 	n.addEvent(event)
+
+	return nil
+}
+
+// UpdateTitle updates the node's title following business rules.
+//
+// Business Rules Enforced:
+//   - Cannot update archived nodes
+//   - Title is optional and must pass validation if provided
+//   - Version is incremented for optimistic locking
+//   - Domain events are generated if title actually changes
+func (n *Node) UpdateTitle(newTitle shared.Title) error {
+	if n.archived {
+		return shared.ErrCannotUpdateArchivedNode
+	}
+
+	if n.title.Equals(newTitle) {
+		return nil // No change needed
+	}
+
+	// Store old value for events (currently commented out)
+	// oldTitle := n.title
+
+	// Apply changes
+	n.title = newTitle
+	n.Title = newTitle // Also update public field
+	n.updatedAt = time.Now()
+	n.UpdatedAt = n.updatedAt // Also update public field
+	n.version = n.version.Next()
+	n.Version = n.version.Int() // Also update public field
+
+	// Generate domain event (TODO: implement NewNodeTitleUpdatedEvent if needed)
+	// event := shared.NewNodeTitleUpdatedEvent(n.id, n.userID, oldTitle, newTitle, n.version)
+	// n.addEvent(event)
 
 	return nil
 }
@@ -415,6 +496,9 @@ func (n *Node) Validate() error {
 		return shared.NewValidationError("user_id", "user ID is required", n.UserID)
 	}
 	if err := n.Content.Validate(); err != nil {
+		return err
+	}
+	if err := n.Title.Validate(); err != nil {
 		return err
 	}
 	return nil

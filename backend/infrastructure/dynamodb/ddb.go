@@ -31,6 +31,7 @@ type ddbNode struct {
 	NodeID    string   `dynamodbav:"NodeID"`
 	UserID    string   `dynamodbav:"UserID"`
 	Content   string   `dynamodbav:"Content"`
+	Title     string   `dynamodbav:"Title"`
 	Keywords  []string `dynamodbav:"Keywords"`
 	Tags      []string `dynamodbav:"Tags"`
 	IsLatest  bool     `dynamodbav:"IsLatest"`
@@ -152,7 +153,7 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *node.No
 
 	// 1. Add the main node metadata to the transaction
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
-		PK: pk, SK: "METADATA#v0", NodeID: node.ID.String(), UserID: node.UserID.String(), Content: node.Content.String(),
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID.String(), UserID: node.UserID.String(), Content: node.Content.String(), Title: node.Title.String(),
 		Keywords: node.Keywords().ToSlice(), Tags: node.Tags.ToSlice(), IsLatest: true, Version: node.Version, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
@@ -202,7 +203,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *node.Node
 	transactItems := []types.TransactWriteItem{}
 
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
-		PK: pk, SK: "METADATA#v0", NodeID: node.ID.String(), UserID: node.UserID.String(), Content: node.Content.String(),
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID.String(), UserID: node.UserID.String(), Content: node.Content.String(), Title: node.Title.String(),
 		Keywords: node.Keywords().ToSlice(), Tags: node.Tags.ToSlice(), IsLatest: true, Version: node.Version, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
@@ -462,6 +463,7 @@ func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string)
 		ddbItem.NodeID, 
 		ddbItem.UserID, 
 		ddbItem.Content,
+		ddbItem.Title,
 		ddbItem.Keywords, 
 		ddbItem.Tags,
 		createdAt,
@@ -648,6 +650,7 @@ func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID strin
 					ddbItem.NodeID, 
 					ddbItem.UserID, 
 					ddbItem.Content,
+					ddbItem.Title,
 					ddbItem.Keywords, 
 					ddbItem.Tags,
 					createdAt,
@@ -1026,7 +1029,7 @@ func (r *ddbRepository) CreateNode(ctx context.Context, node node.Node) error {
 	
 	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID.String(), node.ID.String())
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
-		PK: pk, SK: "METADATA#v0", NodeID: node.ID.String(), UserID: node.UserID.String(), Content: node.Content.String(),
+		PK: pk, SK: "METADATA#v0", NodeID: node.ID.String(), UserID: node.UserID.String(), Content: node.Content.String(), Title: node.Title.String(),
 		Keywords: node.Keywords().ToSlice(), Tags: node.Tags.ToSlice(), IsLatest: true, Version: node.Version, Timestamp: node.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
@@ -1327,6 +1330,7 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 					ddbItem.NodeID,
 					ddbItem.UserID,
 					ddbItem.Content,
+					ddbItem.Title,
 					ddbItem.Keywords,
 					ddbItem.Tags,
 					createdAt,
@@ -1457,6 +1461,7 @@ func (r *ddbRepository) GetNodesPageOptimized(ctx context.Context, userID string
 					ddbItem.NodeID,
 					ddbItem.UserID,
 					ddbItem.Content,
+					ddbItem.Title,
 					ddbItem.Keywords,
 					ddbItem.Tags,
 					createdAt,
@@ -1744,6 +1749,7 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 					ddbItem.NodeID,
 					ddbItem.UserID,
 					ddbItem.Content,
+					ddbItem.Title,
 					ddbItem.Keywords,
 					ddbItem.Tags,
 					createdAt,

@@ -205,12 +205,9 @@ func provideCache(cfg *config.Config, logger *zap.Logger) cache.Cache {
 	return NewInMemoryCache(1000, 5*time.Minute)
 }
 
-// provideCacheAdapter adapts the infrastructure cache to the queries cache interface.
+// provideCacheAdapter returns the cache directly since interfaces are unified.
 func provideCacheAdapter(cache cache.Cache) queries.Cache {
-	if cache == nil {
-		return nil
-	}
-	return &queryCacheAdapter{inner: cache}
+	return cache
 }
 
 // provideMetricsCollector creates a metrics collector based on configuration.
@@ -321,11 +318,8 @@ func provideNodeQueryService(
 	nodeReader := nodeRepo.(repository.NodeReader)
 	edgeReader := edgeRepo.(repository.EdgeReader)
 	
-	// Convert cache to queries.Cache interface
-	var queryCache queries.Cache
-	if cache != nil {
-		queryCache = &queryCacheAdapter{inner: cache}
-	}
+	// Use cache directly since interfaces are unified
+	var queryCache queries.Cache = cache
 	
 	return queries.NewNodeQueryService(
 		nodeReader,
@@ -346,11 +340,8 @@ func provideCategoryQueryService(
 	categoryReader := categoryRepo.(repository.CategoryReader)
 	nodeReader := nodeRepo.(repository.NodeReader)
 	
-	// Convert cache to queries.Cache interface
-	var queryCache queries.Cache
-	if cache != nil {
-		queryCache = &queryCacheAdapter{inner: cache}
-	}
+	// Use cache directly since interfaces are unified
+	var queryCache queries.Cache = cache
 	
 	return queries.NewCategoryQueryService(
 		categoryReader,
