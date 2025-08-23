@@ -1408,6 +1408,8 @@ header h1 {
     border: 1px solid var(--border);
     border-radius: 8px;
     transition: all 0.2s;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .memory-item:hover {
@@ -1429,6 +1431,11 @@ header h1 {
 .memory-item-content {
     margin-bottom: 0.5rem;
     color: var(--text-primary);
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
+    box-sizing: border-box;
 }
 
 .memory-item-meta {
@@ -2427,13 +2434,55 @@ header h1 {
     align-items: flex-start;
     gap: 0.75rem;
     margin-bottom: 0.5rem;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .memory-item-header .checkbox-container {
     margin-top: 0.125rem; /* Slight adjustment to align with text */
+    flex-shrink: 0;
+}
+
+.memory-item-header .memory-item-content {
+    flex: 1;
+    min-width: 0; /* Allow content to shrink below its intrinsic width */
+}
+
+/* Edit mode textarea overflow handling */
+.edit-textarea {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    resize: vertical;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .bulk-delete-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* Memory tags overflow handling */
+.memory-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    max-width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
+}
+
+.memory-tag {
+    background: var(--primary-color);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
