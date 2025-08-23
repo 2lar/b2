@@ -61,8 +61,8 @@ func (r *NodeRepository) FindByID(ctx context.Context, id shared.NodeID) (*node.
 	
 	// Build the composite key for DynamoDB
 	key := map[string]types.AttributeValue{
-		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
-		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", id.String())},
+		"PK": StringAttr(BuildUserPK(userID)),
+		"SK": StringAttr(BuildNodeSK(id.String())),
 	}
 	
 	input := &dynamodb.GetItemInput{
@@ -199,8 +199,8 @@ func (r *NodeRepository) FindByKeywords(ctx context.Context, userID shared.UserI
 		return nil, err
 	}
 	
-	// Filter nodes by keywords
-	filtered := make([]*node.Node, 0)
+	// Filter nodes by keywords - pre-allocate with capacity to reduce allocations
+	filtered := make([]*node.Node, 0, len(nodes))
 	for _, node := range nodes {
 		for _, keyword := range keywords {
 			if node.HasKeyword(keyword) {
@@ -221,8 +221,8 @@ func (r *NodeRepository) FindByTags(ctx context.Context, userID shared.UserID, t
 		return nil, err
 	}
 	
-	// Filter nodes by tags
-	filtered := make([]*node.Node, 0)
+	// Filter nodes by tags - pre-allocate with capacity to reduce allocations
+	filtered := make([]*node.Node, 0, len(nodes))
 	for _, node := range nodes {
 		for _, tag := range tags {
 			if node.HasTag(tag) {
@@ -244,11 +244,13 @@ func (r *NodeRepository) FindByContent(ctx context.Context, userID shared.UserID
 		return nil, err
 	}
 	
-	// Filter nodes by content
-	filtered := make([]*node.Node, 0)
+	// Filter nodes by content - pre-allocate with capacity to reduce allocations
+	filtered := make([]*node.Node, 0, len(nodes))
+	// Pre-lowercase search term to avoid repeated allocations in loop
+	lowerSearchTerm := strings.ToLower(searchTerm)
 	for _, node := range nodes {
 		// Check if search term is in content
-		if strings.Contains(strings.ToLower(node.Content.String()), strings.ToLower(searchTerm)) {
+		if strings.Contains(strings.ToLower(node.Content.String()), lowerSearchTerm) {
 			filtered = append(filtered, node)
 		}
 	}
@@ -1102,56 +1104,30 @@ func (r *NodeRepository) UpdateVersion(ctx context.Context, id shared.NodeID, ex
 // ============================================================================
 
 // parseNodeFromItem parses a DynamoDB item into a Node domain object.
-// This handles the case where data might be stored in different formats.
+//
+// This method handles backward compatibility by supporting multiple data storage formats:
+// - Direct field storage (NodeID, UserID fields)
+// - Composite key storage (extracted from PK/SK fields)
+// - Multiple collection formats (List vs StringSet for tags/keywords)
+//
+// The parsing process follows these steps:
+// 1. Extract scalar fields (IDs, content, version, timestamps)
+// 2. Parse and validate domain value objects
+// 3. Extract collections (tags, keywords) with format flexibility
+// 4. Reconstruct the complete Node using domain factory methods
+//
+// Returns:
+//   - *node.Node: Successfully parsed and validated node
+//   - error: Validation error if any required field is invalid
 func (r *NodeRepository) parseNodeFromItem(item map[string]types.AttributeValue) (*node.Node, error) {
-	// Extract basic fields from DynamoDB item
-	var nodeID, userIDStr, contentStr string
-	var version int = 1
+	// Extract basic fields using helper methods
+	nodeID := r.extractNodeID(item)
+	userIDStr := r.extractUserID(item)
+	contentStr := r.extractStringField(item, "Content")
+	version := r.extractVersion(item)
 	
-	// Extract NodeID
-	if v, ok := item["NodeID"].(*types.AttributeValueMemberS); ok {
-		nodeID = v.Value
-	} else if v, ok := item["SK"].(*types.AttributeValueMemberS); ok {
-		// Extract from SK if NodeID not directly available
-		if strings.HasPrefix(v.Value, "NODE#") {
-			nodeID = strings.TrimPrefix(v.Value, "NODE#")
-		}
-	}
-	
-	// Extract UserID
-	if v, ok := item["UserID"].(*types.AttributeValueMemberS); ok {
-		userIDStr = v.Value
-	} else if v, ok := item["PK"].(*types.AttributeValueMemberS); ok {
-		// Extract from PK if UserID not directly available
-		if strings.HasPrefix(v.Value, "USER#") {
-			userIDStr = strings.TrimPrefix(v.Value, "USER#")
-		}
-	}
-	
-	// Extract Content
-	if v, ok := item["Content"].(*types.AttributeValueMemberS); ok {
-		contentStr = v.Value
-	}
-	
-	// Extract Version
-	if v, ok := item["Version"].(*types.AttributeValueMemberN); ok {
-		fmt.Sscanf(v.Value, "%d", &version)
-	}
-	
-	// Parse timestamps
-	createdAt := time.Now()
-	updatedAt := time.Now()
-	
-	if v, ok := item["CreatedAt"].(*types.AttributeValueMemberS); ok {
-		if t, err := time.Parse(time.RFC3339, v.Value); err == nil {
-			createdAt = t
-		}
-	}
-	if v, ok := item["UpdatedAt"].(*types.AttributeValueMemberS); ok {
-		if t, err := time.Parse(time.RFC3339, v.Value); err == nil {
-			updatedAt = t
-		}
-	}
+	// Parse timestamps using helper method
+	createdAt, updatedAt := r.extractTimestamps(item)
 	
 	// Create domain objects
 	nid, err := shared.ParseNodeID(nodeID)
@@ -1169,29 +1145,9 @@ func (r *NodeRepository) parseNodeFromItem(item map[string]types.AttributeValue)
 		return nil, fmt.Errorf("invalid content: %w", err)
 	}
 	
-	// Parse Tags
-	var tags []string
-	if v, ok := item["Tags"].(*types.AttributeValueMemberL); ok {
-		for _, tagVal := range v.Value {
-			if tagStr, ok := tagVal.(*types.AttributeValueMemberS); ok {
-				tags = append(tags, tagStr.Value)
-			}
-		}
-	} else if v, ok := item["Tags"].(*types.AttributeValueMemberSS); ok {
-		tags = v.Value
-	}
-	
-	// Parse Keywords
-	var keywords []string
-	if v, ok := item["Keywords"].(*types.AttributeValueMemberL); ok {
-		for _, kwVal := range v.Value {
-			if kwStr, ok := kwVal.(*types.AttributeValueMemberS); ok {
-				keywords = append(keywords, kwStr.Value)
-			}
-		}
-	} else if v, ok := item["Keywords"].(*types.AttributeValueMemberSS); ok {
-		keywords = v.Value
-	}
+	// Parse collections using helper methods
+	tags := r.extractStringArray(item, "Tags")
+	keywords := r.extractStringArray(item, "Keywords")
 	
 	// Reconstruct the node using domain methods
 	node := node.ReconstructNode(
@@ -1207,4 +1163,57 @@ func (r *NodeRepository) parseNodeFromItem(item map[string]types.AttributeValue)
 	)
 	
 	return node, nil
+}
+
+// extractNodeID extracts node ID from DynamoDB item, handling both direct and SK formats
+func (r *NodeRepository) extractNodeID(item map[string]types.AttributeValue) string {
+	return ExtractNodeID(item)
+}
+
+// extractUserID extracts user ID from DynamoDB item, handling both direct and PK formats
+func (r *NodeRepository) extractUserID(item map[string]types.AttributeValue) string {
+	return ExtractUserID(item)
+}
+
+// extractStringField extracts a string field from DynamoDB item
+func (r *NodeRepository) extractStringField(item map[string]types.AttributeValue, fieldName string) string {
+	if attr, exists := item[fieldName]; exists {
+		return ExtractStringValue(attr)
+	}
+	return ""
+}
+
+// extractVersion extracts version number from DynamoDB item
+func (r *NodeRepository) extractVersion(item map[string]types.AttributeValue) int {
+	if attr, exists := item["Version"]; exists {
+		if version := ExtractNumberValue(attr); version > 0 {
+			return version
+		}
+	}
+	return 1 // default version
+}
+
+// extractTimestamps extracts created and updated timestamps from DynamoDB item
+func (r *NodeRepository) extractTimestamps(item map[string]types.AttributeValue) (time.Time, time.Time) {
+	now := time.Now()
+	createdAt := now
+	updatedAt := now
+	
+	if attr, exists := item["CreatedAt"]; exists {
+		createdAt = ExtractTime(attr)
+	}
+	
+	if attr, exists := item["UpdatedAt"]; exists {
+		updatedAt = ExtractTime(attr)
+	}
+	
+	return createdAt, updatedAt
+}
+
+// extractStringArray extracts string arrays from DynamoDB item, handling both List and StringSet formats
+func (r *NodeRepository) extractStringArray(item map[string]types.AttributeValue, fieldName string) []string {
+	if attr, exists := item[fieldName]; exists {
+		return ExtractStringSet(attr)
+	}
+	return nil
 }

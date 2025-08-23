@@ -2,6 +2,7 @@
 package errors
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -56,6 +57,61 @@ func WrapWithStack(err error, msg string, args ...interface{}) error {
 	}
 	
 	return fmt.Errorf("%s: %w", context, err)
+}
+
+// WrapWithRequestContext enhances error with context.Context information including request ID and user ID.
+// This provides enhanced tracing capabilities for debugging distributed operations.
+func WrapWithRequestContext(ctx context.Context, err error, msg string, args ...interface{}) error {
+	if err == nil {
+		return nil
+	}
+	
+	// Start with basic context wrapping
+	wrappedErr := WrapWithContext(err, msg, args...)
+	
+	// Extract additional context information
+	var contextInfo []string
+	
+	// Try to extract request ID from context
+	if requestID := extractRequestID(ctx); requestID != "" {
+		contextInfo = append(contextInfo, fmt.Sprintf("req=%s", requestID))
+	}
+	
+	// Try to extract user ID from context  
+	if userID := extractUserID(ctx); userID != "" {
+		contextInfo = append(contextInfo, fmt.Sprintf("user=%s", userID))
+	}
+	
+	// If we have context info, enhance the error message
+	if len(contextInfo) > 0 {
+		return fmt.Errorf("[%s] %w", fmt.Sprintf("%v", contextInfo), wrappedErr)
+	}
+	
+	return wrappedErr
+}
+
+// Helper functions to safely extract context values
+func extractRequestID(ctx context.Context) string {
+	if val := ctx.Value(contextKey{"requestID"}); val != nil {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return ""
+}
+
+func extractUserID(ctx context.Context) string {
+	if val := ctx.Value(contextKey{"userID"}); val != nil {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return ""
+}
+
+// contextKey matches the type used in internal/context package
+type contextKey struct {
+	name string
 }
 
 // HasNotFoundContext checks if an error represents a "not found" condition.

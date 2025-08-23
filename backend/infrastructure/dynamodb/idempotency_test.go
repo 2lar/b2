@@ -1,6 +1,7 @@
 package dynamodb
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -77,6 +78,11 @@ func TestIdempotencyKey_Generation(t *testing.T) {
 
 // generateTestHash is a simple test helper that mimics the key generation logic
 func generateTestHash(userID, operation string, data interface{}) string {
-	// This is a simplified version for testing
-	return userID + ":" + operation + ":hash"
+	// This is a simplified version for testing - optimized for performance
+	var builder strings.Builder
+	builder.WriteString(userID)
+	builder.WriteString(":")
+	builder.WriteString(operation)
+	builder.WriteString(":hash")
+	return builder.String()
 }

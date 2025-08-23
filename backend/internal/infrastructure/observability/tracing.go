@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.34.0"
 	"go.opentelemetry.io/otel/trace"
 	
 	"brain2-backend/internal/domain/node"
@@ -45,7 +45,7 @@ func InitTracing(serviceName, environment, endpoint string) (*TracerProvider, er
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceName(serviceName),
-			semconv.DeploymentEnvironment(environment),
+			attribute.String("deployment.environment", environment),
 		),
 	)
 	if err != nil {

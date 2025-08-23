@@ -8,6 +8,18 @@ import (
 	"github.com/google/uuid"
 )
 
+// Pre-compiled regular expressions for better cold start performance
+var (
+	// alphanumericOnlyRegex removes all non-alphanumeric characters
+	alphanumericOnlyRegex = regexp.MustCompile(`[^a-zA-Z0-9]`)
+	// contentCleanupRegex removes non-alphanumeric characters except spaces
+	contentCleanupRegex = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
+	// tagSpecialCharsRegex removes special characters from tags
+	tagSpecialCharsRegex = regexp.MustCompile(`[^a-zA-Z0-9\s-]`)
+	// tagSpaceRegex replaces multiple spaces with single hyphens
+	tagSpaceRegex = regexp.MustCompile(`\s+`)
+)
+
 // NodeID is a value object that ensures valid node identifiers
 type NodeID struct {
 	value string
@@ -147,8 +159,7 @@ func (c Content) Validate() error {
 func (c Content) ExtractKeywords() Keywords {
 	// Business logic for keyword extraction
 	content := strings.ToLower(c.value)
-	reg := regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
-	content = reg.ReplaceAllString(content, "")
+	content = contentCleanupRegex.ReplaceAllString(content, "")
 	words := strings.Fields(content)
 
 	uniqueWords := make(map[string]bool)
@@ -373,8 +384,7 @@ var stopWords = map[string]bool{
 func cleanWord(word string) string {
 	word = strings.TrimSpace(strings.ToLower(word))
 	// Remove punctuation and keep only alphanumeric
-	reg := regexp.MustCompile(`[^a-zA-Z0-9]`)
-	return reg.ReplaceAllString(word, "")
+	return alphanumericOnlyRegex.ReplaceAllString(word, "")
 }
 
 // isSignificantWord checks if a word should be considered significant for keywords
@@ -386,9 +396,8 @@ func isSignificantWord(word string) bool {
 func normalizeTag(tag string) string {
 	tag = strings.TrimSpace(strings.ToLower(tag))
 	// Replace spaces with hyphens, remove special characters
-	reg := regexp.MustCompile(`[^a-zA-Z0-9\s-]`)
-	tag = reg.ReplaceAllString(tag, "")
-	tag = regexp.MustCompile(`\s+`).ReplaceAllString(tag, "-")
+	tag = tagSpecialCharsRegex.ReplaceAllString(tag, "")
+	tag = tagSpaceRegex.ReplaceAllString(tag, "-")
 	return tag
 }
 

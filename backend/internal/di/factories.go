@@ -1,3 +1,6 @@
+//go:build !wireinject
+// +build !wireinject
+
 // Package di - Factory pattern implementations for complex dependency creation.
 // This file demonstrates the Factory pattern for creating services with proper
 // lifecycle management and environment-specific configurations.
