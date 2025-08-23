@@ -36,7 +36,7 @@ func init() {
 		log.Fatalf("FATAL: Environment variables CONNECTIONS_TABLE_NAME, SUPABASE_URL, and SUPABASE_SERVICE_ROLE_KEY must be set.")
 	}
 
-	awsCfg, err := awsConfig.LoadDefaultConfig(context.TODO())
+	awsCfg, err := awsConfig.LoadDefaultConfig(context.Background())
 	if err != nil {
 		log.Fatalf("Unable to load SDK config, %v", err)
 	}

@@ -32,12 +32,12 @@ const DocumentModeView: React.FC<DocumentModeViewProps> = ({
     onClose
 }) => {
     const [content, setContent] = useState(selectedNode.content);
-    const [title, setTitle] = useState(selectedNode.label || '');
+    const [title, setTitle] = useState(selectedNode.title || '');
 
     const handleSave = useCallback(async (newContent: string, newTitle?: string) => {
         try {
-            // Update the node with new content
-            await nodesApi.updateNode(selectedNode.id, newContent);
+            // Update the node with new content and title
+            await nodesApi.updateNode(selectedNode.id, newContent, undefined, newTitle);
             console.log('Node updated successfully');
         } catch (error) {
             console.error('Failed to update node:', error);

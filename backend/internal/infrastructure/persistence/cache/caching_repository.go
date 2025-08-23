@@ -114,14 +114,14 @@ func (r *CachingNodeRepository) CreateNodeAndKeywords(ctx context.Context, node 
 	
 	// Cache the newly created node if write caching is enabled
 	if r.config.EnableWrites {
-		cacheKey := r.buildNodeKey(node.UserID.String(), node.ID.String())
+		cacheKey := r.buildNodeKey(node.UserID().String(), node.ID().String())
 		if cacheData, marshalErr := r.marshalNode(node); marshalErr == nil {
 			r.cache.Set(ctx, cacheKey, cacheData, r.config.DefaultTTL)
 		}
 	}
 	
 	// Invalidate related caches
-	r.invalidateUserCaches(ctx, node.UserID.String())
+	r.invalidateUserCaches(ctx, node.UserID().String())
 	
 	return nil
 }
@@ -398,15 +398,15 @@ func (r *CachingNodeRepository) marshalNode(node *node.Node) ([]byte, error) {
 		Version   int       `json:"version"`
 		Archived  bool      `json:"archived"`
 	}{
-		ID:        node.ID.String(),
-		UserID:    node.UserID.String(),
-		Content:   node.Content.String(),
-		Title:     node.Title.String(),
+		ID:        node.ID().String(),
+		UserID:    node.UserID().String(),
+		Content:   node.Content().String(),
+		Title:     node.Title().String(),
 		Keywords:  node.Keywords().ToSlice(),
-		Tags:      node.Tags.ToSlice(),
-		CreatedAt: node.CreatedAt,
-		UpdatedAt: node.UpdatedAt,
-		Version:   node.Version,
+		Tags:      node.Tags().ToSlice(),
+		CreatedAt: node.CreatedAt(),
+		UpdatedAt: node.UpdatedAt(),
+		Version:   node.Version(),
 		Archived:  node.IsArchived(),
 	}
 	
@@ -448,15 +448,15 @@ func (r *CachingNodeRepository) marshalNodeSlice(nodes []*node.Node) ([]byte, er
 	serializable := make([]map[string]interface{}, len(nodes))
 	for i, node := range nodes {
 		serializable[i] = map[string]interface{}{
-			"id":         node.ID.String(),
-			"user_id":    node.UserID.String(),
-			"content":    node.Content.String(),
-			"title":      node.Title.String(),
+			"id":         node.ID().String(),
+			"user_id":    node.UserID().String(),
+			"content":    node.Content().String(),
+			"title":      node.Title().String(),
 			"keywords":   node.Keywords().ToSlice(),
-			"tags":       node.Tags.ToSlice(),
-			"created_at": node.CreatedAt,
-			"updated_at": node.UpdatedAt,
-			"version":    node.Version,
+			"tags":       node.Tags().ToSlice(),
+			"created_at": node.CreatedAt(),
+			"updated_at": node.UpdatedAt(),
+			"version":    node.Version(),
 			"archived":   node.IsArchived(),
 		}
 	}

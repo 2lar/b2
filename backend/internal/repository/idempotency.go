@@ -97,7 +97,7 @@ func GenerateIdempotencyKey(userID, operation string, node node.Node) Idempotenc
 	// Create a hash of the node data to ensure uniqueness
 	hasher := sha256.New()
 	hasher.Write([]byte(fmt.Sprintf("%s:%s:%s:%v:%d",
-		node.ID.String(), node.UserID.String(), node.Content.String(), node.Keywords().ToSlice(), node.Version)))
+		node.ID().String(), node.UserID().String(), node.Content().String(), node.Keywords().ToSlice(), node.Version())))
 	hash := fmt.Sprintf("%x", hasher.Sum(nil))
 
 	return IdempotencyKey{
@@ -175,14 +175,14 @@ func (r *LastWriteWinsResolver) ResolveConflict(ctx context.Context, current, in
 	// Simple last-write-wins: we need to create a new node with incremented version
 	// since nodes are immutable value objects
 	newNode, err := node.ReconstructNodeFromPrimitives(
-		incoming.ID.String(),
-		incoming.UserID.String(),
-		incoming.Content.String(),
-		incoming.Title.String(), // Add title parameter
+		incoming.ID().String(),
+		incoming.UserID().String(),
+		incoming.Content().String(),
+		incoming.Title().String(), // Add title parameter
 		incoming.Keywords().ToSlice(),
-		incoming.Tags.ToSlice(),
-		incoming.CreatedAt,
-		current.Version + 1, // Increment the current version
+		incoming.Tags().ToSlice(),
+		incoming.CreatedAt(),
+		current.Version() + 1, // Increment the current version
 	)
 	if err != nil {
 		return incoming, err
@@ -218,10 +218,10 @@ func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming n
 	
 	// Merge tags too
 	tagSet := make(map[string]bool)
-	for _, tag := range current.Tags.ToSlice() {
+	for _, tag := range current.Tags().ToSlice() {
 		tagSet[tag] = true
 	}
-	for _, tag := range incoming.Tags.ToSlice() {
+	for _, tag := range incoming.Tags().ToSlice() {
 		tagSet[tag] = true
 	}
 	var mergedTagSlice []string
@@ -232,14 +232,14 @@ func (r *MergeResolver) ResolveConflict(ctx context.Context, current, incoming n
 	
 	// Create new merged node with incremented version
 	mergedNode, err := node.ReconstructNodeFromPrimitives(
-		incoming.ID.String(),
-		incoming.UserID.String(),
-		incoming.Content.String(), // Use incoming content
-		incoming.Title.String(),   // Use incoming title
+		incoming.ID().String(),
+		incoming.UserID().String(),
+		incoming.Content().String(), // Use incoming content
+		incoming.Title().String(),   // Use incoming title
 		mergedKeywords.ToSlice(),     // Use merged keywords
 		mergedTags.ToSlice(),         // Use merged tags
-		incoming.CreatedAt,
-		current.Version + 1, // Increment version
+		incoming.CreatedAt(),
+		current.Version() + 1, // Increment version
 	)
 	if err != nil {
 		return incoming, err

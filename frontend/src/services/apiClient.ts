@@ -231,10 +231,16 @@ class ApiClient {
      * Create a new memory node
      * @param content The text content of the memory
      * @param tags Optional array of tags for the memory
+     * @param title Optional title for the memory
      * @returns Promise resolving to the created Node
      */
-    public async createNode(content: string, tags?: string[]): Promise<Node> {
-        return this.request<Node>('POST', '/api/v1/nodes', { content, tags });
+    public async createNode(content: string, tags?: string[], title?: string): Promise<Node> {
+        console.log('DEBUG apiClient.createNode - title:', JSON.stringify(title));
+        const body: { content: string; tags?: string[]; title?: string } = { content };
+        if (tags && tags.length > 0) body.tags = tags;
+        if (title !== undefined) body.title = title.trim();
+        console.log('DEBUG apiClient.createNode - body:', JSON.stringify(body));
+        return this.request<Node>('POST', '/api/v1/nodes', body);
     }
 
     /**
@@ -285,10 +291,14 @@ class ApiClient {
      * @param nodeId Unique identifier of the memory node to update
      * @param content New text content for the memory
      * @param tags Optional array of tags for the memory
+     * @param title Optional title for the memory
      * @returns Promise resolving to success message
      */
-    public updateNode(nodeId: string, content: string, tags?: string[]): Promise<{ message: string }> {
-        return this.request<{ message: string }>('PUT', `/api/v1/nodes/${nodeId}`, { content, tags });
+    public updateNode(nodeId: string, content: string, tags?: string[], title?: string): Promise<{ message: string }> {
+        const body: { content: string; tags?: string[]; title?: string } = { content };
+        if (tags && tags.length > 0) body.tags = tags;
+        if (title !== undefined) body.title = title.trim();
+        return this.request<{ message: string }>('PUT', `/api/v1/nodes/${nodeId}`, body);
     }
 
     /**

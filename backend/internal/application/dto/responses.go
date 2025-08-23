@@ -38,15 +38,15 @@ func ToNodeView(node *node.Node) *NodeView {
 	}
 	
 	return &NodeView{
-		ID:        node.ID.String(),
-		Content:   node.Content.String(),
-		Title:     node.Title.String(),
+		ID:        node.ID().String(),
+		Content:   node.Content().String(),
+		Title:     node.Title().String(),
 		Keywords:  node.Keywords().ToSlice(),
-		Tags:      node.Tags.ToSlice(),
-		UserID:    node.UserID.String(),
-		CreatedAt: node.CreatedAt,
-		UpdatedAt: node.UpdatedAt,
-		Version:   node.Version,
+		Tags:      node.Tags().ToSlice(),
+		UserID:    node.UserID().String(),
+		CreatedAt: node.CreatedAt(),
+		UpdatedAt: node.UpdatedAt(),
+		Version:   node.Version(),
 		Archived:  node.IsArchived(),
 	}
 }

@@ -125,7 +125,7 @@ func (r *MetricsNodeRepository) CreateNodeAndKeywords(ctx context.Context, node 
 	
 	// Base tags for all metrics
 	tags := r.buildBaseTags(operation)
-	tags["user_id"] = node.UserID.String()
+	tags["user_id"] = node.UserID().String()
 	
 	// Increment operation counter
 	if r.config.EnableThroughput {
@@ -136,9 +136,9 @@ func (r *MetricsNodeRepository) CreateNodeAndKeywords(ctx context.Context, node 
 	// Track business metrics
 	if r.config.EnableBusiness {
 		r.metrics.IncrementCounter("business.nodes.created.total", tags)
-		r.metrics.RecordValue("business.node.content_length", float64(len(node.Content.String())), tags)
+		r.metrics.RecordValue("business.node.content_length", float64(len(node.Content().String())), tags)
 		r.metrics.RecordValue("business.node.keyword_count", float64(len(node.Keywords().ToSlice())), tags)
-		r.metrics.RecordValue("business.node.tag_count", float64(len(node.Tags.ToSlice())), tags)
+		r.metrics.RecordValue("business.node.tag_count", float64(len(node.Tags().ToSlice())), tags)
 	}
 	
 	// Execute the operation
@@ -236,7 +236,7 @@ func (r *MetricsNodeRepository) FindNodeByID(ctx context.Context, userID, nodeID
 			r.metrics.IncrementCounter("business.nodes.accessed.total", businessTags)
 			
 			// Track node age (time since creation)
-			age := time.Since(node.CreatedAt)
+			age := time.Since(node.CreatedAt())
 			r.metrics.RecordValue("business.node.age_days", age.Hours()/24, businessTags)
 		}
 	}

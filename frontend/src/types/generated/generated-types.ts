@@ -85,6 +85,11 @@ export interface components {
       /** @example Machine learning requires large datasets for effective model training */
       content: string;
       /**
+       * @description Optional title for the memory node
+       * @example ML Dataset Requirements
+       */
+      title?: string;
+      /**
        * @description User-defined tags for organizing and categorizing memories
        * @example [
        *   "urgent",
@@ -115,6 +120,11 @@ export interface components {
       /** @example GraphQL provides a more efficient alternative to REST for complex data fetching requirements */
       content: string;
       /**
+       * @description Optional title for the memory node
+       * @example GraphQL vs REST Comparison
+       */
+      title?: string;
+      /**
        * @description User-defined tags for organizing and categorizing memories
        * @example [
        *   "work",
@@ -127,6 +137,11 @@ export interface components {
     UpdateNodeRequest: {
       /** @example GraphQL and REST both have their place, but GraphQL excels in scenarios requiring flexible data fetching */
       content: string;
+      /**
+       * @description Optional title for the memory node
+       * @example Updated: GraphQL vs REST Analysis
+       */
+      title?: string;
       /**
        * @description User-defined tags for organizing and categorizing memories
        * @example [

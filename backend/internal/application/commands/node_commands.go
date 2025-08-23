@@ -171,23 +171,23 @@ func (s *NodeCommandService) CreateNode(ctx context.Context, cmd CreateNodeComma
 	
 	// 5. Publish domain events
 	event := shared.NewNodeCreatedEvent(
-		node.ID,
-		node.UserID,
-		node.Content,
+		node.ID(),
+		node.UserID(),
+		node.Content(),
 		node.Keywords(),
-		node.Tags,
-		shared.ParseVersion(node.Version),
+		node.Tags(),
+		shared.ParseVersion(node.Version()),
 	)
 	if err := s.eventBus.Publish(ctx, event); err != nil {
 		// Log but don't fail the operation
 		s.logger.Warn("Failed to publish node created event",
-			zap.String("node_id", node.ID.String()),
+			zap.String("node_id", node.ID().String()),
 			zap.Error(err),
 		)
 	}
 	
 	s.logger.Info("Node created successfully",
-		zap.String("node_id", node.ID.String()),
+		zap.String("node_id", node.ID().String()),
 		zap.String("user_id", cmd.UserID),
 	)
 	
@@ -257,11 +257,11 @@ func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeComma
 	)
 	
 	if cmd.Metadata != nil {
-		node.Metadata = cmd.Metadata
+		node.SetMetadata(cmd.Metadata)
 	}
 	
-	node.UpdatedAt = time.Now()
-	node.Version++
+	node.UpdateTimestamp()
+	node.IncrementVersion()
 	
 	// 5. Validate updated domain object
 	if err := node.Validate(); err != nil {
@@ -276,24 +276,24 @@ func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeComma
 	// 7. Publish update event
 	// Use content updated event as a general update event
 	event := shared.NewNodeContentUpdatedEvent(
-		node.ID,
-		node.UserID,
+		node.ID(),
+		node.UserID(),
 		content, // old content (we don't have it)
-		node.Content,
+		node.Content(),
 		shared.Keywords{}, // old keywords (we don't have them)
 		node.Keywords(),
-		shared.ParseVersion(node.Version),
+		shared.ParseVersion(node.Version()),
 	)
 	if err := s.eventBus.Publish(ctx, event); err != nil {
 		s.logger.Warn("Failed to publish node updated event",
-			zap.String("node_id", node.ID.String()),
+			zap.String("node_id", node.ID().String()),
 			zap.Error(err),
 		)
 	}
 	
 	s.logger.Info("Node updated successfully",
-		zap.String("node_id", node.ID.String()),
-		zap.Int("new_version", node.Version),
+		zap.String("node_id", node.ID().String()),
+		zap.Int("new_version", node.Version()),
 	)
 	
 	return node, nil

@@ -83,11 +83,12 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = 
     };
 
     const handleDocumentSave = async (savedContent: string, savedTitle?: string) => {
+        console.log('DEBUG MemoryInput.handleDocumentSave - savedTitle:', JSON.stringify(savedTitle));
         setContent(savedContent);
         setTitle(savedTitle || '');
         
         try {
-            const newNode = await nodesApi.createNode(savedContent, tags.length > 0 ? tags : undefined);
+            const newNode = await nodesApi.createNode(savedContent, tags.length > 0 ? tags : undefined, savedTitle || '');
             
             if (newNode && newNode.nodeId && newNode.nodeId !== 'undefined') {
                 try {
@@ -162,7 +163,7 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = 
         setIsSubmitting(true);
 
         try {
-            const newNode = await nodesApi.createNode(trimmedContent, tags.length > 0 ? tags : undefined);
+            const newNode = await nodesApi.createNode(trimmedContent, tags.length > 0 ? tags : undefined, title);
             
             // Auto-categorize the new node only if we have a valid nodeId
             if (newNode && newNode.nodeId && newNode.nodeId !== 'undefined') {

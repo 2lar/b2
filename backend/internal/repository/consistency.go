@@ -84,7 +84,7 @@ func (cv *ConsistencyValidator) ValidateGraphConsistency(ctx context.Context, us
 	// Create node index for fast lookup
 	nodeIndex := make(map[string]bool)
 	for _, node := range nodes {
-		nodeIndex[node.ID.String()] = true
+		nodeIndex[node.ID().String()] = true
 	}
 
 	// Validate all edges point to existing nodes
@@ -313,7 +313,7 @@ func (dcm *DataCleanupManager) cleanupOrphanedEdges(_ context.Context, _ string,
 
 	nodeIndex := make(map[string]bool)
 	for _, node := range nodes {
-		nodeIndex[node.ID.String()] = true
+		nodeIndex[node.ID().String()] = true
 	}
 
 	orphanedCount := 0
@@ -352,8 +352,8 @@ func (dcm *DataCleanupManager) cleanupInvalidNodes(ctx context.Context, userID s
 			invalidCount++
 
 			if !options.DryRun {
-				if deleteErr := dcm.repo.DeleteNode(ctx, userID, node.ID.String()); deleteErr != nil {
-					return invalidCount, fmt.Errorf("failed to delete invalid node %s: %w", node.ID.String(), deleteErr)
+				if deleteErr := dcm.repo.DeleteNode(ctx, userID, node.ID().String()); deleteErr != nil {
+					return invalidCount, fmt.Errorf("failed to delete invalid node %s: %w", node.ID().String(), deleteErr)
 				}
 			}
 		}
@@ -449,19 +449,19 @@ func (ic *IntegrityChecker) CheckIntegrity(ctx context.Context, userID string) (
 	// Check node integrity
 	nodeIndex := make(map[string]bool)
 	for _, node := range nodes {
-		nodeIndex[node.ID.String()] = true
+		nodeIndex[node.ID().String()] = true
 
 		// Validate node data
 		if err := ValidateNode(node); err != nil {
 			report.CorruptedNodes++
-			report.Errors = append(report.Errors, fmt.Sprintf("Node %s validation failed: %v", node.ID.String(), err))
+			report.Errors = append(report.Errors, fmt.Sprintf("Node %s validation failed: %v", node.ID().String(), err))
 		}
 
 		// Check for invalid keywords
 		for _, keyword := range node.Keywords().ToSlice() {
 			if keyword == "" {
 				report.InvalidKeywords++
-				report.Errors = append(report.Errors, fmt.Sprintf("Node %s has empty keyword", node.ID.String()))
+				report.Errors = append(report.Errors, fmt.Sprintf("Node %s has empty keyword", node.ID().String()))
 			}
 		}
 	}

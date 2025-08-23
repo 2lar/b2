@@ -1,6 +1,7 @@
 export interface DisplayNode {
     id: string;
     content: string;
+    title?: string;
     label: string;
     timestamp: string;
     tags?: string[];

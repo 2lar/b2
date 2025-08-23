@@ -54,6 +54,7 @@ export function DocumentEditor({
   // Auto-save functionality
   const { saveStatus, triggerSave } = useAutosave({
     content,
+    title,
     nodeId,
     onSave: onSave || (async (c, t) => console.log('Auto-saved:', c.length, 'chars', t ? `title: ${t}` : '')),
     delay: 2000
@@ -92,6 +93,7 @@ export function DocumentEditor({
   
   // Manual save trigger
   const handleSave = () => {
+    console.log('DEBUG DocumentEditor.handleSave - title:', JSON.stringify(title));
     if (onSave) {
       onSave(content, title);
     }

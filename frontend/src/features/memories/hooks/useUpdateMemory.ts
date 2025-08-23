@@ -4,12 +4,14 @@ import { nodesApi } from '../api/nodes';
 interface UpdateMemoryData {
   nodeId: string;
   content: string;
+  title?: string;
 }
 
 interface GraphData {
   nodes: Array<{
     id: string;
     content: string;
+    title?: string;
     label: string;
     isPending?: boolean;
   }>;
@@ -25,7 +27,7 @@ export function useUpdateMemory() {
   
   return useMutation({
     mutationFn: async (data: UpdateMemoryData) => {
-      return await nodesApi.updateNode(data.nodeId, data.content);
+      return await nodesApi.updateNode(data.nodeId, data.content, undefined, data.title);
     },
     // Optimistic update
     onMutate: async (variables) => {
@@ -46,7 +48,8 @@ export function useUpdateMemory() {
               ? { 
                   ...node, 
                   content: variables.content,
-                  label: variables.content.substring(0, 50),
+                  title: variables.title,
+                  label: variables.title || variables.content.substring(0, 50),
                   isPending: true 
                 }
               : node
@@ -62,7 +65,7 @@ export function useUpdateMemory() {
           ...old,
           nodes: old.nodes?.map((node: any) => 
             node.nodeId === variables.nodeId 
-              ? { ...node, content: variables.content, isPending: true }
+              ? { ...node, content: variables.content, title: variables.title, isPending: true }
               : node
           ) || []
         };
@@ -83,7 +86,8 @@ export function useUpdateMemory() {
               ? { 
                   ...node, 
                   content: variables.content,
-                  label: variables.content.substring(0, 50),
+                  title: variables.title,
+                  label: variables.title || variables.content.substring(0, 50),
                   isPending: false 
                 }
               : node
@@ -99,7 +103,7 @@ export function useUpdateMemory() {
           ...old,
           nodes: old.nodes?.map((node: any) => 
             node.nodeId === variables.nodeId 
-              ? { ...node, content: variables.content, isPending: false }
+              ? { ...node, content: variables.content, title: variables.title, isPending: false }
               : node
           ) || []
         };

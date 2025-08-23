@@ -4,6 +4,7 @@ import { nodesApi } from '../api/nodes';
 interface CreateMemoryData {
   content: string;
   tags?: string[];
+  title?: string;
 }
 
 interface GraphData {
@@ -25,7 +26,7 @@ export function useCreateMemory() {
   
   return useMutation({
     mutationFn: async (data: CreateMemoryData) => {
-      return await nodesApi.createNode(data.content, data.tags);
+      return await nodesApi.createNode(data.content, data.tags, data.title);
     },
     // Optimistic update
     onMutate: async (variables) => {

@@ -42,7 +42,7 @@ func setupTestRepo(t *testing.T) repository.Repository {
 	}
 
 	// Load AWS config
-	cfg, err := config.LoadDefaultConfig(context.TODO())
+	cfg, err := config.LoadDefaultConfig(context.Background())
 	require.NoError(t, err)
 
 	// If LOCAL_DYNAMODB is set, use local endpoint

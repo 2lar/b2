@@ -4,6 +4,7 @@ infra/node_modules/
 
 # Build artifacts
 backend/build/
+backend/vendor/
 
 # Local configuration overrides
 backend/config/local.yaml

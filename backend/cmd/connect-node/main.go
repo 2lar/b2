@@ -24,7 +24,7 @@ var eventbridgeClient *eventbridge.Client
 
 func init() {
 	cfg := config.New()
-	awsCfg, err := awsConfig.LoadDefaultConfig(context.TODO(), awsConfig.WithRegion(cfg.Region))
+	awsCfg, err := awsConfig.LoadDefaultConfig(context.Background(), awsConfig.WithRegion(cfg.Region))
 	if err != nil {
 		log.Fatalf("unable to load SDK config: %v", err)
 	}

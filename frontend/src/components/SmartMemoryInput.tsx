@@ -116,7 +116,7 @@ export function SmartMemoryInput({ onMemoryCreated, isCompact = false }: SmartMe
     setTitle(savedTitle || '');
     
     try {
-      const newNode = await nodesApi.createNode(savedContent, tags.length > 0 ? tags : undefined);
+      const newNode = await nodesApi.createNode(savedContent, tags.length > 0 ? tags : undefined, savedTitle || '');
       
       // Auto-categorize if we have a valid nodeId
       if (newNode && newNode.nodeId && newNode.nodeId !== 'undefined') {
@@ -178,7 +178,7 @@ export function SmartMemoryInput({ onMemoryCreated, isCompact = false }: SmartMe
     setIsSubmitting(true);
     
     try {
-      const newNode = await nodesApi.createNode(trimmedContent, tags.length > 0 ? tags : undefined);
+      const newNode = await nodesApi.createNode(trimmedContent, tags.length > 0 ? tags : undefined, title);
       
       if (newNode && newNode.nodeId && newNode.nodeId !== 'undefined') {
         try {

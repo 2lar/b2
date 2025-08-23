@@ -758,6 +758,11 @@ components:
           minLength: 1
           maxLength: 10000
           example: "Machine learning requires large datasets for effective model training"
+        title:
+          type: string
+          maxLength: 200
+          example: "ML Dataset Requirements"
+          description: "Optional title for the memory node"
         tags:
           type: array
           items:
@@ -798,6 +803,11 @@ components:
           minLength: 1
           maxLength: 10000
           example: "GraphQL provides a more efficient alternative to REST for complex data fetching requirements"
+        title:
+          type: string
+          maxLength: 200
+          example: "GraphQL vs REST Comparison"
+          description: "Optional title for the memory node"
         tags:
           type: array
           items:
@@ -816,6 +826,11 @@ components:
           minLength: 1
           maxLength: 10000
           example: "GraphQL and REST both have their place, but GraphQL excels in scenarios requiring flexible data fetching"
+        title:
+          type: string
+          maxLength: 200
+          example: "Updated: GraphQL vs REST Analysis"
+          description: "Optional title for the memory node"
         tags:
           type: array
           items:

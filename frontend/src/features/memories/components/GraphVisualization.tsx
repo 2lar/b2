@@ -76,6 +76,7 @@ export interface GraphVisualizationRef {
 interface DisplayNode {
     id: string;
     content: string;
+    title?: string;
     label: string;
     timestamp: string;
     tags?: string[];
@@ -389,7 +390,8 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             setSelectedNode({
                 id: nodeId,
                 content: nodeData.content || '',
-                label: nodeData.content ? (nodeData.content.length > 50 ? nodeData.content.substring(0, 47) + '...' : nodeData.content) : '',
+                title: nodeData.title,
+                label: nodeData.title || (nodeData.content ? (nodeData.content.length > 50 ? nodeData.content.substring(0, 47) + '...' : nodeData.content) : ''),
                 timestamp: nodeData.timestamp || '',
                 tags: nodeData.tags || []
             });

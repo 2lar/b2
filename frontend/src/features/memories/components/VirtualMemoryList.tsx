@@ -69,6 +69,7 @@ const VirtualMemoryList: React.FC<VirtualMemoryListProps> = ({
 }) => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editContent, setEditContent] = useState('');
+    const [editTitle, setEditTitle] = useState('');
     const [selectedMemories, setSelectedMemories] = useState<Set<string>>(new Set());
     
     // Optimistic mutation hooks
@@ -106,17 +107,23 @@ const VirtualMemoryList: React.FC<VirtualMemoryListProps> = ({
     const handleEdit = (memory: Node) => {
         setEditingId(memory.nodeId || null);
         setEditContent(memory.content || '');
+        setEditTitle(memory.title || '');
     };
 
     const handleSave = async (nodeId: string) => {
         if (!editContent.trim()) return;
 
         updateMemoryMutation.mutate(
-            { nodeId, content: editContent.trim() },
+            { 
+                nodeId, 
+                content: editContent.trim(),
+                title: editTitle.trim() || undefined
+            },
             {
                 onSuccess: () => {
                     setEditingId(null);
                     setEditContent('');
+                    setEditTitle('');
                     onMemoryUpdated();
                 },
                 onError: (error) => {
@@ -129,6 +136,7 @@ const VirtualMemoryList: React.FC<VirtualMemoryListProps> = ({
     const handleCancel = () => {
         setEditingId(null);
         setEditContent('');
+        setEditTitle('');
     };
 
     const handleDelete = async (nodeId: string) => {
@@ -215,15 +223,37 @@ const VirtualMemoryList: React.FC<VirtualMemoryListProps> = ({
                 </label>
                 <div className="memory-item-content">
                     {editingId === memory.nodeId ? (
-                        <textarea 
-                            value={editContent}
-                            onChange={(e) => setEditContent(e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="edit-textarea"
-                            autoFocus
-                        />
+                        <>
+                            <input 
+                                type="text"
+                                value={editTitle}
+                                onChange={(e) => setEditTitle(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                placeholder="Title (optional)"
+                                className="edit-title-input"
+                                autoFocus
+                            />
+                            <textarea 
+                                value={editContent}
+                                onChange={(e) => setEditContent(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="edit-textarea"
+                            />
+                        </>
                     ) : (
-                        memory.content || ''
+                        <>
+                            {memory.title && (
+                                <div className="memory-title">
+                                    {memory.title}
+                                </div>
+                            )}
+                            <div className="memory-content">
+                                {memory.title 
+                                    ? (memory.content?.length > 200 ? memory.content.substring(0, 200) + '...' : memory.content)
+                                    : memory.content || ''
+                                }
+                            </div>
+                        </>
                     )}
                 </div>
             </div>

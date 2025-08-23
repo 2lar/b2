@@ -28,7 +28,7 @@ func init() {
 	connectionsTable = os.Getenv("CONNECTIONS_TABLE_NAME")
 	gsiName = os.Getenv("CONNECTIONS_GSI_NAME")
 
-	awsCfg, err := awsConfig.LoadDefaultConfig(context.TODO())
+	awsCfg, err := awsConfig.LoadDefaultConfig(context.Background())
 	if err != nil {
 		log.Fatalf("Unable to load SDK config, %v", err)
 	}

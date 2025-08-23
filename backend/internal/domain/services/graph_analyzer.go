@@ -47,7 +47,7 @@ func (a *GraphAnalyzer) FindCommunities(graph *Graph) []shared.Community {
 	// Initialize: each node is its own community (use index as community ID)
 	communities := make(map[shared.NodeID]int)
 	for i, node := range graph.Nodes {
-		communities[node.ID] = i
+		communities[node.ID()] = i
 	}
 	
 	// Build adjacency list
@@ -59,16 +59,16 @@ func (a *GraphAnalyzer) FindCommunities(graph *Graph) []shared.Community {
 		improved = false
 		
 		for _, node := range graph.Nodes {
-			currentCommunity := communities[node.ID]
+			currentCommunity := communities[node.ID()]
 			bestCommunity := currentCommunity
 			bestModularity := a.calculateModularity(graph, communities)
 			
 			// Try moving node to neighboring communities
-			for _, neighbor := range adjacency[node.ID] {
+			for _, neighbor := range adjacency[node.ID()] {
 				neighborCommunity := communities[neighbor]
 				if neighborCommunity != currentCommunity {
 					// Temporarily move node
-					communities[node.ID] = neighborCommunity
+					communities[node.ID()] = neighborCommunity
 					modularity := a.calculateModularity(graph, communities)
 					
 					if modularity > bestModularity {
@@ -80,7 +80,7 @@ func (a *GraphAnalyzer) FindCommunities(graph *Graph) []shared.Community {
 			}
 			
 			// Move to best community
-			communities[node.ID] = bestCommunity
+			communities[node.ID()] = bestCommunity
 		}
 	}
 	
@@ -139,7 +139,7 @@ func (a *GraphAnalyzer) CalculatePageRank(graph *Graph) map[shared.NodeID]float6
 	
 	// Initialize PageRank values
 	for _, node := range graph.Nodes {
-		pagerank[node.ID] = 1.0 / nodeCount
+		pagerank[node.ID()] = 1.0 / nodeCount
 	}
 	
 	// Build inbound links map
@@ -159,16 +159,16 @@ func (a *GraphAnalyzer) CalculatePageRank(graph *Graph) map[shared.NodeID]float6
 			rank := (1 - dampingFactor) / nodeCount
 			
 			// Sum contributions from inbound links
-			for _, source := range inboundLinks[node.ID] {
+			for _, source := range inboundLinks[node.ID()] {
 				if count := outboundCount[source]; count > 0 {
 					rank += dampingFactor * pagerank[source] / float64(count)
 				}
 			}
 			
-			newPagerank[node.ID] = rank
+			newPagerank[node.ID()] = rank
 			
 			// Check convergence
-			if math.Abs(newPagerank[node.ID]-pagerank[node.ID]) > convergence {
+			if math.Abs(newPagerank[node.ID()]-pagerank[node.ID()]) > convergence {
 				converged = false
 			}
 		}
@@ -194,23 +194,23 @@ func (a *GraphAnalyzer) CalculateBetweennessCentrality(graph *Graph) map[shared.
 	
 	// Initialize centrality values
 	for _, node := range graph.Nodes {
-		centrality[node.ID] = 0
+		centrality[node.ID()] = 0
 	}
 	
 	// For each pair of nodes, find shortest paths and update centrality
 	for _, source := range graph.Nodes {
 		// Single-source shortest paths
-		distances, paths := a.dijkstra(graph, source.ID)
+		distances, paths := a.dijkstra(graph, source.ID())
 		
 		for _, target := range graph.Nodes {
-			if source.ID == target.ID {
+			if source.ID() == target.ID() {
 				continue
 			}
 			
-			if distance, ok := distances[target.ID]; ok && distance < math.MaxFloat64 {
+			if distance, ok := distances[target.ID()]; ok && distance < math.MaxFloat64 {
 				// Update centrality for nodes on the shortest path
-				for _, nodeID := range paths[target.ID] {
-					if nodeID != source.ID && nodeID != target.ID {
+				for _, nodeID := range paths[target.ID()] {
+					if nodeID != source.ID() && nodeID != target.ID() {
 						centrality[nodeID]++
 					}
 				}
@@ -235,22 +235,22 @@ func (a *GraphAnalyzer) CalculateClosenessCentrality(graph *Graph) map[shared.No
 	centrality := make(map[shared.NodeID]float64)
 	
 	for _, node := range graph.Nodes {
-		distances, _ := a.dijkstra(graph, node.ID)
+		distances, _ := a.dijkstra(graph, node.ID())
 		
 		totalDistance := 0.0
 		reachableNodes := 0
 		
 		for targetID, distance := range distances {
-			if targetID != node.ID && distance < math.MaxFloat64 {
+			if targetID != node.ID() && distance < math.MaxFloat64 {
 				totalDistance += distance
 				reachableNodes++
 			}
 		}
 		
 		if reachableNodes > 0 && totalDistance > 0 {
-			centrality[node.ID] = float64(reachableNodes) / totalDistance
+			centrality[node.ID()] = float64(reachableNodes) / totalDistance
 		} else {
-			centrality[node.ID] = 0
+			centrality[node.ID()] = 0
 		}
 	}
 	
@@ -304,7 +304,7 @@ func (a *GraphAnalyzer) hierarchicalClustering(graph *Graph, threshold float64) 
 	for i, node := range graph.Nodes {
 		clusters = append(clusters, shared.Cluster{
 			ID:      shared.ClusterID(i),
-			NodeIDs: []shared.NodeID{node.ID},
+			NodeIDs: []shared.NodeID{node.ID()},
 			Density: 1.0,
 		})
 	}
@@ -394,8 +394,8 @@ func (a *GraphAnalyzer) dijkstra(graph *Graph, source shared.NodeID) (map[shared
 	
 	// Initialize distances
 	for _, node := range graph.Nodes {
-		distances[node.ID] = math.MaxFloat64
-		paths[node.ID] = []shared.NodeID{}
+		distances[node.ID()] = math.MaxFloat64
+		paths[node.ID()] = []shared.NodeID{}
 	}
 	distances[source] = 0
 	paths[source] = []shared.NodeID{source}
@@ -421,9 +421,9 @@ func (a *GraphAnalyzer) dijkstra(graph *Graph, source shared.NodeID) (map[shared
 		found := false
 		
 		for _, node := range graph.Nodes {
-			if !visited[node.ID] && distances[node.ID] < minDist {
-				minDist = distances[node.ID]
-				current = node.ID
+			if !visited[node.ID()] && distances[node.ID()] < minDist {
+				minDist = distances[node.ID()]
+				current = node.ID()
 				found = true
 			}
 		}
@@ -481,7 +481,7 @@ func (a *GraphAnalyzer) buildSimilarityMatrix(graph *Graph) map[shared.NodeID]ma
 	
 	// Initialize matrix
 	for _, node := range graph.Nodes {
-		matrix[node.ID] = make(map[shared.NodeID]float64)
+		matrix[node.ID()] = make(map[shared.NodeID]float64)
 	}
 	
 	// Fill matrix based on edges

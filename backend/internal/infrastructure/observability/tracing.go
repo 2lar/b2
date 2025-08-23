@@ -95,8 +95,8 @@ type tracedNodeRepository struct {
 func (r *tracedNodeRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
 	ctx, span := r.tracer.Start(ctx, "repository.CreateNodeAndKeywords",
 		trace.WithAttributes(
-			attribute.String("node.id", node.ID.String()),
-			attribute.String("user.id", node.UserID.String()),
+			attribute.String("node.id", node.ID().String()),
+			attribute.String("user.id", node.UserID().String()),
 		),
 	)
 	defer span.End()

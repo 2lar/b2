@@ -33,17 +33,7 @@ type Node struct {
 	updatedAt time.Time // When the node was last updated
 	version   shared.Version   // For optimistic locking
 	archived  bool      // Whether the node is archived
-
-	// Public fields for compatibility with existing code (TODO: migrate to private)
-	ID        shared.NodeID                 `json:"id"`
-	UserID    shared.UserID                 `json:"user_id"`
-	Content   shared.Content                `json:"content"`
-	Title     shared.Title                  `json:"title"`
-	Tags      shared.Tags                   `json:"tags"`
-	Metadata  map[string]interface{} `json:"metadata"`
-	CreatedAt time.Time              `json:"created_at"`
-	UpdatedAt time.Time              `json:"updated_at"`
-	Version   int                    `json:"version"`
+	metadata  map[string]interface{} // Node metadata
 
 	// Domain events that occurred during this aggregate's lifetime
 	events []shared.DomainEvent
@@ -87,17 +77,8 @@ func NewNode(userID shared.UserID, content shared.Content, title shared.Title, t
 		updatedAt: now,
 		version:   shared.NewVersion(), // Always start at 0
 		archived:  false,
+		metadata:  make(map[string]interface{}),
 		events:    []shared.DomainEvent{},
-		// Initialize public fields for compatibility
-		ID:        nodeID,
-		UserID:    userID,
-		Content:   content,
-		Title:     title,
-		Tags:      tags,
-		Metadata:  make(map[string]interface{}),
-		CreatedAt: now,
-		UpdatedAt: now,
-		Version:   0, // Start at version 0
 	}
 
 	// Generate domain event for node creation
@@ -122,17 +103,8 @@ func ReconstructNode(id shared.NodeID, userID shared.UserID, content shared.Cont
 		updatedAt: updatedAt,
 		version:   version,
 		archived:  archived,
+		metadata:  make(map[string]interface{}),
 		events:    []shared.DomainEvent{},
-		// Public fields (for compatibility)
-		ID:        id,
-		UserID:    userID,
-		Content:   content,
-		Title:     title,
-		Tags:      tags,
-		Metadata:  make(map[string]interface{}),
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-		Version:   version.Int(),
 	}
 }
 
@@ -169,9 +141,49 @@ func ReconstructNodeFromPrimitives(id, userID, content, title string, keywords, 
 
 // Getters (read-only access to internal state)
 
+// ID returns the node's ID
+func (n *Node) ID() shared.NodeID {
+	return n.id
+}
+
+// UserID returns the node's user ID
+func (n *Node) UserID() shared.UserID {
+	return n.userID
+}
+
+// Content returns the node's content
+func (n *Node) Content() shared.Content {
+	return n.content
+}
+
+// Title returns the node's title
+func (n *Node) Title() shared.Title {
+	return n.title
+}
+
 // Keywords returns the node's keywords
 func (n *Node) Keywords() shared.Keywords {
 	return n.keywords
+}
+
+// Tags returns the node's tags
+func (n *Node) Tags() shared.Tags {
+	return n.tags
+}
+
+// CreatedAt returns when the node was created
+func (n *Node) CreatedAt() time.Time {
+	return n.createdAt
+}
+
+// UpdatedAt returns when the node was last updated
+func (n *Node) UpdatedAt() time.Time {
+	return n.updatedAt
+}
+
+// Version returns the node's version
+func (n *Node) Version() int {
+	return n.version.Int()
 }
 
 // IsArchived returns whether the node is archived
@@ -179,32 +191,37 @@ func (n *Node) IsArchived() bool {
 	return n.archived
 }
 
-// GetContent returns the node's content
+// Metadata returns the node's metadata
+func (n *Node) Metadata() map[string]interface{} {
+	return n.metadata
+}
+
+// GetContent returns the node's content (deprecated - use Content())
 func (n *Node) GetContent() shared.Content {
 	return n.content
 }
 
-// GetTitle returns the node's title
+// GetTitle returns the node's title (deprecated - use Title())
 func (n *Node) GetTitle() shared.Title {
 	return n.title
 }
 
-// GetUserID returns the node's user ID
+// GetUserID returns the node's user ID (deprecated - use UserID())
 func (n *Node) GetUserID() shared.UserID {
 	return n.userID
 }
 
-// GetTags returns the node's tags
+// GetTags returns the node's tags (deprecated - use Tags())
 func (n *Node) GetTags() shared.Tags {
 	return n.tags
 }
 
-// GetCreatedAt returns when the node was created
+// GetCreatedAt returns when the node was created (deprecated - use CreatedAt())
 func (n *Node) GetCreatedAt() time.Time {
 	return n.createdAt
 }
 
-// GetUpdatedAt returns when the node was last updated
+// GetUpdatedAt returns when the node was last updated (deprecated - use UpdatedAt())
 func (n *Node) GetUpdatedAt() time.Time {
 	return n.updatedAt
 }
@@ -234,12 +251,9 @@ func (n *Node) UpdateContent(newContent shared.Content) error {
 
 	// Apply changes
 	n.content = newContent
-	n.Content = newContent // Also update public field
 	n.keywords = newContent.ExtractKeywords()
 	n.updatedAt = time.Now()
-	n.UpdatedAt = n.updatedAt // Also update public field
 	n.version = n.version.Next()
-	n.Version = n.version.Int() // Also update public field
 
 	// Generate domain event
 	event := shared.NewNodeContentUpdatedEvent(n.id, n.userID, oldContent, newContent, oldKeywords, n.keywords, n.version)
@@ -269,11 +283,8 @@ func (n *Node) UpdateTitle(newTitle shared.Title) error {
 
 	// Apply changes
 	n.title = newTitle
-	n.Title = newTitle // Also update public field
 	n.updatedAt = time.Now()
-	n.UpdatedAt = n.updatedAt // Also update public field
 	n.version = n.version.Next()
-	n.Version = n.version.Int() // Also update public field
 
 	// Generate domain event (TODO: implement NewNodeTitleUpdatedEvent if needed)
 	// event := shared.NewNodeTitleUpdatedEvent(n.id, n.userID, oldTitle, newTitle, n.version)
@@ -304,11 +315,8 @@ func (n *Node) UpdateTags(newTags shared.Tags) error {
 
 	// Apply changes
 	n.tags = newTags
-	n.Tags = newTags // Also update public field
 	n.updatedAt = time.Now()
-	n.UpdatedAt = n.updatedAt // Also update public field
 	n.version = n.version.Next()
-	n.Version = n.version.Int() // Also update public field
 
 	// Generate domain event
 	event := shared.NewNodeTagsUpdatedEvent(n.id, n.userID, oldTags, newTags, n.version)
@@ -405,7 +413,6 @@ func (n *Node) GetVersion() int {
 // IncrementVersion increments the version after successful persistence
 func (n *Node) IncrementVersion() {
 	n.version = n.version.Next()
-	n.Version = n.version.Int()
 }
 
 // ValidateInvariants ensures all business rules are satisfied
@@ -489,16 +496,16 @@ func tagsEqual(tags1, tags2 shared.Tags) bool {
 
 // Validate validates the node's state
 func (n *Node) Validate() error {
-	if n.ID.IsEmpty() {
-		return shared.NewValidationError("id", "node ID is required", n.ID)
+	if n.id.IsEmpty() {
+		return shared.NewValidationError("id", "node ID is required", n.id)
 	}
-	if n.UserID.IsEmpty() {
-		return shared.NewValidationError("user_id", "user ID is required", n.UserID)
+	if n.userID.IsEmpty() {
+		return shared.NewValidationError("user_id", "user ID is required", n.userID)
 	}
-	if err := n.Content.Validate(); err != nil {
+	if err := n.content.Validate(); err != nil {
 		return err
 	}
-	if err := n.Title.Validate(); err != nil {
+	if err := n.title.Validate(); err != nil {
 		return err
 	}
 	return nil
@@ -506,20 +513,17 @@ func (n *Node) Validate() error {
 
 // SetMetadata sets the metadata for the node
 func (n *Node) SetMetadata(metadata map[string]interface{}) {
-	n.Metadata = metadata
+	n.metadata = metadata
 }
 
 // SetTags sets the tags for the node
 func (n *Node) SetTags(tags shared.Tags) {
 	n.tags = tags
-	n.Tags = tags
 }
-
 
 // UpdateTimestamp updates the node's timestamp
 func (n *Node) UpdateTimestamp() {
 	n.updatedAt = time.Now()
-	n.UpdatedAt = n.updatedAt
 }
 
 // Events returns the domain events for this node
