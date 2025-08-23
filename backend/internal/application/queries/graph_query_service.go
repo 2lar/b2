@@ -312,14 +312,35 @@ func (s *GraphQueryService) getNode(ctx context.Context, userID, nodeID string) 
 func (s *GraphQueryService) getBatchNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
 	nodeMap := make(map[string]*node.Node)
 	
-	// For now, use individual queries - this could be optimized with batch operations
+	// Prepare keys for batch get operation
+	keys := make([]persistence.Key, 0, len(nodeIDs))
 	for _, nodeID := range nodeIDs {
-		node, err := s.getNode(ctx, userID, nodeID)
-		if err != nil {
-			continue // Skip nodes that can't be retrieved
+		key := persistence.Key{
+			PartitionKey: fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID),
+			SortKey:      "METADATA#v0",
 		}
-		if node != nil {
-			nodeMap[nodeID] = node
+		keys = append(keys, key)
+	}
+	
+	// Use efficient batch get operation instead of individual queries
+	records, err := s.store.BatchGet(ctx, keys)
+	if err != nil {
+		s.logger.Warn("batch get failed, falling back to individual queries", zap.Error(err))
+		// Fallback to individual queries
+		for _, nodeID := range nodeIDs {
+			node, err := s.getNode(ctx, userID, nodeID)
+			if err == nil && node != nil {
+				nodeMap[nodeID] = node
+			}
+		}
+		return nodeMap, nil
+	}
+	
+	// Convert records to nodes
+	for _, record := range records {
+		node, err := s.recordToNode(&record)
+		if err == nil && node != nil {
+			nodeMap[node.GetID()] = node
 		}
 	}
 	

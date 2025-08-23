@@ -12,6 +12,7 @@ import (
 	"brain2-backend/internal/domain/category"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
+	appErrors "brain2-backend/pkg/errors"
 	
 	"go.uber.org/zap"
 )
@@ -85,7 +86,7 @@ func (tm *TransactionManager) ExecuteInTransaction(
 	tm.mu.Lock()
 	if tm.inTransaction {
 		tm.mu.Unlock()
-		return fmt.Errorf("nested transactions are not supported")
+		return appErrors.NewValidation("nested transactions are not supported")
 	}
 	tm.inTransaction = true
 	tm.mu.Unlock()
@@ -118,10 +119,10 @@ func (tm *TransactionManager) ExecuteInTransaction(
 			tm.logger.Error("Rollback failed",
 				zap.Error(rollbackErr),
 			)
-			return fmt.Errorf("transaction failed and rollback failed: %w", rollbackErr)
+			return appErrors.Wrap(rollbackErr, "transaction failed and rollback failed")
 		}
 		
-		return fmt.Errorf("transaction failed: %w", err)
+		return appErrors.Wrap(err, "transaction failed")
 	}
 	
 	// Commit - publish events after successful transaction
@@ -132,7 +133,7 @@ func (tm *TransactionManager) ExecuteInTransaction(
 				zap.Error(rollbackErr),
 			)
 		}
-		return fmt.Errorf("commit failed: %w", err)
+		return appErrors.Wrap(err, "commit failed")
 	}
 	
 	tm.logger.Info("Transaction completed successfully",
@@ -159,7 +160,7 @@ func (tm *TransactionManager) rollback() error {
 	}
 	
 	if len(errs) > 0 {
-		return fmt.Errorf("rollback completed with %d errors", len(errs))
+		return appErrors.NewInternal(fmt.Sprintf("rollback completed with %d errors", len(errs)), nil)
 	}
 	
 	return nil
@@ -189,33 +190,33 @@ func (tm *TransactionManager) commit(ctx context.Context) error {
 // TODO: Update to use NodeWriter interface methods
 func (tm *TransactionManager) CreateNode(ctx context.Context, node *node.Node) error {
 	if !tm.inTransaction {
-		return fmt.Errorf("operation must be executed within a transaction")
+		return appErrors.NewValidation("operation must be executed within a transaction")
 	}
 	
 	// TODO: Implement using proper repository methods
 	// The current NodeRepository doesn't have CreateNode method
 	// Should use NodeWriter.Save() instead
-	return fmt.Errorf("CreateNode not implemented - needs repository refactoring")
+	return appErrors.NewInternal("CreateNode not implemented - needs repository refactoring", nil)
 }
 
 // UpdateNode updates a node within the transaction.
 // TODO: Update to use NodeWriter interface methods
 func (tm *TransactionManager) UpdateNode(ctx context.Context, node *node.Node, originalNode *node.Node) error {
 	if !tm.inTransaction {
-		return fmt.Errorf("operation must be executed within a transaction")
+		return appErrors.NewValidation("operation must be executed within a transaction")
 	}
 	
 	// TODO: Implement using proper repository methods
 	// The current NodeRepository doesn't have UpdateNode method
 	// Should use NodeWriter.Update() instead
-	return fmt.Errorf("UpdateNode not implemented - needs repository refactoring")
+	return appErrors.NewInternal("UpdateNode not implemented - needs repository refactoring", nil)
 }
 
 // DeleteNode deletes a node within the transaction.
 // TODO: Update to use NodeWriter interface methods
 func (tm *TransactionManager) DeleteNode(ctx context.Context, node *node.Node) error {
 	if !tm.inTransaction {
-		return fmt.Errorf("operation must be executed within a transaction")
+		return appErrors.NewValidation("operation must be executed within a transaction")
 	}
 	
 	// TODO: Implement using proper repository methods
@@ -232,7 +233,7 @@ func (tm *TransactionManager) DeleteNode(ctx context.Context, node *node.Node) e
 // TODO: Update to use EdgeWriter interface methods
 func (tm *TransactionManager) CreateEdge(ctx context.Context, edge *edge.Edge) error {
 	if !tm.inTransaction {
-		return fmt.Errorf("operation must be executed within a transaction")
+		return appErrors.NewValidation("operation must be executed within a transaction")
 	}
 	
 	// TODO: Implement using proper repository methods
@@ -243,7 +244,7 @@ func (tm *TransactionManager) CreateEdge(ctx context.Context, edge *edge.Edge) e
 // TODO: Update to use EdgeWriter interface methods
 func (tm *TransactionManager) UpdateEdge(ctx context.Context, edge *edge.Edge, originalEdge *edge.Edge) error {
 	if !tm.inTransaction {
-		return fmt.Errorf("operation must be executed within a transaction")
+		return appErrors.NewValidation("operation must be executed within a transaction")
 	}
 	
 	// TODO: Implement using proper repository methods
@@ -254,7 +255,7 @@ func (tm *TransactionManager) UpdateEdge(ctx context.Context, edge *edge.Edge, o
 // TODO: Update to use EdgeWriter interface methods
 func (tm *TransactionManager) DeleteEdge(ctx context.Context, edge *edge.Edge) error {
 	if !tm.inTransaction {
-		return fmt.Errorf("operation must be executed within a transaction")
+		return appErrors.NewValidation("operation must be executed within a transaction")
 	}
 	
 	// TODO: Implement using proper repository methods
@@ -269,7 +270,7 @@ func (tm *TransactionManager) DeleteEdge(ctx context.Context, edge *edge.Edge) e
 // TODO: Update to use CategoryWriter interface methods
 func (tm *TransactionManager) CreateCategory(ctx context.Context, category *category.Category) error {
 	if !tm.inTransaction {
-		return fmt.Errorf("operation must be executed within a transaction")
+		return appErrors.NewValidation("operation must be executed within a transaction")
 	}
 	
 	// TODO: Implement using proper repository methods
@@ -280,7 +281,7 @@ func (tm *TransactionManager) CreateCategory(ctx context.Context, category *cate
 // TODO: Update to use CategoryWriter interface methods
 func (tm *TransactionManager) UpdateCategory(ctx context.Context, category *category.Category, originalCategory *category.Category) error {
 	if !tm.inTransaction {
-		return fmt.Errorf("operation must be executed within a transaction")
+		return appErrors.NewValidation("operation must be executed within a transaction")
 	}
 	
 	// TODO: Implement using proper repository methods
@@ -291,7 +292,7 @@ func (tm *TransactionManager) UpdateCategory(ctx context.Context, category *cate
 // TODO: Update to use CategoryWriter interface methods
 func (tm *TransactionManager) DeleteCategory(ctx context.Context, category *category.Category) error {
 	if !tm.inTransaction {
-		return fmt.Errorf("operation must be executed within a transaction")
+		return appErrors.NewValidation("operation must be executed within a transaction")
 	}
 	
 	// TODO: Implement using proper repository methods

@@ -610,8 +610,96 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*sh
 	return &shared.Graph{Nodes: nodeInterfaces, Edges: edgeInterfaces}, nil
 }
 
-// fetchAllNodesOptimized retrieves all nodes for a user using scan with filter
+// fetchAllNodesOptimized retrieves all nodes for a user using optimized parallel scan
 func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID string) ([]*node.Node, error) {
+	var nodes []*node.Node
+	userNodePrefix := fmt.Sprintf("USER#%s#NODE#", userID)
+
+	// Use parallel scan for better performance on large datasets
+	totalSegments := int32(4) // Parallel segments for faster scanning
+	segments := make(chan []*node.Node, totalSegments)
+	errors := make(chan error, totalSegments)
+
+	for segment := int32(0); segment < totalSegments; segment++ {
+		go func(segmentID int32) {
+			var segmentNodes []*node.Node
+			var lastEvaluatedKey map[string]types.AttributeValue
+
+			for {
+				scanInput := &dynamodb.ScanInput{
+					TableName:        aws.String(r.config.TableName),
+					FilterExpression: aws.String("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix)"),
+					ExpressionAttributeValues: map[string]types.AttributeValue{
+						":pk_prefix": &types.AttributeValueMemberS{Value: userNodePrefix},
+						":sk_prefix": &types.AttributeValueMemberS{Value: "METADATA#"},
+					},
+					// Only fetch essential attributes - optimized projection
+					ProjectionExpression: aws.String("PK, SK, NodeID, UserID, Content, Title, Keywords, Tags, #ts, #v"),
+					ExpressionAttributeNames: map[string]string{
+						"#ts": "Timestamp", // timestamp is a reserved word
+						"#v":  "Version",   // version is a reserved word
+					},
+					ExclusiveStartKey: lastEvaluatedKey,
+					Limit:             aws.Int32(100), // Process in controlled batches
+					// Parallel scan configuration
+					Segment:       aws.Int32(segmentID),
+					TotalSegments: aws.Int32(totalSegments),
+				}
+
+				result, err := r.dbClient.Scan(ctx, scanInput)
+				if err != nil {
+					errors <- appErrors.Wrap(err, fmt.Sprintf("failed to scan nodes segment %d", segmentID))
+					return
+				}
+
+				// Process nodes from this segment
+				for _, item := range result.Items {
+					var ddbItem ddbNode
+					if err := attributevalue.UnmarshalMap(item, &ddbItem); err == nil {
+						createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
+						// Use domain factory method to reconstruct node from primitives
+						node, err := node.ReconstructNodeFromPrimitives(
+							ddbItem.NodeID, 
+							ddbItem.UserID, 
+							ddbItem.Content,
+							ddbItem.Title,
+							ddbItem.Keywords, 
+							ddbItem.Tags,
+							createdAt,
+							ddbItem.Version,
+						)
+						if err == nil && node != nil {
+							segmentNodes = append(segmentNodes, node)
+						}
+					}
+				}
+
+				// Check if more pages in this segment
+				if result.LastEvaluatedKey == nil {
+					break
+				}
+				lastEvaluatedKey = result.LastEvaluatedKey
+			}
+
+			segments <- segmentNodes
+		}(segment)
+	}
+
+	// Collect results from all segments
+	for i := int32(0); i < totalSegments; i++ {
+		select {
+		case segmentNodes := <-segments:
+			nodes = append(nodes, segmentNodes...)
+		case err := <-errors:
+			return nil, err
+		}
+	}
+
+	return nodes, nil
+}
+
+// Original single-threaded scan method kept as fallback
+func (r *ddbRepository) fetchAllNodesSingleScan(ctx context.Context, userID string) ([]*node.Node, error) {
 	var nodes []*node.Node
 	var lastEvaluatedKey map[string]types.AttributeValue
 
@@ -626,7 +714,7 @@ func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID strin
 				":sk_prefix": &types.AttributeValueMemberS{Value: "METADATA#"},
 			},
 			// Only fetch required attributes for graph rendering - reduces data transfer by 50-70%
-			ProjectionExpression: aws.String("PK, SK, NodeID, UserID, Content, Keywords, Tags, #ts, #v"),
+			ProjectionExpression: aws.String("PK, SK, NodeID, UserID, Content, Title, Keywords, Tags, #ts, #v"),
 			ExpressionAttributeNames: map[string]string{
 				"#ts": "Timestamp", // timestamp is a reserved word
 				"#v":  "Version",   // version is a reserved word

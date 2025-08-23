@@ -11,7 +11,6 @@ package queries
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -32,6 +31,7 @@ type CategoryQueryService struct {
 	nodeReader     repository.NodeReader
 	logger         *zap.Logger
 	cache          Cache // Cache interface for performance
+	cacheHelper    *CacheHelper // Common cache operations
 }
 
 // NewCategoryQueryService creates a new CategoryQueryService with all required dependencies.
@@ -47,22 +47,19 @@ func NewCategoryQueryService(
 		nodeReader:     nodeReader,
 		logger:         logger,
 		cache:          cache,
+		cacheHelper:    NewCacheHelper(cache),
 	}
 }
 
 // GetCategory retrieves a single category with optional nodes and statistics.
 func (s *CategoryQueryService) GetCategory(ctx context.Context, query *GetCategoryQuery) (*dto.GetCategoryResult, error) {
 	// 1. Check cache first
-	cacheKey := fmt.Sprintf("category:%s:%s:nodes=%t:stats=%t", 
-		query.UserID, query.CategoryID, query.IncludeNodes, query.IncludeStats)
+	cacheKey := GenerateCacheKey("category", query.UserID, query.CategoryID, 
+		fmt.Sprintf("nodes=%t", query.IncludeNodes), fmt.Sprintf("stats=%t", query.IncludeStats))
 	
-	if s.cache != nil {
-		if cachedData, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
-			var result dto.GetCategoryResult
-			if err := json.Unmarshal(cachedData, &result); err == nil {
-				return &result, nil
-			}
-		}
+	var cachedResult dto.GetCategoryResult
+	if found, _ := s.cacheHelper.GetCached(ctx, cacheKey, &cachedResult); found {
+		return &cachedResult, nil
 	}
 
 	// 2. Parse and validate domain identifiers
@@ -152,11 +149,7 @@ func (s *CategoryQueryService) GetCategory(ctx context.Context, query *GetCatego
 	}
 
 	// 7. Cache the result
-	if s.cache != nil {
-		if data, err := json.Marshal(result); err == nil {
-			s.cache.Set(ctx, cacheKey, data, 5*time.Minute)
-		}
-	}
+	s.cacheHelper.SetCached(ctx, cacheKey, *result, 5*time.Minute)
 
 	return result, nil
 }
