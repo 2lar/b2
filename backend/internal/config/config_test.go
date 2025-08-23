@@ -70,7 +70,9 @@ func TestConfigValidation(t *testing.T) {
 				Domain: config.Domain{
 					SimilarityThreshold:   0.3,
 					MaxConnectionsPerNode: 10,
-					MaxContentLength:      10000,
+					MaxContentLength:      20000,
+					DocumentThreshold:     800,
+					DocumentAutoOpen:      1200,
 					MinKeywordLength:      3,
 					RecencyWeight:         0.2,
 					DiversityThreshold:    0.5,
@@ -169,7 +171,9 @@ func TestConfigValidation(t *testing.T) {
 				Domain: config.Domain{
 					SimilarityThreshold:   0.3,
 					MaxConnectionsPerNode: 10,
-					MaxContentLength:      10000,
+					MaxContentLength:      20000,
+					DocumentThreshold:     800,
+					DocumentAutoOpen:      1200,
 					MinKeywordLength:      3,
 					RecencyWeight:         0.2,
 					DiversityThreshold:    0.5,
@@ -273,7 +277,9 @@ func TestConfigValidation(t *testing.T) {
 				Domain: config.Domain{
 					SimilarityThreshold:   0.3,
 					MaxConnectionsPerNode: 10,
-					MaxContentLength:      10000,
+					MaxContentLength:      20000,
+					DocumentThreshold:     800,
+					DocumentAutoOpen:      1200,
 					MinKeywordLength:      3,
 					RecencyWeight:         0.2,
 					DiversityThreshold:    0.5,

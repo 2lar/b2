@@ -414,7 +414,6 @@ func containsProfanity(content string) bool {
 
 // Constants for validation
 const (
-	MaxContentLength = 10000
 	MaxTagLength     = 50
 	MaxUserIDLength  = 100
 )
