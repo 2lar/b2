@@ -204,18 +204,6 @@ type CategoryWriter interface {
 	RecalculateHierarchy(ctx context.Context, userID string) error
 }
 
-// ============================================================================
-// DEPRECATED: Combined Interfaces - VIOLATES CQRS PRINCIPLES
-// ============================================================================
-// The following combined interfaces are deprecated as they violate CQRS principles.
-// Use separate Reader and Writer interfaces for proper command/query separation.
-// Migration:
-//   - Replace CQRSNodeRepository with separate NodeReader and NodeWriter
-//   - Replace CQRSEdgeRepository with separate EdgeReader and EdgeWriter
-//   - Replace CQRSCategoryRepository with separate CategoryReader and CategoryWriter
-// These interfaces will be removed in the next major version.
-// ============================================================================
-
 // Repository Aggregates for Complex Operations
 
 // GraphReader provides read access to graph data across multiple entities

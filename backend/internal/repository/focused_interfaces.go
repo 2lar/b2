@@ -72,17 +72,6 @@ type CategoryNodeMapper interface {
 }
 
 // ============================================================================
-// DEPRECATED: COMPOSITE INTERFACES - TO BE REMOVED
-// ============================================================================
-// The following composite interfaces are deprecated and will be removed.
-// Use specific Reader/Writer interfaces instead for true CQRS separation.
-// Migration guide:
-//   - Replace NodeRepositoryComposite with NodeReader + NodeWriter
-//   - Replace EdgeRepositoryComposite with EdgeReader + EdgeWriter  
-//   - Replace CategoryRepositoryComposite with CategoryReader + CategoryWriter
-// ============================================================================
-
-// ============================================================================
 // SPECIALIZED QUERY INTERFACES
 // ============================================================================
 
