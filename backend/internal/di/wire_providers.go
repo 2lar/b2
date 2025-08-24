@@ -15,7 +15,7 @@ import (
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/features"
-	"brain2-backend/internal/handlers"
+	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/infrastructure/persistence/cache"
@@ -182,20 +182,20 @@ func provideMemoryHandler(
 	graphQueryService *queries.GraphQueryService,
 	eventBridgeClient *awsEventbridge.Client,
 	coldStartProvider ColdStartInfoProvider,
-) *handlers.MemoryHandler { panic("wire") }
+) *v1handlers.MemoryHandler { panic("wire") }
 
 func provideCategoryHandler(
 	categoryService *services.CategoryService,
 	categoryQueryService *queries.CategoryQueryService,
-) *handlers.CategoryHandler { panic("wire") }
+) *v1handlers.CategoryHandler { panic("wire") }
 
-func provideHealthHandler() *handlers.HealthHandler { panic("wire") }
+func provideHealthHandler() *v1handlers.HealthHandler { panic("wire") }
 
 // Router Provider
 func provideRouter(
-	memoryHandler *handlers.MemoryHandler,
-	categoryHandler *handlers.CategoryHandler,
-	healthHandler *handlers.HealthHandler,
+	memoryHandler *v1handlers.MemoryHandler,
+	categoryHandler *v1handlers.CategoryHandler,
+	healthHandler *v1handlers.HealthHandler,
 	cfg *config.Config,
 ) *chi.Mux { panic("wire") }
 
@@ -226,9 +226,9 @@ func provideContainer(
 	connectionAnalyzer *domainServices.ConnectionAnalyzer,
 	eventBus shared.EventBus,
 	unitOfWork repository.UnitOfWork,
-	memoryHandler *handlers.MemoryHandler,
-	categoryHandler *handlers.CategoryHandler,
-	healthHandler *handlers.HealthHandler,
+	memoryHandler *v1handlers.MemoryHandler,
+	categoryHandler *v1handlers.CategoryHandler,
+	healthHandler *v1handlers.HealthHandler,
 	router *chi.Mux,
 	repositoryFactory *repository.RepositoryFactory,
 	coldStartTracker *ColdStartTracker,

@@ -36,13 +36,26 @@ type Collector struct {
 	CacheMisses    prometheus.Counter
 }
 
-// NewCollector creates a new metrics collector with the given namespace
+// NewCollector creates a new metrics collector with the given namespace.
+//
+// This function implements the Singleton pattern to ensure consistent metrics across
+// the application lifecycle. The singleton approach is particularly important in
+// Lambda environments where:
+//   - Multiple invocations may attempt to create metrics collectors
+//   - Prometheus registry panics on duplicate metric registration
+//   - Resource cleanup must be coordinated across invocations
+//
+// The collector provides comprehensive application metrics including:
+//   - HTTP request/response metrics for API monitoring
+//   - Business domain metrics for operational insights
+//   - Infrastructure metrics for performance optimization
+//   - Custom metrics for domain-specific monitoring
 func NewCollector(namespace string) *Collector {
-	// Use singleton pattern to avoid duplicate registration in tests
+	// Use singleton pattern to avoid duplicate registration in tests and Lambda warm starts
 	collectorMutex.Lock()
 	defer collectorMutex.Unlock()
 	
-	// Return existing collector if already created
+	// Return existing collector if already created to prevent Prometheus registration panics
 	if globalCollector != nil {
 		return globalCollector
 	}

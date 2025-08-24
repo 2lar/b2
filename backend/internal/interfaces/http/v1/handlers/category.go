@@ -18,9 +18,9 @@ import (
 )
 
 // CategoryHandler handles category-related HTTP requests with clean separation of concerns.
-// This refactored handler follows the Single Responsibility Principle by delegating
+// This handler follows the Single Responsibility Principle by delegating
 // specific responsibilities to focused components.
-type CategoryHandlerRefactored struct {
+type CategoryHandler struct {
 	// Core CQRS services
 	categoryService      *services.CategoryService      // Write operations (commands)
 	categoryQueryService *queries.CategoryQueryService  // Read operations (queries)
@@ -35,12 +35,12 @@ type CategoryHandlerRefactored struct {
 	logger            *middleware.HandlerLoggingHelper    // Request logging
 }
 
-// NewCategoryHandlerRefactored creates a new refactored category handler with focused dependencies.
-func NewCategoryHandlerRefactored(
+// NewCategoryHandler creates a new category handler with focused dependencies.
+func NewCategoryHandler(
 	categoryService *services.CategoryService,
 	categoryQueryService *queries.CategoryQueryService,
-) *CategoryHandlerRefactored {
-	return &CategoryHandlerRefactored{
+) *CategoryHandler {
+	return &CategoryHandler{
 		categoryService:      categoryService,
 		categoryQueryService: categoryQueryService,
 		validator:           validation.NewCategoryValidator(),
@@ -56,7 +56,7 @@ func NewCategoryHandlerRefactored(
 }
 
 // ListCategories handles GET /api/categories with clean separation of concerns.
-func (h *CategoryHandlerRefactored) ListCategories(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
 	// Apply middleware chain for cross-cutting concerns
 	handler := h.serviceChecker.Check(
 		h.userExtractor.Extract(
@@ -67,7 +67,7 @@ func (h *CategoryHandlerRefactored) ListCategories(w http.ResponseWriter, r *htt
 }
 
 // listCategoriesCore contains the core business logic for listing categories.
-func (h *CategoryHandlerRefactored) listCategoriesCore(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) listCategoriesCore(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -99,7 +99,7 @@ func (h *CategoryHandlerRefactored) listCategoriesCore(w http.ResponseWriter, r 
 }
 
 // CreateCategory handles POST /api/categories with focused validation and conversion.
-func (h *CategoryHandlerRefactored) CreateCategory(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 	// Apply middleware chain
 	serviceCheck := middleware.NewServiceAvailabilityCheck("CategoryService", func() bool {
 		return h.categoryService != nil
@@ -114,7 +114,7 @@ func (h *CategoryHandlerRefactored) CreateCategory(w http.ResponseWriter, r *htt
 }
 
 // createCategoryCore contains the core business logic for creating categories.
-func (h *CategoryHandlerRefactored) createCategoryCore(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) createCategoryCore(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -161,7 +161,7 @@ func (h *CategoryHandlerRefactored) createCategoryCore(w http.ResponseWriter, r 
 }
 
 // GetCategory handles GET /api/categories/{categoryId} with clean separation.
-func (h *CategoryHandlerRefactored) GetCategory(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
 	handler := h.serviceChecker.Check(
 		h.userExtractor.Extract(
 			h.logger.LogHandlerCall("GetCategory", h.getCategoryCore),
@@ -171,7 +171,7 @@ func (h *CategoryHandlerRefactored) GetCategory(w http.ResponseWriter, r *http.R
 }
 
 // getCategoryCore contains the core business logic for getting a category.
-func (h *CategoryHandlerRefactored) getCategoryCore(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) getCategoryCore(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -203,7 +203,7 @@ func (h *CategoryHandlerRefactored) getCategoryCore(w http.ResponseWriter, r *ht
 }
 
 // UpdateCategory handles PUT /api/categories/{categoryId} with focused validation.
-func (h *CategoryHandlerRefactored) UpdateCategory(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
 	serviceCheck := middleware.NewServiceAvailabilityCheck("CategoryService", func() bool {
 		return h.categoryService != nil
 	})
@@ -217,7 +217,7 @@ func (h *CategoryHandlerRefactored) UpdateCategory(w http.ResponseWriter, r *htt
 }
 
 // updateCategoryCore contains the core business logic for updating categories.
-func (h *CategoryHandlerRefactored) updateCategoryCore(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) updateCategoryCore(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -257,7 +257,7 @@ func (h *CategoryHandlerRefactored) updateCategoryCore(w http.ResponseWriter, r 
 }
 
 // DeleteCategory handles DELETE /api/categories/{categoryId} with clean separation.
-func (h *CategoryHandlerRefactored) DeleteCategory(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
 	serviceCheck := middleware.NewServiceAvailabilityCheck("CategoryService", func() bool {
 		return h.categoryService != nil
 	})
@@ -271,7 +271,7 @@ func (h *CategoryHandlerRefactored) DeleteCategory(w http.ResponseWriter, r *htt
 }
 
 // deleteCategoryCore contains the core business logic for deleting categories.
-func (h *CategoryHandlerRefactored) deleteCategoryCore(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) deleteCategoryCore(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -291,7 +291,7 @@ func (h *CategoryHandlerRefactored) deleteCategoryCore(w http.ResponseWriter, r 
 }
 
 // GetNodesInCategory handles GET /api/categories/{categoryId}/nodes with clean separation.
-func (h *CategoryHandlerRefactored) GetNodesInCategory(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) GetNodesInCategory(w http.ResponseWriter, r *http.Request) {
 	handler := h.serviceChecker.Check(
 		h.userExtractor.Extract(
 			h.logger.LogHandlerCall("GetNodesInCategory", h.getNodesInCategoryCore),
@@ -301,7 +301,7 @@ func (h *CategoryHandlerRefactored) GetNodesInCategory(w http.ResponseWriter, r 
 }
 
 // getNodesInCategoryCore contains the core business logic for getting nodes in a category.
-func (h *CategoryHandlerRefactored) getNodesInCategoryCore(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) getNodesInCategoryCore(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -348,7 +348,7 @@ func (h *CategoryHandlerRefactored) getNodesInCategoryCore(w http.ResponseWriter
 }
 
 // GetNodeCategories handles GET /api/nodes/{nodeId}/categories with clean separation.
-func (h *CategoryHandlerRefactored) GetNodeCategories(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Request) {
 	handler := h.serviceChecker.Check(
 		h.userExtractor.Extract(
 			h.logger.LogHandlerCall("GetNodeCategories", h.getNodeCategoriesCore),
@@ -358,7 +358,7 @@ func (h *CategoryHandlerRefactored) GetNodeCategories(w http.ResponseWriter, r *
 }
 
 // getNodeCategoriesCore contains the core business logic for getting node categories.
-func (h *CategoryHandlerRefactored) getNodeCategoriesCore(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) getNodeCategoriesCore(w http.ResponseWriter, r *http.Request) {
 	_, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -376,17 +376,17 @@ func (h *CategoryHandlerRefactored) getNodeCategoriesCore(w http.ResponseWriter,
 }
 
 // AssignNodeToCategory handles POST /api/categories/{categoryId}/nodes
-func (h *CategoryHandlerRefactored) AssignNodeToCategory(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) AssignNodeToCategory(w http.ResponseWriter, r *http.Request) {
 	api.Error(w, http.StatusNotImplemented, "AssignNodeToCategory not yet implemented")
 }
 
 // RemoveNodeFromCategory handles DELETE /api/categories/{categoryId}/nodes/{nodeId}
-func (h *CategoryHandlerRefactored) RemoveNodeFromCategory(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) RemoveNodeFromCategory(w http.ResponseWriter, r *http.Request) {
 	api.Error(w, http.StatusNotImplemented, "RemoveNodeFromCategory not yet implemented")
 }
 
 // CategorizeNode handles POST /api/nodes/{nodeId}/categories
-func (h *CategoryHandlerRefactored) CategorizeNode(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) CategorizeNode(w http.ResponseWriter, r *http.Request) {
 	handler := h.userExtractor.Extract(
 		h.logger.LogHandlerCall("CategorizeNode", h.categorizeNodeCore),
 	)
@@ -394,7 +394,7 @@ func (h *CategoryHandlerRefactored) CategorizeNode(w http.ResponseWriter, r *htt
 }
 
 // categorizeNodeCore contains the core business logic for auto-categorizing nodes.
-func (h *CategoryHandlerRefactored) categorizeNodeCore(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) categorizeNodeCore(w http.ResponseWriter, r *http.Request) {
 	_, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		api.Error(w, http.StatusUnauthorized, "Authentication required")

@@ -11,7 +11,7 @@ import (
 	"brain2-backend/internal/config"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/domain/shared"
-	"brain2-backend/internal/handlers"
+	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/infrastructure/persistence/cache"
@@ -79,9 +79,9 @@ type Container struct {
 	UnitOfWorkFactory  repository.UnitOfWorkFactory
 
 	// Handler Layer
-	MemoryHandler   *handlers.MemoryHandler
-	CategoryHandler *handlers.CategoryHandler
-	HealthHandler   *handlers.HealthHandler
+	MemoryHandler   *v1handlers.MemoryHandler
+	CategoryHandler *v1handlers.CategoryHandler
+	HealthHandler   *v1handlers.HealthHandler
 
 	// HTTP Router
 	Router *chi.Mux

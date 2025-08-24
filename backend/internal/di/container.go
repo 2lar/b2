@@ -21,7 +21,7 @@ import (
 	"brain2-backend/internal/domain/node"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/domain/shared"
-	"brain2-backend/internal/handlers"
+	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
 	"brain2-backend/internal/infrastructure/messaging"
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
@@ -414,7 +414,7 @@ func (c *Container) initializeServices() {
 func (c *Container) initializeHandlers() {
 	// Initialize handlers with CQRS services
 	if c.NodeAppService != nil && c.NodeQueryService != nil && c.GraphQueryService != nil {
-		c.MemoryHandler = handlers.NewMemoryHandler(
+		c.MemoryHandler = v1handlers.NewMemoryHandler(
 			c.NodeAppService,
 			c.NodeQueryService,
 			c.GraphQueryService,
@@ -427,7 +427,7 @@ func (c *Container) initializeHandlers() {
 	}
 
 	if c.CategoryAppService != nil && c.CategoryQueryService != nil {
-		c.CategoryHandler = handlers.NewCategoryHandler(
+		c.CategoryHandler = v1handlers.NewCategoryHandler(
 			c.CategoryAppService,
 			c.CategoryQueryService,
 		)
@@ -436,7 +436,7 @@ func (c *Container) initializeHandlers() {
 		log.Println("ERROR: CQRS services not available for CategoryHandler")
 	}
 
-	c.HealthHandler = handlers.NewHealthHandler()
+	c.HealthHandler = v1handlers.NewHealthHandler()
 }
 
 // initializeMiddleware sets up middleware configuration.
@@ -494,7 +494,7 @@ func (c *Container) initializeRouter() {
 	// API routes (protected) - v1
 	router.Route("/api/v1", func(r chi.Router) {
 		// Apply authentication middleware to all API routes
-		r.Use(handlers.Authenticator)
+		r.Use(v1handlers.Authenticator)
 
 		// Node routes
 		r.Route("/nodes", func(r chi.Router) {

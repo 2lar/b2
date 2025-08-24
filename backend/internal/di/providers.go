@@ -22,7 +22,7 @@ import (
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/features"
-	"brain2-backend/internal/handlers"
+	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/infrastructure/persistence/cache"
@@ -367,9 +367,9 @@ func provideCategoryQueryService(
 
 // provideRouter creates and configures the HTTP router.
 func provideRouter(
-	memoryHandler *handlers.MemoryHandler,
-	categoryHandler *handlers.CategoryHandler,
-	healthHandler *handlers.HealthHandler,
+	memoryHandler *v1handlers.MemoryHandler,
+	categoryHandler *v1handlers.CategoryHandler,
+	healthHandler *v1handlers.HealthHandler,
 	cfg *config.Config,
 ) *chi.Mux {
 	router := chi.NewRouter()
@@ -386,7 +386,7 @@ func provideRouter(
 	// API routes (protected) - v1
 	router.Route("/api/v1", func(r chi.Router) {
 		// Apply authentication middleware to all API routes
-		r.Use(handlers.Authenticator)
+		r.Use(v1handlers.Authenticator)
 		
 		// Node routes
 		r.Route("/nodes", func(r chi.Router) {
@@ -592,8 +592,8 @@ func provideMemoryHandler(
 	graphQueryService *queries.GraphQueryService,
 	eventBridgeClient *awsEventbridge.Client,
 	coldStartProvider ColdStartInfoProvider,
-) *handlers.MemoryHandler {
-	return handlers.NewMemoryHandler(
+) *v1handlers.MemoryHandler {
+	return v1handlers.NewMemoryHandler(
 		nodeService,
 		nodeQueryService,
 		graphQueryService,
@@ -606,16 +606,16 @@ func provideMemoryHandler(
 func provideCategoryHandler(
 	categoryService *services.CategoryService,
 	categoryQueryService *queries.CategoryQueryService,
-) *handlers.CategoryHandler {
-	return handlers.NewCategoryHandler(
+) *v1handlers.CategoryHandler {
+	return v1handlers.NewCategoryHandler(
 		categoryService,
 		categoryQueryService,
 	)
 }
 
 // provideHealthHandler creates the health handler.
-func provideHealthHandler() *handlers.HealthHandler {
-	return handlers.NewHealthHandler()
+func provideHealthHandler() *v1handlers.HealthHandler {
+	return v1handlers.NewHealthHandler()
 }
 
 // ============================================================================
@@ -680,9 +680,9 @@ func provideContainer(
 	connectionAnalyzer *domainServices.ConnectionAnalyzer,
 	eventBus shared.EventBus,
 	unitOfWork repository.UnitOfWork,
-	memoryHandler *handlers.MemoryHandler,
-	categoryHandler *handlers.CategoryHandler,
-	healthHandler *handlers.HealthHandler,
+	memoryHandler *v1handlers.MemoryHandler,
+	categoryHandler *v1handlers.CategoryHandler,
+	healthHandler *v1handlers.HealthHandler,
 	router *chi.Mux,
 	repositoryFactory *repository.RepositoryFactory,
 	coldStartTracker *ColdStartTracker,

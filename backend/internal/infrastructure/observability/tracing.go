@@ -20,11 +20,18 @@ import (
 	"brain2-backend/internal/repository"
 )
 
-// TracerProvider wraps OpenTelemetry tracer provider with enhanced configuration
+// TracerProvider wraps OpenTelemetry tracer provider with enhanced configuration.
+//
+// This wrapper provides additional functionality beyond the standard OTEL provider:
+//   - Lambda-optimized sampling strategies
+//   - Automatic resource attribution
+//   - Batch export configuration for performance
+//   - Context propagation across AWS services
+//   - Custom attribute extraction for domain events
 type TracerProvider struct {
-	provider *sdktrace.TracerProvider
-	tracer   trace.Tracer
-	config   TracingConfig
+	provider *sdktrace.TracerProvider // Underlying OTEL provider
+	tracer   trace.Tracer             // Pre-configured tracer instance
+	config   TracingConfig            // Configuration settings
 }
 
 // TracingConfig holds tracing configuration

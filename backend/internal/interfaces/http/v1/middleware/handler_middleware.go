@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	
+	sharedContext "brain2-backend/internal/context"
 	"brain2-backend/pkg/api"
 )
 
@@ -66,16 +67,16 @@ func (u *UserIDExtractor) Extract(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		
-		// Add user ID to context for downstream handlers
-		ctx := context.WithValue(r.Context(), "userID", userID)
+		// Add user ID to context for downstream handlers using shared context
+		ctx := sharedContext.WithUserID(r.Context(), userID)
 		next(w, r.WithContext(ctx))
 	}
 }
 
 // GetUserIDFromContext extracts user ID from request context.
 func GetUserIDFromContext(ctx context.Context) (string, bool) {
-	userID, ok := ctx.Value("userID").(string)
-	return userID, ok
+	// Use the shared context utility for consistency
+	return sharedContext.GetUserIDFromContext(ctx)
 }
 
 // ErrorHandler provides consistent error handling across handlers.
@@ -112,14 +113,8 @@ func (l *HandlerLoggingHelper) LogHandlerCall(handlerName string, next http.Hand
 
 // getUserID extracts user ID from request using shared context.
 func getUserID(r *http.Request) (string, bool) {
-	// Import the actual implementation from handlers/common.go
-	// For now, use the shared context approach directly
-	if userID := r.Context().Value("userID"); userID != nil {
-		if uid, ok := userID.(string); ok {
-			return uid, true
-		}
-	}
-	return "", false
+	// Use the shared context utility to get user ID
+	return sharedContext.GetUserIDFromContext(r.Context())
 }
 
 // handleServiceError handles service errors using proper error classification.

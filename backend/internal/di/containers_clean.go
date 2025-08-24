@@ -12,7 +12,7 @@ import (
 	"brain2-backend/internal/config"
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
-	"brain2-backend/internal/handlers"
+	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence/cache"
 	"brain2-backend/internal/repository"
@@ -165,10 +165,10 @@ func NewServiceContainer(repos *RepositoryContainer, infra *InfrastructureContai
 // Single Responsibility: HTTP request handling only.
 type HandlerContainer struct {
 	// Handlers (with aliases for backward compatibility)
-	NodeHandler     *handlers.MemoryHandler
-	Memory          *handlers.MemoryHandler // Alias
-	CategoryHandler *handlers.CategoryHandler
-	Category        *handlers.CategoryHandler // Alias
+	NodeHandler     *v1handlers.MemoryHandler
+	Memory          *v1handlers.MemoryHandler // Alias
+	CategoryHandler *v1handlers.CategoryHandler
+	Category        *v1handlers.CategoryHandler // Alias
 	EdgeHandler     interface{} // TODO: Add edge handler
 	HealthHandler   http.HandlerFunc
 	MetricsHandler  http.HandlerFunc

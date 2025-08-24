@@ -51,8 +51,19 @@ var (
 // ============================================================================
 
 // FindByID retrieves a node by its ID with explicit userID.
+//
+// This method demonstrates the Single Table Design pattern where:
+//   - PK (Partition Key) = "USER#{userID}" for data isolation
+//   - SK (Sort Key) = "NODE#{nodeID}" for entity identification
+//   - User data is automatically partitioned for security and performance
+//
+// The method handles common DynamoDB patterns:
+//   - Error wrapping with context for debugging
+//   - Proper handling of not found conditions
+//   - Custom attribute parsing for complex objects
 func (r *NodeRepository) FindByID(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) (*node.Node, error) {
-	// Build the composite key for DynamoDB using explicit userID
+	// Build the composite key for DynamoDB using Single Table Design principles
+	// This ensures data isolation per user while maintaining efficient queries
 	key := map[string]types.AttributeValue{
 		"PK": StringAttr(BuildUserPK(userID.String())),
 		"SK": StringAttr(BuildNodeSK(nodeID.String())),

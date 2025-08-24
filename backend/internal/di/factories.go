@@ -15,7 +15,7 @@ import (
 	"brain2-backend/internal/config"
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
-	"brain2-backend/internal/handlers"
+	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
 	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/repository"
 
@@ -272,7 +272,7 @@ func NewHandlerFactory(
 }
 
 // CreateMemoryHandler creates the memory handler with all dependencies.
-func (hf *HandlerFactory) CreateMemoryHandler(coldStartProvider ColdStartInfoProvider) *handlers.MemoryHandler {
+func (hf *HandlerFactory) CreateMemoryHandler(coldStartProvider ColdStartInfoProvider) *v1handlers.MemoryHandler {
 	hf.logger.Debug("Creating MemoryHandler")
 	
 	// Create CQRS services
@@ -280,7 +280,7 @@ func (hf *HandlerFactory) CreateMemoryHandler(coldStartProvider ColdStartInfoPro
 	nodeQueryService := hf.serviceFactory.CreateNodeQueryService()
 	graphQueryService := hf.serviceFactory.CreateGraphQueryService()
 	
-	handler := handlers.NewMemoryHandler(
+	handler := v1handlers.NewMemoryHandler(
 		nodeService,
 		nodeQueryService,
 		graphQueryService,
@@ -293,14 +293,14 @@ func (hf *HandlerFactory) CreateMemoryHandler(coldStartProvider ColdStartInfoPro
 }
 
 // CreateCategoryHandler creates the category handler.
-func (hf *HandlerFactory) CreateCategoryHandler() *handlers.CategoryHandler {
+func (hf *HandlerFactory) CreateCategoryHandler() *v1handlers.CategoryHandler {
 	hf.logger.Debug("Creating CategoryHandler")
 	
 	// Create CQRS services
 	categoryService := hf.serviceFactory.CreateCategoryService()
 	categoryQueryService := hf.serviceFactory.CreateCategoryQueryService()
 	
-	handler := handlers.NewCategoryHandler(
+	handler := v1handlers.NewCategoryHandler(
 		categoryService,
 		categoryQueryService,
 	)
@@ -310,8 +310,8 @@ func (hf *HandlerFactory) CreateCategoryHandler() *handlers.CategoryHandler {
 }
 
 // CreateHealthHandler creates the health check handler.
-// func (hf *HandlerFactory) CreateHealthHandler(healthChecker HealthChecker) *handlers.HealthHandler {
-// 	return handlers.NewHealthHandler(healthChecker)
+// func (hf *HandlerFactory) CreateHealthHandler(healthChecker HealthChecker) *v1handlers.HealthHandler {
+// 	return v1handlers.NewHealthHandler(healthChecker)
 // }
 
 // CreateAllHandlers creates all handlers as a convenience method.
@@ -420,7 +420,7 @@ func (rf *RouterFactory) setupRoutes(router *chi.Mux) {
 	// API routes (protected)
 	router.Route("/api", func(r chi.Router) {
 		// Apply authentication middleware for API routes
-		// r.Use(handlers.Authenticator)
+		// r.Use(v1handlers.Authenticator)
 		
 		// Apply circuit breaker for API routes
 		// if rf.config.Features.EnableCircuitBreaker {
