@@ -220,7 +220,7 @@ func (uow *DynamoDBUnitOfWork) AddOperation(op Operation) error {
 // AddPutOperation adds a PUT operation to the transaction
 func (uow *DynamoDBUnitOfWork) AddPutOperation(item interface{}, conditionExpression string) error {
 	op := Operation{
-		Type:                OperationType Put,
+		Type:                OperationTypePut,
 		TableName:           uow.tableName,
 		Item:                item,
 		ConditionExpression: conditionExpression,

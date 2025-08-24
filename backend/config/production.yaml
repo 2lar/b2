@@ -112,9 +112,10 @@ metrics:
 # Tracing configuration for production
 tracing:
   enabled: true
-  provider: "xray"
+  provider: "otlp"            # Use OTLP with AWS ADOT for X-Ray
   service_name: "brain2-production"
-  sample_rate: 0.1           # Sample 10% of requests
+  sample_rate: 0.01           # Sample 1% of requests to control costs
+  endpoint: "localhost:4317"  # ADOT collector endpoint in Lambda layer
 
 # Event bus configuration for production
 events:

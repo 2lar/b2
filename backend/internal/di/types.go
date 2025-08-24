@@ -60,6 +60,8 @@ type Container struct {
 	Cache            cache.Cache
 	MetricsCollector *observability.Collector
 	TracerProvider   *observability.TracerProvider
+	TracePropagator  *observability.TracePropagator
+	SpanAttributes   *observability.SpanAttributes
 	Store            persistence.Store
 
 	// Phase 3: Application Service Layer (CQRS)

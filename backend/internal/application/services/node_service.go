@@ -26,6 +26,11 @@ import (
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
+	
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // NodeService implements the Application Service pattern for node operations.
@@ -38,6 +43,7 @@ type NodeService struct {
 	eventBus         shared.EventBus                    // For domain event publishing
 	connectionAnalyzer *domainServices.ConnectionAnalyzer // Domain service for complex business logic
 	idempotencyStore repository.IdempotencyStore        // For idempotent operations
+	tracer           trace.Tracer                       // For distributed tracing
 }
 
 // NewNodeService creates a new NodeService with all required dependencies.
@@ -56,6 +62,7 @@ func NewNodeService(
 		eventBus:           eventBus,
 		connectionAnalyzer: connectionAnalyzer,
 		idempotencyStore:   idempotencyStore,
+		tracer:             otel.Tracer("brain2-backend.application.node_service"),
 	}
 }
 
@@ -68,14 +75,30 @@ func NewNodeService(
 // 5. Publish domain events
 // 6. Convert domain objects back to DTOs for response
 func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCommand) (*dto.CreateNodeResult, error) {
+	// Start tracing span for the entire operation
+	ctx, span := s.tracer.Start(ctx, "NodeService.CreateNode",
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(
+			attribute.String("user.id", cmd.UserID),
+			attribute.Int("content.length", len(cmd.Content)),
+			attribute.Int("tags.count", len(cmd.Tags)),
+			attribute.Bool("has_idempotency_key", cmd.IdempotencyKey != ""),
+		),
+	)
+	defer span.End()
+
 	// 1. Create a new UnitOfWork instance for this request
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to create unit of work")
 		return nil, appErrors.Wrap(err, "failed to create unit of work")
 	}
 	
 	// Start unit of work for transaction boundary
 	if err := uow.Begin(ctx); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to begin transaction")
 		return nil, appErrors.Wrap(err, "failed to begin transaction")
 	}
 	
@@ -85,15 +108,18 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	// Ensure proper cleanup even on panic
 	defer func() {
 		if r := recover(); r != nil {
+			span.RecordError(fmt.Errorf("panic: %v", r))
+			span.SetStatus(codes.Error, "Panic occurred")
 			// Attempt rollback on panic
 			if rollbackErr := uow.Rollback(); rollbackErr != nil {
-				// Log error but continue with panic
-				// TODO: Add proper logging
+				span.AddEvent("rollback_failed_on_panic",
+					trace.WithAttributes(attribute.String("error", rollbackErr.Error())))
 			}
 			// Re-panic to let it bubble up
 			panic(r)
 		} else if !commitCalled {
 			// Only rollback if commit wasn't called
+			span.AddEvent("rolling_back_transaction")
 			uow.Rollback()
 		}
 	}()

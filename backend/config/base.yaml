@@ -160,12 +160,13 @@ cors:
 
 # Distributed tracing configuration
 tracing:
-  enabled: false
-  provider: "jaeger"          # Options: jaeger, zipkin, xray, datadog
+  enabled: true
+  provider: "otlp"           # Options: jaeger, zipkin, xray, otlp, datadog
   service_name: "brain2-backend"
-  sample_rate: 0.1           # Sample 10% of requests
-  agent_host: "localhost"
-  agent_port: 6831
+  sample_rate: 1.0           # Sample 100% in dev, override per environment
+  endpoint: "localhost:4317"  # OTLP gRPC endpoint
+  agent_host: "localhost"     # Legacy support
+  agent_port: 6831           # Legacy support
 
 # Event bus configuration
 events:
@@ -181,8 +182,8 @@ features:
   enable_caching: false
   enable_auto_connect: true
   enable_ai_processing: false
-  enable_metrics: false
-  enable_tracing: false
+  enable_metrics: true
+  enable_tracing: true
   enable_event_bus: false
   
   # Infrastructure features

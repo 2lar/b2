@@ -20,6 +20,10 @@ import (
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
+	
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // NodeQueryService handles read operations for nodes with caching and optimization.
@@ -30,6 +34,7 @@ type NodeQueryService struct {
 	edgeReader repository.EdgeReader // Focused interface for reading edges
 	graphRepo  repository.GraphRepository // For complex graph queries
 	cache      Cache                 // Cache interface for performance
+	tracer     trace.Tracer          // For distributed tracing
 }
 
 // NewNodeQueryService creates a new NodeQueryService with all required dependencies.
@@ -44,23 +49,45 @@ func NewNodeQueryService(
 		edgeReader: edgeReader,
 		graphRepo:  graphRepo,
 		cache:      cache,
+		tracer:     otel.Tracer("brain2-backend.queries.node_query_service"),
 	}
 }
 
 // GetNode retrieves a single node with optional connections and metadata.
 // This method demonstrates caching and view model optimization.
 func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*dto.GetNodeResult, error) {
+	// Start tracing span
+	ctx, span := s.tracer.Start(ctx, "NodeQueryService.GetNode",
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(
+			attribute.String("user.id", query.UserID),
+			attribute.String("node.id", query.NodeID),
+			attribute.Bool("include.connections", query.IncludeConnections),
+			attribute.Bool("include.metadata", query.IncludeMetadata),
+		),
+	)
+	defer span.End()
+
 	// 1. Check cache first for performance
 	cacheKey := fmt.Sprintf("node:%s:%s:conn=%t:meta=%t", 
 		query.UserID, query.NodeID, query.IncludeConnections, query.IncludeMetadata)
 	
 	if s.cache != nil {
-		if cachedData, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
+		cacheCtx, cacheSpan := s.tracer.Start(ctx, "cache.get",
+			trace.WithAttributes(attribute.String("cache.key", cacheKey)))
+		
+		if cachedData, found, err := s.cache.Get(cacheCtx, cacheKey); err == nil && found {
 			var result dto.GetNodeResult
 			if err := json.Unmarshal(cachedData, &result); err == nil {
+				cacheSpan.SetAttributes(attribute.Bool("cache.hit", true))
+				cacheSpan.End()
+				span.AddEvent("cache_hit")
 				return &result, nil
 			}
 		}
+		cacheSpan.SetAttributes(attribute.Bool("cache.hit", false))
+		cacheSpan.End()
+		span.AddEvent("cache_miss")
 	}
 
 	// 2. Parse and validate domain identifiers

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -554,11 +555,15 @@ func (c *Container) initializeObservability() error {
 
 	// Initialize tracing provider if enabled
 	if c.Config.Tracing.Enabled {
-		tracerProvider, err := observability.InitTracing(
-			"brain2-backend",
-			string(c.Config.Environment),
-			c.Config.Tracing.Endpoint,
-		)
+		tracingConfig := observability.TracingConfig{
+			ServiceName:  "brain2-backend",
+			Environment:  string(c.Config.Environment),
+			Endpoint:     c.Config.Tracing.Endpoint,
+			SampleRate:   c.Config.Tracing.SampleRate,
+			EnableXRay:   isRunningInLambda(),
+			EnableDebug:  c.Config.Environment == "development",
+		}
+		tracerProvider, err := observability.InitTracing(tracingConfig)
 		if err != nil {
 			log.Printf("WARNING: Failed to initialize tracing: %v", err)
 			// Don't fail the entire startup for tracing issues
@@ -575,32 +580,54 @@ func (c *Container) initializeObservability() error {
 	return nil
 }
 
-// initializeTracing sets up distributed tracing if enabled.
+// initializeTracing sets up distributed tracing if enabled with enhanced configuration.
 func (c *Container) initializeTracing() error {
 	if !c.Config.Tracing.Enabled {
+		log.Println("Tracing is disabled in configuration")
 		return nil
 	}
 
-	log.Println("Initializing distributed tracing...")
+	log.Println("Initializing enhanced distributed tracing...")
 
-	tracerProvider, err := observability.InitTracing(
-		"brain2-backend",
-		string(c.Config.Environment),
-		c.Config.Tracing.Endpoint,
-	)
+	// Create tracing configuration
+	tracingConfig := observability.TracingConfig{
+		ServiceName:  "brain2-backend",
+		Environment:  string(c.Config.Environment),
+		Endpoint:     c.Config.Tracing.Endpoint,
+		SampleRate:   c.Config.Tracing.SampleRate,
+		EnableXRay:   isRunningInLambda(), // Auto-detect Lambda environment
+		EnableDebug:  c.Config.Environment == "development",
+	}
+
+	// Initialize tracing with enhanced configuration
+	tracerProvider, err := observability.InitTracing(tracingConfig)
 	if err != nil {
 		return fmt.Errorf("failed to initialize tracing: %w", err)
 	}
 
 	c.TracerProvider = tracerProvider
+	
+	// Initialize propagator for trace context
+	c.TracePropagator = observability.NewTracePropagator()
+	
+	// Initialize span attributes helper
+	c.SpanAttributes = observability.NewSpanAttributes()
+	
+	// Add shutdown handler
 	c.addShutdownFunction(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return tracerProvider.Shutdown(ctx)
 	})
 
-	log.Println("Distributed tracing initialized successfully")
+	log.Printf("Enhanced distributed tracing initialized successfully (sample rate: %.2f%%)", 
+		tracingConfig.SampleRate * 100)
 	return nil
+}
+
+// isRunningInLambda checks if the application is running in AWS Lambda
+func isRunningInLambda() bool {
+	return os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != ""
 }
 
 // addShutdownFunction adds a function to be called during container shutdown.

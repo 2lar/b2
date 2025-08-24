@@ -251,7 +251,7 @@ func (f *RepositoryFactory) CreateCQRSNodeRepository(
 	logger *zap.Logger,
 	cache Cache,
 	metrics MetricsCollector,
-) CQRSNodeRepository {
+) NodeRepository {
 	// Create a combined repository from reader and writer
 	combined := &cqrsNodeRepository{reader: reader, writer: writer}
 	
@@ -260,7 +260,7 @@ func (f *RepositoryFactory) CreateCQRSNodeRepository(
 	repo = f.applyNodeDecorators(repo, logger, cache, metrics)
 	
 	// Return as CQRS interface
-	return repo.(CQRSNodeRepository)
+	return repo
 }
 
 // CreateCQRSEdgeRepository creates a CQRS-enabled EdgeRepository
@@ -270,12 +270,12 @@ func (f *RepositoryFactory) CreateCQRSEdgeRepository(
 	logger *zap.Logger,
 	cache Cache,
 	metrics MetricsCollector,
-) CQRSEdgeRepository {
+) EdgeRepository {
 	// Similar pattern for edge repositories
 	combined := &cqrsEdgeRepository{reader: reader, writer: writer}
 	var repo EdgeRepository = combined
 	repo = f.applyEdgeDecorators(repo, logger, cache, metrics)
-	return repo.(CQRSEdgeRepository)
+	return repo
 }
 
 // CreateCQRSCategoryRepository creates a CQRS-enabled CategoryRepository
@@ -285,12 +285,12 @@ func (f *RepositoryFactory) CreateCQRSCategoryRepository(
 	logger *zap.Logger,
 	cache Cache,
 	metrics MetricsCollector,
-) CQRSCategoryRepository {
+) CategoryRepository {
 	// Similar pattern for category repositories
 	combined := &cqrsCategoryRepository{reader: reader, writer: writer}
 	var repo CategoryRepository = combined
 	repo = f.applyCategoryDecorators(repo, logger, cache, metrics)
-	return repo.(CQRSCategoryRepository)
+	return repo
 }
 
 // Decorator Application Methods

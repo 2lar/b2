@@ -638,11 +638,15 @@ func provideTracerProvider(cfg *config.Config) (*observability.TracerProvider, e
 	
 	// Use InitTracing which is the actual function in the observability package
 	endpoint := fmt.Sprintf("localhost:%d", cfg.Tracing.AgentPort)
-	return observability.InitTracing(
-		"brain2-backend",
-		string(cfg.Environment),
-		endpoint,
-	)
+	tracingConfig := observability.TracingConfig{
+		ServiceName:  "brain2-backend",
+		Environment:  string(cfg.Environment),
+		Endpoint:     endpoint,
+		SampleRate:   cfg.Tracing.SampleRate,
+		EnableXRay:   false, // Will be auto-detected
+		EnableDebug:  cfg.Environment == "development",
+	}
+	return observability.InitTracing(tracingConfig)
 }
 
 // ============================================================================
