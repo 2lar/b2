@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"brain2-backend/internal/domain/shared"
+	"go.uber.org/zap"
 )
 
 // UnitOfWork ensures transactional consistency across multiple repository operations.
@@ -106,6 +107,9 @@ type unitOfWork struct {
 	
 	// Domain events to be published atomically
 	pendingEvents []shared.DomainEvent
+	
+	// Logger for error reporting
+	logger *zap.Logger
 }
 
 // NewUnitOfWork creates a new Unit of Work instance.
@@ -115,13 +119,18 @@ func NewUnitOfWork(
 	transactionProvider TransactionProvider,
 	eventPublisher EventPublisher,
 	repositoryFactory TransactionalRepositoryFactory,
+	logger *zap.Logger,
 ) UnitOfWork {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &unitOfWork{
 		transactionProvider: transactionProvider,
 		eventPublisher:      eventPublisher,
 		repositoryFactory:   repositoryFactory,
 		transactionManager:  NewTransactionManager(), // Initialize with existing transaction manager
 		pendingEvents:       make([]shared.DomainEvent, 0),
+		logger:              logger,
 	}
 }
 
@@ -300,35 +309,40 @@ func (uow *unitOfWork) rollbackTransaction() error {
 
 func (uow *unitOfWork) Nodes() NodeRepository {
 	if uow.nodeRepo == nil {
-		panic("unit of work not begun - call Begin() first")
+		uow.logger.Error("unit of work not begun - call Begin() first")
+		return nil
 	}
 	return uow.nodeRepo
 }
 
 func (uow *unitOfWork) Edges() EdgeRepository {
 	if uow.edgeRepo == nil {
-		panic("unit of work not begun - call Begin() first")
+		uow.logger.Error("unit of work not begun - call Begin() first")
+		return nil
 	}
 	return uow.edgeRepo
 }
 
 func (uow *unitOfWork) Categories() CategoryRepository {
 	if uow.categoryRepo == nil {
-		panic("unit of work not begun - call Begin() first")
+		uow.logger.Error("unit of work not begun - call Begin() first")
+		return nil
 	}
 	return uow.categoryRepo
 }
 
 func (uow *unitOfWork) Keywords() KeywordRepository {
 	if uow.keywordRepo == nil {
-		panic("unit of work not begun - call Begin() first")
+		uow.logger.Error("unit of work not begun - call Begin() first")
+		return nil
 	}
 	return uow.keywordRepo
 }
 
 func (uow *unitOfWork) Graph() GraphRepository {
 	if uow.graphRepo == nil {
-		panic("unit of work not begun - call Begin() first")
+		uow.logger.Error("unit of work not begun - call Begin() first")
+		return nil
 	}
 	return uow.graphRepo
 }

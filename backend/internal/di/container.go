@@ -68,8 +68,8 @@ func (c *Container) initialize() error {
 	// 1. Load configuration
 	cfg := config.LoadConfig()
 	c.Config = &cfg
-	c.TableName = cfg.TableName
-	c.IndexName = cfg.IndexName
+	c.TableName = cfg.Database.TableName
+	c.IndexName = cfg.Database.IndexName
 
 	// 2. Initialize AWS clients
 	if err := c.initializeAWSClients(); err != nil {
@@ -169,7 +169,7 @@ func (c *Container) initializeRepository() error {
 
 	// Initialize Store implementation now that logger is available
 	storeConfig := persistence.StoreConfig{
-		TableName:      c.Config.TableName, // Use config table name
+		TableName:      c.Config.Database.TableName, // Use config table name
 		TimeoutMs:      15000,
 		RetryAttempts:  3,
 		ConsistentRead: false,
@@ -181,19 +181,17 @@ func (c *Container) initializeRepository() error {
 	c.RepositoryFactory = repository.NewRepositoryFactory(factoryConfig)
 
 	// Initialize base repositories (without persistence)
-	baseNodeRepo := infradynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
-	baseEdgeRepo := infradynamodb.NewEdgeRepositoryCQRS(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
-	baseKeywordRepo := infradynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
+	baseNodeRepo := infradynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName, c.Logger)
+	baseEdgeRepo := infradynamodb.NewEdgeRepositoryCQRS(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName, c.Logger)
+	baseKeywordRepo := infradynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName)
 	// Create transactional repository
-	baseTransactionalRepo := infradynamodb.NewTransactionalRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
-	baseCategoryRepo := infradynamodb.NewCategoryRepositoryCQRS(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
-	baseGraphRepo := infradynamodb.NewGraphRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	baseTransactionalRepo := infradynamodb.NewTransactionalRepository(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName, c.Logger)
+	baseCategoryRepo := infradynamodb.NewCategoryRepositoryCQRS(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName, c.Logger)
+	baseGraphRepo := infradynamodb.NewGraphRepository(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName, c.Logger)
 
 	// Phase 2: Apply persistence using the factory
 	c.NodeRepository = c.RepositoryFactory.CreateNodeRepository(baseNodeRepo, c.Logger, c.Cache, c.MetricsCollector)
-	// TODO: Uncomment when CreateEdgeRepository is implemented
-	// c.EdgeRepository = c.RepositoryFactory.CreateEdgeRepository(baseEdgeRepo, c.Logger, c.Cache, c.MetricsCollector)
-	c.EdgeRepository = baseEdgeRepo // Use base repository for now
+	c.EdgeRepository = c.RepositoryFactory.CreateEdgeRepository(baseEdgeRepo, c.Logger, c.Cache, c.MetricsCollector)
 	c.CategoryRepository = c.RepositoryFactory.CreateCategoryRepository(baseCategoryRepo, c.Logger, c.Cache, c.MetricsCollector)
 
 	// Repositories that don't need persistence yet (can be enhanced later)
@@ -208,7 +206,7 @@ func (c *Container) initializeRepository() error {
 	//   - IDEMPOTENCY_TTL environment variable (e.g., "24h", "7d", "1h")
 	//   - infrastructure.idempotency_ttl in config files
 	// Default: 24h, Valid range: 1h to 168h (7 days)
-	c.IdempotencyStore = infradynamodb.NewIdempotencyStore(c.DynamoDBClient, c.Config.TableName, c.Config.Infrastructure.IdempotencyTTL)
+	c.IdempotencyStore = infradynamodb.NewIdempotencyStore(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Infrastructure.IdempotencyTTL)
 
 	// Phase 2: Initialize advanced repository components
 	if err := c.initializeAdvancedRepositoryComponents(); err != nil {
@@ -323,7 +321,7 @@ func (c *Container) initializeCQRSServices() {
 	)
 
 	// Keep singleton for backward compatibility (will be removed later)
-	c.UnitOfWork = repository.NewUnitOfWork(transactionProvider, eventPublisher, repositoryFactory)
+	c.UnitOfWork = repository.NewUnitOfWork(transactionProvider, eventPublisher, repositoryFactory, c.Logger)
 
 	// Initialize Application Services (only NodeService for now)
 	// Use repositories directly

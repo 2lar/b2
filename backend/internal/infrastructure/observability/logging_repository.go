@@ -808,6 +808,98 @@ func (r *LoggingEdgeRepository) FindEdgesWithOptions(ctx context.Context, query 
 	r.logger.Check(logLevel, message).Write(logFields...)
 	return edges, err
 }
+
+// DeleteEdge wraps the delete edge operation with logging
+func (r *LoggingEdgeRepository) DeleteEdge(ctx context.Context, userID, edgeID string) error {
+	start := time.Now()
+	operationID := generateOperationID()
+	
+	logFields := []zap.Field{
+		zap.String("operation", "delete_edge"),
+		zap.String("operation_id", operationID),
+		zap.String("user_id", userID),
+		zap.String("edge_id", edgeID),
+	}
+	
+	r.logger.Debug("starting edge deletion", logFields...)
+	
+	err := r.inner.DeleteEdge(ctx, userID, edgeID)
+	
+	duration := time.Since(start)
+	logFields = append(logFields, zap.Duration("duration", duration))
+	
+	if err != nil {
+		if r.config.LogErrors {
+			r.logger.Error("edge deletion failed", append(logFields, zap.Error(err))...)
+		}
+	} else {
+		r.logger.Debug("edge deletion completed", logFields...)
+	}
+	
+	return err
+}
+
+// DeleteEdgesByNode wraps the delete edges by node operation with logging
+func (r *LoggingEdgeRepository) DeleteEdgesByNode(ctx context.Context, userID, nodeID string) error {
+	start := time.Now()
+	operationID := generateOperationID()
+	
+	logFields := []zap.Field{
+		zap.String("operation", "delete_edges_by_node"),
+		zap.String("operation_id", operationID),
+		zap.String("user_id", userID),
+		zap.String("node_id", nodeID),
+	}
+	
+	r.logger.Debug("starting edges deletion by node", logFields...)
+	
+	err := r.inner.DeleteEdgesByNode(ctx, userID, nodeID)
+	
+	duration := time.Since(start)
+	logFields = append(logFields, zap.Duration("duration", duration))
+	
+	if err != nil {
+		if r.config.LogErrors {
+			r.logger.Error("edges deletion by node failed", append(logFields, zap.Error(err))...)
+		}
+	} else {
+		r.logger.Debug("edges deletion by node completed", logFields...)
+	}
+	
+	return err
+}
+
+// DeleteEdgesBetweenNodes wraps the delete edges between nodes operation with logging
+func (r *LoggingEdgeRepository) DeleteEdgesBetweenNodes(ctx context.Context, userID, sourceNodeID, targetNodeID string) error {
+	start := time.Now()
+	operationID := generateOperationID()
+	
+	logFields := []zap.Field{
+		zap.String("operation", "delete_edges_between_nodes"),
+		zap.String("operation_id", operationID),
+		zap.String("user_id", userID),
+		zap.String("source_node_id", sourceNodeID),
+		zap.String("target_node_id", targetNodeID),
+	}
+	
+	r.logger.Debug("starting edges deletion between nodes", logFields...)
+	
+	err := r.inner.DeleteEdgesBetweenNodes(ctx, userID, sourceNodeID, targetNodeID)
+	
+	duration := time.Since(start)
+	logFields = append(logFields, zap.Duration("duration", duration))
+	
+	if err != nil {
+		if r.config.LogErrors {
+			r.logger.Error("edges deletion between nodes failed", append(logFields, zap.Error(err))...)
+		}
+	} else {
+		r.logger.Debug("edges deletion between nodes completed", logFields...)
+	}
+	
+	return err
+}
+
 func (r *LoggingNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
 	return r.inner.BatchGetNodes(ctx, userID, nodeIDs)
 }

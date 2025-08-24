@@ -50,6 +50,11 @@ type EdgeRepository interface {
 	CreateEdge(ctx context.Context, edge *edge.Edge) error
 	FindEdges(ctx context.Context, query EdgeQuery) ([]*edge.Edge, error)
 	
+	// Delete operations
+	DeleteEdge(ctx context.Context, userID, edgeID string) error
+	DeleteEdgesByNode(ctx context.Context, userID, nodeID string) error
+	DeleteEdgesBetweenNodes(ctx context.Context, userID, sourceNodeID, targetNodeID string) error
+	
 	// Enhanced edge operations with pagination (existing - maintained)
 	GetEdgesPage(ctx context.Context, query EdgeQuery, pagination Pagination) (*EdgePage, error)
 	

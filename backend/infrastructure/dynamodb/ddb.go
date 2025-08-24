@@ -1658,6 +1658,26 @@ func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID 
 	}, nil
 }
 
+// DeleteEdge implements edge deletion by ID
+func (r *ddbRepository) DeleteEdge(ctx context.Context, userID, edgeID string) error {
+	// Implementation would delete the edge from DynamoDB
+	// For now, return not implemented
+	return fmt.Errorf("DeleteEdge not implemented")
+}
+
+// DeleteEdgesByNode implements edge deletion by node
+func (r *ddbRepository) DeleteEdgesByNode(ctx context.Context, userID, nodeID string) error {
+	// This is similar to clearNodeConnections
+	return r.clearNodeConnections(ctx, userID, nodeID)
+}
+
+// DeleteEdgesBetweenNodes implements edge deletion between two nodes
+func (r *ddbRepository) DeleteEdgesBetweenNodes(ctx context.Context, userID, sourceNodeID, targetNodeID string) error {
+	// Implementation would delete edges between two specific nodes
+	// For now, return not implemented
+	return fmt.Errorf("DeleteEdgesBetweenNodes not implemented")
+}
+
 // GetEdgesPage retrieves a paginated list of edges for a user
 func (r *ddbRepository) GetEdgesPage(ctx context.Context, query repository.EdgeQuery, pagination repository.Pagination) (*repository.EdgePage, error) {
 	if err := query.Validate(); err != nil {

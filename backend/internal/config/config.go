@@ -48,9 +48,6 @@ type Config struct {
 	Version        string         `yaml:"version" json:"version"` // Configuration version
 	LoadedFrom     []string       `yaml:"-" json:"-"`             // Sources configuration was loaded from
 	
-	// Legacy fields for backward compatibility
-	TableName string `yaml:"-" json:"-"` // Deprecated: Use Database.TableName
-	IndexName string `yaml:"-" json:"-"` // Deprecated: Use Database.IndexName
 }
 
 // Environment represents the deployment environment.
@@ -371,9 +368,6 @@ func LoadConfig() Config {
 		Events:      loadEventsConfig(),
 	}
 	
-	// Set legacy fields for backward compatibility
-	cfg.TableName = cfg.Database.TableName
-	cfg.IndexName = cfg.Database.IndexName
 	
 	// Apply environment-specific defaults
 	cfg.applyEnvironmentDefaults()

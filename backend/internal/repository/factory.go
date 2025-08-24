@@ -36,6 +36,7 @@ import (
 //   nodeRepo := factory.CreateNodeRepository(baseRepo, logger, cache, metrics)
 type RepositoryFactory struct {
 	config FactoryConfig
+	logger *zap.Logger
 }
 
 // FactoryConfig controls which decorators are applied and their configuration
@@ -200,9 +201,13 @@ func ProductionFactoryConfig() FactoryConfig {
 }
 
 // NewRepositoryFactory creates a new repository factory with the given configuration
-func NewRepositoryFactory(config FactoryConfig) *RepositoryFactory {
+func NewRepositoryFactory(config FactoryConfig, logger *zap.Logger) *RepositoryFactory {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &RepositoryFactory{
 		config: config,
+		logger: logger,
 	}
 }
 
@@ -230,6 +235,16 @@ func (f *RepositoryFactory) CreateCategoryRepository(
 	return f.applyCategoryDecorators(base, logger, cache, metrics)
 }
 
+// CreateEdgeRepository creates an EdgeRepository with configured decorators
+func (f *RepositoryFactory) CreateEdgeRepository(
+	base EdgeRepository,
+	logger *zap.Logger,
+	cache Cache,
+	metrics MetricsCollector,
+) EdgeRepository {
+	return f.applyEdgeDecorators(base, logger, cache, metrics)
+}
+
 // Store-based factory methods are implemented in the infrastructure layer
 
 // CreateUnitOfWork creates a UnitOfWork with the configured transaction provider
@@ -239,7 +254,7 @@ func (f *RepositoryFactory) CreateUnitOfWork(
 	eventPublisher EventPublisher,
 	repoFactory TransactionalRepositoryFactory,
 ) UnitOfWork {
-	return NewUnitOfWork(provider, eventPublisher, repoFactory)
+	return NewUnitOfWork(provider, eventPublisher, repoFactory, f.logger)
 }
 
 // CQRS Repository Creation Methods - Advanced Pattern Support
@@ -409,7 +424,8 @@ func (f *RepositoryFactory) applyCategoryDecorators(
 func (f *RepositoryFactory) validateNodeRepository(repo NodeRepository) {
 	if repo == nil {
 		if f.config.StrictMode {
-			panic("NodeRepository cannot be nil")
+			f.logger.Error("NodeRepository cannot be nil in strict mode")
+			return
 		}
 		return
 	}
@@ -422,7 +438,8 @@ func (f *RepositoryFactory) validateNodeRepository(repo NodeRepository) {
 func (f *RepositoryFactory) validateEdgeRepository(repo EdgeRepository) {
 	if repo == nil {
 		if f.config.StrictMode {
-			panic("EdgeRepository cannot be nil")
+			f.logger.Error("EdgeRepository cannot be nil in strict mode")
+			return
 		}
 		return
 	}
@@ -432,7 +449,8 @@ func (f *RepositoryFactory) validateEdgeRepository(repo EdgeRepository) {
 func (f *RepositoryFactory) validateCategoryRepository(repo CategoryRepository) {
 	if repo == nil {
 		if f.config.StrictMode {
-			panic("CategoryRepository cannot be nil")
+			f.logger.Error("CategoryRepository cannot be nil in strict mode")
+			return
 		}
 		return
 	}
@@ -509,7 +527,7 @@ func (fb *FactoryBuilder) WithValidation(enable bool) *FactoryBuilder {
 
 // Build creates the factory with the configured settings
 func (fb *FactoryBuilder) Build() *RepositoryFactory {
-	return NewRepositoryFactory(fb.config)
+	return NewRepositoryFactory(fb.config, zap.NewNop())
 }
 
 // Specialized Factory Methods for Common Scenarios
@@ -523,7 +541,7 @@ func CreateDevelopmentFactory(logger *zap.Logger) *RepositoryFactory {
 	config.LoggingConfig.LogResponses = true
 	config.LoggingConfig.LogLevel = zap.DebugLevel
 	
-	return NewRepositoryFactory(config)
+	return NewRepositoryFactory(config, zap.NewNop())
 }
 
 // CreateProductionFactory creates a factory optimized for production
@@ -534,7 +552,7 @@ func CreateProductionFactory() *RepositoryFactory {
 	config.MetricsConfig.SampleRate = 0.05 // 5% sampling for high-volume production
 	config.CachingConfig.DefaultTTL = 10 // 10 minute default TTL
 	
-	return NewRepositoryFactory(config)
+	return NewRepositoryFactory(config, zap.NewNop())
 }
 
 // CreateTestingFactory creates a factory optimized for testing
@@ -561,7 +579,7 @@ type FactoryRegistry struct {
 func NewFactoryRegistry() *FactoryRegistry {
 	return &FactoryRegistry{
 		factories: make(map[string]*RepositoryFactory),
-		default_:  NewRepositoryFactory(DefaultFactoryConfig()),
+		default_:  NewRepositoryFactory(DefaultFactoryConfig(), zap.NewNop()),
 	}
 }
 
@@ -791,6 +809,18 @@ func (r *cqrsEdgeRepository) FindEdgesWithOptions(ctx context.Context, query Edg
 
 func (r *cqrsEdgeRepository) DeleteBySpecification(ctx context.Context, spec Specification) (int, error) {
 	return 0, nil // Placeholder
+}
+
+func (r *cqrsEdgeRepository) DeleteEdge(ctx context.Context, userID, edgeID string) error {
+	return nil // Placeholder
+}
+
+func (r *cqrsEdgeRepository) DeleteEdgesByNode(ctx context.Context, userID, nodeID string) error {
+	return nil // Placeholder
+}
+
+func (r *cqrsEdgeRepository) DeleteEdgesBetweenNodes(ctx context.Context, userID, sourceNodeID, targetNodeID string) error {
+	return nil // Placeholder
 }
 
 // cqrsCategoryRepository combines CategoryReader and CategoryWriter into a single repository  

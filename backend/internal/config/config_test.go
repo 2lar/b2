@@ -28,7 +28,6 @@ func TestLoadConfig(t *testing.T) {
 	assert.Equal(t, config.Development, cfg.Environment)
 	assert.Equal(t, 9090, cfg.Server.Port)
 	assert.Equal(t, "test-table", cfg.Database.TableName)
-	assert.Equal(t, "test-table", cfg.TableName) // Legacy field
 }
 
 // TestConfigValidation tests configuration validation.

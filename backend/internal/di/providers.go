@@ -151,7 +151,7 @@ func provideNodeRepository(
 	metrics *observability.Collector,
 ) repository.NodeRepository {
 	// Base repository implementation
-	base := infraDynamodb.NewNodeRepository(client, cfg.TableName, cfg.IndexName, logger)
+	base := infraDynamodb.NewNodeRepository(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
 	// Return base repository directly (factory pattern removed for simplicity)
 	return base
@@ -166,7 +166,7 @@ func provideEdgeRepository(
 	metrics *observability.Collector,
 ) repository.EdgeRepository {
 	// Base repository implementation
-	base := infraDynamodb.NewEdgeRepositoryCQRS(client, cfg.TableName, cfg.IndexName, logger)
+	base := infraDynamodb.NewEdgeRepositoryCQRS(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
 	// Return base repository directly
 	return base
@@ -182,7 +182,7 @@ func provideCategoryRepository(
 	metrics *observability.Collector,
 ) repository.CategoryRepository {
 	// Base repository
-	base := infraDynamodb.NewCategoryRepositoryCQRS(client, cfg.TableName, cfg.IndexName, logger)
+	base := infraDynamodb.NewCategoryRepositoryCQRS(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
 	// Return base repository directly
 	return base
@@ -434,8 +434,8 @@ func provideKeywordRepository(
 ) repository.KeywordRepository {
 	return infraDynamodb.NewKeywordRepository(
 		dynamoClient,
-		cfg.TableName,
-		cfg.IndexName,
+		cfg.Database.TableName,
+		cfg.Database.IndexName,
 	)
 }
 
@@ -447,8 +447,8 @@ func provideTransactionalRepository(
 ) repository.TransactionalRepository {
 	return dynamodb.NewTransactionalRepository(
 		dynamoClient,
-		cfg.TableName,
-		cfg.IndexName,
+		cfg.Database.TableName,
+		cfg.Database.IndexName,
 		logger,
 	)
 }
@@ -461,8 +461,8 @@ func provideGraphRepository(
 ) repository.GraphRepository {
 	return infraDynamodb.NewGraphRepository(
 		dynamoClient,
-		cfg.TableName,
-		cfg.IndexName,
+		cfg.Database.TableName,
+		cfg.Database.IndexName,
 		logger,
 	)
 }
@@ -475,8 +475,8 @@ func provideRepository(
 ) repository.Repository {
 	return dynamodb.NewRepository(
 		dynamoClient,
-		cfg.TableName,
-		cfg.IndexName,
+		cfg.Database.TableName,
+		cfg.Database.IndexName,
 		logger,
 	)
 }
@@ -488,7 +488,7 @@ func provideIdempotencyStore(
 ) repository.IdempotencyStore {
 	return dynamodb.NewIdempotencyStore(
 		dynamoClient,
-		cfg.TableName,
+		cfg.Database.TableName,
 		cfg.Infrastructure.IdempotencyTTL,
 	)
 }
@@ -500,7 +500,7 @@ func provideStore(
 	logger *zap.Logger,
 ) persistence.Store {
 	storeConfig := persistence.StoreConfig{
-		TableName:      cfg.TableName,
+		TableName:      cfg.Database.TableName,
 		TimeoutMs:      15000,
 		RetryAttempts:  3,
 		ConsistentRead: false,
@@ -520,7 +520,7 @@ func provideEventStore(
 ) repository.EventStore {
 	return infraDynamodb.NewDynamoDBEventStore(
 		dynamoClient,
-		cfg.TableName,
+		cfg.Database.TableName,
 	)
 }
 
@@ -534,8 +534,8 @@ func provideUnitOfWorkFactory(
 ) repository.UnitOfWorkFactory {
 	return infraDynamodb.NewDynamoDBUnitOfWorkFactory(
 		dynamoClient,
-		cfg.TableName,
-		cfg.IndexName,
+		cfg.Database.TableName,
+		cfg.Database.IndexName,
 		eventBus,
 		eventStore,
 		logger,
@@ -692,8 +692,8 @@ func provideContainer(
 	return &Container{
 		// Configuration
 		Config:    cfg,
-		TableName: cfg.TableName,
-		IndexName: cfg.IndexName,
+		TableName: cfg.Database.TableName,
+		IndexName: cfg.Database.IndexName,
 		
 		// Cold start tracking
 		ColdStartTime: coldStartTracker.ColdStartTime,

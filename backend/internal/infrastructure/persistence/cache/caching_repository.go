@@ -238,11 +238,53 @@ func (r *CachingNodeRepository) BatchDeleteNodes(ctx context.Context, userID str
 	return deleted, failed, nil
 }
 
-// BatchGetNodes implements batch retrieval with potential cache optimization
+// BatchGetNodes implements batch retrieval with cache optimization
 func (r *CachingNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
-	// For now, pass through to inner repository
-	// TODO: Could optimize by checking cache for each node first
-	return r.inner.BatchGetNodes(ctx, userID, nodeIDs)
+	if !r.config.EnableReads {
+		return r.inner.BatchGetNodes(ctx, userID, nodeIDs)
+	}
+	
+	result := make(map[string]*node.Node)
+	uncachedIDs := make([]string, 0)
+	
+	// Check cache for each node
+	for _, nodeID := range nodeIDs {
+		cacheKey := r.buildNodeKey(userID, nodeID)
+		if cachedData, found, cacheErr := r.cache.Get(ctx, cacheKey); found && cacheErr == nil {
+			if node, unmarshalErr := r.unmarshalNode(cachedData); unmarshalErr == nil {
+				result[nodeID] = node
+				continue
+			}
+		}
+		uncachedIDs = append(uncachedIDs, nodeID)
+	}
+	
+	// Fetch uncached nodes from database
+	if len(uncachedIDs) > 0 {
+		dbNodes, err := r.inner.BatchGetNodes(ctx, userID, uncachedIDs)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Cache the fetched nodes and add to result
+		for nodeID, node := range dbNodes {
+			result[nodeID] = node
+			
+			// Cache for future queries
+			if node != nil {
+				cacheKey := r.buildNodeKey(userID, nodeID)
+				if cacheData, marshalErr := r.marshalNode(node); marshalErr == nil {
+					ttl := r.config.DefaultTTL
+					if node.IsArchived() {
+						ttl = r.config.LongTTL
+					}
+					r.cache.Set(ctx, cacheKey, cacheData, ttl)
+				}
+			}
+		}
+	}
+	
+	return result, nil
 }
 
 // GetNodesPage implements caching for paginated queries
