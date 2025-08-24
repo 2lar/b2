@@ -67,7 +67,7 @@ func (s *EdgeQueryService) GetEdge(ctx context.Context, query *GetEdgeQuery) (*d
 	}
 
 	// 3. Find the edge between the specified nodes
-	edges, err := s.edgeReader.FindBetweenNodes(ctx, sourceID, targetID)
+	edges, err := s.edgeReader.FindBetweenNodes(ctx, userID, sourceID, targetID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to find edge")
 	}
@@ -90,12 +90,12 @@ func (s *EdgeQueryService) GetEdge(ctx context.Context, query *GetEdgeQuery) (*d
 
 	// 6. Include node data if requested
 	if query.IncludeNodes {
-		sourceNode, err := s.nodeReader.FindByID(ctx, sourceID)
+		sourceNode, err := s.nodeReader.FindByID(ctx, userID, sourceID)
 		if err == nil && sourceNode != nil {
 			result.SourceNode = dto.ToNodeView(sourceNode)
 		}
 
-		targetNode, err := s.nodeReader.FindByID(ctx, targetID)
+		targetNode, err := s.nodeReader.FindByID(ctx, userID, targetID)
 		if err == nil && targetNode != nil {
 			result.TargetNode = dto.ToNodeView(targetNode)
 		}
@@ -355,12 +355,12 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 
 	switch query.ConnectionType {
 	case "outgoing":
-		edges, err = s.edgeReader.FindBySourceNode(ctx, nodeID)
+		edges, err = s.edgeReader.FindBySourceNode(ctx, userID, nodeID)
 	case "incoming":
-		edges, err = s.edgeReader.FindByTargetNode(ctx, nodeID)
+		edges, err = s.edgeReader.FindByTargetNode(ctx, userID, nodeID)
 	case "bidirectional":
-		outgoing, err1 := s.edgeReader.FindBySourceNode(ctx, nodeID)
-		incoming, err2 := s.edgeReader.FindByTargetNode(ctx, nodeID)
+		outgoing, err1 := s.edgeReader.FindBySourceNode(ctx, userID, nodeID)
+		incoming, err2 := s.edgeReader.FindByTargetNode(ctx, userID, nodeID)
 		if err1 != nil {
 			err = err1
 		} else if err2 != nil {
@@ -403,12 +403,12 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 
 		for _, edge := range userEdges {
 			// Get source node data
-			if sourceNode, err := s.nodeReader.FindByID(ctx, edge.SourceID); err == nil && sourceNode != nil {
+			if sourceNode, err := s.nodeReader.FindByID(ctx, userID, edge.SourceID); err == nil && sourceNode != nil {
 				nodeDataMap[edge.SourceID.String()] = dto.ToNodeView(sourceNode)
 			}
 
 			// Get target node data
-			if targetNode, err := s.nodeReader.FindByID(ctx, edge.TargetID); err == nil && targetNode != nil {
+			if targetNode, err := s.nodeReader.FindByID(ctx, userID, edge.TargetID); err == nil && targetNode != nil {
 				nodeDataMap[edge.TargetID.String()] = dto.ToNodeView(targetNode)
 			}
 		}

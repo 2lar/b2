@@ -198,8 +198,8 @@ func (s *NodeServiceClean) GetNode(ctx context.Context, userID, nodeID string) (
 	}
 	
 	// Use reader directly - no transaction needed for reads
-	ctx = context.WithValue(ctx, "userID", uid)
-	node, err := s.nodeReader.FindByID(ctx, nid)
+	// userID is passed explicitly to repositories, no need to add to context
+	node, err := s.nodeReader.FindByID(ctx, uid, nid)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to find node")
 	}
@@ -230,13 +230,7 @@ func (s *NodeServiceClean) UpdateNode(ctx context.Context, cmd *commands.UpdateN
 		}
 	}()
 	
-	// Parse IDs
-	uid, err := shared.NewUserID(cmd.UserID)
-	if err != nil {
-		uow.Rollback()
-		return nil, appErrors.Wrap(err, "invalid user ID")
-	}
-	
+	// Parse and validate node ID
 	_, err = shared.ParseNodeID(cmd.NodeID)
 	if err != nil {
 		uow.Rollback()
@@ -244,7 +238,7 @@ func (s *NodeServiceClean) UpdateNode(ctx context.Context, cmd *commands.UpdateN
 	}
 	
 	// Read existing node
-	ctx = context.WithValue(ctx, "userID", uid)
+	// userID is passed explicitly to repositories, no need to add to context
 	nodeRepo := uow.Nodes()
 	query := repository.NodeQuery{
 		UserID: cmd.UserID,
@@ -329,7 +323,7 @@ func (s *NodeServiceClean) DeleteNode(ctx context.Context, userID, nodeID string
 		return appErrors.Wrap(err, "invalid node ID")
 	}
 	
-	ctx = context.WithValue(ctx, "userID", uid)
+	// userID is passed explicitly to repositories, no need to add to context
 	
 	// Delete through writer
 	nodeRepo := uow.Nodes()
@@ -361,14 +355,13 @@ func (s *NodeServiceClean) DeleteNode(ctx context.Context, userID, nodeID string
 
 // ListNodes lists nodes for a user - READ OPERATION.
 func (s *NodeServiceClean) ListNodes(ctx context.Context, userID string, pagination repository.Pagination) (*dto.NodeListResult, error) {
-	// Parse user ID
-	uid, err := shared.NewUserID(userID)
-	if err != nil {
+	// Validate user ID format
+	if _, err := shared.NewUserID(userID); err != nil {
 		return nil, appErrors.Wrap(err, "invalid user ID")
 	}
 	
 	// Use reader directly - no transaction for reads
-	ctx = context.WithValue(ctx, "userID", uid)
+	// userID is passed explicitly to repositories, no need to add to context
 	
 	// Build query
 	query := repository.NodeQuery{
@@ -403,7 +396,7 @@ func (s *NodeServiceClean) SearchNodes(ctx context.Context, userID string, keywo
 		return nil, appErrors.Wrap(err, "invalid user ID")
 	}
 	
-	ctx = context.WithValue(ctx, "userID", uid)
+	// userID is passed explicitly to repositories, no need to add to context
 	
 	var nodes []*node.Node
 	

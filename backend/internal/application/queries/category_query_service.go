@@ -305,7 +305,7 @@ func (s *CategoryQueryService) GetCategoriesForNode(ctx context.Context, query *
 	}
 
 	// 2. Verify node exists and user owns it
-	node, err := s.nodeReader.FindByID(ctx, nodeID)
+	node, err := s.nodeReader.FindByID(ctx, userID, nodeID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to find node")
 	}

@@ -306,7 +306,12 @@ func (s *NodeCommandService) DeleteNode(ctx context.Context, cmd DeleteNodeComma
 		return fmt.Errorf("invalid command: %w", err)
 	}
 	
-	// 2. Parse the node ID
+	// 2. Parse the IDs
+	userID, err := shared.ParseUserID(cmd.UserID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
+	
 	nodeID, err := shared.ParseNodeID(cmd.NodeID)
 	if err != nil {
 		return fmt.Errorf("invalid node ID: %w", err)
@@ -325,7 +330,7 @@ func (s *NodeCommandService) DeleteNode(ctx context.Context, cmd DeleteNodeComma
 	// }
 	
 	// 4. Delete the node
-	if err := s.nodeWriter.Delete(ctx, nodeID); err != nil {
+	if err := s.nodeWriter.Delete(ctx, userID, nodeID); err != nil {
 		return fmt.Errorf("failed to delete node: %w", err)
 	}
 	

@@ -12,7 +12,6 @@ import (
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	sharedContext "brain2-backend/internal/context"
 	errorContext "brain2-backend/internal/errors"
 	
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -51,18 +50,12 @@ var (
 // NODE READER INTERFACE - Read Operations
 // ============================================================================
 
-// FindByID retrieves a node by its ID.
-func (r *NodeRepository) FindByID(ctx context.Context, id shared.NodeID) (*node.Node, error) {
-	// Extract userID from context - required for DynamoDB composite key
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("user ID not found in context")
-	}
-	
-	// Build the composite key for DynamoDB
+// FindByID retrieves a node by its ID with explicit userID.
+func (r *NodeRepository) FindByID(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) (*node.Node, error) {
+	// Build the composite key for DynamoDB using explicit userID
 	key := map[string]types.AttributeValue{
-		"PK": StringAttr(BuildUserPK(userID)),
-		"SK": StringAttr(BuildNodeSK(id.String())),
+		"PK": StringAttr(BuildUserPK(userID.String())),
+		"SK": StringAttr(BuildNodeSK(nodeID.String())),
 	}
 	
 	input := &dynamodb.GetItemInput{
@@ -72,7 +65,7 @@ func (r *NodeRepository) FindByID(ctx context.Context, id shared.NodeID) (*node.
 	
 	result, err := r.client.GetItem(ctx, input)
 	if err != nil {
-		return nil, errorContext.WrapWithContext(err, "DynamoDB GetItem failed for node %s", id.String())
+		return nil, errorContext.WrapWithContext(err, "DynamoDB GetItem failed for node %s", nodeID.String())
 	}
 	
 	if result.Item == nil {
@@ -82,15 +75,15 @@ func (r *NodeRepository) FindByID(ctx context.Context, id shared.NodeID) (*node.
 	// Use custom parsing to handle different data formats
 	node, err := r.parseNodeFromItem(result.Item)
 	if err != nil {
-		return nil, errorContext.WrapWithContext(err, "failed to parse node %s", id.String())
+		return nil, errorContext.WrapWithContext(err, "failed to parse node %s", nodeID.String())
 	}
 	
 	return node, nil
 }
 
-// Exists checks if a node exists.
-func (r *NodeRepository) Exists(ctx context.Context, id shared.NodeID) (bool, error) {
-	node, err := r.FindByID(ctx, id)
+// Exists checks if a node exists with explicit userID.
+func (r *NodeRepository) Exists(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) (bool, error) {
+	node, err := r.FindByID(ctx, userID, nodeID)
 	if err == repository.ErrNodeNotFound {
 		return false, nil
 	}
@@ -373,15 +366,15 @@ func (r *NodeRepository) FindPage(ctx context.Context, query repository.NodeQuer
 	}, nil
 }
 
-// FindConnected finds nodes connected to a specific node.
-func (r *NodeRepository) FindConnected(ctx context.Context, nodeID shared.NodeID, depth int, opts ...repository.QueryOption) ([]*node.Node, error) {
+// FindConnected finds nodes connected to a specific node with explicit userID.
+func (r *NodeRepository) FindConnected(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, depth int, opts ...repository.QueryOption) ([]*node.Node, error) {
 	// This would require graph traversal, typically done with a graph database
 	// For now, return empty result
 	return []*node.Node{}, nil
 }
 
-// FindSimilar finds nodes similar to a specific node.
-func (r *NodeRepository) FindSimilar(ctx context.Context, nodeID shared.NodeID, threshold float64, opts ...repository.QueryOption) ([]*node.Node, error) {
+// FindSimilar finds nodes similar to a specific node with explicit userID.
+func (r *NodeRepository) FindSimilar(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, threshold float64, opts ...repository.QueryOption) ([]*node.Node, error) {
 	// This would require similarity calculation, typically done with ML/vector DB
 	// For now, return empty result
 	return []*node.Node{}, nil
@@ -404,8 +397,7 @@ func (r *NodeRepository) CountNodes(ctx context.Context, userID string) (int, er
 
 // FindNodesWithOptions retrieves nodes with query options.
 func (r *NodeRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
-	ctx = sharedContext.WithUserID(ctx, query.UserID)
-	
+	// No need to add to context - userID is in the query
 	userID, err := shared.NewUserID(query.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
@@ -451,10 +443,10 @@ func (r *NodeRepository) FindNodesPageWithOptions(ctx context.Context, query rep
 
 // Save creates a new node.
 func (r *NodeRepository) Save(ctx context.Context, node *node.Node) error {
-	// Extract userID from context
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("user ID not found in context")
+	// Get userID from the node entity itself
+	userID := node.GetUserID().String()
+	if userID == "" {
+		return fmt.Errorf("node must have a valid user ID")
 	}
 	
 	// Build the item with composite keys
@@ -463,7 +455,7 @@ func (r *NodeRepository) Save(ctx context.Context, node *node.Node) error {
 		"SK":        &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", node.GetID())},
 		"EntityType": &types.AttributeValueMemberS{Value: "NODE"},
 		"NodeID":    &types.AttributeValueMemberS{Value: node.GetID()},
-		"UserID":    &types.AttributeValueMemberS{Value: node.GetUserID().String()},
+		"UserID":    &types.AttributeValueMemberS{Value: userID},
 		"Content":   &types.AttributeValueMemberS{Value: node.GetContent().String()},
 		"CreatedAt": &types.AttributeValueMemberS{Value: node.CreatedAt().Format(time.RFC3339)},
 		"UpdatedAt": &types.AttributeValueMemberS{Value: node.UpdatedAt().Format(time.RFC3339)},
@@ -563,10 +555,10 @@ func (r *NodeRepository) saveBatch(ctx context.Context, nodes []*node.Node) erro
 
 // Update updates an existing node.
 func (r *NodeRepository) Update(ctx context.Context, node *node.Node) error {
-	// Extract userID from context
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("user ID not found in context")
+	// Get userID from the node entity itself
+	userID := node.GetUserID().String()
+	if userID == "" {
+		return fmt.Errorf("node must have a valid user ID")
 	}
 	
 	// Build update expression
@@ -636,17 +628,12 @@ func (r *NodeRepository) UpdateBatch(ctx context.Context, nodes []*node.Node) er
 	return nil
 }
 
-// Delete deletes a node.
-func (r *NodeRepository) Delete(ctx context.Context, id shared.NodeID) error {
-	// Extract userID from context
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("user ID not found in context")
-	}
+// Delete deletes a node with explicit userID.
+func (r *NodeRepository) Delete(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error {
 	
 	key := map[string]types.AttributeValue{
-		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
-		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", id.String())},
+		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID.String())},
+		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", nodeID.String())},
 	}
 	
 	input := &dynamodb.DeleteItemInput{
@@ -662,10 +649,10 @@ func (r *NodeRepository) Delete(ctx context.Context, id shared.NodeID) error {
 	return nil
 }
 
-// DeleteBatch deletes multiple nodes in a batch.
-func (r *NodeRepository) DeleteBatch(ctx context.Context, ids []shared.NodeID) error {
-	for _, id := range ids {
-		if err := r.Delete(ctx, id); err != nil {
+// DeleteBatch deletes multiple nodes in a batch with explicit userID.
+func (r *NodeRepository) DeleteBatch(ctx context.Context, userID shared.UserID, nodeIDs []shared.NodeID) error {
+	for _, nodeID := range nodeIDs {
+		if err := r.Delete(ctx, userID, nodeID); err != nil {
 			return err
 		}
 	}
@@ -898,13 +885,8 @@ func (r *NodeRepository) batchGetChunk(ctx context.Context, userID string, nodeI
 	return result, nil
 }
 
-// Archive archives a node (soft delete).
-func (r *NodeRepository) Archive(ctx context.Context, id shared.NodeID) error {
-	// Extract userID from context
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("user ID not found in context")
-	}
+// Archive archives a node (soft delete) with explicit userID.
+func (r *NodeRepository) Archive(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error {
 	
 	// Build update expression to set archived flag
 	update := expression.Set(expression.Name("Archived"), expression.Value(true)).
@@ -918,8 +900,8 @@ func (r *NodeRepository) Archive(ctx context.Context, id shared.NodeID) error {
 	}
 	
 	key := map[string]types.AttributeValue{
-		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
-		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", id.String())},
+		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID.String())},
+		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", nodeID.String())},
 	}
 	
 	input := &dynamodb.UpdateItemInput{
@@ -942,26 +924,36 @@ func (r *NodeRepository) Archive(ctx context.Context, id shared.NodeID) error {
 // This implements the NodeRepository interface requirement.
 func (r *NodeRepository) DeleteNode(ctx context.Context, userID, nodeID string) error {
 	// Convert string IDs to domain types
+	uID, err := shared.ParseUserID(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
+	
 	nID, err := shared.ParseNodeID(nodeID)
 	if err != nil {
 		return fmt.Errorf("invalid node ID: %w", err)
 	}
 	
 	// Delete the node using the existing Delete method
-	return r.Delete(ctx, nID)
+	return r.Delete(ctx, uID, nID)
 }
 
 // FindNodeByID finds a node by its ID.
 // This implements the NodeRepository interface requirement.
 func (r *NodeRepository) FindNodeByID(ctx context.Context, userID, nodeID string) (*node.Node, error) {
-	// Convert string ID to domain type
+	// Convert string IDs to domain types
+	uID, err := shared.ParseUserID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+	
 	nID, err := shared.ParseNodeID(nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid node ID: %w", err)
 	}
 	
 	// Use the existing FindByID method
-	return r.FindByID(ctx, nID)
+	return r.FindByID(ctx, uID, nID)
 }
 
 // unmarshalNode converts a DynamoDB item to a domain node
@@ -1116,12 +1108,17 @@ func (r *NodeRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID
 	graph := &shared.Graph{}
 	
 	// Get the central node
+	uID, err := shared.ParseUserID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+	
 	nID, err := shared.ParseNodeID(nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid node ID: %w", err)
 	}
 	
-	_, err = r.FindByID(ctx, nID)
+	_, err = r.FindByID(ctx, uID, nID)
 	if err != nil {
 		return nil, err
 	}
@@ -1137,13 +1134,8 @@ func (r *NodeRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID
 
 // Removed duplicate GetNodesPage and CountNodes - already defined earlier in the file
 
-// Unarchive unarchives a node.
-func (r *NodeRepository) Unarchive(ctx context.Context, id shared.NodeID) error {
-	// Extract userID from context
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("user ID not found in context")
-	}
+// Unarchive unarchives a node with explicit userID.
+func (r *NodeRepository) Unarchive(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error {
 	
 	// Build update expression to remove archived flag
 	update := expression.Remove(expression.Name("Archived")).
@@ -1157,8 +1149,8 @@ func (r *NodeRepository) Unarchive(ctx context.Context, id shared.NodeID) error 
 	}
 	
 	key := map[string]types.AttributeValue{
-		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
-		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", id.String())},
+		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID.String())},
+		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", nodeID.String())},
 	}
 	
 	input := &dynamodb.UpdateItemInput{
@@ -1177,13 +1169,8 @@ func (r *NodeRepository) Unarchive(ctx context.Context, id shared.NodeID) error 
 	return nil
 }
 
-// UpdateVersion updates the version for optimistic locking.
-func (r *NodeRepository) UpdateVersion(ctx context.Context, id shared.NodeID, expectedVersion shared.Version) error {
-	// Extract userID from context
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("user ID not found in context")
-	}
+// UpdateVersion updates the version for optimistic locking with explicit userID.
+func (r *NodeRepository) UpdateVersion(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, expectedVersion shared.Version) error {
 	
 	// Build update expression
 	newVersion := expectedVersion.Int() + 1
@@ -1201,8 +1188,8 @@ func (r *NodeRepository) UpdateVersion(ctx context.Context, id shared.NodeID, ex
 	}
 	
 	key := map[string]types.AttributeValue{
-		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
-		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", id.String())},
+		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID.String())},
+		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", nodeID.String())},
 	}
 	
 	input := &dynamodb.UpdateItemInput{

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 
-	sharedContext "brain2-backend/internal/context"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
@@ -64,8 +63,7 @@ func (s *CleanupService) CleanupNodeResiduals(ctx context.Context, userID, nodeI
 		return appErrors.Wrap(err, "invalid node ID")
 	}
 
-	// Add UserID to context for repository methods that need it
-	ctx = sharedContext.WithUserID(ctx, userID)
+	// No need to add userID to context - repositories use entity userIDs
 
 	// Create a unit of work for transactional cleanup
 	uow, err := s.uowFactory.Create(ctx)
@@ -132,7 +130,7 @@ func (s *CleanupService) CleanupNodeResiduals(ctx context.Context, userID, nodeI
 	for _, edge := range allEdges {
 		// Use the EdgeWriter interface if available, otherwise try through repository
 		if s.edgeWriter != nil {
-			if err := s.edgeWriter.Delete(ctx, edge.ID); err != nil {
+			if err := s.edgeWriter.Delete(ctx, edge.UserID(), edge.ID); err != nil {
 				log.Printf("WARNING: Failed to delete edge %s: %v", edge.ID.String(), err)
 				failedCount++
 			} else {
@@ -166,12 +164,12 @@ func (s *CleanupService) CleanupNodeResiduals(ctx context.Context, userID, nodeI
 func (s *CleanupService) cleanupCanonicalEdges(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error {
 	// If we have access to EdgeRepositoryCQRS with DeleteByNode method, use it
 	type edgeDeleter interface {
-		DeleteByNode(ctx context.Context, nodeID shared.NodeID) error
+		DeleteByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error
 	}
 
 	if deleter, ok := s.edgeWriter.(edgeDeleter); ok {
 		log.Printf("Using DeleteByNode for efficient edge cleanup")
-		return deleter.DeleteByNode(ctx, nodeID)
+		return deleter.DeleteByNode(ctx, userID, nodeID)
 	}
 
 	// Fallback: manual deletion (already handled above)
@@ -224,8 +222,7 @@ func (s *CleanupService) CleanupIdempotencyRecords(ctx context.Context, userID, 
 func (s *CleanupService) CleanupOrphanedEdges(ctx context.Context, userID string) error {
 	log.Printf("Starting orphaned edge cleanup for user %s", userID)
 
-	// Add UserID to context for repository methods
-	ctx = sharedContext.WithUserID(ctx, userID)
+	// No need to add userID to context - repositories use entity userIDs
 
 	// Query all edges for the user
 	edgeQuery := repository.EdgeQuery{
@@ -252,7 +249,7 @@ func (s *CleanupService) CleanupOrphanedEdges(ctx context.Context, userID string
 
 			// Delete the orphaned edge
 			if s.edgeWriter != nil {
-				if err := s.edgeWriter.Delete(ctx, edge.ID); err != nil {
+				if err := s.edgeWriter.Delete(ctx, edge.UserID(), edge.ID); err != nil {
 					log.Printf("WARNING: Failed to delete orphaned edge %s: %v", 
 						edge.ID.String(), err)
 				} else {

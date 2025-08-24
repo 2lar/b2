@@ -358,9 +358,9 @@ func (w *TransactionalNodeWriter) Update(ctx context.Context, node *node.Node) e
 }
 
 // Delete queues a node delete operation.
-func (w *TransactionalNodeWriter) Delete(ctx context.Context, id shared.NodeID) error {
+func (w *TransactionalNodeWriter) Delete(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error {
 	// TODO: Convert to transactional item
-	return w.base.Delete(ctx, id)
+	return w.base.Delete(ctx, userID, nodeID)
 }
 
 // SaveBatch queues a batch save operation.
@@ -376,27 +376,27 @@ func (w *TransactionalNodeWriter) UpdateBatch(ctx context.Context, nodes []*node
 }
 
 // DeleteBatch queues a batch delete operation.
-func (w *TransactionalNodeWriter) DeleteBatch(ctx context.Context, ids []shared.NodeID) error {
+func (w *TransactionalNodeWriter) DeleteBatch(ctx context.Context, userID shared.UserID, nodeIDs []shared.NodeID) error {
 	// TODO: Convert to transactional items
-	return w.base.DeleteBatch(ctx, ids)
+	return w.base.DeleteBatch(ctx, userID, nodeIDs)
 }
 
 // Archive queues an archive operation.
-func (w *TransactionalNodeWriter) Archive(ctx context.Context, id shared.NodeID) error {
+func (w *TransactionalNodeWriter) Archive(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error {
 	// TODO: Convert to transactional item
-	return w.base.Archive(ctx, id)
+	return w.base.Archive(ctx, userID, nodeID)
 }
 
 // Unarchive queues an unarchive operation.
-func (w *TransactionalNodeWriter) Unarchive(ctx context.Context, id shared.NodeID) error {
+func (w *TransactionalNodeWriter) Unarchive(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error {
 	// TODO: Convert to transactional item
-	return w.base.Unarchive(ctx, id)
+	return w.base.Unarchive(ctx, userID, nodeID)
 }
 
 // UpdateVersion updates the version for optimistic locking.
-func (w *TransactionalNodeWriter) UpdateVersion(ctx context.Context, id shared.NodeID, expectedVersion shared.Version) error {
+func (w *TransactionalNodeWriter) UpdateVersion(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, expectedVersion shared.Version) error {
 	// TODO: Convert to transactional item with condition
-	return w.base.UpdateVersion(ctx, id, expectedVersion)
+	return w.base.UpdateVersion(ctx, userID, nodeID, expectedVersion)
 }
 
 // TransactionalEdgeWriter wraps EdgeWriter for transactional operations.
@@ -418,39 +418,39 @@ func (w *TransactionalEdgeWriter) SaveBatch(ctx context.Context, edges []*edge.E
 }
 
 // UpdateWeight updates the weight of an edge.
-func (w *TransactionalEdgeWriter) UpdateWeight(ctx context.Context, id shared.NodeID, newWeight float64, expectedVersion shared.Version) error {
+func (w *TransactionalEdgeWriter) UpdateWeight(ctx context.Context, userID shared.UserID, edgeID shared.NodeID, newWeight float64, expectedVersion shared.Version) error {
 	// TODO: Convert to transactional item
-	return w.base.UpdateWeight(ctx, id, newWeight, expectedVersion)
+	return w.base.UpdateWeight(ctx, userID, edgeID, newWeight, expectedVersion)
 }
 
 // Delete queues an edge delete operation.
-func (w *TransactionalEdgeWriter) Delete(ctx context.Context, id shared.NodeID) error {
+func (w *TransactionalEdgeWriter) Delete(ctx context.Context, userID shared.UserID, edgeID shared.NodeID) error {
 	// TODO: Convert to transactional item
-	return w.base.Delete(ctx, id)
+	return w.base.Delete(ctx, userID, edgeID)
 }
 
 // DeleteBatch queues a batch delete operation.
-func (w *TransactionalEdgeWriter) DeleteBatch(ctx context.Context, ids []shared.NodeID) error {
+func (w *TransactionalEdgeWriter) DeleteBatch(ctx context.Context, userID shared.UserID, edgeIDs []shared.NodeID) error {
 	// TODO: Convert to transactional items
-	return w.base.DeleteBatch(ctx, ids)
+	return w.base.DeleteBatch(ctx, userID, edgeIDs)
 }
 
 // DeleteByNode deletes all edges for a node.
-func (w *TransactionalEdgeWriter) DeleteByNode(ctx context.Context, nodeID shared.NodeID) error {
+func (w *TransactionalEdgeWriter) DeleteByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error {
 	// TODO: Query and delete in transaction
-	return w.base.DeleteByNode(ctx, nodeID)
+	return w.base.DeleteByNode(ctx, userID, nodeID)
 }
 
 // SaveManyToOne saves multiple edges from one source.
-func (w *TransactionalEdgeWriter) SaveManyToOne(ctx context.Context, sourceID shared.NodeID, targetIDs []shared.NodeID, weights []float64) error {
+func (w *TransactionalEdgeWriter) SaveManyToOne(ctx context.Context, userID shared.UserID, sourceID shared.NodeID, targetIDs []shared.NodeID, weights []float64) error {
 	// TODO: Convert to transactional items
-	return w.base.SaveManyToOne(ctx, sourceID, targetIDs, weights)
+	return w.base.SaveManyToOne(ctx, userID, sourceID, targetIDs, weights)
 }
 
 // SaveOneToMany saves multiple edges to one target.
-func (w *TransactionalEdgeWriter) SaveOneToMany(ctx context.Context, sourceIDs []shared.NodeID, targetID shared.NodeID, weights []float64) error {
+func (w *TransactionalEdgeWriter) SaveOneToMany(ctx context.Context, userID shared.UserID, sourceIDs []shared.NodeID, targetID shared.NodeID, weights []float64) error {
 	// TODO: Convert to transactional items
-	return w.base.SaveOneToMany(ctx, sourceIDs, targetID, weights)
+	return w.base.SaveOneToMany(ctx, userID, sourceIDs, targetID, weights)
 }
 
 // TransactionalCategoryWriter wraps CategoryWriter for transactional operations.

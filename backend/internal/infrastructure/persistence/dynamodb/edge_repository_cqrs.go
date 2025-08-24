@@ -50,18 +50,13 @@ var (
 // EDGE READER INTERFACE - Read Operations
 // ============================================================================
 
-// FindByID retrieves an edge by its ID.
-func (r *EdgeRepositoryCQRS) FindByID(ctx context.Context, id shared.NodeID) (*edge.Edge, error) {
-	// Extract userID from context
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("user ID not found in context")
-	}
+// FindByID retrieves an edge by its ID with explicit userID.
+func (r *EdgeRepositoryCQRS) FindByID(ctx context.Context, userID shared.UserID, edgeID shared.NodeID) (*edge.Edge, error) {
 	
 	// Build the composite key for DynamoDB
 	key := map[string]types.AttributeValue{
-		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
-		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#%s", id.String())},
+		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID.String())},
+		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#%s", edgeID.String())},
 	}
 	
 	input := &dynamodb.GetItemInput{
@@ -79,7 +74,7 @@ func (r *EdgeRepositoryCQRS) FindByID(ctx context.Context, id shared.NodeID) (*e
 	}
 	
 	// Parse the edge from DynamoDB item
-	edge, err := r.parseEdgeFromItem(result.Item, userID)
+	edge, err := r.parseEdgeFromItem(result.Item, userID.String())
 	if err != nil {
 		return nil, err
 	}
@@ -87,9 +82,9 @@ func (r *EdgeRepositoryCQRS) FindByID(ctx context.Context, id shared.NodeID) (*e
 	return edge, nil
 }
 
-// Exists checks if an edge exists.
-func (r *EdgeRepositoryCQRS) Exists(ctx context.Context, id shared.NodeID) (bool, error) {
-	edge, err := r.FindByID(ctx, id)
+// Exists checks if an edge exists with explicit userID.
+func (r *EdgeRepositoryCQRS) Exists(ctx context.Context, userID shared.UserID, edgeID shared.NodeID) (bool, error) {
+	edge, err := r.FindByID(ctx, userID, edgeID)
 	if err == repository.ErrEdgeNotFound {
 		return false, nil
 	}
@@ -179,12 +174,8 @@ func (r *EdgeRepositoryCQRS) CountByUser(ctx context.Context, userID shared.User
 	return int(result.Count), nil
 }
 
-// FindBySourceNode finds edges originating from a specific node.
-func (r *EdgeRepositoryCQRS) FindBySourceNode(ctx context.Context, sourceID shared.NodeID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("user ID not found in context")
-	}
+// FindBySourceNode finds edges originating from a specific node with explicit userID.
+func (r *EdgeRepositoryCQRS) FindBySourceNode(ctx context.Context, userID shared.UserID, sourceID shared.NodeID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
 	
 	// Apply query options
 	options := repository.ApplyQueryOptions(opts...)
@@ -217,7 +208,7 @@ func (r *EdgeRepositoryCQRS) FindBySourceNode(ctx context.Context, sourceID shar
 	
 	edges := make([]*edge.Edge, 0, len(result.Items))
 	for _, item := range result.Items {
-		edge, err := r.parseEdgeFromItem(item, userID)
+		edge, err := r.parseEdgeFromItem(item, userID.String())
 		if err != nil {
 			r.logger.Warn("Failed to parse edge", zap.Error(err))
 			continue
@@ -228,12 +219,8 @@ func (r *EdgeRepositoryCQRS) FindBySourceNode(ctx context.Context, sourceID shar
 	return edges, nil
 }
 
-// FindByTargetNode finds edges pointing to a specific node.
-func (r *EdgeRepositoryCQRS) FindByTargetNode(ctx context.Context, targetID shared.NodeID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("user ID not found in context")
-	}
+// FindByTargetNode finds edges pointing to a specific node with explicit userID.
+func (r *EdgeRepositoryCQRS) FindByTargetNode(ctx context.Context, userID shared.UserID, targetID shared.NodeID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
 	
 	// Use EdgeIndex GSI to efficiently query all edges for the user, then filter for target
 	// This avoids the scan limit issue and matches what EdgeRepository does
@@ -270,7 +257,7 @@ func (r *EdgeRepositoryCQRS) FindByTargetNode(ctx context.Context, targetID shar
 		
 		// Parse edges and filter for target node
 		for _, item := range result.Items {
-			edge, err := r.parseEdgeFromItem(item, userID)
+			edge, err := r.parseEdgeFromItem(item, userID.String())
 			if err != nil {
 				r.logger.Warn("Failed to parse edge", zap.Error(err))
 				continue
@@ -292,15 +279,10 @@ func (r *EdgeRepositoryCQRS) FindByTargetNode(ctx context.Context, targetID shar
 	return allEdges, nil
 }
 
-// FindByNode finds all edges connected to a specific node.
-func (r *EdgeRepositoryCQRS) FindByNode(ctx context.Context, nodeID shared.NodeID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("user ID not found in context")
-	}
+// FindByNode finds all edges connected to a specific node with explicit userID.
+func (r *EdgeRepositoryCQRS) FindByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
 	
-	uid, _ := shared.NewUserID(userID)
-	edges, err := r.FindByUser(ctx, uid, opts...)
+	edges, err := r.FindByUser(ctx, userID, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -316,15 +298,10 @@ func (r *EdgeRepositoryCQRS) FindByNode(ctx context.Context, nodeID shared.NodeI
 	return filtered, nil
 }
 
-// FindBetweenNodes finds edges between two specific nodes.
-func (r *EdgeRepositoryCQRS) FindBetweenNodes(ctx context.Context, node1ID, node2ID shared.NodeID) ([]*edge.Edge, error) {
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("user ID not found in context")
-	}
+// FindBetweenNodes finds edges between two specific nodes with explicit userID.
+func (r *EdgeRepositoryCQRS) FindBetweenNodes(ctx context.Context, userID shared.UserID, node1ID, node2ID shared.NodeID) ([]*edge.Edge, error) {
 	
-	uid, _ := shared.NewUserID(userID)
-	edges, err := r.FindByUser(ctx, uid)
+	edges, err := r.FindByUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -391,8 +368,7 @@ func (r *EdgeRepositoryCQRS) CountBySpecification(ctx context.Context, spec repo
 
 // FindPage retrieves a page of edges.
 func (r *EdgeRepositoryCQRS) FindPage(ctx context.Context, query repository.EdgeQuery, pagination repository.Pagination) (*repository.EdgePage, error) {
-	ctx = sharedContext.WithUserID(ctx, query.UserID)
-	
+	// No need to add to context - userID is in the query
 	userID, err := shared.NewUserID(query.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)
@@ -450,7 +426,12 @@ func (r *EdgeRepositoryCQRS) FindPage(ctx context.Context, query repository.Edge
 
 // FindEdges finds edges based on query criteria - part of EdgeReader interface.
 func (r *EdgeRepositoryCQRS) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*edge.Edge, error) {
-	ctx = sharedContext.WithUserID(ctx, query.UserID)
+	// No need to add to context - userID is in the query
+	// Parse userID first
+	userID, err := shared.NewUserID(query.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
 	
 	// Check if we have a source node filter
 	if query.SourceID != "" {
@@ -458,7 +439,7 @@ func (r *EdgeRepositoryCQRS) FindEdges(ctx context.Context, query repository.Edg
 		if err != nil {
 			return nil, fmt.Errorf("invalid source node ID: %w", err)
 		}
-		return r.FindBySourceNode(ctx, sourceID)
+		return r.FindBySourceNode(ctx, userID, sourceID)
 	}
 	
 	// Check if we have a target node filter
@@ -467,21 +448,24 @@ func (r *EdgeRepositoryCQRS) FindEdges(ctx context.Context, query repository.Edg
 		if err != nil {
 			return nil, fmt.Errorf("invalid target node ID: %w", err)
 		}
-		return r.FindByTargetNode(ctx, targetID)
+		return r.FindByTargetNode(ctx, userID, targetID)
 	}
 	
 	// Otherwise return all edges for the user
-	userID, err := shared.NewUserID(query.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid user ID: %w", err)
-	}
 	
 	return r.FindByUser(ctx, userID)
 }
 
 // CountBySourceID counts edges from a source node.
 func (r *EdgeRepositoryCQRS) CountBySourceID(ctx context.Context, sourceID shared.NodeID) (int, error) {
-	edges, err := r.FindBySourceNode(ctx, sourceID)
+	// Extract userID from context for backward compatibility
+	userIDStr, _ := sharedContext.GetUserIDFromContext(ctx)
+	userID, err := shared.NewUserID(userIDStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid user ID: %w", err)
+	}
+	
+	edges, err := r.FindBySourceNode(ctx, userID, sourceID)
 	if err != nil {
 		return 0, err
 	}
@@ -494,10 +478,10 @@ func (r *EdgeRepositoryCQRS) CountBySourceID(ctx context.Context, sourceID share
 
 // Save creates a new edge.
 func (r *EdgeRepositoryCQRS) Save(ctx context.Context, edge *edge.Edge) error {
-	// Extract userID from context
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("user ID not found in context")
+	// Get userID from the edge entity itself
+	userID := edge.UserID().String()
+	if userID == "" {
+		return fmt.Errorf("edge must have a valid user ID")
 	}
 	
 	// Build the item with composite keys
@@ -536,10 +520,18 @@ func (r *EdgeRepositoryCQRS) SaveBatch(ctx context.Context, edges []*edge.Edge) 
 		return nil
 	}
 	
-	// Extract userID from context
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("user ID not found in context")
+	// Validate all edges have the same userID (for security)
+	var userID string
+	for i, edge := range edges {
+		edgeUserID := edge.UserID().String()
+		if edgeUserID == "" {
+			return fmt.Errorf("edge at index %d must have a valid user ID", i)
+		}
+		if i == 0 {
+			userID = edgeUserID
+		} else if edgeUserID != userID {
+			return fmt.Errorf("all edges in batch must belong to the same user")
+		}
 	}
 	
 	// Process in batches of 25 (DynamoDB BatchWriteItem limit)
@@ -642,13 +634,8 @@ func (r *EdgeRepositoryCQRS) saveBatchChunk(ctx context.Context, userID string, 
 	return fmt.Errorf("failed to process all items after %d attempts", maxRetries)
 }
 
-// UpdateWeight updates the weight of an edge.
-func (r *EdgeRepositoryCQRS) UpdateWeight(ctx context.Context, id shared.NodeID, newWeight float64, expectedVersion shared.Version) error {
-	// Extract userID from context
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("user ID not found in context")
-	}
+// UpdateWeight updates the weight of an edge with explicit userID.
+func (r *EdgeRepositoryCQRS) UpdateWeight(ctx context.Context, userID shared.UserID, edgeID shared.NodeID, newWeight float64, expectedVersion shared.Version) error {
 	
 	// Build update expression
 	update := expression.Set(expression.Name("Weight"), expression.Value(newWeight)).
@@ -667,8 +654,8 @@ func (r *EdgeRepositoryCQRS) UpdateWeight(ctx context.Context, id shared.NodeID,
 	}
 	
 	key := map[string]types.AttributeValue{
-		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
-		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#%s", id.String())},
+		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID.String())},
+		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#%s", edgeID.String())},
 	}
 	
 	input := &dynamodb.UpdateItemInput{
@@ -688,9 +675,9 @@ func (r *EdgeRepositoryCQRS) UpdateWeight(ctx context.Context, id shared.NodeID,
 	return nil
 }
 
-// Delete deletes an edge using the actual edge storage pattern.
+// Delete deletes an edge with explicit userID.
 // The edges are stored with PK=USER#userID#NODE#sourceID and SK=EDGE#RELATES_TO#targetID
-func (r *EdgeRepositoryCQRS) Delete(ctx context.Context, id shared.NodeID) error {
+func (r *EdgeRepositoryCQRS) Delete(ctx context.Context, userID shared.UserID, edgeID shared.NodeID) error {
 	// This method can't work with just an edge ID because we need the full key structure
 	// We need to know the source and target node IDs to construct the proper keys
 	return fmt.Errorf("Delete by ID not supported - use DeleteEdgeByNodes instead")
@@ -747,23 +734,18 @@ func (r *EdgeRepositoryCQRS) DeleteEdgeByNodes(ctx context.Context, sourceNodeID
 	return nil
 }
 
-// DeleteBatch deletes multiple edges in a batch.
-func (r *EdgeRepositoryCQRS) DeleteBatch(ctx context.Context, ids []shared.NodeID) error {
-	for _, id := range ids {
-		if err := r.Delete(ctx, id); err != nil {
+// DeleteBatch deletes multiple edges in a batch with explicit userID.
+func (r *EdgeRepositoryCQRS) DeleteBatch(ctx context.Context, userID shared.UserID, edgeIDs []shared.NodeID) error {
+	for _, edgeID := range edgeIDs {
+		if err := r.Delete(ctx, userID, edgeID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// DeleteByNode deletes all edges connected to a node using batch operations.
-func (r *EdgeRepositoryCQRS) DeleteByNode(ctx context.Context, nodeID shared.NodeID) error {
-	// Extract userID from context
-	userID, ok := sharedContext.GetUserIDFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("user ID not found in context")
-	}
+// DeleteByNode deletes all edges connected to a node using batch operations with explicit userID.
+func (r *EdgeRepositoryCQRS) DeleteByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error {
 	
 	log.Printf("DeleteByNode: Starting optimized batch deletion of edges for node %s", nodeID.String())
 	
@@ -772,7 +754,7 @@ func (r *EdgeRepositoryCQRS) DeleteByNode(ctx context.Context, nodeID shared.Nod
 	
 	// Method 1: Find edges where this node is the source
 	// PK = USER#<userID>#NODE#<nodeID>, SK begins with EDGE#RELATES_TO#
-	keyEx := expression.Key("PK").Equal(expression.Value(fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID.String())))
+	keyEx := expression.Key("PK").Equal(expression.Value(fmt.Sprintf("USER#%s#NODE#%s", userID.String(), nodeID.String())))
 	keyEx = keyEx.And(expression.Key("SK").BeginsWith("EDGE#RELATES_TO#"))
 	
 	expr, err := expression.NewBuilder().
@@ -907,18 +889,14 @@ func (r *EdgeRepositoryCQRS) DeleteByNode(ctx context.Context, nodeID shared.Nod
 }
 
 // SaveManyToOne creates multiple edges from many sources to one target.
-func (r *EdgeRepositoryCQRS) SaveManyToOne(ctx context.Context, sourceID shared.NodeID, targetIDs []shared.NodeID, weights []float64) error {
+func (r *EdgeRepositoryCQRS) SaveManyToOne(ctx context.Context, userID shared.UserID, sourceID shared.NodeID, targetIDs []shared.NodeID, weights []float64) error {
 	if len(targetIDs) != len(weights) {
 		return fmt.Errorf("targetIDs and weights must have the same length")
 	}
 	
-	// Get userID from context
-	userID, _ := sharedContext.GetUserIDFromContext(ctx)
-	uid, _ := shared.NewUserID(userID)
-	
 	edges := make([]*edge.Edge, len(targetIDs))
 	for i, targetID := range targetIDs {
-		edge, err := edge.NewEdge(sourceID, targetID, uid, weights[i])
+		edge, err := edge.NewEdge(sourceID, targetID, userID, weights[i])
 		if err != nil {
 			return fmt.Errorf("failed to create edge: %w", err)
 		}
@@ -929,18 +907,14 @@ func (r *EdgeRepositoryCQRS) SaveManyToOne(ctx context.Context, sourceID shared.
 }
 
 // SaveOneToMany creates multiple edges from one source to many targets.
-func (r *EdgeRepositoryCQRS) SaveOneToMany(ctx context.Context, sourceIDs []shared.NodeID, targetID shared.NodeID, weights []float64) error {
+func (r *EdgeRepositoryCQRS) SaveOneToMany(ctx context.Context, userID shared.UserID, sourceIDs []shared.NodeID, targetID shared.NodeID, weights []float64) error {
 	if len(sourceIDs) != len(weights) {
 		return fmt.Errorf("sourceIDs and weights must have the same length")
 	}
 	
-	// Get userID from context
-	userID, _ := sharedContext.GetUserIDFromContext(ctx)
-	uid, _ := shared.NewUserID(userID)
-	
 	edges := make([]*edge.Edge, len(sourceIDs))
 	for i, sourceID := range sourceIDs {
-		edge, err := edge.NewEdge(sourceID, targetID, uid, weights[i])
+		edge, err := edge.NewEdge(sourceID, targetID, userID, weights[i])
 		if err != nil {
 			return fmt.Errorf("failed to create edge: %w", err)
 		}
@@ -956,7 +930,7 @@ func (r *EdgeRepositoryCQRS) SaveOneToMany(ctx context.Context, sourceIDs []shar
 
 // CreateEdges creates bidirectional edges between a source node and multiple related nodes.
 func (r *EdgeRepositoryCQRS) CreateEdges(ctx context.Context, userID, sourceNodeID string, relatedNodeIDs []string) error {
-	ctx = sharedContext.WithUserID(ctx, userID)
+	// No need to add to context - edges will contain userID
 	
 	sourceID, err := shared.ParseNodeID(sourceNodeID)
 	if err != nil {
@@ -987,11 +961,7 @@ func (r *EdgeRepositoryCQRS) CreateEdges(ctx context.Context, userID, sourceNode
 
 // CreateEdge creates a single edge.
 func (r *EdgeRepositoryCQRS) CreateEdge(ctx context.Context, edge *edge.Edge) error {
-	// Add userID to context if available from edge
-	userID := edge.UserID()
-	if userID.String() != "" {
-		ctx = sharedContext.WithUserID(ctx, userID.String())
-	}
+	// Simply delegate to Save which uses the edge's userID
 	return r.Save(ctx, edge)
 }
 
@@ -1002,8 +972,7 @@ func (r *EdgeRepositoryCQRS) GetEdgesPage(ctx context.Context, query repository.
 
 // FindEdgesWithOptions retrieves edges with query options.
 func (r *EdgeRepositoryCQRS) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*edge.Edge, error) {
-	ctx = sharedContext.WithUserID(ctx, query.UserID)
-	
+	// No need to add to context - userID is in the query
 	userID, err := shared.NewUserID(query.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user ID: %w", err)

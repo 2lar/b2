@@ -34,9 +34,9 @@ import (
 // This interface is optimized for query performance and can use
 // read replicas, caching, or specialized query stores
 type NodeReader interface {
-	// Single entity queries
-	FindByID(ctx context.Context, id shared.NodeID) (*node.Node, error)
-	Exists(ctx context.Context, id shared.NodeID) (bool, error)
+	// Single entity queries - now with explicit userID for security
+	FindByID(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) (*node.Node, error)
+	Exists(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) (bool, error)
 	
 	// User-scoped queries
 	FindByUser(ctx context.Context, userID shared.UserID, opts ...QueryOption) ([]*node.Node, error)
@@ -58,9 +58,9 @@ type NodeReader interface {
 	// Paginated queries
 	FindPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error)
 	
-	// Relationship queries
-	FindConnected(ctx context.Context, nodeID shared.NodeID, depth int, opts ...QueryOption) ([]*node.Node, error)
-	FindSimilar(ctx context.Context, nodeID shared.NodeID, threshold float64, opts ...QueryOption) ([]*node.Node, error)
+	// Relationship queries - with explicit userID for validation
+	FindConnected(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, depth int, opts ...QueryOption) ([]*node.Node, error)
+	FindSimilar(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, threshold float64, opts ...QueryOption) ([]*node.Node, error)
 	
 	// Query service compatibility methods
 	GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error)
@@ -69,19 +69,19 @@ type NodeReader interface {
 
 // EdgeReader handles read-only operations for edges
 type EdgeReader interface {
-	// Single entity queries
-	FindByID(ctx context.Context, id shared.NodeID) (*edge.Edge, error)
-	Exists(ctx context.Context, id shared.NodeID) (bool, error)
+	// Single entity queries - now with explicit userID
+	FindByID(ctx context.Context, userID shared.UserID, edgeID shared.NodeID) (*edge.Edge, error)
+	Exists(ctx context.Context, userID shared.UserID, edgeID shared.NodeID) (bool, error)
 	
 	// User-scoped queries
 	FindByUser(ctx context.Context, userID shared.UserID, opts ...QueryOption) ([]*edge.Edge, error)
 	CountByUser(ctx context.Context, userID shared.UserID) (int, error)
 	
-	// Node relationship queries
-	FindBySourceNode(ctx context.Context, sourceID shared.NodeID, opts ...QueryOption) ([]*edge.Edge, error)
-	FindByTargetNode(ctx context.Context, targetID shared.NodeID, opts ...QueryOption) ([]*edge.Edge, error)
-	FindByNode(ctx context.Context, nodeID shared.NodeID, opts ...QueryOption) ([]*edge.Edge, error)
-	FindBetweenNodes(ctx context.Context, node1ID, node2ID shared.NodeID) ([]*edge.Edge, error)
+	// Node relationship queries - with userID for validation
+	FindBySourceNode(ctx context.Context, userID shared.UserID, sourceID shared.NodeID, opts ...QueryOption) ([]*edge.Edge, error)
+	FindByTargetNode(ctx context.Context, userID shared.UserID, targetID shared.NodeID, opts ...QueryOption) ([]*edge.Edge, error)
+	FindByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, opts ...QueryOption) ([]*edge.Edge, error)
+	FindBetweenNodes(ctx context.Context, userID shared.UserID, node1ID, node2ID shared.NodeID) ([]*edge.Edge, error)
 	
 	// Weight-based queries
 	FindStrongConnections(ctx context.Context, userID shared.UserID, threshold float64, opts ...QueryOption) ([]*edge.Edge, error)
@@ -136,43 +136,43 @@ type CategoryReader interface {
 // NodeWriter handles write operations for nodes
 // This interface is optimized for consistency, validation, and event publishing
 type NodeWriter interface {
-	// Create operations
+	// Create operations - node already contains userID
 	Save(ctx context.Context, node *node.Node) error
 	SaveBatch(ctx context.Context, nodes []*node.Node) error
 	
-	// Update operations
+	// Update operations - node already contains userID for validation
 	Update(ctx context.Context, node *node.Node) error
 	UpdateBatch(ctx context.Context, nodes []*node.Node) error
 	
-	// Delete operations
-	Delete(ctx context.Context, id shared.NodeID) error
-	DeleteBatch(ctx context.Context, ids []shared.NodeID) error
+	// Delete operations - now with explicit userID for security
+	Delete(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error
+	DeleteBatch(ctx context.Context, userID shared.UserID, nodeIDs []shared.NodeID) error
 	
-	// Soft delete operations (archiving)
-	Archive(ctx context.Context, id shared.NodeID) error
-	Unarchive(ctx context.Context, id shared.NodeID) error
+	// Soft delete operations (archiving) - with explicit userID
+	Archive(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error
+	Unarchive(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error
 	
-	// Version management for optimistic locking
-	UpdateVersion(ctx context.Context, id shared.NodeID, expectedVersion shared.Version) error
+	// Version management for optimistic locking - with userID for validation
+	UpdateVersion(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, expectedVersion shared.Version) error
 }
 
 // EdgeWriter handles write operations for edges
 type EdgeWriter interface {
-	// Create operations
+	// Create operations - edge already contains userID implicitly
 	Save(ctx context.Context, edge *edge.Edge) error
 	SaveBatch(ctx context.Context, edges []*edge.Edge) error
 	
-	// Update operations (edges are typically immutable, but weight can change)
-	UpdateWeight(ctx context.Context, id shared.NodeID, newWeight float64, expectedVersion shared.Version) error
+	// Update operations (edges are typically immutable, but weight can change) - with explicit userID
+	UpdateWeight(ctx context.Context, userID shared.UserID, edgeID shared.NodeID, newWeight float64, expectedVersion shared.Version) error
 	
-	// Delete operations
-	Delete(ctx context.Context, id shared.NodeID) error
-	DeleteBatch(ctx context.Context, ids []shared.NodeID) error
-	DeleteByNode(ctx context.Context, nodeID shared.NodeID) error // Delete all edges for a node
+	// Delete operations - with explicit userID
+	Delete(ctx context.Context, userID shared.UserID, edgeID shared.NodeID) error
+	DeleteBatch(ctx context.Context, userID shared.UserID, edgeIDs []shared.NodeID) error
+	DeleteByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error // Delete all edges for a node
 	
-	// Bulk operations for performance
-	SaveManyToOne(ctx context.Context, sourceID shared.NodeID, targetIDs []shared.NodeID, weights []float64) error
-	SaveOneToMany(ctx context.Context, sourceIDs []shared.NodeID, targetID shared.NodeID, weights []float64) error
+	// Bulk operations for performance - with explicit userID
+	SaveManyToOne(ctx context.Context, userID shared.UserID, sourceID shared.NodeID, targetIDs []shared.NodeID, weights []float64) error
+	SaveOneToMany(ctx context.Context, userID shared.UserID, sourceIDs []shared.NodeID, targetID shared.NodeID, weights []float64) error
 }
 
 // CategoryWriter handles write operations for categories
@@ -246,8 +246,8 @@ type GraphReader interface {
 type TransactionalWriter interface {
 	// Atomic operations across entities
 	CreateNodeWithEdges(ctx context.Context, node *node.Node, edges []*edge.Edge) error
-	DeleteNodeAndEdges(ctx context.Context, nodeID shared.NodeID) error
-	MergeNodes(ctx context.Context, sourceID, targetID shared.NodeID) error
+	DeleteNodeAndEdges(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error
+	MergeNodes(ctx context.Context, userID shared.UserID, sourceID, targetID shared.NodeID) error
 	
 	// Category operations with consistency
 	MoveCategoryWithNodes(ctx context.Context, categoryID string, newParentID string) error

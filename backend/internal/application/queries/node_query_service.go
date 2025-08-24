@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"brain2-backend/internal/application/dto"
-	sharedContext "brain2-backend/internal/context"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 	appErrors "brain2-backend/pkg/errors"
@@ -75,11 +74,8 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
 	}
 
-	// 3. Add userID to context for repository operations
-	ctx = sharedContext.WithUserID(ctx, query.UserID)
-	
-	// 4. Retrieve node from repository
-	node, err := s.nodeReader.FindByID(ctx, nodeID)
+	// 3. Retrieve node from repository - userID passed explicitly
+	node, err := s.nodeReader.FindByID(ctx, userID, nodeID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to retrieve node")
 	}
@@ -191,10 +187,7 @@ func (s *NodeQueryService) ListNodes(ctx context.Context, query *ListNodesQuery)
 		pagination.SortDirection = query.SortDirection
 	}
 
-	// 4. Add userID to context for repository operations
-	ctx = sharedContext.WithUserID(ctx, query.UserID)
-	
-	// 5. Execute query
+	// 4. Execute query - userID is in the query struct
 	page, err := s.nodeReader.GetNodesPage(ctx, nodeQuery, pagination)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to retrieve nodes page")
@@ -257,7 +250,7 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 	}
 
 	// 3. Verify node exists and user owns it
-	node, err := s.nodeReader.FindByID(ctx, nodeID)
+	node, err := s.nodeReader.FindByID(ctx, userID, nodeID)
 	if err != nil {
 		return nil, appErrors.Wrap(err, "failed to find node")
 	}
