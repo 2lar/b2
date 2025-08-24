@@ -126,7 +126,7 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		"nodeId":    result.Node.ID,
 		"content":   result.Node.Content,
 		"keywords":  result.Node.Keywords,
-		"edges":     result.Connections, // Use connections from CQRS result
+		"edges":     result.SuggestedEdges, // Use suggested edges from result
 		"timestamp": time.Now(),
 	})
 	if err != nil {

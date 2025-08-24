@@ -103,12 +103,13 @@ type NodeMetadata struct {
 	Version           int       `json:"version"`
 }
 
-// CreateNodeResult represents the result of creating a node.
-type CreateNodeResult struct {
-	Node        *NodeView        `json:"node"`
-	Connections []*ConnectionView `json:"connections"`
-	Message     string           `json:"message,omitempty"`
-}
+// CreateNodeResult is now defined in dtos.go
+// Keeping this commented for reference
+// type CreateNodeResult struct {
+// 	Node        *NodeView        `json:"node"`
+// 	Connections []*ConnectionView `json:"connections"`
+// 	Message     string           `json:"message,omitempty"`
+// }
 
 // UpdateNodeResult represents the result of updating a node.
 type UpdateNodeResult struct {
@@ -495,12 +496,12 @@ type GetGraphAnalyticsResult struct {
 	Timestamp time.Time      `json:"timestamp"`
 }
 
-// GraphStats contains basic graph statistics.
-type GraphStats struct {
-	NodeCount int                    `json:"node_count"`
-	EdgeCount int                    `json:"edge_count"`
-	Metrics   map[string]interface{} `json:"metrics,omitempty"`
-}
+// GraphStats is now defined in dtos.go
+// type GraphStats struct {
+// 	NodeCount int                    `json:"node_count"`
+// 	EdgeCount int                    `json:"edge_count"`
+// 	Metrics   map[string]interface{} `json:"metrics,omitempty"`
+// }
 
 // NeighborhoodStats contains neighborhood-specific statistics.
 type NeighborhoodStats struct {

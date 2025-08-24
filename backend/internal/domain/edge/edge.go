@@ -139,6 +139,21 @@ func ReconstructEdgeFromPrimitives(sourceIDStr, targetIDStr, userIDStr string, w
 
 // Getters (read-only access to internal state)
 
+// GetID returns the edge identifier (internal)
+func (e *Edge) GetID() shared.NodeID {
+	return e.id
+}
+
+// Source returns the source node ID
+func (e *Edge) Source() shared.NodeID {
+	return e.sourceID
+}
+
+// Target returns the target node ID  
+func (e *Edge) Target() shared.NodeID {
+	return e.targetID
+}
+
 // UserID returns the user who owns this edge
 func (e *Edge) UserID() shared.UserID {
 	return e.userID
@@ -148,6 +163,13 @@ func (e *Edge) UserID() shared.UserID {
 func (e *Edge) Weight() float64 {
 	return e.weight
 }
+
+// GetCreatedAt returns when the edge was created (internal)
+func (e *Edge) GetCreatedAt() time.Time {
+	return e.createdAt
+}
+
+// Note: Public fields ID, CreatedAt, UpdatedAt can be accessed directly
 
 // Business Methods
 

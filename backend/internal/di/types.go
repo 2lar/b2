@@ -47,8 +47,7 @@ type Container struct {
 	CategoryRepository      repository.CategoryRepository
 	GraphRepository         repository.GraphRepository
 
-	// Composed repository for backward compatibility
-	Repository       repository.Repository
+	// Idempotency store for ensuring operation idempotency
 	IdempotencyStore repository.IdempotencyStore
 
 	// Phase 2 Repository Pattern Enhancements

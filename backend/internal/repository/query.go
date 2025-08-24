@@ -9,6 +9,9 @@ type NodeQuery struct {
 	SearchText string   // Optional: Full-text search term
 	Limit      int      // Optional: Maximum number of results (0 = no limit)
 	Offset     int      // Optional: Number of results to skip
+	Archived   *bool    // Optional: Filter by archived status
+	SortBy     string   // Optional: Field to sort by (e.g., "created_at", "updated_at")
+	SortOrder  string   // Optional: Sort order ("asc" or "desc")
 }
 
 // Validate checks if the NodeQuery has valid parameters.

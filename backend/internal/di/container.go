@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"brain2-backend/infrastructure/dynamodb"
 	"brain2-backend/internal/application/commands"
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
@@ -82,10 +81,10 @@ func (c *Container) initialize() error {
 	}
 
 	// 4. Initialize service layer
-	c.initializeServicesLegacy()
+	c.initializeServices()
 
 	// 5. Initialize handler layer
-	c.initializeHandlersLegacy()
+	c.initializeHandlers()
 
 	// 6. Initialize observability
 	if err := c.initializeObservability(); err != nil {
@@ -184,8 +183,8 @@ func (c *Container) initializeRepository() error {
 	baseNodeRepo := infradynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 	baseEdgeRepo := infradynamodb.NewEdgeRepositoryCQRS(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 	baseKeywordRepo := infradynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName)
-	// Use old dynamodb package for repositories not yet migrated
-	baseTransactionalRepo := dynamodb.NewTransactionalRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	// Create transactional repository
+	baseTransactionalRepo := infradynamodb.NewTransactionalRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 	baseCategoryRepo := infradynamodb.NewCategoryRepositoryCQRS(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 	baseGraphRepo := infradynamodb.NewGraphRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
 
@@ -201,15 +200,14 @@ func (c *Container) initializeRepository() error {
 	c.TransactionalRepository = baseTransactionalRepo
 	c.GraphRepository = baseGraphRepo
 
-	// Initialize composed repository for backward compatibility
-	c.Repository = dynamodb.NewRepository(c.DynamoDBClient, c.Config.TableName, c.Config.IndexName, c.Logger)
+	// Repository field removed - using specific repositories directly
 
 	// Initialize idempotency store with configured TTL
 	// TTL can be configured via:
 	//   - IDEMPOTENCY_TTL environment variable (e.g., "24h", "7d", "1h")
 	//   - infrastructure.idempotency_ttl in config files
 	// Default: 24h, Valid range: 1h to 168h (7 days)
-	c.IdempotencyStore = dynamodb.NewIdempotencyStore(c.DynamoDBClient, c.Config.TableName, c.Config.Infrastructure.IdempotencyTTL)
+	c.IdempotencyStore = infradynamodb.NewIdempotencyStore(c.DynamoDBClient, c.Config.TableName, c.Config.Infrastructure.IdempotencyTTL)
 
 	// Phase 2: Initialize advanced repository components
 	if err := c.initializeAdvancedRepositoryComponents(); err != nil {
@@ -272,9 +270,9 @@ func (c *Container) initializeAdvancedRepositoryComponents() error {
 	return nil
 }
 
-// initializePhase3Services initializes the Phase 3 CQRS application services
-func (c *Container) initializePhase3Services() {
-	log.Println("Initializing Phase 3 Application Services with CQRS pattern...")
+// initializeCQRSServices initializes the CQRS application services
+func (c *Container) initializeCQRSServices() {
+	log.Println("Initializing CQRS Application Services...")
 	startTime := time.Now()
 
 	// Initialize domain services first
@@ -397,21 +395,18 @@ func (c *Container) initializePhase3Services() {
 		c.UnitOfWorkFactory,
 	)
 
-	log.Printf("Phase 3 Application Services initialized in %v", time.Since(startTime))
+	log.Printf("CQRS Application Services initialized in %v", time.Since(startTime))
 }
 
 // initializeServices sets up the service layer.
-func (c *Container) initializeServicesLegacy() {
-	// Initialize Phase 3 CQRS services
-	c.initializePhase3Services()
-
-	// Legacy services have been removed - using CQRS architecture directly
-	log.Println("Using CQRS services directly - legacy services removed")
+func (c *Container) initializeServices() {
+	// Initialize CQRS services
+	c.initializeCQRSServices()
 }
 
 // initializeHandlers sets up the handler layer.
-func (c *Container) initializeHandlersLegacy() {
-	// Initialize handlers - use legacy services as fallback if CQRS services not ready
+func (c *Container) initializeHandlers() {
+	// Initialize handlers with CQRS services
 	if c.NodeAppService != nil && c.NodeQueryService != nil && c.GraphQueryService != nil {
 		c.MemoryHandler = handlers.NewMemoryHandler(
 			c.NodeAppService,
@@ -701,7 +696,7 @@ func (c *Container) Validate() error {
 	}
 
 	// Validate composed repository (backward compatibility)
-	if c.Repository == nil {
+	if c.NodeRepository == nil {
 		return fmt.Errorf("composed repository not initialized")
 	}
 	if c.IdempotencyStore == nil {

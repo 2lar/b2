@@ -43,7 +43,7 @@ func NewEdgeRepositoryCQRS(client *dynamodb.Client, tableName, indexName string,
 var (
 	_ repository.EdgeReader     = (*EdgeRepositoryCQRS)(nil)
 	_ repository.EdgeWriter     = (*EdgeRepositoryCQRS)(nil)
-	_ repository.EdgeRepository = (*EdgeRepositoryCQRS)(nil)
+	_ repository.EdgeRepository = (*EdgeRepositoryCQRS)(nil) // For backward compatibility
 )
 
 // ============================================================================
@@ -448,7 +448,7 @@ func (r *EdgeRepositoryCQRS) FindPage(ctx context.Context, query repository.Edge
 	}, nil
 }
 
-// FindEdges is a compatibility method for query service.
+// FindEdges finds edges based on query criteria - part of EdgeReader interface.
 func (r *EdgeRepositoryCQRS) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*edge.Edge, error) {
 	ctx = sharedContext.WithUserID(ctx, query.UserID)
 	
@@ -1015,6 +1015,7 @@ func (r *EdgeRepositoryCQRS) FindEdgesWithOptions(ctx context.Context, query rep
 // ============================================================================
 // HELPER METHODS
 // ============================================================================
+
 
 // parseEdgeFromItem parses a DynamoDB item into an Edge domain object.
 func (r *EdgeRepositoryCQRS) parseEdgeFromItem(item map[string]types.AttributeValue, userID string) (*edge.Edge, error) {

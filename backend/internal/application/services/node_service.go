@@ -226,9 +226,8 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 
 	// 10. Convert domain objects to DTOs for response (Domain -> Application boundary)
 	result := &dto.CreateNodeResult{
-		Node:        dto.ToNodeView(node),
-		Connections: dto.ToConnectionViews(createdEdges),
-		Message:     fmt.Sprintf("Node created successfully with %d automatic connections", len(createdEdges)),
+		Node:         dto.NodeFromDomain(node),
+		CreatedEdges: s.convertEdgesToDTOs(createdEdges),
 	}
 
 	// 11. Store idempotency result if key was provided
@@ -647,9 +646,9 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 func (s *NodeService) reconstructCreateNodeResult(data map[string]interface{}) (*dto.CreateNodeResult, error) {
 	result := &dto.CreateNodeResult{}
 	
-	// Reconstruct the node view
+	// Reconstruct the node
 	if nodeData, ok := data["Node"].(map[string]interface{}); ok {
-		result.Node = s.reconstructNodeView(nodeData)
+		result.Node = s.reconstructNodeDTO(nodeData)
 	}
 	
 	// Validate that Node was reconstructed successfully
@@ -657,19 +656,14 @@ func (s *NodeService) reconstructCreateNodeResult(data map[string]interface{}) (
 		return nil, fmt.Errorf("failed to reconstruct node from cached data")
 	}
 	
-	// Reconstruct connections
-	if connections, ok := data["Connections"].([]interface{}); ok {
-		result.Connections = make([]*dto.ConnectionView, 0, len(connections))
-		for _, conn := range connections {
-			if connMap, ok := conn.(map[string]interface{}); ok {
-				result.Connections = append(result.Connections, s.reconstructConnectionView(connMap))
+	// Reconstruct created edges
+	if edges, ok := data["CreatedEdges"].([]interface{}); ok {
+		result.CreatedEdges = make([]*dto.EdgeDTO, 0, len(edges))
+		for _, edge := range edges {
+			if edgeMap, ok := edge.(map[string]interface{}); ok {
+				result.CreatedEdges = append(result.CreatedEdges, s.reconstructEdgeDTO(edgeMap))
 			}
 		}
-	}
-	
-	// Reconstruct message
-	if msg, ok := data["Message"].(string); ok {
-		result.Message = msg
 	}
 	
 	return result, nil
@@ -937,4 +931,86 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 	// No idempotency storage for bulk creates
 
 	return result, nil
+}
+
+// convertEdgesToDTOs converts domain edges to DTOs
+func (s *NodeService) convertEdgesToDTOs(edges []*edge.Edge) []*dto.EdgeDTO {
+	if edges == nil {
+		return nil
+	}
+	
+	dtos := make([]*dto.EdgeDTO, 0, len(edges))
+	for _, e := range edges {
+		if e != nil {
+			dtos = append(dtos, dto.EdgeFromDomain(e))
+		}
+	}
+	return dtos
+}
+
+// reconstructNodeDTO reconstructs a NodeDTO from cached data
+func (s *NodeService) reconstructNodeDTO(data map[string]interface{}) *dto.NodeDTO {
+	if data == nil {
+		return nil
+	}
+	
+	node := &dto.NodeDTO{}
+	
+	if id, ok := data["id"].(string); ok {
+		node.ID = id
+	}
+	if userID, ok := data["user_id"].(string); ok {
+		node.UserID = userID
+	}
+	if title, ok := data["title"].(string); ok {
+		node.Title = title
+	}
+	if content, ok := data["content"].(string); ok {
+		node.Content = content
+	}
+	if keywords, ok := data["keywords"].([]interface{}); ok {
+		node.Keywords = make([]string, 0, len(keywords))
+		for _, k := range keywords {
+			if kw, ok := k.(string); ok {
+				node.Keywords = append(node.Keywords, kw)
+			}
+		}
+	}
+	if tags, ok := data["tags"].([]interface{}); ok {
+		node.Tags = make([]string, 0, len(tags))
+		for _, t := range tags {
+			if tag, ok := t.(string); ok {
+				node.Tags = append(node.Tags, tag)
+			}
+		}
+	}
+	
+	return node
+}
+
+// reconstructEdgeDTO reconstructs an EdgeDTO from cached data
+func (s *NodeService) reconstructEdgeDTO(data map[string]interface{}) *dto.EdgeDTO {
+	if data == nil {
+		return nil
+	}
+	
+	edge := &dto.EdgeDTO{}
+	
+	if id, ok := data["id"].(string); ok {
+		edge.ID = id
+	}
+	if userID, ok := data["user_id"].(string); ok {
+		edge.UserID = userID
+	}
+	if sourceID, ok := data["source_node_id"].(string); ok {
+		edge.SourceNodeID = sourceID
+	}
+	if targetID, ok := data["target_node_id"].(string); ok {
+		edge.TargetNodeID = targetID
+	}
+	if weight, ok := data["weight"].(float64); ok {
+		edge.Weight = weight
+	}
+	
+	return edge
 }

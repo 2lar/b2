@@ -16,12 +16,9 @@ import (
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/handlers"
-	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
-	"brain2-backend/internal/infrastructure/persistence/cache"
 	"brain2-backend/internal/repository"
 
-	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
@@ -41,18 +38,7 @@ type ServiceFactory struct {
 	shutdownHandlers []func(context.Context) error
 }
 
-// RepositoryContainer holds all repository instances.
-type RepositoryContainer struct {
-	Node          repository.NodeRepository
-	Edge          repository.EdgeRepository
-	Category      repository.CategoryRepository
-	Keyword       repository.KeywordRepository
-	Transactional repository.TransactionalRepository
-	Graph         repository.GraphRepository
-	Idempotency   repository.IdempotencyStore
-	UnitOfWork    repository.UnitOfWork
-	UnitOfWorkFactory repository.UnitOfWorkFactory
-}
+// RepositoryContainer is defined in containers_clean.go
 
 // DomainServiceContainer holds domain services.
 type DomainServiceContainer struct {
@@ -60,13 +46,7 @@ type DomainServiceContainer struct {
 	EventBus          shared.EventBus
 }
 
-// InfrastructureContainer holds infrastructure services.
-type InfrastructureContainer struct {
-	Cache             cache.Cache
-	MetricsCollector  *observability.Collector
-	EventBridgeClient *awsEventbridge.Client
-	Store             persistence.Store
-}
+// InfrastructureContainer is defined in containers_clean.go
 
 // NewServiceFactory creates a new service factory with all dependencies.
 func NewServiceFactory(
@@ -214,8 +194,12 @@ func (f *ServiceFactory) CreateGraphQueryService() *queries.GraphQueryService {
 	}
 	
 	// Use the store directly for graph queries
+	var store persistence.Store
+	if f.infrastructure.Store != nil {
+		store = f.infrastructure.Store.(persistence.Store)
+	}
 	service := queries.NewGraphQueryService(
-		f.infrastructure.Store,
+		store,
 		f.logger,
 		cache,
 	)
@@ -341,11 +325,7 @@ func (hf *HandlerFactory) CreateAllHandlers(
 	}
 }
 
-// HandlerContainer holds all HTTP handlers.
-type HandlerContainer struct {
-	Memory   *handlers.MemoryHandler
-	Category *handlers.CategoryHandler
-}
+// HandlerContainer is defined in containers_clean.go
 
 // ============================================================================
 // ROUTER FACTORY - Creates configured routers

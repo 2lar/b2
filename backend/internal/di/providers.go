@@ -706,7 +706,6 @@ func provideContainer(
 		KeywordRepository:       keywordRepo,
 		TransactionalRepository: transactionalRepo,
 		GraphRepository:         graphRepo,
-		Repository:              repository,
 		IdempotencyStore:        idempotencyStore,
 		
 		// Repository Pattern Enhancements

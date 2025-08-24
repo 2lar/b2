@@ -66,9 +66,15 @@ func TestContainerComponents(t *testing.T) {
 		t.Error("EventBridgeClient should be initialized")
 	}
 	
-	// Test repository
-	if container.Repository == nil {
-		t.Error("Repository should be initialized")
+	// Test repositories
+	if container.NodeRepository == nil {
+		t.Error("NodeRepository should be initialized")
+	}
+	if container.EdgeRepository == nil {
+		t.Error("EdgeRepository should be initialized")
+	}
+	if container.CategoryRepository == nil {
+		t.Error("CategoryRepository should be initialized")
 	}
 	
 	// Test CQRS services

@@ -69,6 +69,19 @@ func NewUnauthorized(message string) error {
 	}
 }
 
+// NotFound is an alias for NewNotFound for backward compatibility
+func NotFound(message string) error {
+	return NewNotFound(message)
+}
+
+// BadRequest creates a bad request error
+func BadRequest(message string) error {
+	return &AppError{
+		Type:    ErrorTypeValidation,
+		Message: message,
+	}
+}
+
 // Wrap wraps an error with additional context
 func Wrap(err error, message string) error {
 	if err == nil {

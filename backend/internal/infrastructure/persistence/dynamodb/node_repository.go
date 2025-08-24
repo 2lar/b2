@@ -5,6 +5,7 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	
@@ -42,9 +43,8 @@ func NewNodeRepository(client *dynamodb.Client, tableName, indexName string, log
 
 // Ensure interfaces are implemented
 var (
-	_ repository.NodeReader     = (*NodeRepository)(nil)
-	_ repository.NodeWriter     = (*NodeRepository)(nil)
-	_ repository.NodeRepository = (*NodeRepository)(nil)
+	_ repository.NodeReader = (*NodeRepository)(nil)
+	_ repository.NodeWriter = (*NodeRepository)(nil)
 )
 
 // ============================================================================
@@ -387,115 +387,20 @@ func (r *NodeRepository) FindSimilar(ctx context.Context, nodeID shared.NodeID, 
 	return []*node.Node{}, nil
 }
 
-// GetNodesPage is a compatibility method for query service.
+// GetNodesPage retrieves a paginated list of nodes - part of NodeReader interface.
 func (r *NodeRepository) GetNodesPage(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination) (*repository.NodePage, error) {
 	return r.FindPage(ctx, query, pagination)
 }
 
-// CountNodes is a compatibility method for query service.
+// CountNodes counts the total number of nodes for a user - part of NodeReader interface.
 func (r *NodeRepository) CountNodes(ctx context.Context, userID string) (int, error) {
 	uid, err := shared.NewUserID(userID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("invalid user ID: %w", err)
 	}
 	return r.CountByUser(ctx, uid)
 }
 
-// ============================================================================
-// NODE REPOSITORY INTERFACE - Additional Methods for Compatibility
-// ============================================================================
-
-// CreateNodeAndKeywords creates a new node with keywords (compatibility method).
-func (r *NodeRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
-	// Simply delegate to Save which already handles keywords
-	return r.Save(ctx, node)
-}
-
-// FindNodeByID retrieves a node by user ID and node ID (compatibility method).
-func (r *NodeRepository) FindNodeByID(ctx context.Context, userID, nodeID string) (*node.Node, error) {
-	// Add userID to context for the FindByID method
-	ctx = sharedContext.WithUserID(ctx, userID)
-	
-	nid, err := shared.ParseNodeID(nodeID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid node ID: %w", err)
-	}
-	
-	return r.FindByID(ctx, nid)
-}
-
-// FindNodes retrieves nodes based on a query (compatibility method).
-func (r *NodeRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*node.Node, error) {
-	// Add userID to context
-	ctx = sharedContext.WithUserID(ctx, query.UserID)
-	
-	userID, err := shared.NewUserID(query.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid user ID: %w", err)
-	}
-	
-	// Start with all user's nodes
-	nodes, err := r.FindByUser(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	
-	// Apply filters based on query
-	if len(query.Keywords) > 0 {
-		nodes, err = r.FindByKeywords(ctx, userID, query.Keywords)
-		if err != nil {
-			return nil, err
-		}
-	}
-	
-	if len(query.Tags) > 0 {
-		filtered := make([]*node.Node, 0)
-		for _, node := range nodes {
-			for _, tag := range query.Tags {
-				if node.HasTag(tag) {
-					filtered = append(filtered, node)
-					break
-				}
-			}
-		}
-		nodes = filtered
-	}
-	
-	if query.SearchText != "" {
-		filtered := make([]*node.Node, 0)
-		for _, node := range nodes {
-			if strings.Contains(strings.ToLower(node.GetContent().String()), strings.ToLower(query.SearchText)) {
-				filtered = append(filtered, node)
-			}
-		}
-		nodes = filtered
-	}
-	
-	return nodes, nil
-}
-
-// DeleteNode deletes a node by user ID and node ID (compatibility method).
-func (r *NodeRepository) DeleteNode(ctx context.Context, userID, nodeID string) error {
-	// Add userID to context
-	ctx = sharedContext.WithUserID(ctx, userID)
-	
-	nid, err := shared.ParseNodeID(nodeID)
-	if err != nil {
-		return fmt.Errorf("invalid node ID: %w", err)
-	}
-	
-	return r.Delete(ctx, nid)
-}
-
-// GetNodeNeighborhood retrieves the neighborhood graph for a node.
-func (r *NodeRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*shared.Graph, error) {
-	// This would require graph traversal logic
-	// For now, return an empty graph
-	return &shared.Graph{
-		Nodes: []interface{}{},
-		Edges: []interface{}{},
-	}, nil
-}
 
 // FindNodesWithOptions retrieves nodes with query options.
 func (r *NodeRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
@@ -615,6 +520,13 @@ func (r *NodeRepository) Save(ctx context.Context, node *node.Node) error {
 	}
 	
 	return nil
+}
+
+// CreateNodeAndKeywords creates a node and indexes its keywords atomically.
+// This is a legacy method for backward compatibility with NodeRepository interface.
+func (r *NodeRepository) CreateNodeAndKeywords(ctx context.Context, n *node.Node) error {
+	// Simply delegate to Save which already handles keywords
+	return r.Save(ctx, n)
 }
 
 // SaveBatch saves multiple nodes in a batch.
@@ -1025,6 +937,205 @@ func (r *NodeRepository) Archive(ctx context.Context, id shared.NodeID) error {
 	
 	return nil
 }
+
+// DeleteNode permanently deletes a node from the database.
+// This implements the NodeRepository interface requirement.
+func (r *NodeRepository) DeleteNode(ctx context.Context, userID, nodeID string) error {
+	// Convert string IDs to domain types
+	nID, err := shared.ParseNodeID(nodeID)
+	if err != nil {
+		return fmt.Errorf("invalid node ID: %w", err)
+	}
+	
+	// Delete the node using the existing Delete method
+	return r.Delete(ctx, nID)
+}
+
+// FindNodeByID finds a node by its ID.
+// This implements the NodeRepository interface requirement.
+func (r *NodeRepository) FindNodeByID(ctx context.Context, userID, nodeID string) (*node.Node, error) {
+	// Convert string ID to domain type
+	nID, err := shared.ParseNodeID(nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid node ID: %w", err)
+	}
+	
+	// Use the existing FindByID method
+	return r.FindByID(ctx, nID)
+}
+
+// unmarshalNode converts a DynamoDB item to a domain node
+func (r *NodeRepository) unmarshalNode(item map[string]types.AttributeValue) (*node.Node, error) {
+	// Extract basic fields
+	var nodeData struct {
+		ID        string   `dynamodbav:"NodeID"`
+		UserID    string   `dynamodbav:"UserID"`
+		Title     string   `dynamodbav:"Title"`
+		Content   string   `dynamodbav:"Content"`
+		Keywords  []string `dynamodbav:"Keywords"`
+		Tags      []string `dynamodbav:"Tags"`
+		CreatedAt string   `dynamodbav:"CreatedAt"`
+		UpdatedAt string   `dynamodbav:"UpdatedAt"`
+		Version   int      `dynamodbav:"Version"`
+		Archived  bool     `dynamodbav:"Archived"`
+	}
+	
+	if err := attributevalue.UnmarshalMap(item, &nodeData); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal node: %w", err)
+	}
+	
+	// Parse timestamps
+	createdAt, _ := time.Parse(time.RFC3339, nodeData.CreatedAt)
+	updatedAt, _ := time.Parse(time.RFC3339, nodeData.UpdatedAt)
+	
+	// Reconstruct the node using the domain factory
+	nodeID, err := shared.ParseNodeID(nodeData.ID)
+	if err != nil {
+		return nil, err
+	}
+	
+	userID, err := shared.NewUserID(nodeData.UserID)
+	if err != nil {
+		return nil, err
+	}
+	
+	title, err := shared.NewTitle(nodeData.Title)
+	if err != nil {
+		return nil, err
+	}
+	
+	content, err := shared.NewContent(nodeData.Content)
+	if err != nil {
+		return nil, err
+	}
+	
+	keywords := shared.NewKeywords(nodeData.Keywords)
+	tags := shared.NewTags(strings.Join(nodeData.Tags, ","))
+	version := shared.NewVersion()
+	
+	// Reconstruct the node
+	return node.ReconstructNode(
+		nodeID,
+		userID,
+		content,  // Note: content comes before title in ReconstructNode
+		title,
+		keywords,
+		tags,
+		createdAt,
+		updatedAt,
+		version,
+		nodeData.Archived,
+	), nil
+}
+
+// FindNodes finds nodes based on a query.
+// This implements the NodeRepository interface requirement.
+func (r *NodeRepository) FindNodes(ctx context.Context, query repository.NodeQuery) ([]*node.Node, error) {
+	// Build query expression
+	var filterExpression expression.ConditionBuilder
+	
+	// Start with user filter
+	filterExpression = expression.Name("PK").Equal(expression.Value(fmt.Sprintf("USER#%s", query.UserID)))
+	
+	// Add additional filters if specified
+	if query.Archived != nil {
+		filterExpression = filterExpression.And(expression.Name("Archived").Equal(expression.Value(*query.Archived)))
+	}
+	
+	// Build the expression
+	expr, err := expression.NewBuilder().
+		WithFilter(filterExpression).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build expression: %w", err)
+	}
+	
+	// Prepare scan input
+	input := &dynamodb.ScanInput{
+		TableName:                 aws.String(r.tableName),
+		FilterExpression:          expr.Filter(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	}
+	
+	// Execute scan
+	result, err := r.client.Scan(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan nodes: %w", err)
+	}
+	
+	// Convert results to domain objects
+	nodes := make([]*node.Node, 0, len(result.Items))
+	for _, item := range result.Items {
+		// Check if this is a node item
+		if sk, ok := item["SK"].(*types.AttributeValueMemberS); ok {
+			if strings.HasPrefix(sk.Value, "NODE#") {
+				n, err := r.unmarshalNode(item)
+				if err != nil {
+					r.logger.Warn("Failed to unmarshal node", zap.Error(err))
+					continue
+				}
+				nodes = append(nodes, n)
+			}
+		}
+	}
+	
+	// Apply sorting if specified
+	if query.SortBy != "" {
+		// Simple sorting by created date for now
+		sort.Slice(nodes, func(i, j int) bool {
+			if query.SortBy == "created_at" {
+				if query.SortOrder == "desc" {
+					return nodes[i].CreatedAt().After(nodes[j].CreatedAt())
+				}
+				return nodes[i].CreatedAt().Before(nodes[j].CreatedAt())
+			}
+			return false
+		})
+	}
+	
+	// Apply limit if specified
+	if query.Limit > 0 && len(nodes) > query.Limit {
+		nodes = nodes[:query.Limit]
+	}
+	
+	return nodes, nil
+}
+
+// GetNodeNeighborhood gets the graph neighborhood of a node.
+// This implements the NodeRepository interface requirement.
+func (r *NodeRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*shared.Graph, error) {
+	// For now, return a simple implementation
+	// In a full implementation, this would:
+	// 1. Get the node
+	// 2. Get all edges connected to this node
+	// 3. Recursively get connected nodes up to the specified depth
+	// 4. Build and return the graph
+	
+	// Create empty graph structure
+	graph := &shared.Graph{}
+	
+	// Get the central node
+	nID, err := shared.ParseNodeID(nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid node ID: %w", err)
+	}
+	
+	_, err = r.FindByID(ctx, nID)
+	if err != nil {
+		return nil, err
+	}
+	
+	// TODO: Add nodes and edges to graph
+	// The Graph structure needs to be properly defined in shared package
+	
+	// TODO: Implement full neighborhood traversal with edges
+	// This would require querying edges and connected nodes
+	
+	return graph, nil
+}
+
+// Removed duplicate GetNodesPage and CountNodes - already defined earlier in the file
 
 // Unarchive unarchives a node.
 func (r *NodeRepository) Unarchive(ctx context.Context, id shared.NodeID) error {

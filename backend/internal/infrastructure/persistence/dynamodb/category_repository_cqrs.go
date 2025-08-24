@@ -11,7 +11,6 @@ import (
 	"brain2-backend/internal/domain/category"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	sharedContext "brain2-backend/internal/context"
 	
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -42,7 +41,7 @@ func NewCategoryRepositoryCQRS(client *dynamodb.Client, tableName, indexName str
 var (
 	_ repository.CategoryReader     = (*CategoryRepositoryCQRS)(nil)
 	_ repository.CategoryWriter     = (*CategoryRepositoryCQRS)(nil)
-	_ repository.CategoryRepository = (*CategoryRepositoryCQRS)(nil)
+	_ repository.CategoryRepository = (*CategoryRepositoryCQRS)(nil) // For backward compatibility
 )
 
 // ============================================================================
@@ -591,11 +590,6 @@ func (r *CategoryRepositoryCQRS) BatchAssignNodes(ctx context.Context, mappings 
 	return nil
 }
 
-// BatchAssignCategories assigns multiple categories (compatibility with interface).
-func (r *CategoryRepositoryCQRS) BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error {
-	return r.BatchAssignNodes(ctx, mappings)
-}
-
 // UpdateCategoryNoteCounts updates note counts for categories.
 func (r *CategoryRepositoryCQRS) UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error {
 	for categoryID, count := range categoryCounts {
@@ -646,51 +640,50 @@ func (r *CategoryRepositoryCQRS) RecalculateHierarchy(ctx context.Context, userI
 }
 
 // ============================================================================
-// CATEGORY REPOSITORY INTERFACE - Additional Methods for Compatibility
+// COMPATIBILITY METHODS FOR CategoryRepository INTERFACE
 // ============================================================================
 
-// CreateCategory creates a new category (compatibility method).
+// CreateCategory creates a new category - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) CreateCategory(ctx context.Context, category category.Category) error {
 	return r.Save(ctx, &category)
 }
 
-// UpdateCategory updates a category (compatibility method).
+// UpdateCategory updates a category - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) UpdateCategory(ctx context.Context, category category.Category) error {
 	return r.Update(ctx, &category)
 }
 
-// DeleteCategory deletes a category (compatibility method).
+// DeleteCategory deletes a category - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) DeleteCategory(ctx context.Context, userID, categoryID string) error {
 	return r.Delete(ctx, userID, categoryID)
 }
 
-// FindCategoryByID finds a category by ID (compatibility method).
+// FindCategoryByID finds a category by ID - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) FindCategoryByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
 	return r.FindByID(ctx, userID, categoryID)
 }
 
-// FindCategories finds categories based on a query (compatibility method).
+// FindCategories finds categories based on a query - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]category.Category, error) {
-	ctx = sharedContext.WithUserID(ctx, query.UserID)
 	return r.FindByUser(ctx, query.UserID)
 }
 
-// FindCategoriesByLevel finds categories by level (compatibility method).
+// FindCategoriesByLevel finds categories by level - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]category.Category, error) {
 	return r.FindByLevel(ctx, userID, level)
 }
 
-// CreateCategoryHierarchy creates a hierarchy (compatibility method).
+// CreateCategoryHierarchy creates a hierarchy - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) CreateCategoryHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error {
 	return r.CreateHierarchy(ctx, hierarchy)
 }
 
-// DeleteCategoryHierarchy deletes a hierarchy (compatibility method).
+// DeleteCategoryHierarchy deletes a hierarchy - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) DeleteCategoryHierarchy(ctx context.Context, userID, parentID, childID string) error {
 	return r.DeleteHierarchyRelation(ctx, userID, parentID, childID)
 }
 
-// FindParentCategory finds the parent of a category (compatibility method).
+// FindParentCategory finds the parent of a category - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) FindParentCategory(ctx context.Context, userID, childID string) (*category.Category, error) {
 	child, err := r.FindByID(ctx, userID, childID)
 	if err != nil {
@@ -704,23 +697,28 @@ func (r *CategoryRepositoryCQRS) FindParentCategory(ctx context.Context, userID,
 	return r.FindByID(ctx, userID, string(*child.ParentID))
 }
 
-// GetCategoryTree gets the category tree (compatibility method).
+// GetCategoryTree gets the category tree - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) GetCategoryTree(ctx context.Context, userID string) ([]category.Category, error) {
 	return r.FindCategoryTree(ctx, userID)
 }
 
-// FindNodesByCategory finds nodes in a category (compatibility method).
+// FindNodesByCategory finds nodes in a category - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*node.Node, error) {
 	// This would query node-category mappings
 	// For now, return empty result
 	return []*node.Node{}, nil
 }
 
-// FindCategoriesForNode finds categories for a node (compatibility method).
+// FindCategoriesForNode finds categories for a node - minimal implementation for interface compliance.
 func (r *CategoryRepositoryCQRS) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]category.Category, error) {
 	// This would query node-category mappings
 	// For now, return empty result
 	return []category.Category{}, nil
+}
+
+// BatchAssignCategories assigns multiple categories - minimal implementation for interface compliance.
+func (r *CategoryRepositoryCQRS) BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error {
+	return r.BatchAssignNodes(ctx, mappings)
 }
 
 // ============================================================================

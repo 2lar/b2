@@ -269,13 +269,14 @@ func (s *DynamoDBEventStore) reconstructEvent(record EventRecord) shared.DomainE
 
 // GenericDomainEvent is a generic implementation for reconstructed events
 type GenericDomainEvent struct {
-	eventID     string
-	eventType   string
-	aggregateID string
-	userID      string
-	timestamp   time.Time
-	version     int
-	data        map[string]interface{}
+	eventID       string
+	eventType     string
+	aggregateID   string
+	aggregateType string
+	userID        string
+	timestamp     time.Time
+	version       int
+	data          map[string]interface{}
 }
 
 func (e *GenericDomainEvent) EventID() string                   { return e.eventID }
@@ -285,3 +286,13 @@ func (e *GenericDomainEvent) UserID() string                    { return e.userI
 func (e *GenericDomainEvent) Timestamp() time.Time              { return e.timestamp }
 func (e *GenericDomainEvent) Version() int                      { return e.version }
 func (e *GenericDomainEvent) EventData() map[string]interface{} { return e.data }
+
+// Additional methods to satisfy extended interfaces
+func (e *GenericDomainEvent) GetEventID() string       { return e.eventID }
+func (e *GenericDomainEvent) GetEventType() string     { return e.eventType }
+func (e *GenericDomainEvent) GetAggregateID() string   { return e.aggregateID }
+func (e *GenericDomainEvent) GetAggregateType() string { return e.aggregateType }
+func (e *GenericDomainEvent) GetUserID() string        { return e.userID }
+func (e *GenericDomainEvent) GetTimestamp() time.Time  { return e.timestamp }
+func (e *GenericDomainEvent) GetVersion() int          { return e.version }
+func (e *GenericDomainEvent) GetData() interface{}     { return e.data }
