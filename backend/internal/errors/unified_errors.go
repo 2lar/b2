@@ -70,7 +70,15 @@ type UnifiedError struct {
 	// Error metadata
 	Severity  ErrorSeverity `json:"severity"`
 	Retryable bool          `json:"retryable"` // Whether the operation can be retried
+	RetryAfter time.Duration `json:"retryAfter,omitempty"` // How long to wait before retry
+	RetryCount int          `json:"retryCount,omitempty"` // Number of retries attempted
+	MaxRetries int          `json:"maxRetries,omitempty"` // Maximum retries allowed
 	Cause     error         `json:"-"`         // Underlying cause (not serialized)
+	
+	// Recovery information
+	RecoveryStrategy string                 `json:"recoveryStrategy,omitempty"` // Suggested recovery approach
+	CompensationFunc CompensationFunc       `json:"-"` // Function to compensate for the error
+	RecoveryMetadata map[string]interface{} `json:"recoveryMetadata,omitempty"` // Additional recovery data
 	
 	// Stack trace information (for debugging)
 	StackTrace []string      `json:"stackTrace,omitempty"`
@@ -197,6 +205,38 @@ func (b *ErrorBuilder) WithRetryable(retryable bool) *ErrorBuilder {
 // WithCause adds the underlying cause error.
 func (b *ErrorBuilder) WithCause(cause error) *ErrorBuilder {
 	b.error.Cause = cause
+	return b
+}
+
+// WithRetryAfter sets how long to wait before retrying.
+func (b *ErrorBuilder) WithRetryAfter(duration time.Duration) *ErrorBuilder {
+	b.error.RetryAfter = duration
+	b.error.Retryable = true // Automatically mark as retryable
+	return b
+}
+
+// WithRetryInfo sets retry metadata.
+func (b *ErrorBuilder) WithRetryInfo(retryCount, maxRetries int) *ErrorBuilder {
+	b.error.RetryCount = retryCount
+	b.error.MaxRetries = maxRetries
+	return b
+}
+
+// WithRecoveryStrategy sets the suggested recovery approach.
+func (b *ErrorBuilder) WithRecoveryStrategy(strategy string) *ErrorBuilder {
+	b.error.RecoveryStrategy = strategy
+	return b
+}
+
+// WithCompensation adds a compensation function.
+func (b *ErrorBuilder) WithCompensation(fn CompensationFunc) *ErrorBuilder {
+	b.error.CompensationFunc = fn
+	return b
+}
+
+// WithRecoveryMetadata adds recovery metadata.
+func (b *ErrorBuilder) WithRecoveryMetadata(metadata map[string]interface{}) *ErrorBuilder {
+	b.error.RecoveryMetadata = metadata
 	return b
 }
 

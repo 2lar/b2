@@ -204,25 +204,17 @@ type CategoryWriter interface {
 	RecalculateHierarchy(ctx context.Context, userID string) error
 }
 
-// Combined Interfaces - For Backward Compatibility and Convenience
-
-// CQRSNodeRepository combines read and write operations for nodes with CQRS support
-type CQRSNodeRepository interface {
-	NodeReader
-	NodeWriter
-}
-
-// CQRSEdgeRepository combines read and write operations for edges with CQRS support
-type CQRSEdgeRepository interface {
-	EdgeReader
-	EdgeWriter
-}
-
-// CQRSCategoryRepository combines read and write operations for categories with CQRS support
-type CQRSCategoryRepository interface {
-	CategoryReader
-	CategoryWriter
-}
+// ============================================================================
+// DEPRECATED: Combined Interfaces - VIOLATES CQRS PRINCIPLES
+// ============================================================================
+// The following combined interfaces are deprecated as they violate CQRS principles.
+// Use separate Reader and Writer interfaces for proper command/query separation.
+// Migration:
+//   - Replace CQRSNodeRepository with separate NodeReader and NodeWriter
+//   - Replace CQRSEdgeRepository with separate EdgeReader and EdgeWriter
+//   - Replace CQRSCategoryRepository with separate CategoryReader and CategoryWriter
+// These interfaces will be removed in the next major version.
+// ============================================================================
 
 // Repository Aggregates for Complex Operations
 

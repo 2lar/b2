@@ -72,33 +72,15 @@ type CategoryNodeMapper interface {
 }
 
 // ============================================================================
-// COMPOSITE INTERFACES USING CQRS INTERFACES
+// DEPRECATED: COMPOSITE INTERFACES - TO BE REMOVED
 // ============================================================================
-
-// NodeRepositoryComposite provides complete node access by composing CQRS and specialized interfaces.
-// This composite interface maintains backward compatibility while encouraging
-// clients to depend on specific focused interfaces when possible.
-type NodeRepositoryComposite interface {
-	NodeReader    // From read_write_separation.go
-	NodeWriter    // From read_write_separation.go
-	NodeSearcher
-	NodeRelationshipReader
-}
-
-// EdgeRepositoryComposite provides complete edge access by composing CQRS and specialized interfaces.
-type EdgeRepositoryComposite interface {
-	EdgeReader    // From read_write_separation.go
-	EdgeWriter    // From read_write_separation.go
-	EdgeRelationshipManager
-}
-
-// CategoryRepositoryComposite provides complete category access by composing CQRS and specialized interfaces.
-type CategoryRepositoryComposite interface {
-	CategoryReader    // From read_write_separation.go
-	CategoryWriter    // From read_write_separation.go
-	CategoryHierarchyManager
-	CategoryNodeMapper
-}
+// The following composite interfaces are deprecated and will be removed.
+// Use specific Reader/Writer interfaces instead for true CQRS separation.
+// Migration guide:
+//   - Replace NodeRepositoryComposite with NodeReader + NodeWriter
+//   - Replace EdgeRepositoryComposite with EdgeReader + EdgeWriter  
+//   - Replace CategoryRepositoryComposite with CategoryReader + CategoryWriter
+// ============================================================================
 
 // ============================================================================
 // SPECIALIZED QUERY INTERFACES
@@ -145,8 +127,6 @@ type FocusedRepositoryProvider interface {
 	GetCategoryHierarchyManager() CategoryHierarchyManager
 	GetCategoryNodeMapper() CategoryNodeMapper
 	
-	// Composite repositories (for backward compatibility)
-	GetNodeRepository() NodeRepositoryComposite
-	GetEdgeRepository() EdgeRepositoryComposite  
-	GetCategoryRepository() CategoryRepositoryComposite
+	// DEPRECATED: Composite repositories - use specific readers/writers instead
+	// These will be removed in the next version
 }
