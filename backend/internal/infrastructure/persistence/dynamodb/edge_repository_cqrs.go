@@ -473,7 +473,7 @@ func (r *EdgeRepositoryCQRS) CountBySourceID(ctx context.Context, sourceID share
 // EDGE WRITER INTERFACE - Write Operations
 // ============================================================================
 
-// Save creates a new edge.
+// Save creates a new edge using the adjacency list pattern.
 func (r *EdgeRepositoryCQRS) Save(ctx context.Context, edge *edge.Edge) error {
 	// Get userID from the edge entity itself
 	userID := edge.UserID().String()
@@ -481,10 +481,11 @@ func (r *EdgeRepositoryCQRS) Save(ctx context.Context, edge *edge.Edge) error {
 		return fmt.Errorf("edge must have a valid user ID")
 	}
 	
-	// Build the item with composite keys
+	// Use adjacency list pattern: PK=USER#userID#NODE#sourceID, SK=EDGE#RELATES_TO#targetID
+	// This ensures O(1) queries for finding all edges of a node
 	item := map[string]types.AttributeValue{
-		"PK":         &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
-		"SK":         &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#%s", edge.ID.String())},
+		"PK":         &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s#NODE#%s", userID, edge.SourceID.String())},
+		"SK":         &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#RELATES_TO#%s", edge.TargetID.String())},
 		"EntityType": &types.AttributeValueMemberS{Value: "EDGE"},
 		"EdgeID":     &types.AttributeValueMemberS{Value: edge.ID.String()},
 		"SourceID":   &types.AttributeValueMemberS{Value: edge.SourceID.String()},

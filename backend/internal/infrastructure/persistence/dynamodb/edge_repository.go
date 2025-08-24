@@ -271,6 +271,36 @@ func (r *EdgeRepository) FindEdgesWithOptions(ctx context.Context, query reposit
 	return r.FindEdges(ctx, query)
 }
 
+// DeleteEdge deletes a single edge by ID.
+func (r *EdgeRepository) DeleteEdge(ctx context.Context, userID, edgeID string) error {
+	// Implementation would delete the edge from DynamoDB
+	// For now, return not implemented
+	return fmt.Errorf("DeleteEdge not implemented in EdgeRepository")
+}
+
+// DeleteEdgesByNode deletes all edges connected to a specific node.
+func (r *EdgeRepository) DeleteEdgesByNode(ctx context.Context, userID, nodeID string) error {
+	// Find all edges connected to this node
+	edges, err := r.findEdgesByNode(ctx, userID, nodeID)
+	if err != nil {
+		return fmt.Errorf("failed to find edges for deletion: %w", err)
+	}
+	
+	// Delete each edge
+	for _, edge := range edges {
+		// Would implement actual deletion here
+		_ = edge // Placeholder to avoid unused variable
+	}
+	
+	return fmt.Errorf("DeleteEdgesByNode not fully implemented")
+}
+
+// DeleteEdgesBetweenNodes deletes all edges between two specific nodes.
+func (r *EdgeRepository) DeleteEdgesBetweenNodes(ctx context.Context, userID, sourceNodeID, targetNodeID string) error {
+	// Implementation would delete edges between two specific nodes
+	return fmt.Errorf("DeleteEdgesBetweenNodes not implemented in EdgeRepository")
+}
+
 // Helper methods
 
 // findEdgesByNode finds all edges connected to a specific node.

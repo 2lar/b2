@@ -13,8 +13,8 @@ import (
 	appErrors "brain2-backend/pkg/errors"
 )
 
-// CategoryServiceClean implements category operations with PURE CQRS.
-type CategoryServiceClean struct {
+// CategoryService implements category operations with PURE CQRS.
+type CategoryService struct {
 	// CQRS: Separate readers and writers
 	categoryReader repository.CategoryReader
 	categoryWriter repository.CategoryWriter
@@ -25,15 +25,15 @@ type CategoryServiceClean struct {
 	idempotencyStore repository.IdempotencyStore
 }
 
-// NewCategoryServiceClean creates a new CategoryService with CQRS interfaces.
-func NewCategoryServiceClean(
+// NewCategoryService creates a new CategoryService with CQRS interfaces.
+func NewCategoryService(
 	categoryReader repository.CategoryReader,
 	categoryWriter repository.CategoryWriter,
 	uowFactory repository.UnitOfWorkFactory,
 	eventBus shared.EventBus,
 	idempotencyStore repository.IdempotencyStore,
-) *CategoryServiceClean {
-	return &CategoryServiceClean{
+) *CategoryService {
+	return &CategoryService{
 		categoryReader:   categoryReader,
 		categoryWriter:   categoryWriter,
 		uowFactory:       uowFactory,
@@ -43,7 +43,7 @@ func NewCategoryServiceClean(
 }
 
 // CreateCategory creates a new category - WRITE OPERATION.
-func (s *CategoryServiceClean) CreateCategory(ctx context.Context, cmd *commands.CreateCategoryCommand) (*dto.CategoryDTO, error) {
+func (s *CategoryService) CreateCategory(ctx context.Context, cmd *commands.CreateCategoryCommand) (*dto.CategoryDTO, error) {
 	// Create unit of work
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
@@ -143,7 +143,7 @@ func (s *CategoryServiceClean) CreateCategory(ctx context.Context, cmd *commands
 }
 
 // GetCategory retrieves a category by ID - READ OPERATION.
-func (s *CategoryServiceClean) GetCategory(ctx context.Context, userID, categoryID string) (*dto.CategoryDTO, error) {
+func (s *CategoryService) GetCategory(ctx context.Context, userID, categoryID string) (*dto.CategoryDTO, error) {
 	// Use reader directly - no transaction for reads
 	cat, err := s.categoryReader.FindByID(ctx, userID, categoryID)
 	if err != nil {
@@ -158,7 +158,7 @@ func (s *CategoryServiceClean) GetCategory(ctx context.Context, userID, category
 }
 
 // UpdateCategory updates a category - WRITE OPERATION.
-func (s *CategoryServiceClean) UpdateCategory(ctx context.Context, cmd *commands.UpdateCategoryCommand) (*dto.CategoryDTO, error) {
+func (s *CategoryService) UpdateCategory(ctx context.Context, cmd *commands.UpdateCategoryCommand) (*dto.CategoryDTO, error) {
 	// Create unit of work
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
@@ -226,7 +226,7 @@ func (s *CategoryServiceClean) UpdateCategory(ctx context.Context, cmd *commands
 }
 
 // DeleteCategory deletes a category - WRITE OPERATION.
-func (s *CategoryServiceClean) DeleteCategory(ctx context.Context, userID, categoryID string) error {
+func (s *CategoryService) DeleteCategory(ctx context.Context, userID, categoryID string) error {
 	// Create unit of work
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
@@ -291,7 +291,7 @@ func (s *CategoryServiceClean) DeleteCategory(ctx context.Context, userID, categ
 }
 
 // ListCategories lists categories for a user - READ OPERATION.
-func (s *CategoryServiceClean) ListCategories(ctx context.Context, userID string) ([]*dto.CategoryDTO, error) {
+func (s *CategoryService) ListCategories(ctx context.Context, userID string) ([]*dto.CategoryDTO, error) {
 	// Use reader directly
 	categories, err := s.categoryReader.FindByUser(ctx, userID)
 	if err != nil {
@@ -308,7 +308,7 @@ func (s *CategoryServiceClean) ListCategories(ctx context.Context, userID string
 }
 
 // GetCategoryTree gets the category hierarchy tree - READ OPERATION.
-func (s *CategoryServiceClean) GetCategoryTree(ctx context.Context, userID string) ([]*dto.CategoryTreeNode, error) {
+func (s *CategoryService) GetCategoryTree(ctx context.Context, userID string) ([]*dto.CategoryTreeNode, error) {
 	// Get all categories
 	categories, err := s.categoryReader.FindCategoryTree(ctx, userID)
 	if err != nil {
@@ -320,7 +320,7 @@ func (s *CategoryServiceClean) GetCategoryTree(ctx context.Context, userID strin
 }
 
 // buildCategoryTree builds a tree structure from flat categories.
-func (s *CategoryServiceClean) buildCategoryTree(categories []category.Category) []*dto.CategoryTreeNode {
+func (s *CategoryService) buildCategoryTree(categories []category.Category) []*dto.CategoryTreeNode {
 	// Create map for quick lookup
 	catMap := make(map[string]*dto.CategoryTreeNode)
 	var roots []*dto.CategoryTreeNode
@@ -355,7 +355,7 @@ func (s *CategoryServiceClean) buildCategoryTree(categories []category.Category)
 }
 
 // AssignNodeToCategory assigns a node to a category - WRITE OPERATION.
-func (s *CategoryServiceClean) AssignNodeToCategory(ctx context.Context, userID, nodeID, categoryID string) error {
+func (s *CategoryService) AssignNodeToCategory(ctx context.Context, userID, nodeID, categoryID string) error {
 	// Create unit of work
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
@@ -408,7 +408,7 @@ func (s *CategoryServiceClean) AssignNodeToCategory(ctx context.Context, userID,
 }
 
 // RemoveNodeFromCategory removes a node from a category - WRITE OPERATION.
-func (s *CategoryServiceClean) RemoveNodeFromCategory(ctx context.Context, userID, nodeID, categoryID string) error {
+func (s *CategoryService) RemoveNodeFromCategory(ctx context.Context, userID, nodeID, categoryID string) error {
 	// Create unit of work
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {

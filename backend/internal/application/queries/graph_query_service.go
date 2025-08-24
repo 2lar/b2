@@ -265,42 +265,71 @@ func (s *GraphQueryService) getUserNodes(ctx context.Context, userID string, lim
 }
 
 func (s *GraphQueryService) getUserEdges(ctx context.Context, userID string, limit int) ([]*edge.Edge, error) {
-	// Edges are stored with PK = USER#<userID>#NODE#<sourceID>, SK = EDGE#RELATES_TO#<targetID>
-	// We need to scan for all edges belonging to this user
-	query := persistence.Query{
-		FilterExpr: stringPtr("begins_with(PK, :pk_prefix) AND begins_with(SK, :sk_prefix)"),
-		Attributes: map[string]interface{}{
-			":pk_prefix": fmt.Sprintf("USER#%s#NODE#", userID),
-			":sk_prefix": "EDGE#",
-		},
-	}
-
-	if limit > 0 {
-		query.Limit = int32Ptr(int32(limit))
-	}
-
-	result, err := s.store.Scan(ctx, query)
+	// Edges are stored with PK = USER#<userID>#NODE#<sourceID>, SK = EDGE#<targetID>
+	// We need to query each node's partition for its edges (no scanning!)
+	
+	// First, get all nodes for this user
+	nodes, err := s.getUserNodes(ctx, userID, 0) // Get all nodes, no limit
 	if err != nil {
-		return nil, fmt.Errorf("failed to scan user edges: %w", err)
+		return nil, fmt.Errorf("failed to get nodes for edge query: %w", err)
 	}
-
-	edges := make([]*edge.Edge, 0, len(result.Records))
-	for _, record := range result.Records {
-		edge, err := s.recordToEdge(&record)
+	
+	// Collect all edges by querying each node's partition
+	var allEdges []*edge.Edge
+	edgeMap := make(map[string]bool) // For deduplication
+	
+	for _, node := range nodes {
+		// Query for edges in this node's partition
+		nodePK := fmt.Sprintf("USER#%s#NODE#%s", userID, node.ID().String())
+		sortKeyPrefix := "EDGE#"
+		
+		query := persistence.Query{
+			PartitionKey:  nodePK,
+			SortKeyPrefix: &sortKeyPrefix,
+		}
+		
+		// Apply limit per node if specified (distribute limit across nodes)
+		if limit > 0 && len(nodes) > 0 {
+			nodeLimit := (limit / len(nodes)) + 1
+			query.Limit = int32Ptr(int32(nodeLimit))
+		}
+		
+		result, err := s.store.Query(ctx, query)
 		if err != nil {
-			s.logger.Warn("failed to convert record to edge", zap.Error(err))
+			s.logger.Warn("failed to query edges for node",
+				zap.String("node_id", node.ID().String()),
+				zap.Error(err))
 			continue
 		}
-		edges = append(edges, edge)
+		
+		for _, record := range result.Records {
+			edge, err := s.recordToEdge(&record)
+			if err != nil {
+				s.logger.Warn("failed to convert record to edge", zap.Error(err))
+				continue
+			}
+			
+			// Deduplicate edges (in case of bidirectional storage)
+			edgeKey := fmt.Sprintf("%s-%s", edge.SourceID.String(), edge.TargetID.String())
+			if !edgeMap[edgeKey] {
+				edgeMap[edgeKey] = true
+				allEdges = append(allEdges, edge)
+				
+				// Stop if we've reached the limit
+				if limit > 0 && len(allEdges) >= limit {
+					return allEdges[:limit], nil
+				}
+			}
+		}
 	}
-
-	return edges, nil
+	
+	return allEdges, nil
 }
 
 func (s *GraphQueryService) getNode(ctx context.Context, userID, nodeID string) (*node.Node, error) {
 	key := persistence.Key{
-		PartitionKey: fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID),
-		SortKey:      "METADATA#v0",
+		PartitionKey: fmt.Sprintf("USER#%s", userID),
+		SortKey:      fmt.Sprintf("NODE#%s", nodeID),
 	}
 
 	record, err := s.store.Get(ctx, key)
@@ -322,8 +351,8 @@ func (s *GraphQueryService) getBatchNodes(ctx context.Context, userID string, no
 	keys := make([]persistence.Key, 0, len(nodeIDs))
 	for _, nodeID := range nodeIDs {
 		key := persistence.Key{
-			PartitionKey: fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID),
-			SortKey:      "METADATA#v0",
+			PartitionKey: fmt.Sprintf("USER#%s", userID),
+			SortKey:      fmt.Sprintf("NODE#%s", nodeID),
 		}
 		keys = append(keys, key)
 	}
@@ -548,13 +577,13 @@ func (s *GraphQueryService) calculateGraphAnalytics(nodes []*node.Node, edges []
 // Helper functions for domain object reconstruction
 func (s *GraphQueryService) recordToNode(record *persistence.Record) (*node.Node, error) {
 	// Validate that this is a node record by checking the sort key
-	// Nodes have SK = NODE#<nodeID>
+	// Nodes now have SK = NODE#<nodeID> with PK = USER#<userID>
 	sk, ok := record.Data["SK"].(string)
 	if !ok || !strings.HasPrefix(sk, "NODE#") {
 		return nil, fmt.Errorf("not a node record - SK: %v", sk)
 	}
 	
-	// Extract NodeID from SK
+	// Extract NodeID from SK (format: NODE#<nodeID>)
 	skParts := strings.Split(sk, "#")
 	if len(skParts) != 2 {
 		return nil, fmt.Errorf("invalid SK format for node: %s", sk)
@@ -637,29 +666,30 @@ func (s *GraphQueryService) recordToNode(record *persistence.Record) (*node.Node
 }
 
 func (s *GraphQueryService) recordToEdge(record *persistence.Record) (*edge.Edge, error) {
-	// Try to extract sourceID and targetID directly from record fields first (EdgeIndex GSI format)
+	// Edges are stored with PK = USER#<userID>#NODE#<sourceID>, SK = EDGE#<targetID> or EDGE#RELATES_TO#<targetID>
+	
+	// Try to extract sourceID and targetID directly from record fields first
 	sourceID, hasSourceID := record.Data["SourceID"].(string)
 	targetID, hasTargetID := record.Data["TargetID"].(string)
 	
 	var userID string
 	
 	if hasSourceID && hasTargetID {
-		// EdgeIndex GSI format - extract userID from PK
+		// Direct fields available - extract userID from PK
 		pk, ok := record.Data["PK"].(string)
 		if !ok {
 			return nil, fmt.Errorf("missing PK in record")
 		}
 		
-		// Parse PK pattern for EdgeIndex: USER#<userID>#EDGE or similar
+		// Parse PK to extract userID
 		pkParts := strings.Split(pk, "#")
-		if len(pkParts) < 2 || pkParts[0] != "USER" {
+		if len(pkParts) >= 2 && pkParts[0] == "USER" {
+			userID = pkParts[1]
+		} else {
 			return nil, fmt.Errorf("invalid PK format for edge: %s", pk)
 		}
-		
-		userID = pkParts[1]
 	} else {
-		// Current format - extract from PK pattern: USER#<userID>#NODE#<sourceID>
-		// and SK pattern: EDGE#RELATES_TO#<targetID>
+		// Extract from PK/SK pattern: PK = USER#<userID>#NODE#<sourceID>, SK = EDGE#<targetID> or EDGE#RELATES_TO#<targetID>
 		pk, ok := record.Data["PK"].(string)
 		if !ok {
 			return nil, fmt.Errorf("missing PK in record")
@@ -673,18 +703,24 @@ func (s *GraphQueryService) recordToEdge(record *persistence.Record) (*edge.Edge
 		// Parse PK to get userID and sourceID
 		pkParts := strings.Split(pk, "#")
 		if len(pkParts) != 4 || pkParts[0] != "USER" || pkParts[2] != "NODE" {
-			return nil, fmt.Errorf("invalid PK format: %s", pk)
+			return nil, fmt.Errorf("invalid PK format for edge: %s", pk)
 		}
 		
 		userID = pkParts[1]
 		sourceID = pkParts[3]
 
 		// Parse SK to get targetID
+		// SK can be EDGE#<targetID> or EDGE#RELATES_TO#<targetID>
 		skParts := strings.Split(sk, "#")
-		if len(skParts) < 3 {
+		if len(skParts) == 2 {
+			// Format: EDGE#<targetID>
+			targetID = skParts[1]
+		} else if len(skParts) >= 3 {
+			// Format: EDGE#RELATES_TO#<targetID> or EDGE#<type>#<targetID>
+			targetID = skParts[len(skParts)-1]
+		} else {
 			return nil, fmt.Errorf("invalid SK format for edge: %s", sk)
 		}
-		targetID = skParts[2]
 	}
 
 	// Extract optional fields with defaults

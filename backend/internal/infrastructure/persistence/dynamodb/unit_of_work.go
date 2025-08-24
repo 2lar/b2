@@ -68,6 +68,20 @@ func NewProperUnitOfWork(
 	return uow
 }
 
+// NewDynamoDBUnitOfWork is an alias for NewProperUnitOfWork to maintain backward compatibility.
+func NewDynamoDBUnitOfWork(
+	client *dynamodb.Client,
+	tableName string,
+	indexName string,
+	eventBus shared.EventBus,
+	eventStore repository.EventStore,
+	logger *zap.Logger,
+) repository.UnitOfWork {
+	// Note: eventStore parameter is not used in the new implementation
+	_ = eventStore
+	return NewProperUnitOfWork(client, tableName, indexName, logger, eventBus)
+}
+
 // Begin starts a new transaction.
 func (uow *ProperUnitOfWork) Begin(ctx context.Context) error {
 	uow.mu.Lock()
@@ -253,6 +267,22 @@ func (uow *ProperUnitOfWork) IsActive() bool {
 	defer uow.mu.Unlock()
 	
 	return uow.isInTransaction && !uow.isCommitted && !uow.isRolledBack
+}
+
+// IsCommitted checks if the unit of work has been committed.
+func (uow *ProperUnitOfWork) IsCommitted() bool {
+	uow.mu.Lock()
+	defer uow.mu.Unlock()
+	
+	return uow.isCommitted
+}
+
+// IsRolledBack checks if the unit of work has been rolled back.
+func (uow *ProperUnitOfWork) IsRolledBack() bool {
+	uow.mu.Lock()
+	defer uow.mu.Unlock()
+	
+	return uow.isRolledBack
 }
 
 // AddTransactItem adds a transactional write item.

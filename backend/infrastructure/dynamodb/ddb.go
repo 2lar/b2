@@ -148,25 +148,30 @@ func getCanonicalEdge(nodeA, nodeB string) (owner, target string) {
 
 // CreateNodeAndKeywords transactionally saves a node and its keyword indexes.
 func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
-	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
+	userPK := fmt.Sprintf("USER#%s", node.UserID().String())
+	nodeSK := fmt.Sprintf("NODE#%s", node.ID().String())
 	transactItems := []types.TransactWriteItem{}
 
-	// 1. Add the main node metadata to the transaction
+	// 1. Add the main node to the transaction with optimal storage pattern
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
-		PK: pk, SK: "METADATA#v0", NodeID: node.ID().String(), UserID: node.UserID().String(), Content: node.Content().String(), Title: node.Title().String(),
+		PK: userPK, SK: nodeSK, NodeID: node.ID().String(), UserID: node.UserID().String(), Content: node.Content().String(), Title: node.Title().String(),
 		Keywords: node.Keywords().ToSlice(), Tags: node.Tags().ToSlice(), IsLatest: true, Version: node.Version(), Timestamp: node.CreatedAt().Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
 	}
+	// Add EntityType for easier filtering
+	nodeItem["EntityType"] = &types.AttributeValueMemberS{Value: "NODE"}
 	transactItems = append(transactItems, types.TransactWriteItem{
 		Put: &types.Put{TableName: aws.String(r.config.TableName), Item: nodeItem},
 	})
 
 	// 2. Add each keyword as a separate item for the GSI to index
+	// Store keywords in the node's partition for atomic operations
+	nodePK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
 	for _, keyword := range node.Keywords().ToSlice() {
 		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{
-			PK:     pk,
+			PK:     nodePK,
 			SK:     fmt.Sprintf("KEYWORD#%s", keyword),
 			GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID().String(), keyword),
 			GSI1SK: fmt.Sprintf("NODE#%s", node.ID().String()),
@@ -199,25 +204,30 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *node.Node
 	// Ensure node starts with version 0
 	// Note: Version is immutable in rich domain model, using Version().Int() for DDB
 	
-	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
+	userPK := fmt.Sprintf("USER#%s", node.UserID().String())
+	nodeSK := fmt.Sprintf("NODE#%s", node.ID().String())
 	transactItems := []types.TransactWriteItem{}
 
 	nodeItem, err := attributevalue.MarshalMap(ddbNode{
-		PK: pk, SK: "METADATA#v0", NodeID: node.ID().String(), UserID: node.UserID().String(), Content: node.Content().String(), Title: node.Title().String(),
+		PK: userPK, SK: nodeSK, NodeID: node.ID().String(), UserID: node.UserID().String(), Content: node.Content().String(), Title: node.Title().String(),
 		Keywords: node.Keywords().ToSlice(), Tags: node.Tags().ToSlice(), IsLatest: true, Version: node.Version(), Timestamp: node.CreatedAt().Format(time.RFC3339),
 	})
 	if err != nil {
 		return appErrors.Wrap(err, "failed to marshal node item")
 	}
+	// Add EntityType for easier filtering
+	nodeItem["EntityType"] = &types.AttributeValueMemberS{Value: "NODE"}
 	transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: nodeItem}})
-	r.logger.Debug("added node item to transaction", zap.String("pk", pk))
+	r.logger.Debug("added node item to transaction", zap.String("pk", userPK), zap.String("sk", nodeSK))
 
+	// Store keywords in the node's partition for atomic operations
+	nodePK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
 	for _, keyword := range node.Keywords().ToSlice() {
 		gsi1PK := fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID().String(), keyword)
 		gsi1SK := fmt.Sprintf("NODE#%s", node.ID().String())
 		
 		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{
-			PK: pk, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: gsi1PK, GSI1SK: gsi1SK,
+			PK: nodePK, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: gsi1PK, GSI1SK: gsi1SK,
 		})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal keyword item")
@@ -269,15 +279,19 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node,
 		return appErrors.Wrap(err, "failed to clear old connections for update")
 	}
 
-	pk := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
+	userPK := fmt.Sprintf("USER#%s", node.UserID().String())
+	nodeSK := fmt.Sprintf("NODE#%s", node.ID().String())
 	transactItems := []types.TransactWriteItem{}
 
 	// Optimistic locking: check that the version matches before updating
 	_, err := r.dbClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName:           aws.String(r.config.TableName),
-		Key:                 map[string]types.AttributeValue{"PK": &types.AttributeValueMemberS{Value: pk}, "SK": &types.AttributeValueMemberS{Value: "METADATA#v0"}},
-		UpdateExpression:    aws.String("SET Content = :c, Keywords = :k, Tags = :tg, Timestamp = :t, Version = Version + :inc"),
+		Key:                 map[string]types.AttributeValue{"PK": &types.AttributeValueMemberS{Value: userPK}, "SK": &types.AttributeValueMemberS{Value: nodeSK}},
+		UpdateExpression:    aws.String("SET Content = :c, Keywords = :k, Tags = :tg, #ts = :t, Version = Version + :inc, EntityType = :et"),
 		ConditionExpression: aws.String("Version = :expected_version"),
+		ExpressionAttributeNames: map[string]string{
+			"#ts": "Timestamp", // Timestamp is a reserved word in DynamoDB
+		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":c":                &types.AttributeValueMemberS{Value: node.Content().String()},
 			":k":                &types.AttributeValueMemberL{Value: toAttributeValueList(node.Keywords().ToSlice())},
@@ -285,6 +299,7 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node,
 			":t":                &types.AttributeValueMemberS{Value: time.Now().Format(time.RFC3339)},
 			":expected_version": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", node.Version())},
 			":inc":              &types.AttributeValueMemberN{Value: "1"},
+			":et":               &types.AttributeValueMemberS{Value: "NODE"},
 		},
 	})
 	if err != nil {
@@ -296,8 +311,10 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node,
 		return appErrors.Wrap(err, "failed to update node metadata")
 	}
 
+	// Store keywords in the node's partition for atomic operations
+	nodePK := fmt.Sprintf("USER#%s#NODE#%s", node.UserID().String(), node.ID().String())
 	for _, keyword := range node.Keywords().ToSlice() {
-		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{PK: pk, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID().String(), keyword), GSI1SK: fmt.Sprintf("NODE#%s", node.ID().String())})
+		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{PK: nodePK, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID().String(), keyword), GSI1SK: fmt.Sprintf("NODE#%s", node.ID().String())})
 		if err != nil {
 			return appErrors.Wrap(err, "failed to marshal keyword item for update")
 		}
@@ -1661,21 +1678,81 @@ func (r *ddbRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID 
 // DeleteEdge implements edge deletion by ID
 func (r *ddbRepository) DeleteEdge(ctx context.Context, userID, edgeID string) error {
 	// Implementation would delete the edge from DynamoDB
-	// For now, return not implemented
-	return fmt.Errorf("DeleteEdge not implemented")
+	// For now, return not implemented as this requires edge ID management
+	return fmt.Errorf("DeleteEdge not implemented in ddbRepository - edges are not tracked by ID")
 }
 
 // DeleteEdgesByNode implements edge deletion by node
 func (r *ddbRepository) DeleteEdgesByNode(ctx context.Context, userID, nodeID string) error {
-	// This is similar to clearNodeConnections
-	return r.clearNodeConnections(ctx, userID, nodeID)
+	// This is similar to clearNodeConnections but focused on edges only
+	pk := fmt.Sprintf("USER#%s#NODE#%s", userID, nodeID)
+	
+	// Query all edges for this node
+	queryResult, err := r.dbClient.Query(ctx, &dynamodb.QueryInput{
+		TableName:                 aws.String(r.config.TableName),
+		KeyConditionExpression:    aws.String("PK = :pk AND begins_with(SK, :sk)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": &types.AttributeValueMemberS{Value: pk},
+			":sk": &types.AttributeValueMemberS{Value: "EDGE#"},
+		},
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to query edges for deletion")
+	}
+	
+	// Delete the edges
+	var writeRequests []types.WriteRequest
+	for _, item := range queryResult.Items {
+		writeRequests = append(writeRequests, types.WriteRequest{
+			DeleteRequest: &types.DeleteRequest{
+				Key: map[string]types.AttributeValue{
+					"PK": item["PK"],
+					"SK": item["SK"],
+				},
+			},
+		})
+	}
+	
+	// Batch delete in chunks of 25 (DynamoDB limit)
+	for i := 0; i < len(writeRequests); i += 25 {
+		end := i + 25
+		if end > len(writeRequests) {
+			end = len(writeRequests)
+		}
+		
+		_, err = r.dbClient.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{
+				r.config.TableName: writeRequests[i:end],
+			},
+		})
+		if err != nil {
+			return appErrors.Wrap(err, "failed to batch delete edges")
+		}
+	}
+	
+	return nil
 }
 
 // DeleteEdgesBetweenNodes implements edge deletion between two nodes
 func (r *ddbRepository) DeleteEdgesBetweenNodes(ctx context.Context, userID, sourceNodeID, targetNodeID string) error {
-	// Implementation would delete edges between two specific nodes
-	// For now, return not implemented
-	return fmt.Errorf("DeleteEdgesBetweenNodes not implemented")
+	// Determine canonical edge storage
+	ownerID, canonicalTargetID := getCanonicalEdge(sourceNodeID, targetNodeID)
+	pk := fmt.Sprintf("USER#%s#NODE#%s", userID, ownerID)
+	sk := fmt.Sprintf("EDGE#RELATES_TO#%s", canonicalTargetID)
+	
+	// Delete the canonical edge
+	_, err := r.dbClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		TableName: aws.String(r.config.TableName),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: pk},
+			"SK": &types.AttributeValueMemberS{Value: sk},
+		},
+	})
+	if err != nil {
+		return appErrors.Wrap(err, "failed to delete edge between nodes")
+	}
+	
+	return nil
 }
 
 // GetEdgesPage retrieves a paginated list of edges for a user

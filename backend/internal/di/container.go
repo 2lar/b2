@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"brain2-backend/internal/application/commands"
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
@@ -178,7 +177,7 @@ func (c *Container) initializeRepository() error {
 
 	// Phase 2: Initialize repository factory with environment-specific configuration
 	factoryConfig := c.getRepositoryFactoryConfig()
-	c.RepositoryFactory = repository.NewRepositoryFactory(factoryConfig)
+	c.RepositoryFactory = repository.NewRepositoryFactory(factoryConfig, c.Logger)
 
 	// Initialize base repositories (without persistence)
 	baseNodeRepo := infradynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName, c.Logger)
@@ -369,14 +368,22 @@ func (c *Container) initializeCQRSServices() {
 	)
 
 	// Initialize CategoryAppService for command handling
-	categoryCommandHandler := commands.NewCategoryCommandHandler(
-		c.Store,
-		c.Logger,
+	// Cast CategoryRepository to reader and writer interfaces
+	var categoryReader repository.CategoryReader
+	var categoryWriter repository.CategoryWriter
+	if reader, ok := c.CategoryRepository.(repository.CategoryReader); ok {
+		categoryReader = reader
+	}
+	if writer, ok := c.CategoryRepository.(repository.CategoryWriter); ok {
+		categoryWriter = writer
+	}
+	
+	c.CategoryAppService = services.NewCategoryService(
+		categoryReader,
+		categoryWriter,
+		c.UnitOfWorkFactory,
 		c.EventBus,
 		c.IdempotencyStore,
-	)
-	c.CategoryAppService = services.NewCategoryService(
-		categoryCommandHandler,
 	)
 
 	// Initialize CleanupService for async resource cleanup
@@ -1206,6 +1213,21 @@ func (w *transactionalEdgeWrapper) GetEdgesPage(ctx context.Context, query repos
 func (w *transactionalEdgeWrapper) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*edge.Edge, error) {
 	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindEdgesWithOptions(ctx, query, opts...)
+}
+
+func (w *transactionalEdgeWrapper) DeleteEdge(ctx context.Context, userID, edgeID string) error {
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
+	return w.base.DeleteEdge(ctx, userID, edgeID)
+}
+
+func (w *transactionalEdgeWrapper) DeleteEdgesByNode(ctx context.Context, userID, nodeID string) error {
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
+	return w.base.DeleteEdgesByNode(ctx, userID, nodeID)
+}
+
+func (w *transactionalEdgeWrapper) DeleteEdgesBetweenNodes(ctx context.Context, userID, sourceNodeID, targetNodeID string) error {
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
+	return w.base.DeleteEdgesBetweenNodes(ctx, userID, sourceNodeID, targetNodeID)
 }
 
 // transactionalCategoryWrapper wraps category repository with transaction context

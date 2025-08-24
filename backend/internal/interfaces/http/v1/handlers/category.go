@@ -168,24 +168,22 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		UpdatedAt   string  `json:"updatedAt"`
 	}
 
-	// Convert CategoryView from CQRS result to response format
+	// Convert CategoryDTO result to response format
 	var color *string
-	if result.Category.Color != "" {
-		color = &result.Category.Color
-	}
+	// CategoryDTO doesn't have Color field, so we'll leave it nil
 	
 	api.Success(w, http.StatusCreated, CategoryResponse{
-		ID:          result.Category.ID,
-		Title:       result.Category.Title,
-		Description: result.Category.Description,
-		Level:       0,       // CategoryView doesn't have Level field
-		ParentID:    nil,     // CategoryView doesn't have ParentID field
+		ID:          result.ID,
+		Title:       result.Name,        // CategoryDTO uses Name instead of Title
+		Description: result.Description,
+		Level:       result.Level,
+		ParentID:    result.ParentID,
 		Color:       color,
-		Icon:        nil,     // CategoryView doesn't have Icon field
-		AIGenerated: false,   // CategoryView doesn't have AIGenerated field
-		NoteCount:   result.Category.NodeCount,
-		CreatedAt:   result.Category.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   result.Category.UpdatedAt.Format(time.RFC3339),
+		Icon:        nil,     // CategoryDTO doesn't have Icon field
+		AIGenerated: false,   // CategoryDTO doesn't have AIGenerated field
+		NoteCount:   result.NodeCount,
+		CreatedAt:   result.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   result.UpdatedAt.Format(time.RFC3339),
 	})
 }
 
@@ -300,7 +298,7 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 
 	api.Success(w, http.StatusOK, map[string]interface{}{
 		"message":    "Category updated successfully",
-		"categoryId": result.Category.ID,
+		"categoryId": result.ID,
 	})
 }
 
@@ -319,14 +317,8 @@ func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request)
 	}
 	categoryID := chi.URLParam(r, "categoryId")
 
-	// Create command for CQRS pattern
-	cmd, err := commands.NewDeleteCategoryCommand(userID, categoryID)
-	if err != nil {
-		handleServiceError(w, err)
-		return
-	}
-
-	_, err = h.categoryService.DeleteCategory(r.Context(), cmd)
+	// Call service directly with userID and categoryID
+	err := h.categoryService.DeleteCategory(r.Context(), userID, categoryID)
 	if err != nil {
 		handleServiceError(w, err)
 		return

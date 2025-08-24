@@ -144,7 +144,17 @@ func (h *CategoryHandlerRefactored) createCategoryCore(w http.ResponseWriter, r 
 	}
 	
 	// Convert to response format using focused converter
-	convertedView := convertAppCategoryViewToInterfaceView(result.Category)
+	// Create a CategoryView from the CategoryDTO
+	categoryView := &appdto.CategoryView{
+		ID:          result.ID,
+		Title:       result.Name,
+		Description: result.Description,
+		UserID:      result.UserID,
+		CreatedAt:   result.CreatedAt,
+		UpdatedAt:   result.UpdatedAt,
+		NodeCount:   result.NodeCount,
+	}
+	convertedView := convertAppCategoryViewToInterfaceView(categoryView)
 	response := h.converter.FromCategoryView(convertedView)
 	
 	api.Success(w, http.StatusCreated, response)
@@ -185,6 +195,7 @@ func (h *CategoryHandlerRefactored) getCategoryCore(w http.ResponseWriter, r *ht
 	}
 	
 	// Convert to response format using focused converter
+	// GetCategoryResult has a Category field
 	convertedView := convertAppCategoryViewToInterfaceView(result.Category)
 	response := h.converter.FromCategoryView(convertedView)
 	
@@ -241,7 +252,7 @@ func (h *CategoryHandlerRefactored) updateCategoryCore(w http.ResponseWriter, r 
 	
 	api.Success(w, http.StatusOK, map[string]interface{}{
 		"message":    "Category updated successfully",
-		"categoryId": result.Category.ID,
+		"categoryId": result.ID,
 	})
 }
 
@@ -269,15 +280,8 @@ func (h *CategoryHandlerRefactored) deleteCategoryCore(w http.ResponseWriter, r 
 	
 	categoryID := chi.URLParam(r, "categoryId")
 	
-	// Create command using CQRS pattern
-	cmd, err := commands.NewDeleteCategoryCommand(userID, categoryID)
-	if err != nil {
-		h.errorHandler.HandleServiceError(w, err)
-		return
-	}
-	
-	// Execute command
-	_, err = h.categoryService.DeleteCategory(r.Context(), cmd)
+	// Execute delete directly with userID and categoryID
+	err := h.categoryService.DeleteCategory(r.Context(), userID, categoryID)
 	if err != nil {
 		h.errorHandler.HandleServiceError(w, err)
 		return

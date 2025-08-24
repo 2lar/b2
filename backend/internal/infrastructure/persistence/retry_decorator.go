@@ -399,6 +399,27 @@ func (r *RetryEdgeRepository) FindEdgesWithOptions(ctx context.Context, query re
 	return result, err
 }
 
+// DeleteEdge retries edge deletion operations.
+func (r *RetryEdgeRepository) DeleteEdge(ctx context.Context, userID, edgeID string) error {
+	return r.executeWithRetry(ctx, "DeleteEdge", func() error {
+		return r.inner.DeleteEdge(ctx, userID, edgeID)
+	}, true) // DELETE is idempotent
+}
+
+// DeleteEdgesByNode retries deletion of edges by node.
+func (r *RetryEdgeRepository) DeleteEdgesByNode(ctx context.Context, userID, nodeID string) error {
+	return r.executeWithRetry(ctx, "DeleteEdgesByNode", func() error {
+		return r.inner.DeleteEdgesByNode(ctx, userID, nodeID)
+	}, true) // DELETE is idempotent
+}
+
+// DeleteEdgesBetweenNodes retries deletion of edges between nodes.
+func (r *RetryEdgeRepository) DeleteEdgesBetweenNodes(ctx context.Context, userID, sourceNodeID, targetNodeID string) error {
+	return r.executeWithRetry(ctx, "DeleteEdgesBetweenNodes", func() error {
+		return r.inner.DeleteEdgesBetweenNodes(ctx, userID, sourceNodeID, targetNodeID)
+	}, true) // DELETE is idempotent
+}
+
 // executeWithRetry implements the retry logic (same as NodeRepository).
 func (r *RetryEdgeRepository) executeWithRetry(
 	ctx context.Context,
