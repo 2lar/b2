@@ -42,7 +42,7 @@ func InitializeContainer() (*Container, error) {
 	if err != nil {
 		return nil, err
 	}
-	eventBus := provideEventBus(config, logger)
+	eventBus := provideEventBus(config, eventbridgeClient, logger)
 	eventStore := provideEventStore(client, config)
 	unitOfWorkFactory := provideUnitOfWorkFactory(client, config, eventBus, eventStore, logger)
 	connectionAnalyzer := provideConnectionAnalyzer(config)

@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"brain2-backend/infrastructure/dynamodb"
@@ -17,8 +18,6 @@ import (
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
-	"brain2-backend/internal/domain/events"
-	eventHandlers "brain2-backend/internal/domain/events/handlers"
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/features"
@@ -26,6 +25,7 @@ import (
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/infrastructure/persistence/cache"
+	"brain2-backend/internal/infrastructure/messaging"
 	"brain2-backend/internal/repository"
 
 	aws "github.com/aws/aws-sdk-go-v2/aws"
@@ -240,25 +240,43 @@ func provideConnectionAnalyzer(cfg *config.Config) *domainServices.ConnectionAna
 	)
 }
 
-// provideEventBus creates the event bus for domain events.
-func provideEventBus(cfg *config.Config, logger *zap.Logger) shared.EventBus {
-	if cfg.Features.EnableEventBus {
-		// Use our new EventBus implementation with Observer pattern
-		eventBus := events.NewEventBus(logger)
-		
-		// Register event handlers
-		// Example: Register category created handler
-		categoryHandler := eventHandlers.NewCategoryCreatedHandler(logger)
-		eventBus.Subscribe("CategoryCreated", categoryHandler)
-		
-		// In production, you might also forward events to external systems
-		// like EventBridge, Kafka, etc.
-		
-		return eventBus
+// provideEventBus creates the EventBridge-based event bus for domain events.
+func provideEventBus(cfg *config.Config, eventBridgeClient *awsEventbridge.Client, logger *zap.Logger) shared.EventBus {
+	// Get event bus name from environment variable first, then config, default to "B2EventBus"
+	eventBusName := os.Getenv("EVENT_BUS_NAME")
+	if eventBusName == "" {
+		eventBusName = "B2EventBus" // Match the CDK-created event bus name
+		if cfg != nil && cfg.Events.EventBusName != "" {
+			eventBusName = cfg.Events.EventBusName
+		}
 	}
+
+	// Log configuration at Info level for production visibility
+	logger.Info("EventBridge configuration",
+		zap.String("eventBusName", eventBusName),
+		zap.String("source", "brain2-backend"),
+		zap.Bool("usingEnvironmentVariable", os.Getenv("EVENT_BUS_NAME") != ""),
+	)
 	
-	// Fall back to mock event bus when feature is disabled
-	return shared.NewMockEventBus()
+	// Create EventBridge publisher
+	eventPublisher := messaging.NewEventBridgePublisher(eventBridgeClient, eventBusName, "brain2-backend")
+	if eventPublisher == nil {
+		logger.Error("Failed to create EventBridge publisher")
+		return shared.NewMockEventBus()
+	}
+
+	// Create event bus adapter
+	eventBus := messaging.NewEventBusAdapter(eventPublisher)
+	if eventBus == nil {
+		logger.Error("Failed to create EventBus adapter")
+		return shared.NewMockEventBus()
+	}
+
+	logger.Debug("EventBridge publisher configured successfully",
+		zap.String("eventBusName", eventBusName),
+	)
+	
+	return eventBus
 }
 
 // provideUnitOfWork creates the Unit of Work for transactional consistency.

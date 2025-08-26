@@ -144,15 +144,33 @@ func (uow *ProperUnitOfWork) Commit() error {
 	}
 	
 	// Publish domain events
-	for _, event := range uow.pendingEvents {
+	uow.logger.Info("DEBUG: UoW.Commit starting event publishing",
+		zap.Int("pending_events_count", len(uow.pendingEvents)),
+	)
+	
+	for i, event := range uow.pendingEvents {
+		uow.logger.Info("DEBUG: UoW.Commit publishing event",
+			zap.Int("event_index", i),
+			zap.String("event_type", event.EventType()),
+			zap.String("event_id", event.EventID()),
+		)
+		
 		if err := uow.eventBus.Publish(context.TODO(), event); err != nil {
 			uow.logger.Warn("Failed to publish event",
 				zap.String("event_type", event.EventType()),
 				zap.Error(err),
 			)
 			// Continue publishing other events
+		} else {
+			uow.logger.Info("DEBUG: UoW.Commit successfully published event",
+				zap.String("event_type", event.EventType()),
+			)
 		}
 	}
+	
+	uow.logger.Info("DEBUG: UoW.Commit finished event publishing",
+		zap.Int("total_events_processed", len(uow.pendingEvents)),
+	)
 	
 	uow.isInTransaction = false
 	uow.isCommitted = true
@@ -242,6 +260,15 @@ func (uow *ProperUnitOfWork) PublishEvent(event shared.DomainEvent) {
 	uow.mu.Lock()
 	defer uow.mu.Unlock()
 	
+	// Debug logging for event publishing
+	uow.logger.Info("DEBUG: UoW.PublishEvent called",
+		zap.String("event_type", event.EventType()),
+		zap.String("event_id", event.EventID()),
+		zap.String("aggregate_id", event.AggregateID()),
+		zap.Bool("in_transaction", uow.isInTransaction),
+		zap.Int("current_pending_events", len(uow.pendingEvents)),
+	)
+	
 	if !uow.isInTransaction {
 		uow.logger.Warn("Publishing event outside of transaction",
 			zap.String("event_type", event.EventType()),
@@ -249,6 +276,12 @@ func (uow *ProperUnitOfWork) PublishEvent(event shared.DomainEvent) {
 	}
 	
 	uow.pendingEvents = append(uow.pendingEvents, event)
+	
+	// Debug logging after adding event
+	uow.logger.Info("DEBUG: UoW.PublishEvent completed",
+		zap.String("event_type", event.EventType()),
+		zap.Int("new_pending_events_count", len(uow.pendingEvents)),
+	)
 }
 
 // GetPendingEvents returns pending domain events.

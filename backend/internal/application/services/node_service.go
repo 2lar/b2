@@ -473,14 +473,8 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 		shared.ParseVersion(node.Version()),
 	)
 
-	// Publishing NodeDeleted event
-	
-	if err := s.eventBus.Publish(ctx, deletionEvent); err != nil {
-		// Failed to publish NodeDeleted event
-		return nil, appErrors.Wrap(err, "failed to publish deletion event")
-	}
-	
-	// Successfully published NodeDeleted event
+	// Publishing NodeDeleted event through Unit of Work for transactional consistency
+	uow.PublishEvent(deletionEvent)
 
 	// 8. Commit transaction
 	commitCalled = true
@@ -639,11 +633,8 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 			)
 		}
 		
-		// Publish event asynchronously - don't block the bulk operation
-		if err := s.eventBus.Publish(ctx, deletionEvent); err != nil {
-			// Failed to publish event for deleted node
-			// Don't fail the operation for event publishing failures
-		}
+		// Add event to Unit of Work for transactional publishing
+		uow.PublishEvent(deletionEvent)
 	}
 
 	// 6. Commit transaction

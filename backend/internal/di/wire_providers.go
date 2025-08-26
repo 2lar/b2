@@ -110,7 +110,7 @@ func provideTracerProvider(cfg *config.Config) (*observability.TracerProvider, e
 // Domain Service Providers
 func provideFeatureService(cfg *config.Config) *features.FeatureService { panic("wire") }
 func provideConnectionAnalyzer(cfg *config.Config) *domainServices.ConnectionAnalyzer { panic("wire") }
-func provideEventBus(cfg *config.Config, logger *zap.Logger) shared.EventBus { panic("wire") }
+func provideEventBus(cfg *config.Config, eventBridgeClient *awsEventbridge.Client, logger *zap.Logger) shared.EventBus { panic("wire") }
 func provideUnitOfWork(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,

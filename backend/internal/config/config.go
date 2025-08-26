@@ -778,7 +778,7 @@ func loadTracingConfig() Tracing {
 func loadEventsConfig() Events {
 	return Events{
 		Provider:      getEnvString("EVENTS_PROVIDER", "eventbridge"),
-		EventBusName:  getEnvString("EVENT_BUS_NAME", "default"),
+		EventBusName:  getEnvString("EVENT_BUS_NAME", "B2EventBus"),
 		TopicPrefix:   getEnvString("EVENT_TOPIC_PREFIX", "brain2"),
 		RetryAttempts: getEnvInt("EVENT_RETRY_ATTEMPTS", 3),
 		BatchSize:     getEnvInt("EVENT_BATCH_SIZE", 10),

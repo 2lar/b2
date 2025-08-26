@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -33,6 +34,13 @@ var (
 )
 
 func init() {
+	// Add startup diagnostics
+	log.Printf("=== CLEANUP LAMBDA STARTUP ===")
+	log.Printf("Lambda is starting up - this confirms the Lambda is deployable and executable")
+	log.Printf("Environment EVENT_BUS_NAME: %s", os.Getenv("EVENT_BUS_NAME"))
+	log.Printf("Environment TABLE_NAME: %s", os.Getenv("TABLE_NAME"))
+	log.Printf("Environment INDEX_NAME: %s", os.Getenv("INDEX_NAME"))
+	
 	// Initialize DI container
 	var err error
 	container, err = di.InitializeContainer()
@@ -51,15 +59,20 @@ func init() {
 		log.Fatal("Failed to initialize cleanup service")
 	}
 
-	log.Println("Cleanup handler initialized successfully")
+	log.Printf("Cleanup handler initialized successfully - READY TO PROCESS EVENTS")
+	log.Printf("=== CLEANUP LAMBDA READY ===")
 }
 
 // HandleRequest processes NodeDeleted events from EventBridge
 func HandleRequest(ctx context.Context, event events.CloudWatchEvent) error {
-	log.Printf("Processing event: ID=%s, DetailType=%s", event.ID, event.DetailType)
-	
-	// Log the raw event detail for debugging
-	log.Printf("DEBUG: Raw event detail: %s", string(event.Detail))
+	log.Printf("=== CLEANUP LAMBDA EVENT RECEIVED ===")
+	log.Printf("Event ID: %s", event.ID)
+	log.Printf("Event DetailType: %s", event.DetailType)
+	log.Printf("Event Source: %s", event.Source)
+	log.Printf("Event Region: %s", event.Region)
+	log.Printf("Event Version: %s", event.Version)
+	log.Printf("Event Time: %s", event.Time.Format("2006-01-02T15:04:05Z"))
+	log.Printf("Raw Event Detail: %s", string(event.Detail))
 
 	// Only process NodeDeleted events
 	if event.DetailType != "NodeDeleted" {

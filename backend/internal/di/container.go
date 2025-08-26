@@ -279,21 +279,66 @@ func (c *Container) initializeCQRSServices() {
 	// Initialize REAL implementations instead of mocks
 	transactionProvider := persistence.NewDynamoDBTransactionProvider(c.DynamoDBClient)
 
-	// Get event bus name from config or environment, default to "B2EventBus" to match CDK
-	eventBusName := "B2EventBus" // Match the CDK-created event bus name
-	if c.Config != nil && c.Config.Events.EventBusName != "" {
-		eventBusName = c.Config.Events.EventBusName
+	// Get event bus name from environment variable first, then config, default to "B2EventBus"
+	eventBusName := os.Getenv("EVENT_BUS_NAME")
+	if eventBusName == "" {
+		eventBusName = "B2EventBus" // Match the CDK-created event bus name
+		if c.Config != nil && c.Config.Events.EventBusName != "" {
+			eventBusName = c.Config.Events.EventBusName
+		}
 	}
 
-	// Add debug logging for event bus configuration
-	log.Printf("DEBUG: Configuring EventBridge with bus name: %s, source: brain2-backend", eventBusName)
+	// Add comprehensive debug logging for event bus configuration
+	log.Printf("DEBUG: EventBridge Configuration Details:")
+	log.Printf("  - FINAL EventBusName: '%s'", eventBusName)
+	log.Printf("  - Source: 'brain2-backend'") 
+	log.Printf("  - Environment EVENT_BUS_NAME: '%s'", os.Getenv("EVENT_BUS_NAME"))
+	log.Printf("  - Config loaded: %v", c.Config != nil)
+	if c.Config != nil {
+		log.Printf("  - Config.Events.EventBusName: '%s'", c.Config.Events.EventBusName)
+	}
+	log.Printf("  - Using environment variable: %v", os.Getenv("EVENT_BUS_NAME") != "")
+	
+	// Test EventBridge client
+	if c.EventBridgeClient == nil {
+		log.Printf("ERROR: EventBridge client is nil - EventBridge publishing will fail!")
+	} else {
+		log.Printf("DEBUG: EventBridge client initialized successfully")
+		
+		// Add basic connectivity test
+		testCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		
+		// Try to list event buses to test basic connectivity
+		_, err := c.EventBridgeClient.ListEventBuses(testCtx, &awsEventbridge.ListEventBusesInput{
+			Limit: aws.Int32(1),
+		})
+		if err != nil {
+			log.Printf("ERROR: EventBridge connectivity test failed: %v", err)
+			log.Printf("ERROR: This indicates EventBridge client cannot reach AWS service")
+		} else {
+			log.Printf("DEBUG: EventBridge connectivity test passed - client can reach AWS EventBridge")
+		}
+	}
 
 	eventPublisher := messaging.NewEventBridgePublisher(c.EventBridgeClient, eventBusName, "brain2-backend")
+	
+	if eventPublisher == nil {
+		log.Printf("ERROR: EventBridge publisher creation failed!")
+	} else {
+		log.Printf("DEBUG: EventBridge publisher created successfully")
+	}
 
 	// Use the REAL EventBridge publisher through the adapter
 	c.EventBus = messaging.NewEventBusAdapter(eventPublisher)
+	
+	if c.EventBus == nil {
+		log.Printf("ERROR: EventBus adapter creation failed!")
+	} else {
+		log.Printf("DEBUG: EventBus adapter created successfully")
+	}
 
-	log.Printf("DEBUG: EventBridge publisher configured successfully")
+	log.Printf("DEBUG: EventBridge publisher configured successfully - Bus: %s", eventBusName)
 
 	// Create a real transactional repository factory using the implementation below
 	repositoryFactory := NewTransactionalRepositoryFactory(

@@ -66,19 +66,19 @@ const StarField: React.FC<StarFieldProps> = ({
             if (starType < 0.1) {
                 // Bright stars (10%)
                 size = Math.random() * 2 + 1.5;
-                opacity = Math.random() * 0.4 + 0.6;
+                opacity = 1;  // Maximum brightness for bright stars
                 twinkleSpeed = Math.random() * 2000 + 1000;
                 type = 'bright';
             } else if (starType < 0.7) {
                 // Normal stars (60%)
                 size = Math.random() * 1 + 0.5;
-                opacity = Math.random() * 0.6 + 0.3;
+                opacity = Math.random() * 0.2 + 0.8;  // 0.8-1.0 range
                 twinkleSpeed = Math.random() * 3000 + 2000;
                 type = 'normal';
             } else {
                 // Distant stars (30%)
                 size = Math.random() * 0.5 + 0.2;
-                opacity = Math.random() * 0.4 + 0.1;
+                opacity = Math.random() * 0.3 + 0.6;  // 0.6-0.9 range
                 twinkleSpeed = Math.random() * 4000 + 3000;
                 type = 'distant';
             }
@@ -103,40 +103,41 @@ const StarField: React.FC<StarFieldProps> = ({
         const time = Date.now();
         
         starsRef.current.forEach((star: Star) => {
-            ctx.beginPath();
+            ctx.save(); // Save context state to ensure clean rendering
             
             // Enhanced twinkling effect based on star type
             const twinkle = Math.sin(time / star.twinkleSpeed) * 0.5 + 0.5;
-            const currentOpacity = star.opacity * (0.3 + twinkle * 0.7);
+            const currentOpacity = star.opacity * (0.7 + twinkle * 0.3);  // Higher minimum brightness (70%)
             
-            // Different colors for different star types
+            // Different colors for different star types - all much brighter
             let color: string;
             switch (star.type) {
                 case 'bright':
                     color = `rgba(255, 255, 255, ${currentOpacity})`;
-                    // Add subtle glow for bright stars
-                    ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-                    ctx.shadowBlur = star.size * 2;
+                    // Strong glow for bright stars
+                    ctx.shadowColor = 'rgba(255, 255, 255, 1)';
+                    ctx.shadowBlur = star.size * 4;
                     break;
                 case 'normal':
-                    color = `rgba(200, 220, 255, ${currentOpacity})`;
-                    ctx.shadowColor = 'rgba(200, 220, 255, 0.3)';
-                    ctx.shadowBlur = star.size;
+                    color = `rgba(240, 245, 255, ${currentOpacity})`;  // Much brighter
+                    ctx.shadowColor = 'rgba(240, 245, 255, 0.9)';  // Stronger glow
+                    ctx.shadowBlur = star.size * 2;
                     break;
                 case 'distant':
-                    color = `rgba(150, 150, 200, ${currentOpacity})`;
-                    ctx.shadowColor = 'transparent';
-                    ctx.shadowBlur = 0;
+                    color = `rgba(210, 210, 240, ${currentOpacity})`;  // Much brighter
+                    ctx.shadowColor = 'rgba(210, 210, 240, 0.7)';  // Visible glow
+                    ctx.shadowBlur = star.size * 1;
                     break;
             }
             
-            ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+            // Ensure perfect circles by using proper arc rendering
+            ctx.beginPath();
+            ctx.arc(Math.round(star.x), Math.round(star.y), star.size, 0, Math.PI * 2, false);
+            ctx.closePath();
             ctx.fillStyle = color;
             ctx.fill();
             
-            // Reset shadow for next star
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
+            ctx.restore(); // Restore context state
             
             if (animate) {
                 // Slowly move stars (slower for distant stars)

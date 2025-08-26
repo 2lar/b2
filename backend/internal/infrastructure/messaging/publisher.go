@@ -31,12 +31,14 @@ func NewEventBridgePublisher(client *eventbridge.Client, eventBus, source string
 		source = "brain2-backend"
 	}
 	
-	return &EventBridgePublisher{
+	publisher := &EventBridgePublisher{
 		client:    client,
 		eventBus:  eventBus,
 		source:    source,
 		batchSize: 10, // EventBridge has a limit of 10 entries per PutEvents call
 	}
+	
+	return publisher
 }
 
 // Publish publishes domain events to EventBridge
@@ -44,10 +46,6 @@ func (p *EventBridgePublisher) Publish(ctx context.Context, events []shared.Doma
 	if len(events) == 0 {
 		return nil
 	}
-	
-	// Log publishing attempt
-	fmt.Printf("DEBUG: EventBridgePublisher.Publish - Publishing %d events to EventBridge bus: %s, source: %s\n", 
-		len(events), p.eventBus, p.source)
 	
 	// Process events in batches
 	for i := 0; i < len(events); i += p.batchSize {
@@ -58,12 +56,10 @@ func (p *EventBridgePublisher) Publish(ctx context.Context, events []shared.Doma
 		
 		batch := events[i:end]
 		if err := p.publishBatch(ctx, batch); err != nil {
-			fmt.Printf("ERROR: EventBridgePublisher failed to publish batch: %v\n", err)
 			return fmt.Errorf("failed to publish event batch: %w", err)
 		}
 	}
 	
-	fmt.Printf("DEBUG: EventBridgePublisher successfully published %d events\n", len(events))
 	return nil
 }
 
@@ -71,38 +67,42 @@ func (p *EventBridgePublisher) Publish(ctx context.Context, events []shared.Doma
 func (p *EventBridgePublisher) publishBatch(ctx context.Context, events []shared.DomainEvent) error {
 	entries := make([]types.PutEventsRequestEntry, 0, len(events))
 	
+	// Create entries for each event
 	for _, event := range events {
 		entry, err := p.createEventEntry(event)
 		if err != nil {
-			return fmt.Errorf("failed to create event entry: %w", err)
+			return fmt.Errorf("failed to create event entry for %s: %w", event.EventType(), err)
 		}
 		entries = append(entries, entry)
 	}
 	
+	// Call EventBridge API
 	output, err := p.client.PutEvents(ctx, &eventbridge.PutEventsInput{
 		Entries: entries,
 	})
 	
 	if err != nil {
-		fmt.Printf("ERROR: EventBridge PutEvents API call failed: %v\n", err)
-		return fmt.Errorf("failed to put events: %w", err)
+		return fmt.Errorf("EventBridge API call failed: %w", err)
+	}
+	
+	// Check API response
+	if output == nil {
+		return fmt.Errorf("EventBridge API returned nil response")
 	}
 	
 	// Check for failed entries
 	if output.FailedEntryCount > 0 {
-		fmt.Printf("ERROR: EventBridge reported %d failed events\n", output.FailedEntryCount)
 		if output.Entries != nil {
 			for i, entry := range output.Entries {
 				if entry.ErrorCode != nil {
-					fmt.Printf("ERROR: Event %d failed - Code: %s, Message: %s\n", 
-						i, aws.ToString(entry.ErrorCode), aws.ToString(entry.ErrorMessage))
+					// Could add structured logging here if logger was passed
+					_ = i // Use index if needed for logging
 				}
 			}
 		}
-		return fmt.Errorf("%d events failed to publish", output.FailedEntryCount)
+		return fmt.Errorf("EventBridge rejected %d out of %d events", output.FailedEntryCount, len(entries))
 	}
 	
-	fmt.Printf("DEBUG: EventBridge PutEvents successful - %d events sent\n", len(entries))
 	return nil
 }
 
@@ -147,9 +147,6 @@ func (p *EventBridgePublisher) createEventEntry(event shared.DomainEvent) (types
 	if err != nil {
 		return types.PutEventsRequestEntry{}, fmt.Errorf("failed to marshal detail: %w", err)
 	}
-	
-	// Log the event detail for debugging
-	fmt.Printf("DEBUG: EventBridge event detail for %s: %s\n", event.EventType(), string(detailJSON))
 	
 	// Create EventBridge entry
 	entry := types.PutEventsRequestEntry{
@@ -264,8 +261,9 @@ func (p *AsyncEventPublisher) publishBatch(events []shared.DomainEvent) {
 	defer cancel()
 	
 	if err := p.publisher.Publish(ctx, events); err != nil {
-		// Log error (in production, use proper logging)
-		fmt.Printf("Failed to publish events: %v\n", err)
+		// In production, use proper structured logging here
+		// For now, silently drop errors to avoid fmt.Printf
+		_ = err
 	}
 }
 

@@ -1241,7 +1241,8 @@ header h1 {
     position: relative;
     flex: 1;
     /* Enhanced cosmic space background */
-    background: radial-gradient(ellipse at center, 
+    /* This is the center / middle star */
+    background: radial-gradient(circle at center, 
         rgba(255, 203, 203, 0.3) 0%,
         rgba(40, 75, 173, 0.2) 1%,
         rgba(24, 38, 68, 0.8) 3%,
@@ -1274,7 +1275,7 @@ header h1 {
 #graph-container:-webkit-full-screen .graph-container,
 #graph-container:-moz-full-screen .graph-container,
 #graph-container:-ms-fullscreen .graph-container {
-    background: radial-gradient(ellipse at center, 
+    background: radial-gradient(circle at center, 
         rgba(88, 28, 135, 0.4) 0%,
         rgba(29, 78, 216, 0.3) 20%,
         rgba(17, 24, 39, 0.9) 10%,
@@ -1961,7 +1962,7 @@ header h1 {
     border: 1px solid var(--border);
     border-radius: 8px;
     /* Enhanced cosmic space background */
-    background: radial-gradient(ellipse at center, 
+    background: radial-gradient(circle at center, 
         rgba(255, 203, 203, 0.3) 0%,
         rgba(40, 75, 173, 0.2) 1%,
         rgba(17, 24, 39, 0.9) 10%,

@@ -3,6 +3,7 @@ package messaging
 
 import (
 	"context"
+	"fmt"
 
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
@@ -24,13 +25,18 @@ func NewEventBusAdapter(publisher repository.EventPublisher) shared.EventBus {
 // Publish implements the shared.EventBus interface by delegating to the EventPublisher.
 // It converts the single event to an array as expected by EventPublisher.
 func (a *EventBusAdapter) Publish(ctx context.Context, event shared.DomainEvent) error {
-	// Publishing event to underlying publisher
+	// Check if publisher is nil
+	if a.publisher == nil {
+		return fmt.Errorf("underlying event publisher is nil")
+	}
 	
 	// EventPublisher expects an array of events
 	events := []shared.DomainEvent{event}
+	
 	err := a.publisher.Publish(ctx, events)
+	if err != nil {
+		return fmt.Errorf("event publisher failed: %w", err)
+	}
 	
-	// Error handling is done at caller level
-	
-	return err
+	return nil
 }
