@@ -272,6 +272,39 @@ func (e *EdgeDeletedEvent) EventData() map[string]interface{} {
 	}
 }
 
+// EdgeWeightUpdatedEvent is fired when an edge weight is updated
+type EdgeWeightUpdatedEvent struct {
+	BaseEvent
+	EdgeID       string  `json:"edge_id"`
+	SourceNodeID string  `json:"source_node_id"`
+	TargetNodeID string  `json:"target_node_id"`
+	OldWeight    float64 `json:"old_weight"`
+	NewWeight    float64 `json:"new_weight"`
+}
+
+// NewEdgeWeightUpdatedEvent creates a new EdgeWeightUpdatedEvent
+func NewEdgeWeightUpdatedEvent(edgeID, sourceNodeID, targetNodeID NodeID, userID UserID, oldWeight, newWeight Weight, version Version) *EdgeWeightUpdatedEvent {
+	return &EdgeWeightUpdatedEvent{
+		BaseEvent:    newBaseEvent("EdgeWeightUpdated", edgeID.String(), userID.String(), version.Int()),
+		EdgeID:       edgeID.String(),
+		SourceNodeID: sourceNodeID.String(),
+		TargetNodeID: targetNodeID.String(),
+		OldWeight:    oldWeight.Value(),
+		NewWeight:    newWeight.Value(),
+	}
+}
+
+// EventData returns the event-specific data
+func (e *EdgeWeightUpdatedEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{
+		"edge_id":        e.EdgeID,
+		"source_node_id": e.SourceNodeID,
+		"target_node_id": e.TargetNodeID,
+		"old_weight":     e.OldWeight,
+		"new_weight":     e.NewWeight,
+	}
+}
+
 // Connection Events
 
 // PotentialConnectionFoundEvent is fired when the system finds a potential connection between nodes

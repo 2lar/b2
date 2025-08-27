@@ -397,6 +397,117 @@ func (v Version) Equals(other Version) bool {
 	return v.value == other.value
 }
 
+// Weight is a value object for edge weight with business rules
+type Weight struct {
+	value float64
+}
+
+// NewWeight creates a new Weight value object with validation
+func NewWeight(value float64) (Weight, error) {
+	if value < 0.0 || value > 1.0 {
+		return Weight{}, NewValidationError("weight", "weight must be between 0.0 and 1.0", value)
+	}
+	return Weight{value: value}, nil
+}
+
+// Value returns the weight value
+func (w Weight) Value() float64 {
+	return w.value
+}
+
+// IsStrong checks if this is a strong connection (>= 0.7)
+func (w Weight) IsStrong() bool {
+	return w.value >= 0.7
+}
+
+// IsWeak checks if this is a weak connection (< 0.3)
+func (w Weight) IsWeak() bool {
+	return w.value < 0.3
+}
+
+// IsMedium checks if this is a medium connection (between 0.3 and 0.7)
+func (w Weight) IsMedium() bool {
+	return w.value >= 0.3 && w.value < 0.7
+}
+
+// Equals checks if two weights are equal
+func (w Weight) Equals(other Weight) bool {
+	return w.value == other.value
+}
+
+// IsValid validates the weight is within bounds
+func (w Weight) IsValid() bool {
+	return w.value >= 0.0 && w.value <= 1.0
+}
+
+// EdgeMetadata is a value object for edge metadata
+type EdgeMetadata struct {
+	data map[string]interface{}
+}
+
+// NewEdgeMetadata creates a new EdgeMetadata value object
+func NewEdgeMetadata() EdgeMetadata {
+	return EdgeMetadata{
+		data: make(map[string]interface{}),
+	}
+}
+
+// NewEdgeMetadataWithData creates EdgeMetadata with initial data
+func NewEdgeMetadataWithData(data map[string]interface{}) EdgeMetadata {
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+	// Create a copy to ensure encapsulation
+	copiedData := make(map[string]interface{})
+	for k, v := range data {
+		copiedData[k] = v
+	}
+	return EdgeMetadata{data: copiedData}
+}
+
+// Get retrieves a value from metadata
+func (m EdgeMetadata) Get(key string) (interface{}, bool) {
+	val, exists := m.data[key]
+	return val, exists
+}
+
+// Set adds or updates a value in metadata
+func (m EdgeMetadata) Set(key string, value interface{}) EdgeMetadata {
+	// Create a new copy to maintain immutability
+	newData := make(map[string]interface{})
+	for k, v := range m.data {
+		newData[k] = v
+	}
+	newData[key] = value
+	return EdgeMetadata{data: newData}
+}
+
+// Remove removes a key from metadata
+func (m EdgeMetadata) Remove(key string) EdgeMetadata {
+	// Create a new copy to maintain immutability
+	newData := make(map[string]interface{})
+	for k, v := range m.data {
+		if k != key {
+			newData[k] = v
+		}
+	}
+	return EdgeMetadata{data: newData}
+}
+
+// ToMap returns a copy of the metadata as a map
+func (m EdgeMetadata) ToMap() map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, v := range m.data {
+		result[k] = v
+	}
+	return result
+}
+
+// IsEmpty checks if metadata is empty
+func (m EdgeMetadata) IsEmpty() bool {
+	return len(m.data) == 0
+}
+
 // Helper functions for value object validation and processing
 
 // stopWords contains common words filtered out during keyword extraction
