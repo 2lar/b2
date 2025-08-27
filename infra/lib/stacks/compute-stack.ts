@@ -90,7 +90,7 @@ export class ComputeStack extends Stack {
       timeout: Duration.seconds(60),  // Longer timeout for cleanup operations
       environment: {
         TABLE_NAME: memoryTable.tableName,
-        INDEX_NAME: 'KeywordIndex',
+        INDEX_NAME: 'EdgeIndex',  // Use EdgeIndex for edge queries
         EVENT_BUS_NAME: this.eventBus.eventBusName,
       },
       // Note: No reserved concurrency - Lambda will auto-scale as needed

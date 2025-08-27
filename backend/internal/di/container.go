@@ -182,7 +182,7 @@ func (c *Container) initializeRepository() error {
 
 	// Initialize base repositories (without persistence)
 	baseNodeRepo := infradynamodb.NewNodeRepository(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName, c.Logger)
-	baseEdgeRepo := infradynamodb.NewEdgeRepositoryCQRS(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName, c.Logger)
+	baseEdgeRepo := infradynamodb.NewEdgeRepositoryV2(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName, c.Logger)
 	baseKeywordRepo := infradynamodb.NewKeywordRepository(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName)
 	// Create transactional repository
 	baseTransactionalRepo := infradynamodb.NewTransactionalRepository(c.DynamoDBClient, c.Config.Database.TableName, c.Config.Database.IndexName, c.Logger)

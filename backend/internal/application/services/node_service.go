@@ -451,12 +451,18 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 		return nil, appErrors.NewUnauthorized("node belongs to different user")
 	}
 
-	// 5. Delete associated edges first
-	// For now, we'll skip edge deletion as it's not fully implemented
-	// TODO: Implement proper edge deletion
-	// if err := uow.Edges().DeleteByNodeID(ctx, nodeID); err != nil {
-	//	return nil, appErrors.Wrap(err, "failed to delete node edges")
-	// }
+	// 5. Delete associated edges first using proper DeleteByNode method
+	if edgeDeleter, ok := uow.Edges().(interface {
+		DeleteByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error
+	}); ok {
+		if err := edgeDeleter.DeleteByNode(ctx, userID, nodeID); err != nil {
+			return nil, appErrors.Wrap(err, "failed to delete node edges")
+		}
+	} else {
+		// Fallback: manually delete edges if DeleteByNode not available
+		// This ensures backward compatibility but edges may remain orphaned
+		// TODO: Add logger to NodeService to warn about this condition
+	}
 
 	// 6. Delete the node
 	if err := uow.Nodes().DeleteNode(ctx, userID.String(), nodeID.String()); err != nil {

@@ -162,7 +162,7 @@ func (s *CleanupService) CleanupNodeResiduals(ctx context.Context, userID, nodeI
 
 // cleanupCanonicalEdges handles cleanup of edges stored in canonical format
 func (s *CleanupService) cleanupCanonicalEdges(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error {
-	// If we have access to EdgeRepositoryCQRS with DeleteByNode method, use it
+	// If we have access to EdgeRepository with DeleteByNode method, use it
 	type edgeDeleter interface {
 		DeleteByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error
 	}

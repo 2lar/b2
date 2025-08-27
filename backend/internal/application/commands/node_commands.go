@@ -321,13 +321,24 @@ func (s *NodeCommandService) DeleteNode(ctx context.Context, cmd DeleteNodeComma
 	// The delete will fail if the node doesn't exist
 	
 	// 3. Delete all edges connected to this node (cascade delete)
-	// Note: Edge deletion is handled by the repository layer
-	// if err := s.deleteNodeEdges(ctx, cmd.NodeID); err != nil {
-	// 	s.logger.Warn("Failed to delete node edges",
-	// 		zap.String("node_id", cmd.NodeID),
-	// 		zap.Error(err),
-	// 	)
-	// }
+	// Check if the edge writer supports DeleteByNode for efficient deletion
+	if edgeDeleter, ok := s.edgeWriter.(interface {
+		DeleteByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error
+	}); ok {
+		if err := edgeDeleter.DeleteByNode(ctx, userID, nodeID); err != nil {
+			s.logger.Warn("Failed to delete node edges",
+				zap.String("node_id", cmd.NodeID),
+				zap.Error(err),
+			)
+			// Continue with node deletion even if edge deletion fails
+			// to avoid leaving the node in an inconsistent state
+		}
+	} else {
+		// Log warning that edges may be orphaned
+		s.logger.Warn("EdgeWriter does not support DeleteByNode, edges may remain orphaned",
+			zap.String("node_id", cmd.NodeID),
+		)
+	}
 	
 	// 4. Delete the node
 	if err := s.nodeWriter.Delete(ctx, userID, nodeID); err != nil {

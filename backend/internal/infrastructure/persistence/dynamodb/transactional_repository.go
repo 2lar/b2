@@ -43,7 +43,7 @@ func (r *TransactionalRepository) CreateNodeWithEdges(ctx context.Context, node 
 	
 	// Create edges if any
 	if len(relatedNodeIDs) > 0 {
-		edgeRepo := NewEdgeRepositoryCQRS(r.client, r.tableName, r.indexName, r.logger)
+		edgeRepo := NewEdgeRepositoryV2(r.client, r.tableName, r.indexName, r.logger)
 		for _, targetID := range relatedNodeIDs {
 			// Parse IDs properly
 			sourceID, _ := shared.ParseNodeID(node.GetID())
