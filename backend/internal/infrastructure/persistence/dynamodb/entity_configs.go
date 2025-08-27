@@ -440,7 +440,7 @@ func (c *CategoryConfig) GetVersion(cat *category.Category) int {
 
 // CreateNodeRepository creates a new node repository using the generic repository
 func CreateNodeRepository(client *dynamodb.Client, tableName, indexName string, logger *zap.Logger) *GenericRepository[*node.Node] {
-	return NewGenericRepository[*node.Node](
+	return NewGenericRepository(
 		client,
 		tableName,
 		indexName,
@@ -451,7 +451,7 @@ func CreateNodeRepository(client *dynamodb.Client, tableName, indexName string, 
 
 // CreateEdgeRepository creates a new edge repository using the generic repository
 func CreateEdgeRepository(client *dynamodb.Client, tableName, indexName string, logger *zap.Logger) *GenericRepository[*edge.Edge] {
-	return NewGenericRepository[*edge.Edge](
+	return NewGenericRepository(
 		client,
 		tableName,
 		indexName,
@@ -462,7 +462,7 @@ func CreateEdgeRepository(client *dynamodb.Client, tableName, indexName string, 
 
 // CreateCategoryRepository creates a new category repository using the generic repository
 func CreateCategoryRepository(client *dynamodb.Client, tableName, indexName string, logger *zap.Logger) *GenericRepository[*category.Category] {
-	return NewGenericRepository[*category.Category](
+	return NewGenericRepository(
 		client,
 		tableName,
 		indexName,

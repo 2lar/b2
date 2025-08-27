@@ -167,7 +167,7 @@ type SingleDeleteAttemptResult struct {
 
 // executeSingleDeleteAttempt performs a single delete attempt on DynamoDB.
 // This function extracts the core deletion logic with a clear, descriptive name.
-func (o *BatchDeleteOrchestrator) executeSingleDeleteAttempt(ctx context.Context, userID string, nodeIDs []string, attemptNumber int) (*SingleDeleteAttemptResult, error) {
+func (o *BatchDeleteOrchestrator) executeSingleDeleteAttempt(ctx context.Context, userID string, nodeIDs []string, _ int) (*SingleDeleteAttemptResult, error) {
 	// Build DynamoDB write requests
 	writeRequests := o.buildDeleteRequests(userID, nodeIDs)
 	
@@ -435,7 +435,7 @@ func (r *RefactoredNodeRepository) TransformAndEnrichNodeForResponse(ctx context
 }
 
 // loadNodeRelationships loads relationships for a node with a clear, descriptive name.
-func (r *RefactoredNodeRepository) loadNodeRelationships(ctx context.Context, nodeID string) (*NodeRelationships, error) {
+func (r *RefactoredNodeRepository) loadNodeRelationships(_ context.Context, _ string) (*NodeRelationships, error) {
 	// Implementation would load edges, categories, etc.
 	return &NodeRelationships{}, nil
 }

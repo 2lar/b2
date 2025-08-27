@@ -60,8 +60,8 @@ func NewProperUnitOfWork(
 	
 	// Initialize repositories
 	uow.nodeRepo = NewNodeRepository(client, tableName, indexName, logger)
-	uow.edgeRepo = NewEdgeRepositoryV2(client, tableName, indexName, logger)
-	uow.categoryRepo = NewCategoryRepositoryCQRS(client, tableName, indexName, logger)
+	uow.edgeRepo = NewEdgeRepository(client, tableName, indexName, logger)
+	uow.categoryRepo = NewCategoryRepository(client, tableName, indexName, logger)
 	uow.keywordRepo = NewKeywordRepository(client, tableName, indexName)
 	uow.graphRepo = NewGraphRepository(client, tableName, indexName, logger)
 	

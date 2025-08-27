@@ -165,8 +165,8 @@ func provideEdgeRepository(
 	cache cache.Cache,
 	metrics *observability.Collector,
 ) repository.EdgeRepository {
-	// Use the new refactored EdgeRepositoryV2 with composition pattern
-	base := infraDynamodb.NewEdgeRepositoryV2(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
+	// Use the refactored EdgeRepository with composition pattern
+	base := infraDynamodb.NewEdgeRepository(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
 	// Return optimized repository with significantly reduced code duplication
 	return base
@@ -181,8 +181,8 @@ func provideCategoryRepository(
 	cache cache.Cache,
 	metrics *observability.Collector,
 ) repository.CategoryRepository {
-	// Use the new refactored CategoryRepositoryV2 with composition pattern
-	base := infraDynamodb.NewCategoryRepositoryV2(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
+	// Use the refactored CategoryRepository with composition pattern
+	base := infraDynamodb.NewCategoryRepository(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
 	// Return optimized repository with composition-based implementation
 	return base

@@ -16,15 +16,15 @@ import (
 	"go.uber.org/zap"
 )
 
-// CategoryRepositoryV2 implements CategoryReader and CategoryWriter using composition
+// CategoryRepository implements CategoryReader and CategoryWriter using composition
 // This eliminates duplicate code from the original category repository
-type CategoryRepositoryV2 struct {
+type CategoryRepository struct {
 	*GenericRepository[*category.Category]  // Composition - inherits all CRUD operations
 }
 
-// NewCategoryRepositoryV2 creates a new category repository with minimal code
-func NewCategoryRepositoryV2(client *dynamodb.Client, tableName, indexName string, logger *zap.Logger) *CategoryRepositoryV2 {
-	return &CategoryRepositoryV2{
+// NewCategoryRepository creates a new category repository with minimal code
+func NewCategoryRepository(client *dynamodb.Client, tableName, indexName string, logger *zap.Logger) *CategoryRepository {
+	return &CategoryRepository{
 		GenericRepository: CreateCategoryRepository(client, tableName, indexName, logger),
 	}
 }
@@ -34,7 +34,7 @@ func NewCategoryRepositoryV2(client *dynamodb.Client, tableName, indexName strin
 // ============================================================================
 
 // FindByParent retrieves all categories with a specific parent
-func (r *CategoryRepositoryV2) FindByParent(ctx context.Context, userID string, parentID *shared.CategoryID) ([]*category.Category, error) {
+func (r *CategoryRepository) FindByParent(ctx context.Context, userID string, parentID *shared.CategoryID) ([]*category.Category, error) {
 	// Query all categories for the user
 	categories, err := r.Query(ctx, userID, WithSKPrefix("CATEGORY#"))
 	if err != nil {
@@ -57,7 +57,7 @@ func (r *CategoryRepositoryV2) FindByParent(ctx context.Context, userID string, 
 }
 
 // FindByLevelInternal retrieves categories at a specific hierarchy level (internal helper)
-func (r *CategoryRepositoryV2) FindByLevelInternal(ctx context.Context, userID string, level int) ([]*category.Category, error) {
+func (r *CategoryRepository) FindByLevelInternal(ctx context.Context, userID string, level int) ([]*category.Category, error) {
 	// Query all categories for the user
 	categories, err := r.Query(ctx, userID, WithSKPrefix("CATEGORY#"))
 	if err != nil {
@@ -76,7 +76,7 @@ func (r *CategoryRepositoryV2) FindByLevelInternal(ctx context.Context, userID s
 }
 
 // FindWithNodes retrieves categories that have associated nodes
-func (r *CategoryRepositoryV2) FindWithNodes(ctx context.Context, userID string) ([]*category.Category, error) {
+func (r *CategoryRepository) FindWithNodes(ctx context.Context, userID string) ([]*category.Category, error) {
 	// Query all categories for the user
 	categories, err := r.Query(ctx, userID, WithSKPrefix("CATEGORY#"))
 	if err != nil {
@@ -95,7 +95,7 @@ func (r *CategoryRepositoryV2) FindWithNodes(ctx context.Context, userID string)
 }
 
 // GetHierarchy retrieves the full hierarchy for a category (ancestors)
-func (r *CategoryRepositoryV2) GetHierarchy(ctx context.Context, userID string, categoryID shared.CategoryID) ([]*category.Category, error) {
+func (r *CategoryRepository) GetHierarchy(ctx context.Context, userID string, categoryID shared.CategoryID) ([]*category.Category, error) {
 	hierarchy := make([]*category.Category, 0)
 	
 	// Start with the given category
@@ -130,12 +130,12 @@ func (r *CategoryRepositoryV2) GetHierarchy(ctx context.Context, userID string, 
 }
 
 // GetChildren retrieves all direct children of a category
-func (r *CategoryRepositoryV2) GetChildren(ctx context.Context, userID string, parentID shared.CategoryID) ([]*category.Category, error) {
+func (r *CategoryRepository) GetChildren(ctx context.Context, userID string, parentID shared.CategoryID) ([]*category.Category, error) {
 	return r.FindByParent(ctx, userID, &parentID)
 }
 
 // GetDescendants retrieves all descendants of a category (recursive)
-func (r *CategoryRepositoryV2) GetDescendants(ctx context.Context, userID string, parentID shared.CategoryID) ([]*category.Category, error) {
+func (r *CategoryRepository) GetDescendants(ctx context.Context, userID string, parentID shared.CategoryID) ([]*category.Category, error) {
 	descendants := make([]*category.Category, 0)
 	
 	// Get direct children
@@ -164,12 +164,12 @@ func (r *CategoryRepositoryV2) GetDescendants(ctx context.Context, userID string
 // ============================================================================
 
 // FindByID retrieves a category by its ID
-func (r *CategoryRepositoryV2) FindByID(ctx context.Context, userID string, categoryID string) (*category.Category, error) {
+func (r *CategoryRepository) FindByID(ctx context.Context, userID string, categoryID string) (*category.Category, error) {
 	return r.GenericRepository.FindByID(ctx, userID, categoryID)
 }
 
 // FindByName retrieves a category by its name
-func (r *CategoryRepositoryV2) FindByName(ctx context.Context, userID string, name string) (*category.Category, error) {
+func (r *CategoryRepository) FindByName(ctx context.Context, userID string, name string) (*category.Category, error) {
 	// Query all categories for the user
 	categories, err := r.Query(ctx, userID, WithSKPrefix("CATEGORY#"))
 	if err != nil {
@@ -187,7 +187,7 @@ func (r *CategoryRepositoryV2) FindByName(ctx context.Context, userID string, na
 }
 
 // Exists checks if a category exists
-func (r *CategoryRepositoryV2) Exists(ctx context.Context, userID string, categoryID string) (bool, error) {
+func (r *CategoryRepository) Exists(ctx context.Context, userID string, categoryID string) (bool, error) {
 	cid := shared.CategoryID(categoryID)
 	_, err := r.FindByID(ctx, userID, string(cid))
 	if err == repository.ErrCategoryNotFound {
@@ -197,7 +197,7 @@ func (r *CategoryRepositoryV2) Exists(ctx context.Context, userID string, catego
 }
 
 // Save creates a new category
-func (r *CategoryRepositoryV2) Save(ctx context.Context, cat *category.Category) error {
+func (r *CategoryRepository) Save(ctx context.Context, cat *category.Category) error {
 	// Validate hierarchy before saving
 	if cat.ParentID != nil {
 		parent, err := r.FindByID(ctx, cat.UserID, string(*cat.ParentID))
@@ -216,7 +216,7 @@ func (r *CategoryRepositoryV2) Save(ctx context.Context, cat *category.Category)
 }
 
 // Update updates an existing category
-func (r *CategoryRepositoryV2) Update(ctx context.Context, cat *category.Category) error {
+func (r *CategoryRepository) Update(ctx context.Context, cat *category.Category) error {
 	// Validate hierarchy if parent changed
 	if cat.ParentID != nil {
 		// Check for cycles
@@ -245,7 +245,7 @@ func (r *CategoryRepositoryV2) Update(ctx context.Context, cat *category.Categor
 }
 
 // Delete deletes a category
-func (r *CategoryRepositoryV2) Delete(ctx context.Context, userID string, categoryID string) error {
+func (r *CategoryRepository) Delete(ctx context.Context, userID string, categoryID string) error {
 	cid := shared.CategoryID(categoryID)
 	// Check for children
 	children, err := r.GetChildren(ctx, userID, cid)
@@ -261,7 +261,7 @@ func (r *CategoryRepositoryV2) Delete(ctx context.Context, userID string, catego
 }
 
 // CountByUser counts categories for a user
-func (r *CategoryRepositoryV2) CountByUser(ctx context.Context, userID string) (int, error) {
+func (r *CategoryRepository) CountByUser(ctx context.Context, userID string) (int, error) {
 	categories, err := r.FindByUser(ctx, userID)
 	if err != nil {
 		return 0, err
@@ -270,7 +270,7 @@ func (r *CategoryRepositoryV2) CountByUser(ctx context.Context, userID string) (
 }
 
 // UpdateNoteCount updates the note count for a category
-func (r *CategoryRepositoryV2) UpdateNoteCount(ctx context.Context, userID string, categoryID shared.CategoryID, delta int) error {
+func (r *CategoryRepository) UpdateNoteCount(ctx context.Context, userID string, categoryID shared.CategoryID, delta int) error {
 	cat, err := r.FindByID(ctx, userID, string(categoryID))
 	if err != nil {
 		return err
@@ -285,7 +285,7 @@ func (r *CategoryRepositoryV2) UpdateNoteCount(ctx context.Context, userID strin
 }
 
 // MoveCategory moves a category to a new parent
-func (r *CategoryRepositoryV2) MoveCategory(ctx context.Context, userID string, categoryID shared.CategoryID, newParentID *shared.CategoryID) error {
+func (r *CategoryRepository) MoveCategory(ctx context.Context, userID string, categoryID shared.CategoryID, newParentID *shared.CategoryID) error {
 	cat, err := r.FindByID(ctx, userID, string(categoryID))
 	if err != nil {
 		return err
@@ -299,12 +299,12 @@ func (r *CategoryRepositoryV2) MoveCategory(ctx context.Context, userID string, 
 }
 
 // BatchGetCategories retrieves multiple categories
-func (r *CategoryRepositoryV2) BatchGetCategories(ctx context.Context, userID string, categoryIDs []string) (map[string]*category.Category, error) {
+func (r *CategoryRepository) BatchGetCategories(ctx context.Context, userID string, categoryIDs []string) (map[string]*category.Category, error) {
 	return r.GenericRepository.BatchGet(ctx, userID, categoryIDs)
 }
 
 // BatchDeleteCategories deletes multiple categories
-func (r *CategoryRepositoryV2) BatchDeleteCategories(ctx context.Context, userID string, categoryIDs []string) (deleted []string, failed []string, err error) {
+func (r *CategoryRepository) BatchDeleteCategories(ctx context.Context, userID string, categoryIDs []string) (deleted []string, failed []string, err error) {
 	// Check each category for children before deletion
 	for _, catID := range categoryIDs {
 		categoryID := shared.CategoryID(catID)
@@ -323,7 +323,7 @@ func (r *CategoryRepositoryV2) BatchDeleteCategories(ctx context.Context, userID
 }
 
 // FindByUser retrieves all categories for a user with options
-func (r *CategoryRepositoryV2) FindByUser(ctx context.Context, userID string, opts ...repository.QueryOption) ([]category.Category, error) {
+func (r *CategoryRepository) FindByUser(ctx context.Context, userID string, opts ...repository.QueryOption) ([]category.Category, error) {
 	cats, err := r.Query(ctx, userID, WithSKPrefix("CATEGORY#"))
 	if err != nil {
 		return nil, err
@@ -339,7 +339,7 @@ func (r *CategoryRepositoryV2) FindByUser(ctx context.Context, userID string, op
 }
 
 // FindRootCategories retrieves all root categories with options
-func (r *CategoryRepositoryV2) FindRootCategories(ctx context.Context, userID string, opts ...repository.QueryOption) ([]category.Category, error) {
+func (r *CategoryRepository) FindRootCategories(ctx context.Context, userID string, opts ...repository.QueryOption) ([]category.Category, error) {
 	cats, err := r.FindByParent(ctx, userID, nil)
 	if err != nil {
 		return nil, err
@@ -355,7 +355,7 @@ func (r *CategoryRepositoryV2) FindRootCategories(ctx context.Context, userID st
 }
 
 // FindChildCategories retrieves child categories
-func (r *CategoryRepositoryV2) FindChildCategories(ctx context.Context, userID string, parentID string) ([]category.Category, error) {
+func (r *CategoryRepository) FindChildCategories(ctx context.Context, userID string, parentID string) ([]category.Category, error) {
 	pid := shared.CategoryID(parentID)
 	cats, err := r.GetChildren(ctx, userID, pid)
 	if err != nil {
@@ -372,7 +372,7 @@ func (r *CategoryRepositoryV2) FindChildCategories(ctx context.Context, userID s
 }
 
 // FindCategoryPath retrieves the path from root to a category
-func (r *CategoryRepositoryV2) FindCategoryPath(ctx context.Context, userID string, categoryID string) ([]category.Category, error) {
+func (r *CategoryRepository) FindCategoryPath(ctx context.Context, userID string, categoryID string) ([]category.Category, error) {
 	cid := shared.CategoryID(categoryID)
 	cats, err := r.GetHierarchy(ctx, userID, cid)
 	if err != nil {
@@ -389,12 +389,12 @@ func (r *CategoryRepositoryV2) FindCategoryPath(ctx context.Context, userID stri
 }
 
 // FindCategoryTree retrieves all categories as a tree
-func (r *CategoryRepositoryV2) FindCategoryTree(ctx context.Context, userID string) ([]category.Category, error) {
+func (r *CategoryRepository) FindCategoryTree(ctx context.Context, userID string) ([]category.Category, error) {
 	return r.FindByUser(ctx, userID)
 }
 
 // FindByLevel retrieves categories at a specific level with options
-func (r *CategoryRepositoryV2) FindByLevel(ctx context.Context, userID string, level int, opts ...repository.QueryOption) ([]category.Category, error) {
+func (r *CategoryRepository) FindByLevel(ctx context.Context, userID string, level int, opts ...repository.QueryOption) ([]category.Category, error) {
 	cats, err := r.FindByLevelInternal(ctx, userID, level)
 	if err != nil {
 		return nil, err
@@ -410,7 +410,7 @@ func (r *CategoryRepositoryV2) FindByLevel(ctx context.Context, userID string, l
 }
 
 // FindMostActive finds the most active categories
-func (r *CategoryRepositoryV2) FindMostActive(ctx context.Context, userID string, limit int) ([]category.Category, error) {
+func (r *CategoryRepository) FindMostActive(ctx context.Context, userID string, limit int) ([]category.Category, error) {
 	cats, err := r.FindWithNodes(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -433,7 +433,7 @@ func (r *CategoryRepositoryV2) FindMostActive(ctx context.Context, userID string
 }
 
 // FindRecentlyUsed finds recently used categories
-func (r *CategoryRepositoryV2) FindRecentlyUsed(ctx context.Context, userID string, days int, opts ...repository.QueryOption) ([]category.Category, error) {
+func (r *CategoryRepository) FindRecentlyUsed(ctx context.Context, userID string, days int, opts ...repository.QueryOption) ([]category.Category, error) {
 	cats, err := r.Query(ctx, userID, WithSKPrefix("CATEGORY#"))
 	if err != nil {
 		return nil, err
@@ -459,7 +459,7 @@ func (r *CategoryRepositoryV2) FindRecentlyUsed(ctx context.Context, userID stri
 }
 
 // FindBySpecification finds categories matching a specification
-func (r *CategoryRepositoryV2) FindBySpecification(ctx context.Context, spec repository.Specification, opts ...repository.QueryOption) ([]category.Category, error) {
+func (r *CategoryRepository) FindBySpecification(ctx context.Context, spec repository.Specification, opts ...repository.QueryOption) ([]category.Category, error) {
 	// Simplified implementation - would need proper specification pattern
 	if spec == nil {
 		return nil, fmt.Errorf("invalid specification")
@@ -468,7 +468,7 @@ func (r *CategoryRepositoryV2) FindBySpecification(ctx context.Context, spec rep
 }
 
 // CountBySpecification counts categories matching a specification
-func (r *CategoryRepositoryV2) CountBySpecification(ctx context.Context, spec repository.Specification) (int, error) {
+func (r *CategoryRepository) CountBySpecification(ctx context.Context, spec repository.Specification) (int, error) {
 	cats, err := r.FindBySpecification(ctx, spec)
 	if err != nil {
 		return 0, err
@@ -477,7 +477,7 @@ func (r *CategoryRepositoryV2) CountBySpecification(ctx context.Context, spec re
 }
 
 // GetCategoriesPage retrieves a page of categories
-func (r *CategoryRepositoryV2) GetCategoriesPage(ctx context.Context, query repository.CategoryQuery, pagination repository.Pagination) (*repository.CategoryPage, error) {
+func (r *CategoryRepository) GetCategoriesPage(ctx context.Context, query repository.CategoryQuery, pagination repository.Pagination) (*repository.CategoryPage, error) {
 	cats, err := r.FindByUser(ctx, query.UserID)
 	if err != nil {
 		return nil, err
@@ -506,17 +506,17 @@ func (r *CategoryRepositoryV2) GetCategoriesPage(ctx context.Context, query repo
 }
 
 // CountCategories counts all categories for a user
-func (r *CategoryRepositoryV2) CountCategories(ctx context.Context, userID string) (int, error) {
+func (r *CategoryRepository) CountCategories(ctx context.Context, userID string) (int, error) {
 	return r.CountByUser(ctx, userID)
 }
 
 // SaveBatch saves multiple categories
-func (r *CategoryRepositoryV2) SaveBatch(ctx context.Context, categories []*category.Category) error {
+func (r *CategoryRepository) SaveBatch(ctx context.Context, categories []*category.Category) error {
 	return r.GenericRepository.BatchSave(ctx, categories)
 }
 
 // UpdateBatch updates multiple categories
-func (r *CategoryRepositoryV2) UpdateBatch(ctx context.Context, categories []*category.Category) error {
+func (r *CategoryRepository) UpdateBatch(ctx context.Context, categories []*category.Category) error {
 	for _, cat := range categories {
 		if err := r.Update(ctx, cat); err != nil {
 			return err
@@ -526,7 +526,7 @@ func (r *CategoryRepositoryV2) UpdateBatch(ctx context.Context, categories []*ca
 }
 
 // DeleteBatch deletes multiple categories
-func (r *CategoryRepositoryV2) DeleteBatch(ctx context.Context, userID string, categoryIDs []string) error {
+func (r *CategoryRepository) DeleteBatch(ctx context.Context, userID string, categoryIDs []string) error {
 	deleted, failed, err := r.BatchDeleteCategories(ctx, userID, categoryIDs)
 	_ = deleted
 	_ = failed
@@ -534,7 +534,7 @@ func (r *CategoryRepositoryV2) DeleteBatch(ctx context.Context, userID string, c
 }
 
 // DeleteHierarchy deletes a category and all its children
-func (r *CategoryRepositoryV2) DeleteHierarchy(ctx context.Context, userID string, categoryID string) error {
+func (r *CategoryRepository) DeleteHierarchy(ctx context.Context, userID string, categoryID string) error {
 	cid := shared.CategoryID(categoryID)
 	
 	// Get all descendants
@@ -555,14 +555,14 @@ func (r *CategoryRepositoryV2) DeleteHierarchy(ctx context.Context, userID strin
 }
 
 // CreateHierarchy creates a category hierarchy
-func (r *CategoryRepositoryV2) CreateHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error {
+func (r *CategoryRepository) CreateHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error {
 	// This would need to be implemented based on hierarchy structure
 	// For now, simplified
 	return fmt.Errorf("CreateHierarchy not implemented")
 }
 
 // DeleteHierarchyRelation removes a parent-child relationship
-func (r *CategoryRepositoryV2) DeleteHierarchyRelation(ctx context.Context, userID string, parentID string, childID string) error {
+func (r *CategoryRepository) DeleteHierarchyRelation(ctx context.Context, userID string, parentID string, childID string) error {
 	cid := shared.CategoryID(childID)
 	cat, err := r.FindByID(ctx, userID, string(cid))
 	if err != nil {
@@ -577,21 +577,21 @@ func (r *CategoryRepositoryV2) DeleteHierarchyRelation(ctx context.Context, user
 }
 
 // AssignNodeToCategory assigns a node to a category
-func (r *CategoryRepositoryV2) AssignNodeToCategory(ctx context.Context, mapping node.NodeCategory) error {
+func (r *CategoryRepository) AssignNodeToCategory(ctx context.Context, mapping node.NodeCategory) error {
 	// This would need to update the node-category mapping
 	// Simplified for now
 	return nil
 }
 
 // RemoveNodeFromCategory removes a node from a category
-func (r *CategoryRepositoryV2) RemoveNodeFromCategory(ctx context.Context, userID string, nodeID string, categoryID string) error {
+func (r *CategoryRepository) RemoveNodeFromCategory(ctx context.Context, userID string, nodeID string, categoryID string) error {
 	// This would need to update the node-category mapping
 	// Simplified for now
 	return nil
 }
 
 // BatchAssignNodes assigns multiple nodes to categories
-func (r *CategoryRepositoryV2) BatchAssignNodes(ctx context.Context, mappings []node.NodeCategory) error {
+func (r *CategoryRepository) BatchAssignNodes(ctx context.Context, mappings []node.NodeCategory) error {
 	for _, mapping := range mappings {
 		if err := r.AssignNodeToCategory(ctx, mapping); err != nil {
 			return err
@@ -601,61 +601,61 @@ func (r *CategoryRepositoryV2) BatchAssignNodes(ctx context.Context, mappings []
 }
 
 // UpdateNoteCounts updates note counts for all categories
-func (r *CategoryRepositoryV2) UpdateNoteCounts(ctx context.Context, userID string) error {
+func (r *CategoryRepository) UpdateNoteCounts(ctx context.Context, userID string) error {
 	// This would recalculate and update note counts
 	// Simplified for now
 	return nil
 }
 
 // RecalculateHierarchy recalculates the hierarchy levels
-func (r *CategoryRepositoryV2) RecalculateHierarchy(ctx context.Context, userID string) error {
+func (r *CategoryRepository) RecalculateHierarchy(ctx context.Context, userID string) error {
 	// This would recalculate levels for all categories
 	// Simplified for now
 	return nil
 }
 
 // CreateCategory creates a new category (alias for Save)
-func (r *CategoryRepositoryV2) CreateCategory(ctx context.Context, cat category.Category) error {
+func (r *CategoryRepository) CreateCategory(ctx context.Context, cat category.Category) error {
 	return r.Save(ctx, &cat)
 }
 
 // UpdateCategory updates a category (alias for Update)
-func (r *CategoryRepositoryV2) UpdateCategory(ctx context.Context, cat category.Category) error {
+func (r *CategoryRepository) UpdateCategory(ctx context.Context, cat category.Category) error {
 	return r.Update(ctx, &cat)
 }
 
 // DeleteCategory deletes a category (alias for Delete)
-func (r *CategoryRepositoryV2) DeleteCategory(ctx context.Context, userID, categoryID string) error {
+func (r *CategoryRepository) DeleteCategory(ctx context.Context, userID, categoryID string) error {
 	return r.Delete(ctx, userID, categoryID)
 }
 
 // FindCategoryByID finds a category by ID (alias)
-func (r *CategoryRepositoryV2) FindCategoryByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
+func (r *CategoryRepository) FindCategoryByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
 	return r.FindByID(ctx, userID, categoryID)
 }
 
 // FindCategories finds categories matching a query
-func (r *CategoryRepositoryV2) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]category.Category, error) {
+func (r *CategoryRepository) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]category.Category, error) {
 	return r.FindByUser(ctx, query.UserID)
 }
 
 // FindCategoriesByLevel finds categories at a specific level
-func (r *CategoryRepositoryV2) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]category.Category, error) {
+func (r *CategoryRepository) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]category.Category, error) {
 	return r.FindByLevel(ctx, userID, level)
 }
 
 // CreateCategoryHierarchy creates a category hierarchy (alias)
-func (r *CategoryRepositoryV2) CreateCategoryHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error {
+func (r *CategoryRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error {
 	return r.CreateHierarchy(ctx, hierarchy)
 }
 
 // DeleteCategoryHierarchy deletes a hierarchy relation (alias)
-func (r *CategoryRepositoryV2) DeleteCategoryHierarchy(ctx context.Context, userID, parentID, childID string) error {
+func (r *CategoryRepository) DeleteCategoryHierarchy(ctx context.Context, userID, parentID, childID string) error {
 	return r.DeleteHierarchyRelation(ctx, userID, parentID, childID)
 }
 
 // FindParentCategory finds the parent of a category
-func (r *CategoryRepositoryV2) FindParentCategory(ctx context.Context, userID, childID string) (*category.Category, error) {
+func (r *CategoryRepository) FindParentCategory(ctx context.Context, userID, childID string) (*category.Category, error) {
 	child, err := r.FindByID(ctx, userID, childID)
 	if err != nil {
 		return nil, err
@@ -669,17 +669,17 @@ func (r *CategoryRepositoryV2) FindParentCategory(ctx context.Context, userID, c
 }
 
 // GetCategoryTree retrieves the full category tree
-func (r *CategoryRepositoryV2) GetCategoryTree(ctx context.Context, userID string) ([]category.Category, error) {
+func (r *CategoryRepository) GetCategoryTree(ctx context.Context, userID string) ([]category.Category, error) {
 	return r.FindCategoryTree(ctx, userID)
 }
 
 // BatchAssignCategories assigns multiple nodes to categories
-func (r *CategoryRepositoryV2) BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error {
+func (r *CategoryRepository) BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error {
 	return r.BatchAssignNodes(ctx, mappings)
 }
 
 // UpdateCategoryNoteCounts updates note counts for categories
-func (r *CategoryRepositoryV2) UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error {
+func (r *CategoryRepository) UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error {
 	for categoryID, count := range categoryCounts {
 		cat, err := r.FindByID(ctx, userID, categoryID)
 		if err != nil {
@@ -695,14 +695,14 @@ func (r *CategoryRepositoryV2) UpdateCategoryNoteCounts(ctx context.Context, use
 }
 
 // FindCategoriesForNode finds categories for a specific node
-func (r *CategoryRepositoryV2) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]category.Category, error) {
+func (r *CategoryRepository) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]category.Category, error) {
 	// This would need to be implemented with node-category mappings
 	// For now, return empty list
 	return []category.Category{}, nil
 }
 
 // FindNodesByCategory finds nodes assigned to a specific category
-func (r *CategoryRepositoryV2) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*node.Node, error) {
+func (r *CategoryRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*node.Node, error) {
 	// This would need to be implemented with node-category mappings
 	// For now, return empty list
 	return []*node.Node{}, nil
@@ -713,7 +713,7 @@ func (r *CategoryRepositoryV2) FindNodesByCategory(ctx context.Context, userID, 
 // ============================================================================
 
 var (
-	_ repository.CategoryReader     = (*CategoryRepositoryV2)(nil)
-	_ repository.CategoryWriter     = (*CategoryRepositoryV2)(nil)
-	_ repository.CategoryRepository = (*CategoryRepositoryV2)(nil)
+	_ repository.CategoryReader     = (*CategoryRepository)(nil)
+	_ repository.CategoryWriter     = (*CategoryRepository)(nil)
+	_ repository.CategoryRepository = (*CategoryRepository)(nil)
 )
