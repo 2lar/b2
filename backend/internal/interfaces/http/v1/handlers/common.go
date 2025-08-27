@@ -21,6 +21,11 @@ func getUserID(r *http.Request) (string, bool) {
 
 // handleServiceError converts service errors to appropriate HTTP responses
 func handleServiceError(w http.ResponseWriter, err error) {
+	// Add API version to error responses
+	if w.Header().Get("X-API-Version") == "" {
+		w.Header().Set("X-API-Version", "1")
+	}
+	
 	if appErrors.IsValidation(err) {
 		api.Error(w, http.StatusBadRequest, err.Error())
 	} else if appErrors.IsNotFound(err) {

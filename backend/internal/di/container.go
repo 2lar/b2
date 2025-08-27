@@ -21,6 +21,7 @@ import (
 	"brain2-backend/internal/domain/node"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/interfaces/http/middleware"
 	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
 	"brain2-backend/internal/infrastructure/messaging"
 	"brain2-backend/internal/infrastructure/observability"
@@ -529,6 +530,9 @@ func (c *Container) initializeRouter() {
 		router.Use(observability.TracingMiddleware("brain2-api"))
 	}
 
+	// API Versioning middleware (applied before route handling)
+	router.Use(c.createVersioningMiddleware())
+
 	// Health check endpoints (public)
 	router.Get("/health", c.HealthHandler.Check)
 	router.Get("/ready", c.HealthHandler.Ready)
@@ -628,6 +632,39 @@ func (c *Container) initializeObservability() error {
 
 	log.Println("Observability initialized successfully")
 	return nil
+}
+
+// createVersioningMiddleware creates and configures the API versioning middleware
+func (c *Container) createVersioningMiddleware() func(http.Handler) http.Handler {
+	// Get API version configuration
+	apiConfig := config.GetAPIVersionConfig()
+	
+	// Create versioning configuration
+	versionConfig := middleware.VersionConfig{
+		SupportedVersions:   apiConfig.GetSupportedVersions(),
+		DefaultVersion:      apiConfig.DefaultVersion,
+		DeprecatedVersions:  make(map[string]middleware.DeprecationInfo),
+		EnableVersionHeader: true,
+		EnableAcceptHeader:  true,
+		EnableQueryParam:    true,
+		EnableURLPath:       true,
+		StrictMode:          false, // Allow fallback to default version
+		MetricsEnabled:      c.MetricsCollector != nil,
+	}
+	
+	// Add deprecation info for any deprecated versions
+	for version, versionInfo := range apiConfig.Versions {
+		if versionInfo.Deprecated && versionInfo.DeprecatedAt != nil && versionInfo.SunsetDate != nil {
+			versionConfig.DeprecatedVersions[version] = middleware.DeprecationInfo{
+				DeprecatedAt: *versionInfo.DeprecatedAt,
+				SunsetAt:     *versionInfo.SunsetDate,
+				Message:      fmt.Sprintf("API version %s is deprecated. Please migrate to version %s", version, apiConfig.CurrentVersion),
+				MigrationURL: fmt.Sprintf("https://docs.brain2.api/migration/v%s-to-v%s", version, apiConfig.CurrentVersion),
+			}
+		}
+	}
+	
+	return middleware.Versioning(versionConfig)
 }
 
 // initializeTracing sets up distributed tracing if enabled with enhanced configuration.
