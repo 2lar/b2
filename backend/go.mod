@@ -13,6 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/apigatewaymanagementapi v1.24.4
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.48.0
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.39.3
+	github.com/aws/smithy-go v1.22.5
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.2
@@ -47,7 +48,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.22.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.30.3 // indirect
-	github.com/aws/smithy-go v1.22.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

@@ -48,16 +48,11 @@ func (tm *TransactionManager) Execute(ctx context.Context) error {
 
 			rollbackErr := tm.rollback(ctx, i)
 			if rollbackErr != nil {
-				return NewTransactionError(
-					fmt.Sprintf("step '%s' failed and rollback failed", step.Name),
-					fmt.Errorf("original error: %w, rollback error: %v", err, rollbackErr),
-				)
+				return fmt.Errorf("transaction error: step '%s' failed and rollback failed: original error: %w, rollback error: %v", 
+					step.Name, err, rollbackErr)
 			}
 
-			return NewTransactionError(
-				fmt.Sprintf("step '%s' failed", step.Name),
-				err,
-			)
+			return fmt.Errorf("transaction error: step '%s' failed: %w", step.Name, err)
 		}
 
 		step.Executed = true
@@ -138,16 +133,11 @@ func (ct *CompensatingTransaction) Execute(ctx context.Context) error {
 		if err != nil {
 			compensateErr := ct.compensate(ctx, i-1)
 			if compensateErr != nil {
-				return NewTransactionError(
-					fmt.Sprintf("action '%s' failed and compensation failed", action.Name),
-					fmt.Errorf("original error: %w, compensation error: %v", err, compensateErr),
-				)
+				return fmt.Errorf("transaction error: action '%s' failed and compensation failed: original error: %w, compensation error: %v",
+					action.Name, err, compensateErr)
 			}
 
-			return NewTransactionError(
-				fmt.Sprintf("action '%s' failed", action.Name),
-				err,
-			)
+			return fmt.Errorf("transaction error: action '%s' failed: %w", action.Name, err)
 		}
 
 		action.Result = result
@@ -280,17 +270,8 @@ func (bo *BatchOperation) Execute(ctx context.Context) error {
 	}
 
 	if len(errors) > 0 {
-		return NewRepositoryErrorWithDetails(
-			ErrCodeOperationFailed,
-			fmt.Sprintf("batch operation failed: %d/%d items succeeded", successCount, len(bo.items)),
-			map[string]interface{}{
-				"total_items":   len(bo.items),
-				"success_count": successCount,
-				"failure_count": len(errors),
-				"errors":        errors,
-			},
-			nil,
-		)
+		return fmt.Errorf("batch operation failed: %d/%d items succeeded, errors: %v", 
+			successCount, len(bo.items), errors)
 	}
 
 	return nil
@@ -348,16 +329,8 @@ func (cc *ConsistencyChecker) Validate(ctx context.Context) error {
 	}
 
 	if len(errors) > 0 {
-		return NewRepositoryErrorWithDetails(
-			ErrCodeInconsistentState,
-			fmt.Sprintf("consistency validation failed: %d checks failed", len(errors)),
-			map[string]interface{}{
-				"failed_checks": len(errors),
-				"total_checks":  len(cc.checks),
-				"errors":        errors,
-			},
-			nil,
-		)
+		return fmt.Errorf("consistency validation failed: %d checks failed out of %d, errors: %v",
+			len(errors), len(cc.checks), errors)
 	}
 
 	return nil

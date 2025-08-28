@@ -21,7 +21,7 @@ import (
 	"brain2-backend/internal/domain/edge"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/infrastructure/persistence"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 	"go.uber.org/zap"
 )
 
@@ -64,19 +64,19 @@ func (s *GraphQueryService) GetGraph(ctx context.Context, query *GetGraphQuery) 
 	// 2. Validate user ID
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	// 3. Get nodes for the user
 	nodes, err := s.getUserNodes(ctx, userID.String(), query.Limit)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve user nodes")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve user nodes")
 	}
 
 	// 4. Get edges for the user
 	edges, err := s.getUserEdges(ctx, userID.String(), query.Limit)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve user edges")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve user edges")
 	}
 
 	// 5. Filter out orphaned edges (defensive programming)
@@ -129,12 +129,12 @@ func (s *GraphQueryService) GetNodeNeighborhood(ctx context.Context, query *GetN
 	// 1. Validate inputs
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	nodeID, err := shared.ParseNodeID(query.NodeID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid node id: " + err.Error()).Build()
 	}
 
 	// 2. Check if the root node exists and belongs to the user
@@ -143,7 +143,7 @@ func (s *GraphQueryService) GetNodeNeighborhood(ctx context.Context, query *GetN
 		return nil, err
 	}
 	if rootNode == nil {
-		return nil, appErrors.NewNotFound("node not found")
+		return nil, errors.NotFound(errors.CodeNodeNotFound.String(), "node not found").Build()
 	}
 
 	// 3. Traverse the graph to find connected nodes
@@ -192,18 +192,18 @@ func (s *GraphQueryService) GetGraphAnalytics(ctx context.Context, query *GetGra
 	// 2. Validate user ID
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	// 3. Get all nodes and edges for analytics
 	nodes, err := s.getUserNodes(ctx, userID.String(), 0) // No limit for analytics
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve nodes for analytics")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve nodes for analytics")
 	}
 
 	edges, err := s.getUserEdges(ctx, userID.String(), 0) // No limit for analytics
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve edges for analytics")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve edges for analytics")
 	}
 
 	// 4. Calculate comprehensive analytics

@@ -150,7 +150,7 @@ func (r *NodeRepositoryV2) FindByID(ctx context.Context, userID shared.UserID, n
 // Exists checks if a node exists - simple wrapper
 func (r *NodeRepositoryV2) Exists(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) (bool, error) {
 	_, err := r.FindByID(ctx, userID, nodeID)
-	if err == repository.ErrNodeNotFound {
+	if repository.IsNotFound(err) {
 		return false, nil
 	}
 	return err == nil, err

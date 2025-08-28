@@ -7,7 +7,7 @@ import (
 
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	"brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 )
 
 // SagaStep represents a single step in a saga
@@ -84,7 +84,7 @@ func (s *Saga) Execute(ctx context.Context) error {
 			// Start compensation
 			if compensateErr := s.compensate(ctx); compensateErr != nil {
 				// Log compensation failure but return original error
-				s.error = errors.Wrap(err, fmt.Sprintf("compensation also failed: %v", compensateErr))
+				s.error = errors.Wrap(err, errors.CodeInternalError.String(), fmt.Sprintf("compensation also failed: %v", compensateErr))
 			}
 			
 			// Publish saga failed event
@@ -119,7 +119,7 @@ func (s *Saga) executeStep(ctx context.Context, step SagaStep) error {
 	defer cancel()
 	
 	if err := step.Execute(stepCtx); err != nil {
-		return errors.Wrap(err, fmt.Sprintf("saga step '%s' failed", step.Name()))
+		return errors.Wrap(err, errors.CodeInternalError.String(), fmt.Sprintf("saga step '%s' failed", step.Name()))
 	}
 	
 	return nil

@@ -19,7 +19,7 @@ import (
 	"brain2-backend/internal/domain/category"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 	"go.uber.org/zap"
 )
 
@@ -65,21 +65,21 @@ func (s *CategoryQueryService) GetCategory(ctx context.Context, query *GetCatego
 	// 2. Parse and validate domain identifiers
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	categoryID, err := shared.ParseCategoryID(query.CategoryID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid category id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid category id: " + err.Error()).Build()
 	}
 
 	// 3. Retrieve category using reader
 	category, err := s.categoryReader.FindByID(ctx, userID.String(), string(categoryID))
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve category")
 	}
 	if category == nil {
-		return nil, appErrors.NewNotFound("category not found")
+		return nil, errors.NotFound(errors.CodeNodeNotFound.String(), "category not found").Build()
 	}
 
 	// 4. Build result with optional components
@@ -93,7 +93,7 @@ func (s *CategoryQueryService) GetCategory(ctx context.Context, query *GetCatego
 		// In a real implementation, you'd want a proper node-category relationship
 		nodes, err := s.nodeReader.FindByUser(ctx, userID)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to retrieve nodes")
+			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve nodes")
 		}
 		// TODO: Filter nodes by category - this requires implementing node-category relationships
 		result.Nodes = dto.ToNodeViews(nodes)
@@ -159,7 +159,7 @@ func (s *CategoryQueryService) ListCategories(ctx context.Context, query *ListCa
 	// 1. Parse and validate domain identifiers
 	_, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	// 2. Build repository query
@@ -187,7 +187,7 @@ func (s *CategoryQueryService) ListCategories(ctx context.Context, query *ListCa
 	// 4. Execute query
 	page, err := s.categoryReader.GetCategoriesPage(ctx, categoryQuery, pagination)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve categories page")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve categories page")
 	}
 
 	if page == nil {
@@ -218,7 +218,7 @@ func (s *CategoryQueryService) ListCategories(ctx context.Context, query *ListCa
 	// 7. Get total count for pagination metadata
 	total, err := s.categoryReader.CountByUser(ctx, query.UserID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to count total categories")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to count total categories")
 	}
 
 	// 8. Build paginated result
@@ -238,21 +238,21 @@ func (s *CategoryQueryService) GetNodesInCategory(ctx context.Context, query *Ge
 	// 1. Parse and validate domain identifiers
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	categoryID, err := shared.ParseCategoryID(query.CategoryID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid category id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid category id: " + err.Error()).Build()
 	}
 
 	// 2. Verify category exists and user owns it
 	category, err := s.categoryReader.FindByID(ctx, userID.String(), string(categoryID))
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to find category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
 	}
 	if category == nil {
-		return nil, appErrors.NewNotFound("category not found")
+		return nil, errors.NotFound(errors.CodeNodeNotFound.String(), "category not found").Build()
 	}
 
 	// 3. Build pagination parameters
@@ -269,7 +269,7 @@ func (s *CategoryQueryService) GetNodesInCategory(ctx context.Context, query *Ge
 	// 4. Get all nodes for the user (TODO: implement proper category filtering)
 	nodes, err := s.nodeReader.FindByUser(ctx, userID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve nodes")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve nodes")
 	}
 
 	// 5. Convert to view models
@@ -296,24 +296,24 @@ func (s *CategoryQueryService) GetCategoriesForNode(ctx context.Context, query *
 	// 1. Parse and validate domain identifiers
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	nodeID, err := shared.ParseNodeID(query.NodeID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid node id: " + err.Error()).Build()
 	}
 
 	// 2. Verify node exists and user owns it
 	node, err := s.nodeReader.FindByID(ctx, userID, nodeID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to find node")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find node")
 	}
 	if node == nil {
-		return nil, appErrors.NewNotFound("node not found")
+		return nil, errors.NotFound(errors.CodeNodeNotFound.String(), "node not found").Build()
 	}
 	if !node.UserID().Equals(userID) {
-		return nil, appErrors.NewUnauthorized("node belongs to different user")
+		return nil, errors.Unauthorized(errors.CodeUserUnauthorized.String(), "node belongs to different user").Build()
 	}
 
 	// 3. Get categories for the node (TODO: implement proper node-category relationships)
@@ -335,7 +335,7 @@ func (s *CategoryQueryService) SuggestCategories(ctx context.Context, query *Sug
 	// 1. Validate input
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	// 2. Use domain-based suggestions (AI service integration removed)

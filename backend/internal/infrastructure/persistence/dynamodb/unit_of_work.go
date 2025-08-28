@@ -9,7 +9,7 @@ import (
 	
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	"brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 	
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -88,15 +88,15 @@ func (uow *ProperUnitOfWork) Begin(ctx context.Context) error {
 	defer uow.mu.Unlock()
 	
 	if uow.isInTransaction {
-		return errors.NewValidation("transaction already in progress")
+		return errors.Validation(errors.CodeValidationFailed.String(), "transaction already in progress").Build()
 	}
 	
 	if uow.isCommitted {
-		return errors.NewValidation("unit of work already committed")
+		return errors.Validation(errors.CodeValidationFailed.String(), "unit of work already committed").Build()
 	}
 	
 	if uow.isRolledBack {
-		return errors.NewValidation("unit of work already rolled back")
+		return errors.Validation(errors.CodeValidationFailed.String(), "unit of work already rolled back").Build()
 	}
 	
 	uow.isInTransaction = true
@@ -113,15 +113,15 @@ func (uow *ProperUnitOfWork) Commit() error {
 	defer uow.mu.Unlock()
 	
 	if !uow.isInTransaction {
-		return errors.NewValidation("no active transaction to commit")
+		return errors.Validation(errors.CodeValidationFailed.String(), "no active transaction to commit").Build()
 	}
 	
 	if uow.isCommitted {
-		return errors.NewValidation("transaction already committed")
+		return errors.Validation(errors.CodeValidationFailed.String(), "transaction already committed").Build()
 	}
 	
 	if uow.isRolledBack {
-		return errors.NewValidation("transaction already rolled back")
+		return errors.Validation(errors.CodeValidationFailed.String(), "transaction already rolled back").Build()
 	}
 	
 	// Execute transactional writes if any
@@ -194,7 +194,7 @@ func (uow *ProperUnitOfWork) Rollback() error {
 	}
 	
 	if uow.isCommitted {
-		return errors.NewValidation("cannot rollback committed transaction")
+		return errors.Validation(errors.CodeValidationFailed.String(), "cannot rollback committed transaction").Build()
 	}
 	
 	// Clear pending items and events
@@ -324,16 +324,16 @@ func (uow *ProperUnitOfWork) AddTransactItem(item types.TransactWriteItem) error
 	defer uow.mu.Unlock()
 	
 	if !uow.isInTransaction {
-		return errors.NewValidation("no active transaction")
+		return errors.Validation(errors.CodeValidationFailed.String(), "no active transaction").Build()
 	}
 	
 	if uow.isCommitted || uow.isRolledBack {
-		return errors.NewValidation("transaction already completed")
+		return errors.Validation(errors.CodeValidationFailed.String(), "transaction already completed").Build()
 	}
 	
 	// DynamoDB has a limit of 100 items per transaction
 	if len(uow.transactItems) >= 100 {
-		return errors.NewValidation("transaction item limit reached (100)")
+		return errors.Validation(errors.CodeValidationFailed.String(), "transaction item limit reached (100)").Build()
 	}
 	
 	uow.transactItems = append(uow.transactItems, item)
@@ -358,11 +358,11 @@ func (uow *ProperUnitOfWork) Validate() error {
 	defer uow.mu.Unlock()
 	
 	if uow.isCommitted && uow.isRolledBack {
-		return errors.NewInternal("invalid state: both committed and rolled back", nil)
+		return errors.Internal(errors.CodeInternalError.String(), "invalid state: both committed and rolled back").Build()
 	}
 	
 	if uow.isInTransaction && (uow.isCommitted || uow.isRolledBack) {
-		return errors.NewInternal("invalid state: transaction active but completed", nil)
+		return errors.Internal(errors.CodeInternalError.String(), "invalid state: transaction active but completed").Build()
 	}
 	
 	return nil

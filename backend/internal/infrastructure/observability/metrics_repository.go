@@ -8,6 +8,7 @@ import (
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
+	"brain2-backend/internal/errors"
 )
 
 // MetricsCollector interface abstracts metrics collection
@@ -645,9 +646,9 @@ func (r *MetricsNodeRepository) classifyError(err error) string {
 		return "invalid_query"
 	}
 	
-	// Check for repository-specific error codes
-	if repoErr, ok := err.(*repository.RepositoryError); ok {
-		return string(repoErr.Code)
+	// Check for unified error codes
+	if ue, ok := err.(*errors.UnifiedError); ok {
+		return ue.Code
 	}
 	
 	return "unknown"

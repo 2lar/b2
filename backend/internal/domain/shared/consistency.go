@@ -2,6 +2,7 @@ package shared
 
 import (
 	"fmt"
+	"brain2-backend/internal/errors"
 )
 
 // ConsistencyBoundary defines rules for aggregate consistency
@@ -39,11 +40,11 @@ func (cb *ConsistencyBoundary) Validate(aggregate AggregateRoot) error {
 	// Then validate all boundary rules
 	for _, rule := range cb.rules {
 		if err := rule.Validate(aggregate); err != nil {
-			return NewDomainError(
-				"consistency_violation",
-				fmt.Sprintf("Consistency rule '%s' violated for %s", rule.Name(), cb.aggregateType),
-				err,
-			)
+			return errors.NewError(errors.ErrorTypeDomain, "CONSISTENCY_VIOLATION",
+				fmt.Sprintf("Consistency rule '%s' violated for %s", rule.Name(), cb.aggregateType)).
+				WithCause(err).
+				WithSeverity(errors.SeverityHigh).
+				Build()
 		}
 	}
 	

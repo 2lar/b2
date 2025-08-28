@@ -1,10 +1,12 @@
 package shared
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 
+	"brain2-backend/internal/errors"
 	"github.com/google/uuid"
 )
 
@@ -405,7 +407,9 @@ type Weight struct {
 // NewWeight creates a new Weight value object with validation
 func NewWeight(value float64) (Weight, error) {
 	if value < 0.0 || value > 1.0 {
-		return Weight{}, NewValidationError("weight", "weight must be between 0.0 and 1.0", value)
+		return Weight{}, errors.Validation("INVALID_WEIGHT", "weight must be between 0.0 and 1.0").
+			WithDetails(fmt.Sprintf("Value: %v", value)).
+			Build()
 	}
 	return Weight{value: value}, nil
 }

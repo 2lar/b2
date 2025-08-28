@@ -9,7 +9,7 @@ import (
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 	"go.uber.org/zap"
 )
 
@@ -55,19 +55,19 @@ func (h *CategoryCommandHandler) HandleCreateCategory(ctx context.Context, cmd *
 	// 2. Parse and validate domain identifiers
 	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	// 3. Create domain entity using factory method
 	category, err := category.NewCategory(userID, cmd.Title, cmd.Description)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to create category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to create category")
 	}
 
 	// 4. Set color if provided
 	if cmd.Color != nil && *cmd.Color != "" {
 		if err := category.SetColor(*cmd.Color); err != nil {
-			return nil, appErrors.NewValidation("invalid color: " + err.Error())
+			return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid color: " + err.Error()).Build()
 		}
 	}
 
@@ -99,7 +99,7 @@ func (h *CategoryCommandHandler) HandleCreateCategory(ctx context.Context, cmd *
 	// 7. Execute transaction
 	err = h.store.Transaction(ctx, operations)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to create category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to create category")
 	}
 
 	// 8. Publish domain events
@@ -136,7 +136,7 @@ func (h *CategoryCommandHandler) HandleUpdateCategory(ctx context.Context, cmd *
 		zap.String("category_id", cmd.CategoryID))
 
 	if !cmd.HasChanges() {
-		return nil, appErrors.NewValidation("no changes specified in update command")
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "no changes specified in update command").Build()
 	}
 
 	// 1. Handle idempotency if key is provided
@@ -151,12 +151,12 @@ func (h *CategoryCommandHandler) HandleUpdateCategory(ctx context.Context, cmd *
 	// 2. Parse and validate domain identifiers
 	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	categoryID, err := shared.ParseCategoryID(cmd.CategoryID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid category id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid category id: " + err.Error()).Build()
 	}
 
 	// 3. Retrieve existing category
@@ -167,34 +167,34 @@ func (h *CategoryCommandHandler) HandleUpdateCategory(ctx context.Context, cmd *
 
 	record, err := h.store.Get(ctx, categoryKey)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve category")
 	}
 	if record == nil {
-		return nil, appErrors.NewNotFound("category not found")
+		return nil, errors.NotFound(errors.CodeNodeNotFound.String(), "category not found").Build()
 	}
 
 	// 4. Reconstruct category from record
 	category, err := h.recordToCategory(record)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to reconstruct category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to reconstruct category")
 	}
 
 	// 5. Apply updates using domain methods
 	if cmd.UpdateTitle && cmd.Title != nil {
 		if err := category.UpdateTitle(*cmd.Title); err != nil {
-			return nil, appErrors.Wrap(err, "failed to update category title")
+			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to update category title")
 		}
 	}
 
 	if cmd.UpdateDescription && cmd.Description != nil {
 		if err := category.UpdateDescription(*cmd.Description); err != nil {
-			return nil, appErrors.Wrap(err, "failed to update category description")
+			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to update category description")
 		}
 	}
 
 	if cmd.UpdateColor && cmd.Color != nil {
 		if err := category.SetColor(*cmd.Color); err != nil {
-			return nil, appErrors.Wrap(err, "failed to update category color")
+			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to update category color")
 		}
 	}
 
@@ -210,7 +210,7 @@ func (h *CategoryCommandHandler) HandleUpdateCategory(ctx context.Context, cmd *
 	conditionExpr := "Version = :prevVersion"
 	err = h.store.Update(ctx, categoryKey, updates, &conditionExpr)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to update category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to update category")
 	}
 
 	// 8. Publish domain events
@@ -258,12 +258,12 @@ func (h *CategoryCommandHandler) HandleDeleteCategory(ctx context.Context, cmd *
 	// 2. Parse and validate domain identifiers
 	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	categoryID, err := shared.ParseCategoryID(cmd.CategoryID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid category id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid category id: " + err.Error()).Build()
 	}
 
 	// 3. Verify category exists and get its data
@@ -274,16 +274,16 @@ func (h *CategoryCommandHandler) HandleDeleteCategory(ctx context.Context, cmd *
 
 	record, err := h.store.Get(ctx, categoryKey)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve category")
 	}
 	if record == nil {
-		return nil, appErrors.NewNotFound("category not found")
+		return nil, errors.NotFound(errors.CodeNodeNotFound.String(), "category not found").Build()
 	}
 
 	// 4. Reconstruct category for event publishing
 	category, err := h.recordToCategory(record)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to reconstruct category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to reconstruct category")
 	}
 
 	// 5. Find and delete all related records (category + any node-category relationships)
@@ -302,7 +302,7 @@ func (h *CategoryCommandHandler) HandleDeleteCategory(ctx context.Context, cmd *
 	// 6. Execute transaction
 	err = h.store.Transaction(ctx, operations)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to delete category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to delete category")
 	}
 
 	// 7. Create and publish deletion event
@@ -389,7 +389,7 @@ func (h *CategoryCommandHandler) checkIdempotency(ctx context.Context, key, oper
 
 	result, exists, err := h.idempotencyStore.Get(ctx, idempotencyKey)
 	if err != nil {
-		return nil, false, appErrors.Wrap(err, "failed to check idempotency")
+		return nil, false, errors.Wrap(err, errors.CodeInternalError.String(), "failed to check idempotency")
 	}
 
 	return result, exists, nil

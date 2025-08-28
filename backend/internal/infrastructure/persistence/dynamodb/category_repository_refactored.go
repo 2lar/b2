@@ -111,7 +111,7 @@ func (r *CategoryRepository) GetHierarchy(ctx context.Context, userID string, ca
 		
 		cat, err := r.FindByID(ctx, userID, string(*currentID))
 		if err != nil {
-			if err == repository.ErrCategoryNotFound {
+			if repository.IsNotFound(err) {
 				break // Parent not found, stop
 			}
 			return nil, err
@@ -183,14 +183,14 @@ func (r *CategoryRepository) FindByName(ctx context.Context, userID string, name
 		}
 	}
 	
-	return nil, repository.ErrCategoryNotFound
+	return nil, repository.ErrCategoryNotFound("", "")
 }
 
 // Exists checks if a category exists
 func (r *CategoryRepository) Exists(ctx context.Context, userID string, categoryID string) (bool, error) {
 	cid := shared.CategoryID(categoryID)
 	_, err := r.FindByID(ctx, userID, string(cid))
-	if err == repository.ErrCategoryNotFound {
+	if repository.IsNotFound(err) {
 		return false, nil
 	}
 	return err == nil, err
@@ -662,7 +662,7 @@ func (r *CategoryRepository) FindParentCategory(ctx context.Context, userID, chi
 	}
 	
 	if child.ParentID == nil {
-		return nil, repository.ErrCategoryNotFound
+		return nil, repository.ErrCategoryNotFound("", "")
 	}
 	
 	return r.FindByID(ctx, userID, string(*child.ParentID))

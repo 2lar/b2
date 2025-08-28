@@ -7,7 +7,7 @@ import (
 
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	"brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -68,7 +68,7 @@ func (s *DynamoDBEventStore) SaveEvents(ctx context.Context, aggregateID string,
 		
 		av, err := attributevalue.MarshalMap(record)
 		if err != nil {
-			return errors.Wrap(err, "failed to marshal event record")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to marshal event record").WithCause(err).Build()
 		}
 		
 		writeRequests = append(writeRequests, types.WriteRequest{
@@ -86,7 +86,7 @@ func (s *DynamoDBEventStore) SaveEvents(ctx context.Context, aggregateID string,
 	})
 	
 	if err != nil {
-		return errors.Wrap(err, "failed to save events")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to save events").WithCause(err).Build()
 	}
 	
 	return nil
@@ -107,14 +107,14 @@ func (s *DynamoDBEventStore) GetEvents(ctx context.Context, aggregateID string) 
 	})
 	
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to query events")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to query events").WithCause(err).Build()
 	}
 	
 	events := make([]shared.DomainEvent, 0, len(resp.Items))
 	for _, item := range resp.Items {
 		var record EventRecord
 		if err := attributevalue.UnmarshalMap(item, &record); err != nil {
-			return nil, errors.Wrap(err, "failed to unmarshal event record")
+			return nil, errors.Internal(errors.CodeInternalError.String(), "failed to unmarshal event record").WithCause(err).Build()
 		}
 		
 		event := s.reconstructEvent(record)
@@ -140,14 +140,14 @@ func (s *DynamoDBEventStore) GetEventsAfterVersion(ctx context.Context, aggregat
 	})
 	
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to query events after version")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to query events after version").WithCause(err).Build()
 	}
 	
 	events := make([]shared.DomainEvent, 0, len(resp.Items))
 	for _, item := range resp.Items {
 		var record EventRecord
 		if err := attributevalue.UnmarshalMap(item, &record); err != nil {
-			return nil, errors.Wrap(err, "failed to unmarshal event record")
+			return nil, errors.Internal(errors.CodeInternalError.String(), "failed to unmarshal event record").WithCause(err).Build()
 		}
 		
 		event := s.reconstructEvent(record)
@@ -176,14 +176,14 @@ func (s *DynamoDBEventStore) GetEventsByType(ctx context.Context, eventType stri
 	})
 	
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to scan events by type")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to scan events by type").WithCause(err).Build()
 	}
 	
 	events := make([]shared.DomainEvent, 0, len(resp.Items))
 	for _, item := range resp.Items {
 		var record EventRecord
 		if err := attributevalue.UnmarshalMap(item, &record); err != nil {
-			return nil, errors.Wrap(err, "failed to unmarshal event record")
+			return nil, errors.Internal(errors.CodeInternalError.String(), "failed to unmarshal event record").WithCause(err).Build()
 		}
 		
 		event := s.reconstructEvent(record)
@@ -207,7 +207,7 @@ func (s *DynamoDBEventStore) GetSnapshot(ctx context.Context, aggregateID string
 	})
 	
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get snapshot")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to get snapshot").WithCause(err).Build()
 	}
 	
 	if resp.Item == nil {
@@ -216,7 +216,7 @@ func (s *DynamoDBEventStore) GetSnapshot(ctx context.Context, aggregateID string
 	
 	var snapshot repository.AggregateSnapshot
 	if err := attributevalue.UnmarshalMap(resp.Item, &snapshot); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal snapshot")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to unmarshal snapshot").WithCause(err).Build()
 	}
 	
 	return &snapshot, nil
@@ -237,7 +237,7 @@ func (s *DynamoDBEventStore) SaveSnapshot(ctx context.Context, snapshot *reposit
 	
 	av, err := attributevalue.MarshalMap(item)
 	if err != nil {
-		return errors.Wrap(err, "failed to marshal snapshot")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to marshal snapshot").WithCause(err).Build()
 	}
 	
 	_, err = s.client.PutItem(ctx, &dynamodb.PutItemInput{
@@ -246,7 +246,7 @@ func (s *DynamoDBEventStore) SaveSnapshot(ctx context.Context, snapshot *reposit
 	})
 	
 	if err != nil {
-		return errors.Wrap(err, "failed to save snapshot")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to save snapshot").WithCause(err).Build()
 	}
 	
 	return nil

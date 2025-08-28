@@ -10,7 +10,7 @@ import (
 
 	"brain2-backend/internal/domain/events"
 	"brain2-backend/internal/domain/shared"
-	"brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -59,7 +59,7 @@ func (s *DynamoDBOutboxStore) Save(ctx context.Context, entry *events.OutboxEntr
 	// Serialize payload
 	payloadData, err := serializeEvent(entry.Payload)
 	if err != nil {
-		return errors.Wrap(err, "failed to serialize event payload")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to serialize event payload").WithCause(err).Build()
 	}
 	
 	// Create record
@@ -88,7 +88,7 @@ func (s *DynamoDBOutboxStore) Save(ctx context.Context, entry *events.OutboxEntr
 	// Marshal to DynamoDB format
 	item, err := attributevalue.MarshalMap(record)
 	if err != nil {
-		return errors.Wrap(err, "failed to marshal outbox record")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to marshal outbox record").WithCause(err).Build()
 	}
 	
 	// Put item
@@ -98,7 +98,7 @@ func (s *DynamoDBOutboxStore) Save(ctx context.Context, entry *events.OutboxEntr
 	})
 	
 	if err != nil {
-		return errors.Wrap(err, "failed to save outbox entry")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to save outbox entry").WithCause(err).Build()
 	}
 	
 	return nil
@@ -117,7 +117,7 @@ func (s *DynamoDBOutboxStore) SaveBatch(ctx context.Context, entries []*events.O
 		// Serialize payload
 		payloadData, err := serializeEvent(entry.Payload)
 		if err != nil {
-			return errors.Wrap(err, "failed to serialize event payload")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to serialize event payload").WithCause(err).Build()
 		}
 		
 		// Create record
@@ -139,7 +139,7 @@ func (s *DynamoDBOutboxStore) SaveBatch(ctx context.Context, entries []*events.O
 		// Marshal to DynamoDB format
 		item, err := attributevalue.MarshalMap(record)
 		if err != nil {
-			return errors.Wrap(err, "failed to marshal outbox record")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to marshal outbox record").WithCause(err).Build()
 		}
 		
 		writeRequests = append(writeRequests, types.WriteRequest{
@@ -164,7 +164,7 @@ func (s *DynamoDBOutboxStore) SaveBatch(ctx context.Context, entries []*events.O
 		})
 		
 		if err != nil {
-			return errors.Wrap(err, "failed to batch save outbox entries")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to batch save outbox entries").WithCause(err).Build()
 		}
 	}
 	
@@ -215,7 +215,7 @@ func (s *DynamoDBOutboxStore) Update(ctx context.Context, entry *events.OutboxEn
 	})
 	
 	if err != nil {
-		return errors.Wrap(err, "failed to update outbox entry")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to update outbox entry").WithCause(err).Build()
 	}
 	
 	return nil
@@ -236,7 +236,7 @@ func (s *DynamoDBOutboxStore) GetPending(ctx context.Context, limit int) ([]*eve
 	})
 	
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to query pending outbox entries")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to query pending outbox entries").WithCause(err).Build()
 	}
 	
 	// Convert to entries
@@ -244,7 +244,7 @@ func (s *DynamoDBOutboxStore) GetPending(ctx context.Context, limit int) ([]*eve
 	for _, item := range result.Items {
 		var record outboxRecord
 		if err := attributevalue.UnmarshalMap(item, &record); err != nil {
-			return nil, errors.Wrap(err, "failed to unmarshal outbox record")
+			return nil, errors.Internal(errors.CodeInternalError.String(), "failed to unmarshal outbox record").WithCause(err).Build()
 		}
 		
 		entry, err := s.recordToEntry(record)
@@ -273,7 +273,7 @@ func (s *DynamoDBOutboxStore) GetFailed(ctx context.Context, limit int) ([]*even
 	})
 	
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to query failed outbox entries")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to query failed outbox entries").WithCause(err).Build()
 	}
 	
 	// Convert to entries
@@ -281,7 +281,7 @@ func (s *DynamoDBOutboxStore) GetFailed(ctx context.Context, limit int) ([]*even
 	for _, item := range result.Items {
 		var record outboxRecord
 		if err := attributevalue.UnmarshalMap(item, &record); err != nil {
-			return nil, errors.Wrap(err, "failed to unmarshal outbox record")
+			return nil, errors.Internal(errors.CodeInternalError.String(), "failed to unmarshal outbox record").WithCause(err).Build()
 		}
 		
 		entry, err := s.recordToEntry(record)
@@ -310,7 +310,7 @@ func (s *DynamoDBOutboxStore) CleanupPublished(ctx context.Context, olderThan ti
 	})
 	
 	if err != nil {
-		return errors.Wrap(err, "failed to query old published entries")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to query old published entries").WithCause(err).Build()
 	}
 	
 	// Delete entries
@@ -340,7 +340,7 @@ func (s *DynamoDBOutboxStore) recordToEntry(record outboxRecord) (*events.Outbox
 	// Deserialize payload
 	event, err := deserializeEvent(record.Payload)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to deserialize event")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to deserialize event").WithCause(err).Build()
 	}
 	
 	entry := &events.OutboxEntry{

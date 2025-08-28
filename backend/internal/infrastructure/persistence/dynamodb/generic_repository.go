@@ -133,7 +133,7 @@ func (r *GenericRepository[T]) FindByID(ctx context.Context, userID, entityID st
 	}
 	
 	if result.Item == nil {
-		err = repository.ErrNodeNotFound // Will make this generic later
+		err = repository.ErrNodeNotFound("", "") // Will make this generic later
 		r.hooks.AfterOperation(ctx, "FindByID", nil, err)
 		return zero, err
 	}

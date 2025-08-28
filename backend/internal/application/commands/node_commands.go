@@ -10,7 +10,7 @@ import (
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 	
 	"github.com/go-playground/validator/v10"
 	"go.uber.org/zap"
@@ -132,23 +132,23 @@ type BulkCreateNodesCommand struct {
 func (s *NodeCommandService) CreateNode(ctx context.Context, cmd CreateNodeCommand) (*node.Node, error) {
 	// 1. Validate command
 	if err := s.validator.Struct(cmd); err != nil {
-		return nil, appErrors.Wrap(err, "invalid command")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid command")
 	}
 	
 	// 2. Create domain object with business rules validation
 	userID, err := shared.NewUserID(cmd.UserID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "invalid user ID")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid user ID")
 	}
 	
 	content, err := shared.NewContent(cmd.Content)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "invalid content")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid content")
 	}
 	
 	title, err := shared.NewTitle(cmd.Title)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "invalid title")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid title")
 	}
 	
 	tags := shared.NewTags(cmd.Tags...)
@@ -198,7 +198,7 @@ func (s *NodeCommandService) CreateNode(ctx context.Context, cmd CreateNodeComma
 func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeCommand) (*node.Node, error) {
 	// 1. Validate command
 	if err := s.validator.Struct(cmd); err != nil {
-		return nil, appErrors.Wrap(err, "invalid command")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid command")
 	}
 	
 	// 2. Note: NodeWriter doesn't have GetForUpdate, so we can't fetch existing node
@@ -210,7 +210,7 @@ func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeComma
 		var err error
 		content, err = shared.NewContent(cmd.Content)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "invalid content")
+			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid content")
 		}
 	}
 	
@@ -220,7 +220,7 @@ func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeComma
 		var err error
 		title, err = shared.NewTitle(cmd.Title)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "invalid title")
+			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid title")
 		}
 	}
 	
@@ -239,7 +239,7 @@ func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeComma
 	
 	userID, err := shared.NewUserID(cmd.UserID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "invalid user ID")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid user ID")
 	}
 	
 	// Reconstruct node for update
@@ -419,7 +419,7 @@ func (s *NodeCommandService) BulkDeleteNodes(ctx context.Context, cmd BulkDelete
 func (s *NodeCommandService) CreateConnection(ctx context.Context, cmd CreateConnectionCommand) (*edge.Edge, error) {
 	// 1. Validate command
 	if err := s.validator.Struct(cmd); err != nil {
-		return nil, appErrors.Wrap(err, "invalid command")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid command")
 	}
 	
 	// 2. Verify both nodes exist
@@ -477,7 +477,7 @@ func (s *NodeCommandService) CreateConnection(ctx context.Context, cmd CreateCon
 func (s *NodeCommandService) UpdateConnection(ctx context.Context, cmd UpdateConnectionCommand) (*edge.Edge, error) {
 	// 1. Validate command
 	if err := s.validator.Struct(cmd); err != nil {
-		return nil, appErrors.Wrap(err, "invalid command")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid command")
 	}
 	
 	// 2. Fetch existing edge

@@ -3,13 +3,13 @@ package dynamodb
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	stderrors "errors"
 	"fmt"
 	"log"
 	"time"
 
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -65,7 +65,7 @@ func (s *ddbIdempotencyStore) Store(ctx context.Context, key repository.Idempote
 	// Serialize the result to JSON
 	resultBytes, err := json.Marshal(result)
 	if err != nil {
-		return appErrors.Wrap(err, "failed to serialize idempotency result")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to serialize idempotency result").WithCause(err).Build()
 	}
 
 	pk := fmt.Sprintf("IDEMPOTENCY#%s#%s", key.UserID, key.Operation)
@@ -86,7 +86,7 @@ func (s *ddbIdempotencyStore) Store(ctx context.Context, key repository.Idempote
 
 	itemMap, err := attributevalue.MarshalMap(item)
 	if err != nil {
-		return appErrors.Wrap(err, "failed to marshal idempotency item")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to marshal idempotency item").WithCause(err).Build()
 	}
 
 	// Use conditional write to prevent overwriting existing keys
@@ -99,13 +99,13 @@ func (s *ddbIdempotencyStore) Store(ctx context.Context, key repository.Idempote
 
 	if err != nil {
 		var ccf *types.ConditionalCheckFailedException
-		if errors.As(err, &ccf) {
+		if stderrors.As(err, &ccf) {
 			// Key already exists - this is expected for concurrent duplicate operations
 			// The first request succeeded and stored the result, subsequent requests should
 			// retrieve and return the existing result
 			return nil
 		}
-		return appErrors.Wrap(err, "failed to store idempotency key")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to store idempotency key").WithCause(err).Build()
 	}
 
 	return nil
@@ -125,7 +125,7 @@ func (s *ddbIdempotencyStore) Get(ctx context.Context, key repository.Idempotenc
 	})
 
 	if err != nil {
-		return nil, false, appErrors.Wrap(err, "failed to get idempotency key")
+		return nil, false, errors.Internal(errors.CodeInternalError.String(), "failed to get idempotency key").WithCause(err).Build()
 	}
 
 	if result.Item == nil {
@@ -134,13 +134,13 @@ func (s *ddbIdempotencyStore) Get(ctx context.Context, key repository.Idempotenc
 
 	var item ddbIdempotencyItem
 	if err := attributevalue.UnmarshalMap(result.Item, &item); err != nil {
-		return nil, false, appErrors.Wrap(err, "failed to unmarshal idempotency item")
+		return nil, false, errors.Internal(errors.CodeInternalError.String(), "failed to unmarshal idempotency item").WithCause(err).Build()
 	}
 
 	// Deserialize the result from JSON
 	var storedResult interface{}
 	if err := json.Unmarshal([]byte(item.Result), &storedResult); err != nil {
-		return nil, false, appErrors.Wrap(err, "failed to deserialize idempotency result")
+		return nil, false, errors.Internal(errors.CodeInternalError.String(), "failed to deserialize idempotency result").WithCause(err).Build()
 	}
 
 	return storedResult, true, nil
@@ -160,7 +160,7 @@ func (s *ddbIdempotencyStore) Delete(ctx context.Context, key repository.Idempot
 	})
 
 	if err != nil {
-		return appErrors.Wrap(err, "failed to delete idempotency key")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to delete idempotency key").WithCause(err).Build()
 	}
 
 	return nil
@@ -179,7 +179,7 @@ func (s *ddbIdempotencyStore) GetOrStore(ctx context.Context, key repository.Ide
 	// First attempt to get existing result
 	existingResult, exists, err := s.Get(ctx, key)
 	if err != nil {
-		return nil, false, appErrors.Wrap(err, "failed to check for existing idempotency result")
+		return nil, false, errors.Internal(errors.CodeInternalError.String(), "failed to check for existing idempotency result").WithCause(err).Build()
 	}
 	
 	if exists {
@@ -197,7 +197,7 @@ func (s *ddbIdempotencyStore) GetOrStore(ctx context.Context, key repository.Ide
 			log.Printf("DEBUG: Concurrent write detected, returning existing result for key %s:%s", key.Operation, key.Hash[:8])
 			return retryResult, true, nil
 		}
-		return nil, false, appErrors.Wrap(storeErr, "failed to store idempotency result")
+		return nil, false, errors.Internal(errors.CodeInternalError.String(), "failed to store idempotency result").WithCause(storeErr).Build()
 	}
 	
 	log.Printf("DEBUG: Stored new idempotency result for key %s:%s", key.Operation, key.Hash[:8])
@@ -236,7 +236,7 @@ func (s *ddbIdempotencyStore) BatchGet(ctx context.Context, keys []repository.Id
 		RequestItems: requestItems,
 	})
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to batch get idempotency keys")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to batch get idempotency keys").WithCause(err).Build()
 	}
 	
 	// Process results

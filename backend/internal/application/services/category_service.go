@@ -10,7 +10,7 @@ import (
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 )
 
 // CategoryService implements category operations with PURE CQRS.
@@ -47,11 +47,11 @@ func (s *CategoryService) CreateCategory(ctx context.Context, cmd *commands.Crea
 	// Create unit of work
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to create unit of work")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to create unit of work")
 	}
 	
 	if err := uow.Begin(ctx); err != nil {
-		return nil, appErrors.Wrap(err, "failed to begin transaction")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to begin transaction")
 	}
 	
 	defer func() {
@@ -84,7 +84,7 @@ func (s *CategoryService) CreateCategory(ctx context.Context, cmd *commands.Crea
 	userID, err := shared.NewUserID(cmd.UserID)
 	if err != nil {
 		uow.Rollback()
-		return nil, appErrors.Wrap(err, "invalid user ID")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid user ID")
 	}
 	
 	newCategory, err := category.NewCategory(
@@ -94,14 +94,14 @@ func (s *CategoryService) CreateCategory(ctx context.Context, cmd *commands.Crea
 	)
 	if err != nil {
 		uow.Rollback()
-		return nil, appErrors.Wrap(err, "failed to create category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to create category")
 	}
 	
 	// Save through writer
 	writer := uow.Categories()
 	if err := writer.Save(ctx, newCategory); err != nil {
 		uow.Rollback()
-		return nil, appErrors.Wrap(err, "failed to save category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to save category")
 	}
 	
 	// Handle hierarchy if parent is specified
@@ -112,7 +112,7 @@ func (s *CategoryService) CreateCategory(ctx context.Context, cmd *commands.Crea
 		// Update the category with parent using Save
 		if err := writer.Save(ctx, newCategory); err != nil {
 			uow.Rollback()
-			return nil, appErrors.Wrap(err, "failed to set parent category")
+			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to set parent category")
 		}
 	}
 	
@@ -121,7 +121,7 @@ func (s *CategoryService) CreateCategory(ctx context.Context, cmd *commands.Crea
 	
 	// Commit transaction
 	if err := uow.Commit(); err != nil {
-		return nil, appErrors.Wrap(err, "failed to commit transaction")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to commit transaction")
 	}
 	
 	// Store idempotency result
@@ -147,11 +147,11 @@ func (s *CategoryService) GetCategory(ctx context.Context, userID, categoryID st
 	// Use reader directly - no transaction for reads
 	cat, err := s.categoryReader.FindByID(ctx, userID, categoryID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to find category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
 	}
 	
 	if cat == nil {
-		return nil, appErrors.NewNotFound("category not found")
+		return nil, errors.NotFound(errors.CodeNodeNotFound.String(), "category not found").Build()
 	}
 	
 	return dto.CategoryFromDomain(*cat), nil
@@ -162,11 +162,11 @@ func (s *CategoryService) UpdateCategory(ctx context.Context, cmd *commands.Upda
 	// Create unit of work
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to create unit of work")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to create unit of work")
 	}
 	
 	if err := uow.Begin(ctx); err != nil {
-		return nil, appErrors.Wrap(err, "failed to begin transaction")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to begin transaction")
 	}
 	
 	defer func() {
@@ -181,12 +181,12 @@ func (s *CategoryService) UpdateCategory(ctx context.Context, cmd *commands.Upda
 	existingCategory, err := reader.FindByID(ctx, cmd.UserID, cmd.CategoryID)
 	if err != nil {
 		uow.Rollback()
-		return nil, appErrors.Wrap(err, "failed to find category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
 	}
 	
 	if existingCategory == nil {
 		uow.Rollback()
-		return nil, appErrors.NewNotFound("category not found")
+		return nil, errors.NotFound(errors.CodeNodeNotFound.String(), "category not found").Build()
 	}
 	
 	// Apply updates using the correct field names
@@ -208,7 +208,7 @@ func (s *CategoryService) UpdateCategory(ctx context.Context, cmd *commands.Upda
 	writer := uow.Categories()
 	if err := writer.Save(ctx, existingCategory); err != nil {
 		uow.Rollback()
-		return nil, appErrors.Wrap(err, "failed to update category")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to update category")
 	}
 	
 	// Register event - commented out until UnitOfWork supports it
@@ -216,7 +216,7 @@ func (s *CategoryService) UpdateCategory(ctx context.Context, cmd *commands.Upda
 	
 	// Commit
 	if err := uow.Commit(); err != nil {
-		return nil, appErrors.Wrap(err, "failed to commit transaction")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to commit transaction")
 	}
 	
 	// Publish event - commented out for now
@@ -230,11 +230,11 @@ func (s *CategoryService) DeleteCategory(ctx context.Context, userID, categoryID
 	// Create unit of work
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
-		return appErrors.Wrap(err, "failed to create unit of work")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to create unit of work")
 	}
 	
 	if err := uow.Begin(ctx); err != nil {
-		return appErrors.Wrap(err, "failed to begin transaction")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to begin transaction")
 	}
 	
 	defer func() {
@@ -249,31 +249,31 @@ func (s *CategoryService) DeleteCategory(ctx context.Context, userID, categoryID
 	existingCategory, err := reader.FindByID(ctx, userID, categoryID)
 	if err != nil {
 		uow.Rollback()
-		return appErrors.Wrap(err, "failed to find category")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
 	}
 	
 	if existingCategory == nil {
 		uow.Rollback()
-		return appErrors.NewNotFound("category not found")
+		return errors.NotFound(errors.CodeNodeNotFound.String(), "category not found").Build()
 	}
 	
 	// Check for child categories
 	children, err := reader.FindChildCategories(ctx, userID, categoryID)
 	if err != nil {
 		uow.Rollback()
-		return appErrors.Wrap(err, "failed to check for child categories")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to check for child categories")
 	}
 	
 	if len(children) > 0 {
 		uow.Rollback()
-		return appErrors.BadRequest("cannot delete category with children")
+		return errors.Validation(errors.CodeValidationFailed.String(), "cannot delete category with children").Build()
 	}
 	
 	// Delete through writer
 	writer := uow.Categories()
 	if err := writer.Delete(ctx, userID, categoryID); err != nil {
 		uow.Rollback()
-		return appErrors.Wrap(err, "failed to delete category")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to delete category")
 	}
 	
 	// Register event - commented out until UnitOfWork supports it
@@ -281,7 +281,7 @@ func (s *CategoryService) DeleteCategory(ctx context.Context, userID, categoryID
 	
 	// Commit
 	if err := uow.Commit(); err != nil {
-		return appErrors.Wrap(err, "failed to commit transaction")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to commit transaction")
 	}
 	
 	// Publish event - commented out for now
@@ -295,7 +295,7 @@ func (s *CategoryService) ListCategories(ctx context.Context, userID string) ([]
 	// Use reader directly
 	categories, err := s.categoryReader.FindByUser(ctx, userID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to list categories")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to list categories")
 	}
 	
 	// Convert to DTOs
@@ -312,7 +312,7 @@ func (s *CategoryService) GetCategoryTree(ctx context.Context, userID string) ([
 	// Get all categories
 	categories, err := s.categoryReader.FindCategoryTree(ctx, userID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to get category tree")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to get category tree")
 	}
 	
 	// Build tree structure
@@ -359,11 +359,11 @@ func (s *CategoryService) AssignNodeToCategory(ctx context.Context, userID, node
 	// Create unit of work
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
-		return appErrors.Wrap(err, "failed to create unit of work")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to create unit of work")
 	}
 	
 	if err := uow.Begin(ctx); err != nil {
-		return appErrors.Wrap(err, "failed to begin transaction")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to begin transaction")
 	}
 	
 	defer func() {
@@ -378,12 +378,12 @@ func (s *CategoryService) AssignNodeToCategory(ctx context.Context, userID, node
 	cat, err := reader.FindByID(ctx, userID, categoryID)
 	if err != nil {
 		uow.Rollback()
-		return appErrors.Wrap(err, "failed to find category")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
 	}
 	
 	if cat == nil {
 		uow.Rollback()
-		return appErrors.NewNotFound("category not found")
+		return errors.NotFound(errors.CodeNodeNotFound.String(), "category not found").Build()
 	}
 	
 	// Create assignment through writer
@@ -396,12 +396,12 @@ func (s *CategoryService) AssignNodeToCategory(ctx context.Context, userID, node
 	
 	if err := writer.AssignNodeToCategory(ctx, mapping); err != nil {
 		uow.Rollback()
-		return appErrors.Wrap(err, "failed to assign node to category")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to assign node to category")
 	}
 	
 	// Commit
 	if err := uow.Commit(); err != nil {
-		return appErrors.Wrap(err, "failed to commit transaction")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to commit transaction")
 	}
 	
 	return nil
@@ -412,11 +412,11 @@ func (s *CategoryService) RemoveNodeFromCategory(ctx context.Context, userID, no
 	// Create unit of work
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
-		return appErrors.Wrap(err, "failed to create unit of work")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to create unit of work")
 	}
 	
 	if err := uow.Begin(ctx); err != nil {
-		return appErrors.Wrap(err, "failed to begin transaction")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to begin transaction")
 	}
 	
 	defer func() {
@@ -430,12 +430,12 @@ func (s *CategoryService) RemoveNodeFromCategory(ctx context.Context, userID, no
 	writer := uow.Categories()
 	if err := writer.RemoveNodeFromCategory(ctx, userID, nodeID, categoryID); err != nil {
 		uow.Rollback()
-		return appErrors.Wrap(err, "failed to remove node from category")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to remove node from category")
 	}
 	
 	// Commit
 	if err := uow.Commit(); err != nil {
-		return appErrors.Wrap(err, "failed to commit transaction")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to commit transaction")
 	}
 	
 	return nil

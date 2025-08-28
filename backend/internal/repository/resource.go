@@ -82,7 +82,7 @@ func (rm *ResourceManager) AcquireConnection(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.After(rm.connectionTimeout):
-		return NewTimeoutError("connection acquisition", rm.connectionTimeout)
+		return fmt.Errorf("timeout error: connection acquisition after %v", rm.connectionTimeout)
 	}
 }
 
@@ -448,7 +448,7 @@ func (rl *RateLimiter) Allow(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
-		return NewRateLimitError("rate limit exceeded", rl.refill)
+		return fmt.Errorf("rate limit error: rate limit exceeded, retry after %v", rl.refill)
 	}
 }
 

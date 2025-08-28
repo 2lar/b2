@@ -36,6 +36,11 @@ const (
 	// External service errors
 	ErrorTypeExternal     ErrorType = "EXTERNAL"
 	ErrorTypeUnavailable  ErrorType = "UNAVAILABLE"
+	
+	// Domain-specific errors
+	ErrorTypeDomain       ErrorType = "DOMAIN"
+	ErrorTypeRepository   ErrorType = "REPOSITORY"
+	ErrorTypeApplication  ErrorType = "APPLICATION"
 )
 
 // ErrorSeverity defines the severity level for logging and monitoring.

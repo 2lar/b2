@@ -8,7 +8,7 @@ import (
 
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 )
 
 // CleanupService handles async cleanup of resources after node deletion.
@@ -49,18 +49,18 @@ func (s *CleanupService) CleanupNodeResiduals(ctx context.Context, userID, nodeI
 
 	// Validate inputs
 	if userID == "" || nodeID == "" {
-		return appErrors.NewValidation("userID and nodeID are required for cleanup")
+		return errors.Validation(errors.CodeValidationFailed.String(), "userID and nodeID are required for cleanup").Build()
 	}
 
 	// Parse domain identifiers
 	userIDVO, err := shared.ParseUserID(userID)
 	if err != nil {
-		return appErrors.Wrap(err, "invalid user ID")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "invalid user ID")
 	}
 
 	nodeIDVO, err := shared.ParseNodeID(nodeID)
 	if err != nil {
-		return appErrors.Wrap(err, "invalid node ID")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "invalid node ID")
 	}
 
 	// No need to add userID to context - repositories use entity userIDs
@@ -68,12 +68,12 @@ func (s *CleanupService) CleanupNodeResiduals(ctx context.Context, userID, nodeI
 	// Create a unit of work for transactional cleanup
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
-		return appErrors.Wrap(err, "failed to create unit of work")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to create unit of work")
 	}
 
 	// Start transaction
 	if err := uow.Begin(ctx); err != nil {
-		return appErrors.Wrap(err, "failed to begin transaction")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to begin transaction")
 	}
 
 	// Track whether commit was called
@@ -153,7 +153,7 @@ func (s *CleanupService) CleanupNodeResiduals(ctx context.Context, userID, nodeI
 	commitCalled = true
 	if err := uow.Commit(); err != nil {
 		commitCalled = false
-		return appErrors.Wrap(err, "failed to commit cleanup transaction")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to commit cleanup transaction")
 	}
 
 	log.Printf("Successfully cleaned up residuals for node %s", nodeID)
@@ -231,7 +231,7 @@ func (s *CleanupService) CleanupOrphanedEdges(ctx context.Context, userID string
 
 	edges, err := s.edgeRepo.FindEdges(ctx, edgeQuery)
 	if err != nil {
-		return appErrors.Wrap(err, "failed to find edges")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to find edges")
 	}
 
 	orphanedCount := 0

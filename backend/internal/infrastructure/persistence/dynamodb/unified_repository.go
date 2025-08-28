@@ -82,7 +82,7 @@ func (r *UnifiedRepository) GetNodeByID(ctx context.Context, nodeID string) (*no
 	}
 	
 	if result.Item == nil {
-		return nil, repository.ErrNodeNotFound
+		return nil, repository.ErrNodeNotFound("", "")
 	}
 	
 	var node node.Node
@@ -203,7 +203,7 @@ func (r *UnifiedRepository) GetEdgeByID(ctx context.Context, edgeID string) (*ed
 	}
 	
 	if result.Item == nil {
-		return nil, repository.ErrEdgeNotFound
+		return nil, repository.ErrEdgeNotFound("", "")
 	}
 	
 	var edge edge.Edge
@@ -340,7 +340,7 @@ func (r *UnifiedRepository) GetCategoryByID(ctx context.Context, categoryID stri
 	}
 	
 	if result.Item == nil {
-		return nil, repository.ErrCategoryNotFound
+		return nil, repository.ErrCategoryNotFound("", "")
 	}
 	
 	var category category.Category

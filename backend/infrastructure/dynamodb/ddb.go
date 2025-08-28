@@ -4,7 +4,7 @@ package dynamodb
 
 import (
 	"context"
-	"errors"
+	stderrors "errors" // Standard errors for errors.As
 	"fmt"
 	"strings"
 	"time"
@@ -14,7 +14,7 @@ import (
 	"brain2-backend/internal/domain/category"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors" // ALIAS for our custom errors
+	"brain2-backend/internal/errors" // Unified error system
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -158,7 +158,7 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *node.No
 		Keywords: node.Keywords().ToSlice(), Tags: node.Tags().ToSlice(), IsLatest: true, Version: node.Version(), Timestamp: node.CreatedAt().Format(time.RFC3339),
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "failed to marshal node item")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to marshal node item").WithCause(err).Build()
 	}
 	// Add EntityType for easier filtering
 	nodeItem["EntityType"] = &types.AttributeValueMemberS{Value: "NODE"}
@@ -177,7 +177,7 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *node.No
 			GSI1SK: fmt.Sprintf("NODE#%s", node.ID().String()),
 		})
 		if err != nil {
-			return appErrors.Wrap(err, "failed to marshal keyword item")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to marshal keyword item").WithCause(err).Build()
 		}
 		transactItems = append(transactItems, types.TransactWriteItem{
 			Put: &types.Put{TableName: aws.String(r.config.TableName), Item: keywordItem},
@@ -189,7 +189,7 @@ func (r *ddbRepository) CreateNodeAndKeywords(ctx context.Context, node *node.No
 		TransactItems: transactItems,
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "transaction to create node and keywords failed")
+		return errors.Internal(errors.CodeInternalError.String(), "transaction to create node and keywords failed").WithCause(err).Build()
 	}
 	return nil
 }
@@ -213,7 +213,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *node.Node
 		Keywords: node.Keywords().ToSlice(), Tags: node.Tags().ToSlice(), IsLatest: true, Version: node.Version(), Timestamp: node.CreatedAt().Format(time.RFC3339),
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "failed to marshal node item")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to marshal node item").WithCause(err).Build()
 	}
 	// Add EntityType for easier filtering
 	nodeItem["EntityType"] = &types.AttributeValueMemberS{Value: "NODE"}
@@ -230,7 +230,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *node.Node
 			PK: nodePK, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: gsi1PK, GSI1SK: gsi1SK,
 		})
 		if err != nil {
-			return appErrors.Wrap(err, "failed to marshal keyword item")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to marshal keyword item").WithCause(err).Build()
 		}
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: keywordItem}})
 		r.logger.Debug("added keyword item to transaction",
@@ -252,7 +252,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *node.Node
 			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", ownerID, targetID),
 		})
 		if err != nil {
-			return appErrors.Wrap(err, "failed to marshal canonical edge item")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to marshal canonical edge item").WithCause(err).Build()
 		}
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edgeItem}})
 		r.logger.Debug("added edge to transaction",
@@ -265,7 +265,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *node.Node
 	_, err = r.dbClient.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: transactItems})
 	if err != nil {
 		r.logger.Error("transaction failed", zap.Error(err))
-		return appErrors.Wrap(err, "transaction to create node with edges failed")
+		return errors.Internal(errors.CodeInternalError.String(), "transaction to create node with edges failed").WithCause(err).Build()
 	}
 	
 	r.logger.Debug("transaction completed successfully",
@@ -276,7 +276,7 @@ func (r *ddbRepository) CreateNodeWithEdges(ctx context.Context, node *node.Node
 // UpdateNodeAndEdges transactionally updates a node and its connections.
 func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node, relatedNodeIDs []string) error {
 	if err := r.clearNodeConnections(ctx, node.UserID().String(), node.ID().String()); err != nil {
-		return appErrors.Wrap(err, "failed to clear old connections for update")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to clear old connections for update").WithCause(err).Build()
 	}
 
 	userPK := fmt.Sprintf("USER#%s", node.UserID().String())
@@ -305,10 +305,10 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node,
 	if err != nil {
 		// Check for optimistic lock conflicts
 		var ccf *types.ConditionalCheckFailedException
-		if errors.As(err, &ccf) {
+		if stderrors.As(err, &ccf) {
 			return repository.NewOptimisticLockError(node.ID().String(), node.Version(), node.Version()+1)
 		}
-		return appErrors.Wrap(err, "failed to update node metadata")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to update node metadata").WithCause(err).Build()
 	}
 
 	// Store keywords in the node's partition for atomic operations
@@ -316,7 +316,7 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node,
 	for _, keyword := range node.Keywords().ToSlice() {
 		keywordItem, err := attributevalue.MarshalMap(ddbKeyword{PK: nodePK, SK: fmt.Sprintf("KEYWORD#%s", keyword), GSI1PK: fmt.Sprintf("USER#%s#KEYWORD#%s", node.UserID().String(), keyword), GSI1SK: fmt.Sprintf("NODE#%s", node.ID().String())})
 		if err != nil {
-			return appErrors.Wrap(err, "failed to marshal keyword item for update")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to marshal keyword item for update").WithCause(err).Build()
 		}
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: keywordItem}})
 	}
@@ -334,7 +334,7 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node,
 			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", ownerID, targetID),
 		})
 		if err != nil {
-			return appErrors.Wrap(err, "failed to marshal canonical edge item for update")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to marshal canonical edge item for update").WithCause(err).Build()
 		}
 		transactItems = append(transactItems, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(r.config.TableName), Item: edgeItem}})
 	}
@@ -342,7 +342,7 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node,
 	if len(transactItems) > 0 {
 		_, err = r.dbClient.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: transactItems})
 		if err != nil {
-			return appErrors.Wrap(err, "transaction to update node edges failed")
+			return errors.Internal(errors.CodeInternalError.String(), "transaction to update node edges failed").WithCause(err).Build()
 		}
 	}
 	return nil
@@ -351,7 +351,7 @@ func (r *ddbRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node,
 // CreateEdge creates a single edge in DynamoDB using the canonical edge storage pattern.
 func (r *ddbRepository) CreateEdge(ctx context.Context, edge *edge.Edge) error {
 	if edge == nil {
-		return appErrors.NewValidation("edge cannot be nil")
+		return errors.Validation(errors.CodeValidationFailed.String(), "edge cannot be nil").Build()
 	}
 	
 	// Use canonical edge storage pattern (lexicographically ordered IDs)
@@ -372,7 +372,7 @@ func (r *ddbRepository) CreateEdge(ctx context.Context, edge *edge.Edge) error {
 	
 	item, err := attributevalue.MarshalMap(edgeItem)
 	if err != nil {
-		return appErrors.Wrap(err, "failed to marshal edge item")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to marshal edge item").WithCause(err).Build()
 	}
 	
 	_, err = r.dbClient.PutItem(ctx, &dynamodb.PutItemInput{
@@ -380,7 +380,7 @@ func (r *ddbRepository) CreateEdge(ctx context.Context, edge *edge.Edge) error {
 		Item:      item,
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "failed to create edge in DynamoDB")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to create edge in DynamoDB").WithCause(err).Build()
 	}
 	
 	return nil
@@ -465,14 +465,14 @@ func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string)
 	})
 	
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to get item from dynamodb")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to get item from dynamodb").WithCause(err).Build()
 	}
 	if result.Item == nil {
 		return nil, nil // Not found
 	}
 	var ddbItem ddbNode
 	if err := attributevalue.UnmarshalMap(result.Item, &ddbItem); err != nil {
-		return nil, appErrors.Wrap(err, "failed to unmarshal node item")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to unmarshal node item").WithCause(err).Build()
 	}
 	createdAt, _ := time.Parse(time.RFC3339, ddbItem.Timestamp)
 	// Use domain factory method to reconstruct node from primitives
@@ -487,7 +487,7 @@ func (r *ddbRepository) FindNodeByID(ctx context.Context, userID, nodeID string)
 		ddbItem.Version,
 	)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to reconstruct node from DDB data")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to reconstruct node from DDB data").WithCause(err).Build()
 	}
 	return node, nil
 }
@@ -514,7 +514,7 @@ func (r *ddbRepository) FindEdgesByNode(ctx context.Context, userID, nodeID stri
 
 		result, err := r.dbClient.Query(ctx, queryInput)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to query edges using GSI2")
+			return nil, errors.Internal(errors.CodeInternalError.String(), "failed to query edges using GSI2").WithCause(err).Build()
 		}
 
 		// Process edges - keep only those involving the specified node
@@ -606,7 +606,7 @@ func (r *ddbRepository) GetAllGraphData(ctx context.Context, userID string) (*sh
 	// Wait for both operations to complete
 	if err := g.Wait(); err != nil {
 		r.logger.Error("failed to fetch graph data", zap.Error(err))
-		return nil, appErrors.Wrap(err, "failed to fetch graph data")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to fetch graph data").WithCause(err).Build()
 	}
 
 	r.logger.Debug("getAllGraphData completed",
@@ -635,7 +635,7 @@ func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID strin
 	// Use parallel scan for better performance on large datasets
 	totalSegments := int32(4) // Parallel segments for faster scanning
 	segments := make(chan []*node.Node, totalSegments)
-	errors := make(chan error, totalSegments)
+	errChan := make(chan error, totalSegments)
 
 	for segment := int32(0); segment < totalSegments; segment++ {
 		go func(segmentID int32) {
@@ -665,7 +665,7 @@ func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID strin
 
 				result, err := r.dbClient.Scan(ctx, scanInput)
 				if err != nil {
-					errors <- appErrors.Wrap(err, fmt.Sprintf("failed to scan nodes segment %d", segmentID))
+					errChan <- errors.Internal(errors.CodeInternalError.String(), fmt.Sprintf("failed to scan nodes segment %d", segmentID)).WithCause(err).Build()
 					return
 				}
 
@@ -707,7 +707,7 @@ func (r *ddbRepository) fetchAllNodesOptimized(ctx context.Context, userID strin
 		select {
 		case segmentNodes := <-segments:
 			nodes = append(nodes, segmentNodes...)
-		case err := <-errors:
+		case err := <-errChan:
 			return nil, err
 		}
 	}
@@ -742,7 +742,7 @@ func (r *ddbRepository) fetchAllNodesSingleScan(ctx context.Context, userID stri
 
 		result, err := r.dbClient.Scan(ctx, scanInput)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to scan nodes")
+			return nil, errors.Internal(errors.CodeInternalError.String(), "failed to scan nodes").WithCause(err).Build()
 		}
 
 		// Process nodes
@@ -804,7 +804,7 @@ func (r *ddbRepository) fetchAllEdgesOptimized(ctx context.Context, userID strin
 
 		result, err := r.dbClient.Query(ctx, queryInput)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to query edges")
+			return nil, errors.Internal(errors.CodeInternalError.String(), "failed to query edges").WithCause(err).Build()
 		}
 
 		// Process edges
@@ -853,7 +853,7 @@ func (r *ddbRepository) clearNodeConnections(ctx context.Context, userID, nodeID
 		ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: pk}},
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "failed to query items for deletion")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to query items for deletion").WithCause(err).Build()
 	}
 
 	for _, item := range queryResult.Items {
@@ -876,7 +876,7 @@ func (r *ddbRepository) clearNodeConnections(ctx context.Context, userID, nodeID
 		Limit: aws.Int32(100), // Limit scan to prevent performance issues
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "failed to scan for edges where node is target")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to scan for edges where node is target").WithCause(err).Build()
 	}
 
 	for _, item := range scanResult.Items {
@@ -900,7 +900,7 @@ func (r *ddbRepository) clearNodeConnections(ctx context.Context, userID, nodeID
 				RequestItems: map[string][]types.WriteRequest{r.config.TableName: batchRequests},
 			})
 			if err != nil {
-				return appErrors.Wrap(err, "failed to batch delete node items")
+				return errors.Internal(errors.CodeInternalError.String(), "failed to batch delete node items").WithCause(err).Build()
 			}
 		}
 	}
@@ -1138,7 +1138,7 @@ func (r *ddbRepository) CreateNode(ctx context.Context, node node.Node) error {
 		Keywords: node.Keywords().ToSlice(), Tags: node.Tags().ToSlice(), IsLatest: true, Version: node.Version(), Timestamp: node.CreatedAt().Format(time.RFC3339),
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "failed to marshal node item")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to marshal node item").WithCause(err).Build()
 	}
 
 	_, err = r.dbClient.PutItem(ctx, &dynamodb.PutItemInput{
@@ -1146,7 +1146,7 @@ func (r *ddbRepository) CreateNode(ctx context.Context, node node.Node) error {
 		Item:      nodeItem,
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "put item failed for node metadata")
+		return errors.Internal(errors.CodeInternalError.String(), "put item failed for node metadata").WithCause(err).Build()
 	}
 	return nil
 }
@@ -1170,7 +1170,7 @@ func (r *ddbRepository) CreateEdges(ctx context.Context, userID, sourceNodeID st
 			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", sourceNodeID, relatedNodeID),
 		})
 		if err != nil {
-			return appErrors.Wrap(err, "failed to marshal outgoing edge")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to marshal outgoing edge").WithCause(err).Build()
 		}
 		writeRequests = append(writeRequests, types.WriteRequest{PutRequest: &types.PutRequest{Item: edge1Item}})
 
@@ -1184,7 +1184,7 @@ func (r *ddbRepository) CreateEdges(ctx context.Context, userID, sourceNodeID st
 			GSI2SK:   fmt.Sprintf("NODE#%s#TARGET#%s", relatedNodeID, sourceNodeID),
 		})
 		if err != nil {
-			return appErrors.Wrap(err, "failed to marshal incoming edge")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to marshal incoming edge").WithCause(err).Build()
 		}
 		writeRequests = append(writeRequests, types.WriteRequest{PutRequest: &types.PutRequest{Item: edge2Item}})
 	}
@@ -1196,7 +1196,7 @@ func (r *ddbRepository) CreateEdges(ctx context.Context, userID, sourceNodeID st
 		},
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "batch write for edges failed")
+		return errors.Internal(errors.CodeInternalError.String(), "batch write for edges failed").WithCause(err).Build()
 	}
 	return nil
 }
@@ -1234,7 +1234,7 @@ func (r *ddbRepository) DeleteCategory(ctx context.Context, userID, categoryID s
 		ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: pk}},
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "failed to query category items for deletion")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to query category items for deletion").WithCause(err).Build()
 	}
 
 	if len(queryResult.Items) == 0 {
@@ -1261,7 +1261,7 @@ func (r *ddbRepository) DeleteCategory(ctx context.Context, userID, categoryID s
 			},
 		})
 		if err != nil {
-			return appErrors.Wrap(err, "failed to batch delete category items")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to batch delete category items").WithCause(err).Build()
 		}
 	}
 	return nil
@@ -1280,7 +1280,7 @@ func (r *ddbRepository) FindCategoryByID(ctx context.Context, userID, categoryID
 		},
 	})
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to get category from dynamodb")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to get category from dynamodb").WithCause(err).Build()
 	}
 	if result.Item == nil {
 		return nil, nil // Not found
@@ -1288,7 +1288,7 @@ func (r *ddbRepository) FindCategoryByID(ctx context.Context, userID, categoryID
 
 	var ddbItem ddbCategory
 	if err := attributevalue.UnmarshalMap(result.Item, &ddbItem); err != nil {
-		return nil, appErrors.Wrap(err, "failed to unmarshal category item")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to unmarshal category item").WithCause(err).Build()
 	}
 
 	// Convert to domain category
@@ -1327,7 +1327,7 @@ func (r *ddbRepository) FindCategories(ctx context.Context, query repository.Cat
 
 		result, err := r.dbClient.Query(ctx, queryInput)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to query categories")
+			return nil, errors.Internal(errors.CodeInternalError.String(), "failed to query categories").WithCause(err).Build()
 		}
 
 		// Process categories
@@ -1413,7 +1413,7 @@ func (r *ddbRepository) GetNodesPage(ctx context.Context, query repository.NodeQ
 
 		result, err := r.dbClient.Scan(ctx, scanInput)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to scan nodes page")
+			return nil, errors.Internal(errors.CodeInternalError.String(), "failed to scan nodes page").WithCause(err).Build()
 		}
 
 		// Process items from this scan segment
@@ -1520,7 +1520,7 @@ func (r *ddbRepository) CountNodes(ctx context.Context, userID string) (int, err
 	for paginator.HasMorePages() {
 		result, err := paginator.NextPage(ctx)
 		if err != nil {
-			return 0, appErrors.Wrap(err, "failed to count nodes")
+			return 0, errors.Internal(errors.CodeInternalError.String(), "failed to count nodes").WithCause(err).Build()
 		}
 		count += int(result.Count)
 	}
@@ -1552,7 +1552,7 @@ func (r *ddbRepository) GetNodesPageOptimized(ctx context.Context, userID string
 
 	result, err := r.dbClient.Query(ctx, queryInput)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to query nodes page optimized")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to query nodes page optimized").WithCause(err).Build()
 	}
 
 	// Convert DynamoDB items to domain nodes
@@ -1697,7 +1697,7 @@ func (r *ddbRepository) DeleteEdgesByNode(ctx context.Context, userID, nodeID st
 		},
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "failed to query edges for deletion")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to query edges for deletion").WithCause(err).Build()
 	}
 	
 	// Delete the edges
@@ -1726,7 +1726,7 @@ func (r *ddbRepository) DeleteEdgesByNode(ctx context.Context, userID, nodeID st
 			},
 		})
 		if err != nil {
-			return appErrors.Wrap(err, "failed to batch delete edges")
+			return errors.Internal(errors.CodeInternalError.String(), "failed to batch delete edges").WithCause(err).Build()
 		}
 	}
 	
@@ -1749,7 +1749,7 @@ func (r *ddbRepository) DeleteEdgesBetweenNodes(ctx context.Context, userID, sou
 		},
 	})
 	if err != nil {
-		return appErrors.Wrap(err, "failed to delete edge between nodes")
+		return errors.Internal(errors.CodeInternalError.String(), "failed to delete edge between nodes").WithCause(err).Build()
 	}
 	
 	return nil
@@ -1801,7 +1801,7 @@ func (r *ddbRepository) GetEdgesPage(ctx context.Context, query repository.EdgeQ
 
 	result, err := r.dbClient.Query(ctx, queryInput)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to query edges page")
+		return nil, errors.Internal(errors.CodeInternalError.String(), "failed to query edges page").WithCause(err).Build()
 	}
 
 	// Convert DynamoDB items to domain edges
@@ -1889,7 +1889,7 @@ func (r *ddbRepository) GetGraphDataPaginated(ctx context.Context, query reposit
 	result, err := r.dbClient.Scan(ctx, scanInput)
 	if err != nil {
 		r.logger.Error("DynamoDB query failed", zap.Error(err))
-		return nil, "", appErrors.Wrap(err, "failed to query graph data")
+		return nil, "", errors.Internal(errors.CodeInternalError.String(), "failed to query graph data").WithCause(err).Build()
 	}
 
 	r.logger.Debug("DynamoDB query successful",

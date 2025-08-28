@@ -1,5 +1,7 @@
 package repository
 
+import "fmt"
+
 // NodeQuery represents query parameters for finding nodes.
 type NodeQuery struct {
 	UserID     string   // Required: The user ID to query nodes for
@@ -17,13 +19,13 @@ type NodeQuery struct {
 // Validate checks if the NodeQuery has valid parameters.
 func (q NodeQuery) Validate() error {
 	if q.UserID == "" {
-		return NewInvalidQuery("UserID", "cannot be empty")
+		return fmt.Errorf("invalid query: %s %s", "UserID", "cannot be empty")
 	}
 	if q.Limit < 0 {
-		return NewInvalidQuery("Limit", "cannot be negative")
+		return fmt.Errorf("invalid query: %s %s", "Limit", "cannot be negative")
 	}
 	if q.Offset < 0 {
-		return NewInvalidQuery("Offset", "cannot be negative")
+		return fmt.Errorf("invalid query: %s %s", "Offset", "cannot be negative")
 	}
 	return nil
 }
@@ -56,13 +58,13 @@ type EdgeQuery struct {
 // Validate checks if the EdgeQuery has valid parameters.
 func (q EdgeQuery) Validate() error {
 	if q.UserID == "" {
-		return NewInvalidQuery("UserID", "cannot be empty")
+		return fmt.Errorf("invalid query: %s %s", "UserID", "cannot be empty")
 	}
 	if q.Limit < 0 {
-		return NewInvalidQuery("Limit", "cannot be negative")
+		return fmt.Errorf("invalid query: %s %s", "Limit", "cannot be negative")
 	}
 	if q.Offset < 0 {
-		return NewInvalidQuery("Offset", "cannot be negative")
+		return fmt.Errorf("invalid query: %s %s", "Offset", "cannot be negative")
 	}
 	return nil
 }
@@ -102,10 +104,10 @@ type GraphQuery struct {
 // Validate checks if the GraphQuery has valid parameters.
 func (q GraphQuery) Validate() error {
 	if q.UserID == "" {
-		return NewInvalidQuery("UserID", "cannot be empty")
+		return fmt.Errorf("invalid query: %s %s", "UserID", "cannot be empty")
 	}
 	if q.MaxDepth < 0 {
-		return NewInvalidQuery("MaxDepth", "cannot be negative")
+		return fmt.Errorf("invalid query: %s %s", "MaxDepth", "cannot be negative")
 	}
 	return nil
 }
@@ -131,13 +133,13 @@ type CategoryQuery struct {
 // Validate checks if the CategoryQuery has valid parameters.
 func (q CategoryQuery) Validate() error {
 	if q.UserID == "" {
-		return NewInvalidQuery("UserID", "cannot be empty")
+		return fmt.Errorf("invalid query: %s %s", "UserID", "cannot be empty")
 	}
 	if q.Limit < 0 {
-		return NewInvalidQuery("Limit", "cannot be negative")
+		return fmt.Errorf("invalid query: %s %s", "Limit", "cannot be negative")
 	}
 	if q.Offset < 0 {
-		return NewInvalidQuery("Offset", "cannot be negative")
+		return fmt.Errorf("invalid query: %s %s", "Offset", "cannot be negative")
 	}
 	return nil
 }

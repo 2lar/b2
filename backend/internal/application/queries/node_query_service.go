@@ -19,7 +19,7 @@ import (
 	"brain2-backend/internal/application/dto"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 	
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -93,26 +93,26 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 	// 2. Parse and validate domain identifiers
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	nodeID, err := shared.ParseNodeID(query.NodeID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid node id: " + err.Error()).Build()
 	}
 
 	// 3. Retrieve node from repository - userID passed explicitly
 	node, err := s.nodeReader.FindByID(ctx, userID, nodeID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve node")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve node")
 	}
 	if node == nil {
-		return nil, appErrors.NewNotFound("node not found")
+		return nil, errors.NotFound(errors.CodeNodeNotFound.String(), "node not found").Build()
 	}
 
 	// 4. Verify ownership
 	if !node.UserID().Equals(userID) {
-		return nil, appErrors.NewUnauthorized("node belongs to different user")
+		return nil, errors.Unauthorized(errors.CodeUserUnauthorized.String(), "node belongs to different user").Build()
 	}
 
 	// 5. Build result with optional components
@@ -129,7 +129,7 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 		}
 		outgoingEdges, err := s.edgeReader.FindEdges(ctx, outgoingQuery)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to retrieve outgoing connections")
+			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve outgoing connections")
 		}
 		
 		// Get incoming edges (where this node is the target)
@@ -139,7 +139,7 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 		}
 		incomingEdges, err := s.edgeReader.FindEdges(ctx, incomingQuery)
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to retrieve incoming connections")
+			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve incoming connections")
 		}
 		
 		// Combine both sets of edges
@@ -185,7 +185,7 @@ func (s *NodeQueryService) ListNodes(ctx context.Context, query *ListNodesQuery)
 	// 1. Parse and validate domain identifiers
 	_, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	// 2. Build repository query from application query
@@ -217,7 +217,7 @@ func (s *NodeQueryService) ListNodes(ctx context.Context, query *ListNodesQuery)
 	// 4. Execute query - userID is in the query struct
 	page, err := s.nodeReader.GetNodesPage(ctx, nodeQuery, pagination)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve nodes page")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve nodes page")
 	}
 
 	if page == nil {
@@ -232,7 +232,7 @@ func (s *NodeQueryService) ListNodes(ctx context.Context, query *ListNodesQuery)
 	// 5. Get total count for pagination metadata
 	total, err := s.nodeReader.CountNodes(ctx, query.UserID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to count total nodes")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to count total nodes")
 	}
 
 	// 6. Convert domain nodes to view models
@@ -268,24 +268,24 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 	// 2. Parse and validate domain identifiers
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	nodeID, err := shared.ParseNodeID(query.NodeID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid node id: " + err.Error()).Build()
 	}
 
 	// 3. Verify node exists and user owns it
 	node, err := s.nodeReader.FindByID(ctx, userID, nodeID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to find node")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find node")
 	}
 	if node == nil {
-		return nil, appErrors.NewNotFound("node not found")
+		return nil, errors.NotFound(errors.CodeNodeNotFound.String(), "node not found").Build()
 	}
 	if !node.UserID().Equals(userID) {
-		return nil, appErrors.NewUnauthorized("node belongs to different user")
+		return nil, errors.Unauthorized(errors.CodeUserUnauthorized.String(), "node belongs to different user").Build()
 	}
 
 	// 4. Build edge query based on connection type
@@ -311,7 +311,7 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 			Limit:    query.Limit / 2,
 		})
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to retrieve outgoing connections")
+			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve outgoing connections")
 		}
 
 		incomingEdges, err := s.edgeReader.FindEdges(ctx, repository.EdgeQuery{
@@ -320,7 +320,7 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 			Limit:    query.Limit / 2,
 		})
 		if err != nil {
-			return nil, appErrors.Wrap(err, "failed to retrieve incoming connections")
+			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve incoming connections")
 		}
 
 		// Combine both directions
@@ -340,13 +340,13 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 
 		return result, nil
 	default:
-		return nil, appErrors.NewValidation("invalid connection type")
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid connection type").Build()
 	}
 
 	// 5. Execute query for single direction
 	edges, err := s.edgeReader.FindEdges(ctx, edgeQuery)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve connections")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve connections")
 	}
 
 	// 6. Build result
@@ -384,7 +384,7 @@ func (s *NodeQueryService) GetGraphData(ctx context.Context, query *GetGraphData
 	// 2. Parse and validate domain identifiers
 	_, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	// 3. Build graph query
@@ -404,7 +404,7 @@ func (s *NodeQueryService) GetGraphData(ctx context.Context, query *GetGraphData
 	// 4. Retrieve graph data from repository
 	graph, err := s.graphRepo.GetGraphData(ctx, graphQuery)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve graph data")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve graph data")
 	}
 
 	// 5. Convert to view model with statistics

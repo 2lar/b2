@@ -24,13 +24,13 @@ type Pagination struct {
 // Validate checks if pagination parameters are valid
 func (p Pagination) Validate() error {
 	if p.Limit < 0 {
-		return NewInvalidQuery("Limit", "cannot be negative")
+		return fmt.Errorf("invalid query: Limit cannot be negative")
 	}
 	if p.Offset < 0 {
-		return NewInvalidQuery("Offset", "cannot be negative")
+		return fmt.Errorf("invalid query: Offset cannot be negative")
 	}
 	if p.Limit > 1000 {
-		return NewInvalidQuery("Limit", "cannot exceed 1000")
+		return fmt.Errorf("invalid query: Limit cannot exceed 1000")
 	}
 	return nil
 }

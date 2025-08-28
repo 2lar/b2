@@ -11,7 +11,7 @@ import (
 	"brain2-backend/internal/domain/category"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 )
 
 // MockRepository provides an in-memory mock implementation of the Repository interface.
@@ -96,13 +96,13 @@ func (m *MockRepository) CreateEdges(ctx context.Context, userID, sourceNodeID s
 
 	// Verify source node exists
 	if _, exists := m.nodes[sourceNodeID]; !exists {
-		return appErrors.NewNotFound("source node not found")
+		return errors.NotFound(errors.CodeNodeNotFound.String(), "source node not found").Build()
 	}
 
 	// Create bidirectional edges
 	for _, targetID := range relatedNodeIDs {
 		if _, exists := m.nodes[targetID]; !exists {
-			return appErrors.NewNotFound(fmt.Sprintf("target node %s not found", targetID))
+			return errors.NotFound(errors.CodeNodeNotFound.String(), fmt.Sprintf("target node %s not found", targetID)).Build()
 		}
 
 		// Add edge from source to target
@@ -178,7 +178,7 @@ func (m *MockRepository) UpdateNodeAndEdges(ctx context.Context, node *node.Node
 
 	// Check if node exists
 	if _, exists := m.nodes[node.ID().String()]; !exists {
-		return appErrors.NewNotFound("node not found")
+		return errors.NotFound(errors.CodeNodeNotFound.String(), "node not found").Build()
 	}
 
 	// Update the node
@@ -230,9 +230,9 @@ func (m *MockRepository) DeleteNode(ctx context.Context, userID, nodeID string) 
 
 	// Check if node exists and belongs to user
 	if node, exists := m.nodes[nodeID]; !exists {
-		return appErrors.NewNotFound("node not found")
+		return errors.NotFound(errors.CodeNodeNotFound.String(), "node not found").Build()
 	} else if node.UserID().String() != userID {
-		return appErrors.NewNotFound("node not found")
+		return errors.NotFound(errors.CodeNodeNotFound.String(), "node not found").Build()
 	}
 
 	// Delete the node
@@ -471,7 +471,7 @@ func (m *MockRepository) CreateCategory(ctx context.Context, category category.C
 
 	// Check if category already exists
 	if _, exists := m.categories[string(category.ID)]; exists {
-		return appErrors.NewValidation("category already exists")
+		return errors.Conflict(errors.CodeCategoryAlreadyExists.String(), "category already exists").Build()
 	}
 
 	// Store the category
@@ -490,7 +490,7 @@ func (m *MockRepository) UpdateCategory(ctx context.Context, category category.C
 
 	// Check if category exists
 	if _, exists := m.categories[string(category.ID)]; !exists {
-		return appErrors.NewNotFound("category not found")
+		return errors.NotFound(errors.CodeCategoryNotFound.String(), "category not found").Build()
 	}
 
 	// Update the category
@@ -509,9 +509,9 @@ func (m *MockRepository) DeleteCategory(ctx context.Context, userID, categoryID 
 
 	// Check if category exists and belongs to user
 	if category, exists := m.categories[categoryID]; !exists {
-		return appErrors.NewNotFound("category not found")
+		return errors.NotFound(errors.CodeCategoryNotFound.String(), "category not found").Build()
 	} else if category.UserID != userID {
-		return appErrors.NewNotFound("category not found")
+		return errors.NotFound(errors.CodeCategoryNotFound.String(), "category not found").Build()
 	}
 
 	// Delete the category
@@ -646,10 +646,10 @@ func (m *MockRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy 
 
 	// Verify both categories exist
 	if _, exists := m.categories[hierarchy.ParentID]; !exists {
-		return appErrors.NewNotFound("parent category not found")
+		return errors.NotFound(errors.CodeCategoryNotFound.String(), "parent category not found").Build()
 	}
 	if _, exists := m.categories[hierarchy.ChildID]; !exists {
-		return appErrors.NewNotFound("child category not found")
+		return errors.NotFound(errors.CodeCategoryNotFound.String(), "child category not found").Build()
 	}
 
 	// Add to hierarchy
@@ -742,10 +742,10 @@ func (m *MockRepository) AssignNodeToCategory(ctx context.Context, mapping node.
 
 	// Verify node and category exist
 	if _, exists := m.nodes[mapping.NodeID]; !exists {
-		return appErrors.NewNotFound("node not found")
+		return errors.NotFound(errors.CodeNodeNotFound.String(), "node not found").Build()
 	}
 	if _, exists := m.categories[mapping.CategoryID]; !exists {
-		return appErrors.NewNotFound("category not found")
+		return errors.NotFound(errors.CodeCategoryNotFound.String(), "category not found").Build()
 	}
 
 	// Add to mappings
@@ -909,7 +909,7 @@ func (m *MockRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID
 		return nil, err
 	}
 	if node == nil {
-		return nil, repository.NewNotFoundError("node", nodeID, userID)
+		return nil, repository.ErrNodeNotFound(userID, nodeID)
 	}
 
 	// Get edges for this node

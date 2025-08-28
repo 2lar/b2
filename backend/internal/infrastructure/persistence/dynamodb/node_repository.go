@@ -80,7 +80,7 @@ func (r *NodeRepository) FindByID(ctx context.Context, userID shared.UserID, nod
 	}
 	
 	if result.Item == nil {
-		return nil, repository.ErrNodeNotFound
+		return nil, repository.ErrNodeNotFound("", "")
 	}
 	
 	// Use custom parsing to handle different data formats
@@ -95,7 +95,7 @@ func (r *NodeRepository) FindByID(ctx context.Context, userID shared.UserID, nod
 // Exists checks if a node exists with explicit userID.
 func (r *NodeRepository) Exists(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) (bool, error) {
 	node, err := r.FindByID(ctx, userID, nodeID)
-	if err == repository.ErrNodeNotFound {
+	if repository.IsNotFound(err) {
 		return false, nil
 	}
 	return node != nil, err

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"brain2-backend/internal/domain/shared"
@@ -151,21 +152,14 @@ func (uow *unitOfWork) Begin(ctx context.Context) error {
 			}
 		} else {
 			// Transaction is still active
-			return NewRepositoryError(ErrCodeInvalidOperation, "unit of work already begun", nil)
+			return fmt.Errorf("invalid operation: unit of work already begun")
 		}
 	}
 	
 	// Start database transaction
 	tx, err := uow.transactionProvider.BeginTransaction(ctx)
 	if err != nil {
-		return NewRepositoryErrorWithDetails(
-			ErrCodeTransactionFailed,
-			"failed to begin transaction",
-			map[string]interface{}{
-				"operation": "begin_unit_of_work",
-			},
-			err,
-		)
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	
 	uow.transaction = tx
@@ -204,11 +198,11 @@ func (uow *unitOfWork) Begin(ctx context.Context) error {
 // Now uses TransactionManager for coordinated commit operations.
 func (uow *unitOfWork) Commit() error {
 	if uow.transaction == nil {
-		return NewRepositoryError(ErrCodeInvalidOperation, "no active transaction", nil)
+		return fmt.Errorf("invalid operation: no active transaction")
 	}
 	
 	if uow.committed || uow.rolledBack {
-		return NewRepositoryError(ErrCodeInvalidOperation, "transaction already completed", nil)
+		return fmt.Errorf("invalid operation: transaction already completed")
 	}
 	
 	// Use TransactionManager for coordinated two-phase commit
@@ -242,15 +236,7 @@ func (uow *unitOfWork) Commit() error {
 	// Execute all commit steps using TransactionManager
 	if err := uow.transactionManager.Execute(context.Background()); err != nil {
 		uow.rollbackTransaction()
-		return NewRepositoryErrorWithDetails(
-			ErrCodeTransactionFailed,
-			"unit of work commit failed",
-			map[string]interface{}{
-				"operation":      "commit_unit_of_work",
-				"pending_events": len(uow.pendingEvents),
-			},
-			err,
-		)
+		return fmt.Errorf("unit of work commit failed: %w", err)
 	}
 	
 	uow.committed = true
@@ -285,14 +271,7 @@ func (uow *unitOfWork) rollbackTransaction() error {
 	if err := uow.transaction.Rollback(); err != nil {
 		uow.rolledBack = true // Mark as rolled back even on error to prevent retry
 		uow.transaction = nil // Clear transaction reference to allow new Begin() calls
-		return NewRepositoryErrorWithDetails(
-			ErrCodeTransactionFailed,
-			"failed to rollback transaction",
-			map[string]interface{}{
-				"operation": "rollback_unit_of_work",
-			},
-			err,
-		)
+		return fmt.Errorf("failed to rollback transaction: %w", err)
 	}
 	
 	uow.rolledBack = true
@@ -483,14 +462,26 @@ func (m *unitOfWorkManager) ExecuteWithRetry(ctx context.Context, maxRetries int
 }
 
 // IsTransientError determines if an error is transient and worth retrying.
-// This is a simplified implementation - in practice, you'd check specific error types.
+// This checks for common transient error patterns in the error message.
 func IsTransientError(err error) bool {
-	if repoErr, ok := err.(*RepositoryError); ok {
-		switch repoErr.Code {
-		case ErrCodeTransactionConflict, ErrCodeTimeout, ErrCodeConnectionFailed:
+	if err == nil {
+		return false
+	}
+	
+	errStr := err.Error()
+	// Check for common transient error patterns
+	transientPatterns := []string{
+		"transaction conflict",
+		"timeout",
+		"connection failed",
+		"connection refused",
+		"temporary failure",
+		"deadlock",
+	}
+	
+	for _, pattern := range transientPatterns {
+		if strings.Contains(strings.ToLower(errStr), pattern) {
 			return true
-		default:
-			return false
 		}
 	}
 	return false

@@ -6,7 +6,7 @@ import (
 
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/shared"
-	"brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 )
 
 // AggregateVersionError represents a version conflict during aggregate optimistic locking
@@ -64,7 +64,7 @@ func (r *OptimisticLockingRepository) SaveWithOptimisticLock(ctx context.Context
 	// Check current version in the store
 	currentVersion, err := r.versionStore.GetVersion(ctx, aggregateID)
 	if err != nil && !errors.IsNotFound(err) {
-		return errors.Wrap(err, "failed to get current version")
+		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to get current version")
 	}
 	
 	// For new aggregates, current version should be 0
@@ -169,7 +169,7 @@ func NewInMemoryVersionStore() *InMemoryVersionStore {
 func (s *InMemoryVersionStore) GetVersion(ctx context.Context, aggregateID string) (int, error) {
 	version, exists := s.versions[aggregateID]
 	if !exists {
-		return 0, errors.NewNotFound(fmt.Sprintf("aggregate %s not found", aggregateID))
+		return 0, errors.NotFound(errors.CodeNodeNotFound.String(), fmt.Sprintf("aggregate %s not found", aggregateID)).Build()
 	}
 	return version, nil
 }

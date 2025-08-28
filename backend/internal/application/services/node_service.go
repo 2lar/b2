@@ -25,7 +25,7 @@ import (
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 	
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -92,14 +92,14 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "Failed to create unit of work")
-		return nil, appErrors.Wrap(err, "failed to create unit of work")
+		return nil, errors.ApplicationError(ctx, "CreateUnitOfWork", err)
 	}
 	
 	// Start unit of work for transaction boundary
 	if err := uow.Begin(ctx); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "Failed to begin transaction")
-		return nil, appErrors.Wrap(err, "failed to begin transaction")
+		return nil, errors.ApplicationError(ctx, "BeginTransaction", err)
 	}
 	
 	// Track whether commit was called successfully
@@ -159,12 +159,12 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	// 3. Convert application command to domain objects (Application -> Domain boundary)
 	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.ServiceValidationError("userID", err.Error(), cmd.UserID)
 	}
 
 	content, err := shared.NewContent(cmd.Content)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid content: " + err.Error())
+		return nil, errors.ServiceValidationError("field", "", "invalid content: " + err.Error())
 	}
 
 	tags := shared.NewTags(cmd.Tags...)
@@ -175,7 +175,7 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	// Title value object created
 	node, err := node.NewNode(userID, content, title, tags)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to create node")
+		return nil, errors.ApplicationError(ctx, "CreateNode", err)
 	}
 	// Node created with title
 
@@ -185,19 +185,19 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	}
 	existingNodes, err := uow.Nodes().FindNodes(ctx, query)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to find existing nodes for connection analysis")
+		return nil, errors.ApplicationError(ctx, "FindExistingNodes", err)
 	}
 
 	// Use domain service to analyze connections (business logic stays in domain)
 	potentialConnections, err := s.connectionAnalyzer.FindPotentialConnections(node, existingNodes)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to analyze potential connections")
+		return nil, errors.ApplicationError(ctx, "AnalyzeConnections", err)
 	}
 
 	// 6. Save the node first
 	// Use CreateNodeAndKeywords for node creation
 	if err := uow.Nodes().CreateNodeAndKeywords(ctx, node); err != nil {
-		return nil, appErrors.Wrap(err, "failed to save node")
+		return nil, errors.ApplicationError(ctx, "SaveNode", err)
 	}
 
 	// 7. Create edges for discovered connections
@@ -219,7 +219,7 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 		}
 
 		if err := uow.Edges().CreateEdge(ctx, edge); err != nil {
-			return nil, appErrors.Wrap(err, "failed to create edge")
+			return nil, errors.ApplicationError(ctx, "CreateEdge", err)
 		}
 
 		createdEdges = append(createdEdges, edge)
@@ -233,7 +233,7 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 
 	for _, event := range allEvents {
 		if err := s.eventBus.Publish(ctx, event); err != nil {
-			return nil, appErrors.Wrap(err, "failed to publish domain event")
+			return nil, errors.ApplicationError(ctx, "PublishEvent", err)
 		}
 	}
 
@@ -247,7 +247,7 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	commitCalled = true
 	if err := uow.Commit(); err != nil {
 		commitCalled = false // Reset if commit fails
-		return nil, appErrors.Wrap(err, "failed to commit transaction")
+		return nil, errors.ApplicationError(ctx, "CommitTransaction", err)
 	}
 
 	// 10. Convert domain objects to DTOs for response (Domain -> Application boundary)
@@ -267,18 +267,18 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 // UpdateNode implements the use case for updating an existing node.
 func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCommand) (*dto.UpdateNodeResult, error) {
 	if !cmd.HasChanges() {
-		return nil, appErrors.NewValidation("no changes specified in update command")
+		return nil, errors.ServiceValidationError("field", "", "no changes specified in update command")
 	}
 
 	// 1. Create a new UnitOfWork instance for this request
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to create unit of work")
+		return nil, errors.ApplicationError(ctx, "CreateUnitOfWork", err)
 	}
 	
 	// Start unit of work
 	if err := uow.Begin(ctx); err != nil {
-		return nil, appErrors.Wrap(err, "failed to begin transaction")
+		return nil, errors.ApplicationError(ctx, "BeginTransaction", err)
 	}
 	
 	// Track whether commit was called successfully
@@ -305,70 +305,70 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 	// 3. Parse domain identifiers
 	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.ServiceValidationError("userID", err.Error(), cmd.UserID)
 	}
 
 	nodeID, err := shared.ParseNodeID(cmd.NodeID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
+		return nil, errors.ServiceValidationError("field", "", "invalid node id: " + err.Error())
 	}
 
 	// 4. Retrieve existing node
 	// Use FindNodeByID with userID
 	node, err := uow.Nodes().FindNodeByID(ctx, userID.String(), nodeID.String())
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to find node")
+		return nil, errors.ApplicationError(ctx, "FindNode", err)
 	}
 	if node == nil {
-		return nil, appErrors.NewNotFound("node not found")
+		return nil, errors.ServiceNotFoundError("node", "node not found")
 	}
 
 	// 5. Verify ownership
 	if node == nil {
-		return nil, appErrors.NewNotFound("node not found")
+		return nil, errors.ServiceNotFoundError("node", "node not found")
 	}
 	if !node.UserID().Equals(userID) {
-		return nil, appErrors.NewUnauthorized("node belongs to different user")
+		return nil, errors.ServiceAuthorizationError(cmd.UserID, "node", "node belongs to different user")
 	}
 
 	// 6. Apply updates using domain methods
 	if cmd.Content != "" {
 		newContent, err := shared.NewContent(cmd.Content)
 		if err != nil {
-			return nil, appErrors.NewValidation("invalid content: " + err.Error())
+			return nil, errors.ServiceValidationError("field", "", "invalid content: " + err.Error())
 		}
 
 		if err := node.UpdateContent(newContent); err != nil {
-			return nil, appErrors.Wrap(err, "failed to update node content")
+			return nil, errors.ApplicationError(ctx, "UpdateContent", err)
 		}
 	}
 
 	if len(cmd.Tags) > 0 {
 		newTags := shared.NewTags(cmd.Tags...)
 		if err := node.UpdateTags(newTags); err != nil {
-			return nil, appErrors.Wrap(err, "failed to update node tags")
+			return nil, errors.ApplicationError(ctx, "UpdateTags", err)
 		}
 	}
 	if cmd.Title != "" {
 		newTitle, err := shared.NewTitle(cmd.Title)
 		if err != nil {
-			return nil, appErrors.NewValidation("invalid title: " + err.Error())
+			return nil, errors.ServiceValidationError("field", "", "invalid title: " + err.Error())
 		}
 		if err := node.UpdateTitle(newTitle); err != nil {
-			return nil, appErrors.Wrap(err, "failed to update node title")
+			return nil, errors.ApplicationError(ctx, "UpdateTitle", err)
 		}
 	}
 
 	// 7. Save updated node
 	// Use CreateNodeAndKeywords which handles both create and update
 	if err := uow.Nodes().CreateNodeAndKeywords(ctx, node); err != nil {
-		return nil, appErrors.Wrap(err, "failed to save updated node")
+		return nil, errors.ApplicationError(ctx, "SaveUpdatedNode", err)
 	}
 
 	// 8. Publish domain events
 	for _, event := range node.GetUncommittedEvents() {
 		if err := s.eventBus.Publish(ctx, event); err != nil {
-			return nil, appErrors.Wrap(err, "failed to publish domain event")
+			return nil, errors.ApplicationError(ctx, "PublishEvent", err)
 		}
 	}
 	node.MarkEventsAsCommitted()
@@ -377,7 +377,7 @@ func (s *NodeService) UpdateNode(ctx context.Context, cmd *commands.UpdateNodeCo
 	commitCalled = true
 	if err := uow.Commit(); err != nil {
 		commitCalled = false // Reset if commit fails
-		return nil, appErrors.Wrap(err, "failed to commit transaction")
+		return nil, errors.ApplicationError(ctx, "CommitTransaction", err)
 	}
 
 	// 10. Convert to response DTO
@@ -396,12 +396,12 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 	// 1. Create a new UnitOfWork instance for this request
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to create unit of work")
+		return nil, errors.ApplicationError(ctx, "CreateUnitOfWork", err)
 	}
 	
 	// Start unit of work
 	if err := uow.Begin(ctx); err != nil {
-		return nil, appErrors.Wrap(err, "failed to begin transaction")
+		return nil, errors.ApplicationError(ctx, "BeginTransaction", err)
 	}
 	
 	// Track whether commit was called successfully
@@ -429,26 +429,26 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 	// 3. Parse domain identifiers
 	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.ServiceValidationError("userID", err.Error(), cmd.UserID)
 	}
 
 	nodeID, err := shared.ParseNodeID(cmd.NodeID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
+		return nil, errors.ServiceValidationError("field", "", "invalid node id: " + err.Error())
 	}
 
 	// 4. Verify node exists and user owns it
 	// Use FindNodeByID with userID
 	node, err := uow.Nodes().FindNodeByID(ctx, userID.String(), nodeID.String())
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to find node")
+		return nil, errors.ApplicationError(ctx, "FindNode", err)
 	}
 	if node == nil {
-		return nil, appErrors.NewNotFound("node not found")
+		return nil, errors.ServiceNotFoundError("node", "node not found")
 	}
 
 	if !node.UserID().Equals(userID) {
-		return nil, appErrors.NewUnauthorized("node belongs to different user")
+		return nil, errors.ServiceAuthorizationError(cmd.UserID, "node", "node belongs to different user")
 	}
 
 	// 5. Delete associated edges first using proper DeleteByNode method
@@ -456,7 +456,7 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 		DeleteByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error
 	}); ok {
 		if err := edgeDeleter.DeleteByNode(ctx, userID, nodeID); err != nil {
-			return nil, appErrors.Wrap(err, "failed to delete node edges")
+			return nil, errors.ApplicationError(ctx, "DeleteNodeEdges", err)
 		}
 	} else {
 		// Fallback: manually delete edges if DeleteByNode not available
@@ -466,7 +466,7 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 
 	// 6. Delete the node
 	if err := uow.Nodes().DeleteNode(ctx, userID.String(), nodeID.String()); err != nil {
-		return nil, appErrors.Wrap(err, "failed to delete node")
+		return nil, errors.ApplicationError(ctx, "DeleteNode", err)
 	}
 
 	// 7. Create and publish deletion event using proper constructor
@@ -486,7 +486,7 @@ func (s *NodeService) DeleteNode(ctx context.Context, cmd *commands.DeleteNodeCo
 	commitCalled = true
 	if err := uow.Commit(); err != nil {
 		commitCalled = false // Reset if commit fails
-		return nil, appErrors.Wrap(err, "failed to commit transaction")
+		return nil, errors.ApplicationError(ctx, "CommitTransaction", err)
 	}
 
 	// 9. Convert to response DTO
@@ -505,12 +505,12 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 	// 1. Create a new UnitOfWork instance for this request
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to create unit of work")
+		return nil, errors.ApplicationError(ctx, "CreateUnitOfWork", err)
 	}
 	
 	// Start unit of work
 	if err := uow.Begin(ctx); err != nil {
-		return nil, appErrors.Wrap(err, "failed to begin transaction")
+		return nil, errors.ApplicationError(ctx, "BeginTransaction", err)
 	}
 	
 	// Track whether commit was called successfully
@@ -535,7 +535,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 	// 2. Parse domain identifiers
 	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.ServiceValidationError("userID", err.Error(), cmd.UserID)
 	}
 
 	// 3. Validate node IDs and check ownership using batch operations
@@ -647,7 +647,7 @@ func (s *NodeService) BulkDeleteNodes(ctx context.Context, cmd *commands.BulkDel
 	commitCalled = true
 	if err := uow.Commit(); err != nil {
 		commitCalled = false // Reset if commit fails
-		return nil, appErrors.Wrap(err, "failed to commit transaction")
+		return nil, errors.ApplicationError(ctx, "CommitTransaction", err)
 	}
 
 	// 7. Convert to response DTO
@@ -779,7 +779,7 @@ func (s *NodeService) checkIdempotency(ctx context.Context, key, operation, user
 
 	result, exists, err := s.idempotencyStore.Get(ctx, idempotencyKey)
 	if err != nil {
-		return nil, false, appErrors.Wrap(err, "failed to check idempotency")
+		return nil, false, errors.ApplicationError(ctx, "CheckIdempotency", err)
 	}
 
 	return result, exists, nil
@@ -804,12 +804,12 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 	// 1. Create a new UnitOfWork instance for this request
 	uow, err := s.uowFactory.Create(ctx)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to create unit of work")
+		return nil, errors.ApplicationError(ctx, "CreateUnitOfWork", err)
 	}
 	
 	// Start unit of work
 	if err := uow.Begin(ctx); err != nil {
-		return nil, appErrors.Wrap(err, "failed to begin transaction")
+		return nil, errors.ApplicationError(ctx, "BeginTransaction", err)
 	}
 	
 	// Track whether commit was called successfully
@@ -836,19 +836,19 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 	// 3. Parse user ID
 	userID, err := shared.ParseUserID(cmd.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.ServiceValidationError("userID", err.Error(), cmd.UserID)
 	}
 
 	var createdNodes []*node.Node
 	var connections []*edge.Edge
-	var errors []dto.BulkCreateError
+	var bulkErrors []dto.BulkCreateError
 
 	// 4. Create nodes sequentially with error handling
 	for i, nodeReq := range cmd.Nodes {
 		// Create domain node
 		content, err := shared.NewContent(nodeReq.Content)
 		if err != nil {
-			errors = append(errors, dto.BulkCreateError{
+			bulkErrors = append(bulkErrors, dto.BulkCreateError{
 				Index:   i,
 				Content: nodeReq.Content,
 				Error:   "invalid content: " + err.Error(),
@@ -860,7 +860,7 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 		title, _ := shared.NewTitle("") // Empty title for bulk create (struct has no Title field)
 		node, err := node.NewNode(userID, content, title, tags)
 		if err != nil {
-			errors = append(errors, dto.BulkCreateError{
+			bulkErrors = append(bulkErrors, dto.BulkCreateError{
 				Index:   i,
 				Content: nodeReq.Content,
 				Error:   "failed to create node: " + err.Error(),
@@ -872,7 +872,7 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 
 		// Save node through unit of work
 		if err := uow.Nodes().CreateNodeAndKeywords(ctx, node); err != nil {
-			errors = append(errors, dto.BulkCreateError{
+			bulkErrors = append(bulkErrors, dto.BulkCreateError{
 				Index:   i,
 				Content: nodeReq.Content,
 				Error:   "failed to save node: " + err.Error(),
@@ -919,7 +919,7 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 	for _, node := range createdNodes {
 		for _, event := range node.GetUncommittedEvents() {
 			if err := s.eventBus.Publish(ctx, event); err != nil {
-				return nil, appErrors.Wrap(err, "failed to publish domain event")
+				return nil, errors.ApplicationError(ctx, "PublishEvent", err)
 			}
 		}
 		node.MarkEventsAsCommitted()
@@ -929,7 +929,7 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 	commitCalled = true
 	if err := uow.Commit(); err != nil {
 		commitCalled = false // Reset if commit fails
-		return nil, appErrors.Wrap(err, "failed to commit transaction")
+		return nil, errors.ApplicationError(ctx, "CommitTransaction", err)
 	}
 
 	// 8. Convert to response DTO
@@ -938,12 +938,12 @@ func (s *NodeService) BulkCreateNodes(ctx context.Context, cmd *commands.BulkCre
 		CreatedCount:    len(createdNodes),
 		Connections:     dto.ToConnectionViews(connections),
 		ConnectionCount: len(connections),
-		Failed:          errors,
+		Failed:          bulkErrors,
 		Message:         fmt.Sprintf("Successfully created %d nodes", len(createdNodes)),
 	}
 
-	if len(errors) > 0 {
-		result.Message = fmt.Sprintf("Created %d nodes with %d failures", len(createdNodes), len(errors))
+	if len(bulkErrors) > 0 {
+		result.Message = fmt.Sprintf("Created %d nodes with %d failures", len(createdNodes), len(bulkErrors))
 	}
 
 	if len(connections) > 0 {

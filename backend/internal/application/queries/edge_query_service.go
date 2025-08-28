@@ -10,7 +10,7 @@ import (
 	"brain2-backend/internal/domain/edge"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 )
 
 // EdgeQueryService handles read operations for edges with caching and optimization.
@@ -53,34 +53,34 @@ func (s *EdgeQueryService) GetEdge(ctx context.Context, query *GetEdgeQuery) (*d
 	// 2. Parse and validate domain identifiers
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	sourceID, err := shared.ParseNodeID(query.SourceNodeID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid source node id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid source node id: " + err.Error()).Build()
 	}
 
 	targetID, err := shared.ParseNodeID(query.TargetNodeID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid target node id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid target node id: " + err.Error()).Build()
 	}
 
 	// 3. Find the edge between the specified nodes
 	edges, err := s.edgeReader.FindBetweenNodes(ctx, userID, sourceID, targetID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to find edge")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find edge")
 	}
 
 	if len(edges) == 0 {
-		return nil, appErrors.NewNotFound("edge not found")
+		return nil, errors.NotFound(errors.CodeNodeNotFound.String(), "edge not found").Build()
 	}
 
 	edge := edges[0] // Take the first edge if multiple exist
 
 	// 4. Verify ownership
 	if !edge.UserID().Equals(userID) {
-		return nil, appErrors.NewUnauthorized("edge belongs to different user")
+		return nil, errors.Unauthorized(errors.CodeUserUnauthorized.String(), "edge belongs to different user").Build()
 	}
 
 	// 5. Build result
@@ -116,7 +116,7 @@ func (s *EdgeQueryService) ListEdges(ctx context.Context, query *ListEdgesQuery)
 	// 1. Parse and validate domain identifiers
 	_, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	// 2. Build repository query from application query
@@ -162,7 +162,7 @@ func (s *EdgeQueryService) ListEdges(ctx context.Context, query *ListEdgesQuery)
 	// 5. Execute query
 	page, err := s.edgeReader.FindPage(ctx, edgeQuery, pagination)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve edges page")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve edges page")
 	}
 
 	if page == nil {
@@ -207,13 +207,13 @@ func (s *EdgeQueryService) GetConnectionStatistics(ctx context.Context, query *G
 	// 2. Parse and validate domain identifiers
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	// 3. Get all edges for the user
 	edges, err := s.edgeReader.FindByUser(ctx, userID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve user edges")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve user edges")
 	}
 
 	// 4. Calculate statistics
@@ -342,12 +342,12 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 	// 2. Parse and validate domain identifiers
 	userID, err := shared.ParseUserID(query.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	nodeID, err := shared.ParseNodeID(query.NodeID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid node id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid node id: " + err.Error()).Build()
 	}
 
 	// 3. Get connections based on type
@@ -369,11 +369,11 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 			edges = append(outgoing, incoming...)
 		}
 	default:
-		return nil, appErrors.NewValidation("invalid connection type")
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid connection type").Build()
 	}
 
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to retrieve connections")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve connections")
 	}
 
 	// 4. Filter by user ownership

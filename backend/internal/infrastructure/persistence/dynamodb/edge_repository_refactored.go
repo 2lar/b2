@@ -247,7 +247,7 @@ func (r *EdgeRepository) FindByID(ctx context.Context, userID shared.UserID, edg
 	// Parse edge ID to get source and target
 	parts := strings.Split(edgeID.String(), "-")
 	if len(parts) < 2 {
-		return nil, repository.ErrEdgeNotFound
+		return nil, repository.ErrEdgeNotFound("", "")
 	}
 	
 	// Try to find the edge using source and target
@@ -265,13 +265,13 @@ func (r *EdgeRepository) FindByID(ctx context.Context, userID shared.UserID, edg
 		}
 	}
 	
-	return nil, repository.ErrEdgeNotFound
+	return nil, repository.ErrEdgeNotFound("", "")
 }
 
 // Exists checks if an edge exists
 func (r *EdgeRepository) Exists(ctx context.Context, userID shared.UserID, edgeID shared.NodeID) (bool, error) {
 	_, err := r.FindByID(ctx, userID, edgeID)
-	if err == repository.ErrEdgeNotFound {
+	if repository.IsNotFound(err) {
 		return false, nil
 	}
 	return err == nil, err
@@ -305,7 +305,7 @@ func (r *EdgeRepository) Delete(ctx context.Context, userID shared.UserID, edgeI
 	}
 	
 	if targetEdge == nil {
-		return repository.ErrEdgeNotFound
+		return repository.ErrEdgeNotFound("", "")
 	}
 	
 	// Now delete using the actual source and target IDs

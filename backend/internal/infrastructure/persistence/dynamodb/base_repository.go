@@ -127,7 +127,7 @@ func (r *BaseRepository[T]) GetItem(ctx context.Context, key map[string]types.At
 	}
 	
 	if result.Item == nil {
-		return zero, repository.ErrNodeNotFound
+		return zero, repository.ErrNodeNotFound("", "")
 	}
 	
 	return r.parser.FromItem(result.Item)

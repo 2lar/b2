@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"strings"
 
-	"brain2-backend/internal/repository"
 	"brain2-backend/pkg/api"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 	sharedContext "brain2-backend/internal/context"
 
 	"github.com/awslabs/aws-lambda-go-api-proxy/core"
+	"go.uber.org/zap"
 )
 
 // getUserID safely extracts userID from context
@@ -19,27 +19,37 @@ func getUserID(r *http.Request) (string, bool) {
 	return sharedContext.GetUserIDFromContext(r.Context())
 }
 
+// Global logger for handlers - should be injected via dependency injection in production
+var logger *zap.Logger
+
+func init() {
+	// Create a default logger - in production this should be injected
+	var err error
+	logger, err = zap.NewProduction()
+	if err != nil {
+		// Fallback to a no-op logger if production logger fails
+		logger = zap.NewNop()
+	}
+}
+
+// SetLogger allows setting a custom logger for the handlers
+func SetLogger(l *zap.Logger) {
+	if l != nil {
+		logger = l
+	}
+}
+
 // handleServiceError converts service errors to appropriate HTTP responses
+// This now uses the unified error system for consistent error handling
 func handleServiceError(w http.ResponseWriter, err error) {
 	// Add API version to error responses
 	if w.Header().Get("X-API-Version") == "" {
 		w.Header().Set("X-API-Version", "1")
 	}
 	
-	if appErrors.IsValidation(err) {
-		api.Error(w, http.StatusBadRequest, err.Error())
-	} else if appErrors.IsNotFound(err) {
-		api.Error(w, http.StatusNotFound, err.Error())
-	} else if repository.IsConflict(err) {
-		api.Error(w, http.StatusConflict, "The resource has been modified by another request. Please retry with the latest version.")
-	} else if isTimeoutError(err) {
-		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable")
-	} else if isConnectionError(err) {
-		api.Error(w, http.StatusServiceUnavailable, "Service temporarily unavailable")
-	} else {
-		// Internal server error
-		api.Error(w, http.StatusInternalServerError, "An internal error occurred")
-	}
+	// Use unified error system's WriteHTTPError which handles all error types
+	// It automatically determines the correct HTTP status code and formats the response
+	errors.WriteHTTPError(w, err, logger)
 }
 
 // isTimeoutError checks if the error is related to timeouts

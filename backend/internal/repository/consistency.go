@@ -8,6 +8,7 @@ import (
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/edge"
 	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/errors"
 )
 
 // ConsistencyValidator validates data consistency across repository operations
@@ -30,20 +31,15 @@ func (cv *ConsistencyValidator) ValidateNodeConsistency(ctx context.Context, use
 	}
 
 	if node == nil {
-		return NewNotFoundError("node", nodeID, userID)
+		return errors.NotFound(errors.CodeNodeNotFound.String(), fmt.Sprintf("node %s not found for user %s", nodeID, userID)).Build()
 	}
 
 	// Validate node data integrity
 	if err := ValidateNode(node); err != nil {
-		return NewRepositoryErrorWithDetails(
-			ErrCodeDataCorruption,
-			"node data integrity validation failed",
-			map[string]interface{}{
-				"node_id": nodeID,
-				"user_id": userID,
-			},
-			err,
-		)
+		return errors.Internal(errors.CodeDataCorruption.String(), "node data integrity validation failed").
+			WithDetails(fmt.Sprintf("node_id=%s, user_id=%s", nodeID, userID)).
+			WithCause(err).
+			Build()
 	}
 
 	// Check for orphaned keywords
@@ -90,29 +86,17 @@ func (cv *ConsistencyValidator) ValidateGraphConsistency(ctx context.Context, us
 	// Validate all edges point to existing nodes
 	for _, edge := range edges {
 		if !nodeIndex[edge.SourceID.String()] {
-			return NewRepositoryErrorWithDetails(
-				ErrCodeDataCorruption,
-				"edge references non-existent source node",
-				map[string]interface{}{
-					"edge_source": edge.SourceID.String(),
-					"edge_target": edge.TargetID.String(),
-					"user_id":     userID,
-				},
-				nil,
-			)
+			return errors.Internal(errors.CodeDataCorruption.String(), "edge references non-existent source node").
+				WithDetails(fmt.Sprintf("edge_source=%s, edge_target=%s, user_id=%s",
+					edge.SourceID.String(), edge.TargetID.String(), userID)).
+				Build()
 		}
 
 		if !nodeIndex[edge.TargetID.String()] {
-			return NewRepositoryErrorWithDetails(
-				ErrCodeDataCorruption,
-				"edge references non-existent target node",
-				map[string]interface{}{
-					"edge_source": edge.SourceID.String(),
-					"edge_target": edge.TargetID.String(),
-					"user_id":     userID,
-				},
-				nil,
-			)
+			return errors.Internal(errors.CodeDataCorruption.String(), "edge references non-existent target node").
+				WithDetails(fmt.Sprintf("edge_source=%s, edge_target=%s, user_id=%s",
+					edge.SourceID.String(), edge.TargetID.String(), userID)).
+				Build()
 		}
 	}
 
@@ -131,15 +115,9 @@ func (cv *ConsistencyValidator) validateNodeKeywords(_ context.Context, userID, 
 
 	for _, keyword := range keywords {
 		if keyword == "" {
-			return NewRepositoryErrorWithDetails(
-				ErrCodeDataCorruption,
-				"node contains empty keyword",
-				map[string]interface{}{
-					"node_id": nodeID,
-					"user_id": userID,
-				},
-				nil,
-			)
+			return errors.Internal(errors.CodeDataCorruption.String(), "node contains empty keyword").
+				WithDetails(fmt.Sprintf("node_id=%s, user_id=%s", nodeID, userID)).
+				Build()
 		}
 	}
 
@@ -160,17 +138,10 @@ func (cv *ConsistencyValidator) validateBidirectionalEdges(_ context.Context, us
 	for _, edge := range edges {
 		reverseKey := fmt.Sprintf("%s->%s", edge.TargetID.String(), edge.SourceID.String())
 		if !edgeMap[reverseKey] {
-			return NewRepositoryErrorWithDetails(
-				ErrCodeDataCorruption,
-				"missing bidirectional edge",
-				map[string]interface{}{
-					"source_id":       edge.SourceID.String(),
-					"target_id":       edge.TargetID.String(),
-					"missing_reverse": reverseKey,
-					"user_id":         userID,
-				},
-				nil,
-			)
+			return errors.Internal(errors.CodeDataCorruption.String(), "missing bidirectional edge").
+				WithDetails(fmt.Sprintf("source_id=%s, target_id=%s, missing_reverse=%s, user_id=%s",
+					edge.SourceID.String(), edge.TargetID.String(), reverseKey, userID)).
+				Build()
 		}
 	}
 

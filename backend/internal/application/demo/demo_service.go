@@ -21,7 +21,7 @@ import (
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
-	appErrors "brain2-backend/pkg/errors"
+	"brain2-backend/internal/errors"
 )
 
 // CreateNodeCommand demonstrates the Command pattern for write operations.
@@ -90,21 +90,21 @@ func NewDemoNodeService(nodeRepo repository.NodeRepository) *DemoNodeService {
 func (s *DemoNodeService) CreateNode(ctx context.Context, cmd CreateNodeCommand) (*CreateNodeResult, error) {
 	// 1. Command validation
 	if cmd.UserID == "" {
-		return nil, appErrors.NewValidation("user_id is required")
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "user_id is required").Build()
 	}
 	if cmd.Content == "" {
-		return nil, appErrors.NewValidation("content is required")
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "content is required").Build()
 	}
 
 	// 2. Convert to domain objects (Application -> Domain boundary)
 	userID, err := shared.NewUserID(cmd.UserID)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid user_id: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user_id: " + err.Error()).Build()
 	}
 
 	content, err := shared.NewContent(cmd.Content)
 	if err != nil {
-		return nil, appErrors.NewValidation("invalid content: " + err.Error())
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid content: " + err.Error()).Build()
 	}
 
 	tags := shared.NewTags(cmd.Tags...)
@@ -113,12 +113,12 @@ func (s *DemoNodeService) CreateNode(ctx context.Context, cmd CreateNodeCommand)
 	title, _ := shared.NewTitle("") // Empty title for demo nodes
 	node, err := node.NewNode(userID, content, title, tags)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to create node")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to create node")
 	}
 
 	// 4. Persist using repository (in real implementation, this would be in UnitOfWork)
 	if err := s.nodeRepo.CreateNodeAndKeywords(ctx, node); err != nil {
-		return nil, appErrors.Wrap(err, "failed to save node")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to save node")
 	}
 
 	// 5. Convert domain object to response DTO (Domain -> Application boundary)
@@ -148,16 +148,16 @@ func (s *DemoNodeService) CreateNode(ctx context.Context, cmd CreateNodeCommand)
 func (s *DemoNodeService) GetNode(ctx context.Context, query GetNodeQuery) (*GetNodeResult, error) {
 	// 1. Query validation
 	if query.UserID == "" {
-		return nil, appErrors.NewValidation("user_id is required")
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "user_id is required").Build()
 	}
 	if query.NodeID == "" {
-		return nil, appErrors.NewValidation("node_id is required")
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "node_id is required").Build()
 	}
 
 	// 2. Execute read operation using repository
 	node, err := s.nodeRepo.FindNodeByID(ctx, query.UserID, query.NodeID)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to find node")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find node")
 	}
 
 	// 3. Handle not found case
@@ -218,7 +218,7 @@ type ListNodesResult struct {
 func (s *DemoQueryService) ListNodes(ctx context.Context, query ListNodesQuery) (*ListNodesResult, error) {
 	// 1. Query validation
 	if query.UserID == "" {
-		return nil, appErrors.NewValidation("user_id is required")
+		return nil, errors.Validation(errors.CodeValidationFailed.String(), "user_id is required").Build()
 	}
 	if query.Limit <= 0 || query.Limit > 100 {
 		query.Limit = 20 // Default limit
@@ -237,7 +237,7 @@ func (s *DemoQueryService) ListNodes(ctx context.Context, query ListNodesQuery) 
 	// 3. Execute paginated query
 	page, err := s.nodeRepo.GetNodesPage(ctx, nodeQuery, pagination)
 	if err != nil {
-		return nil, appErrors.Wrap(err, "failed to get nodes page")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to get nodes page")
 	}
 
 	// 4. Convert to view models
