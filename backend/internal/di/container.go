@@ -23,6 +23,7 @@ import (
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/interfaces/http/middleware"
 	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
+	"brain2-backend/internal/infrastructure/concurrency"
 	"brain2-backend/internal/infrastructure/messaging"
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
@@ -104,8 +105,26 @@ func (c *Container) initialize() error {
 		// Don't fail startup, just log the error
 	}
 
+	// 9. Initialize concurrency pool manager
+	c.initializePoolManager()
+
 	log.Println("Dependency injection container initialized successfully")
 	return nil
+}
+
+// initializePoolManager sets up the global pool manager for goroutine management
+func (c *Container) initializePoolManager() {
+	log.Println("Initializing concurrency pool manager...")
+	
+	// Get the global pool manager singleton
+	c.PoolManager = concurrency.GetPoolManager(c.Config)
+	
+	// Set cold start info if available
+	if c.ColdStartTime != nil {
+		c.PoolManager.SetColdStartTime(*c.ColdStartTime)
+	}
+	
+	log.Println("Pool manager initialized successfully")
 }
 
 // initializeAWSClients sets up AWS service clients with optimized timeouts.
@@ -122,17 +141,34 @@ func (c *Container) initializeAWSClients() error {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	// Create shared HTTP client with Keep-Alive explicitly enabled for connection reuse
-	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			// Explicitly enable Keep-Alive for connection reuse within the Lambda container
+	// Create shared HTTP client optimized for Lambda
+	// Detect environment to tune connection pool
+	env := concurrency.DetectEnvironment()
+	
+	var transport *http.Transport
+	if env == concurrency.EnvironmentLambda {
+		// Lambda-optimized settings: fewer connections, longer idle time
+		transport = &http.Transport{
 			DisableKeepAlives:   false, // IMPORTANT: Reuse TCP connections on warm starts
-			MaxIdleConns:        10,    // Keep some connections ready (useful within single container)
-			MaxIdleConnsPerHost: 2,     // Per-host limit (we mainly talk to DynamoDB)
+			MaxIdleConns:        100,   // Higher limit for connection reuse
+			MaxIdleConnsPerHost: 10,    // More connections per host for parallel requests
 			IdleConnTimeout:     90 * time.Second,
 			TLSHandshakeTimeout: 10 * time.Second,
-		},
+		}
+	} else {
+		// ECS/Local settings: more aggressive connection pooling
+		transport = &http.Transport{
+			DisableKeepAlives:   false,
+			MaxIdleConns:        200,
+			MaxIdleConnsPerHost: 20,
+			IdleConnTimeout:     90 * time.Second,
+			TLSHandshakeTimeout: 10 * time.Second,
+		}
+	}
+	
+	httpClient := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: transport,
 	}
 
 	// DynamoDB client with optimized HTTP client
@@ -378,6 +414,8 @@ func (c *Container) initializeCQRSServices() {
 		c.ConnectionAnalyzer,
 		c.IdempotencyStore,
 	)
+	// Provide container reference for pool manager access
+	c.NodeAppService.SetContainer(c)
 
 	// Initialize Node Query Service with cache (using InMemoryCache wrapper)
 	var queryCache queries.Cache
@@ -728,6 +766,14 @@ func (c *Container) Shutdown(ctx context.Context) error {
 
 	var errors []error
 
+	// Shutdown pool manager first
+	if c.PoolManager != nil {
+		if err := c.PoolManager.Shutdown(ctx); err != nil {
+			errors = append(errors, err)
+			log.Printf("Error shutting down pool manager: %v", err)
+		}
+	}
+
 	// Execute shutdown functions in reverse order
 	for i := len(c.shutdownFunctions) - 1; i >= 0; i-- {
 		if err := c.shutdownFunctions[i](); err != nil {
@@ -753,6 +799,11 @@ func (c *Container) AddShutdownFunction(fn func() error) {
 func (c *Container) SetColdStartInfo(coldStartTime time.Time, isColdStart bool) {
 	c.ColdStartTime = &coldStartTime
 	c.IsColdStart = isColdStart
+	
+	// Pass cold start info to pool manager if available
+	if c.PoolManager != nil {
+		c.PoolManager.SetColdStartTime(coldStartTime)
+	}
 }
 
 // GetTimeSinceColdStart returns the duration since cold start, or zero if not available
@@ -833,6 +884,11 @@ func (c *Container) Validate() error {
 // GetRouter returns the configured HTTP router.
 func (c *Container) GetRouter() *chi.Mux {
 	return c.Router
+}
+
+// GetPoolManager returns the pool manager for the NodeService interface
+func (c *Container) GetPoolManager() *concurrency.PoolManager {
+	return c.PoolManager
 }
 
 // GetMiddlewareConfig returns the middleware configuration for monitoring

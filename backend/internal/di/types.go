@@ -11,6 +11,7 @@ import (
 	"brain2-backend/internal/config"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/infrastructure/concurrency"
 	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
@@ -85,6 +86,9 @@ type Container struct {
 
 	// HTTP Router
 	Router *chi.Mux
+
+	// Concurrency Management
+	PoolManager *concurrency.PoolManager
 
 	// Middleware components (for monitoring/observability)
 	middlewareConfig map[string]any

@@ -24,6 +24,7 @@ import (
 	"brain2-backend/internal/domain/edge"
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
+	"brain2-backend/internal/infrastructure/concurrency"
 	"brain2-backend/internal/repository"
 	"brain2-backend/internal/errors"
 	
@@ -44,6 +45,9 @@ type NodeService struct {
 	connectionAnalyzer *domainServices.ConnectionAnalyzer // Domain service for complex business logic
 	idempotencyStore repository.IdempotencyStore        // For idempotent operations
 	tracer           trace.Tracer                       // For distributed tracing
+	
+	// Optional container reference for accessing pool manager
+	container containerWithPoolManager
 }
 
 // NewNodeService creates a new NodeService with all required dependencies.
@@ -64,6 +68,16 @@ func NewNodeService(
 		idempotencyStore:   idempotencyStore,
 		tracer:             otel.Tracer("brain2-backend.application.node_service"),
 	}
+}
+
+// containerWithPoolManager is an interface for accessing the pool manager
+type containerWithPoolManager interface {
+	GetPoolManager() *concurrency.PoolManager
+}
+
+// SetContainer sets the optional container reference for accessing the pool manager
+func (s *NodeService) SetContainer(container containerWithPoolManager) {
+	s.container = container
 }
 
 // CreateNode implements the use case for creating a node with automatic connection discovery.

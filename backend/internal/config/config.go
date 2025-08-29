@@ -9,6 +9,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -43,6 +44,7 @@ type Config struct {
 	CORS           CORS           `yaml:"cors" json:"cors" validate:"dive"`
 	Tracing        Tracing        `yaml:"tracing" json:"tracing" validate:"dive"`
 	Events         Events         `yaml:"events" json:"events" validate:"dive"`
+	Concurrency    Concurrency    `yaml:"concurrency" json:"concurrency" validate:"dive"`
 	
 	// Metadata fields
 	Version        string         `yaml:"version" json:"version"` // Configuration version
@@ -345,6 +347,55 @@ type Events struct {
 }
 
 // ============================================================================
+// CONCURRENCY CONFIGURATION
+// ============================================================================
+
+// Concurrency contains environment-aware concurrency settings.
+type Concurrency struct {
+	// Lambda-specific settings
+	Lambda LambdaConcurrency `yaml:"lambda" json:"lambda" validate:"dive"`
+	
+	// ECS/Fargate-specific settings
+	ECS ECSConcurrency `yaml:"ecs" json:"ecs" validate:"dive"`
+	
+	// Local development settings
+	Local LocalConcurrency `yaml:"local" json:"local" validate:"dive"`
+	
+	// Auto-detection settings
+	AutoDetect bool `yaml:"auto_detect" json:"auto_detect"` // Auto-detect environment
+	ForceMode  string `yaml:"force_mode" json:"force_mode" validate:"omitempty,oneof=lambda ecs local"` // Force specific mode
+}
+
+// LambdaConcurrency contains Lambda-specific concurrency settings.
+type LambdaConcurrency struct {
+	MaxWorkers       int           `yaml:"max_workers" json:"max_workers" validate:"min=1,max=10"`
+	BatchSize        int           `yaml:"batch_size" json:"batch_size" validate:"min=1,max=100"`
+	QueueSize        int           `yaml:"queue_size" json:"queue_size" validate:"min=10,max=500"`
+	TimeoutBuffer    time.Duration `yaml:"timeout_buffer" json:"timeout_buffer" validate:"min=5s,max=60s"`
+	ChunkSize        int           `yaml:"chunk_size" json:"chunk_size" validate:"min=5,max=50"`
+	MaxConnections   int           `yaml:"max_connections" json:"max_connections" validate:"min=1,max=5"`
+}
+
+// ECSConcurrency contains ECS/Fargate-specific concurrency settings.
+type ECSConcurrency struct {
+	MaxWorkers       int           `yaml:"max_workers" json:"max_workers" validate:"min=1,max=100"`
+	BatchSize        int           `yaml:"batch_size" json:"batch_size" validate:"min=10,max=500"`
+	QueueSize        int           `yaml:"queue_size" json:"queue_size" validate:"min=100,max=5000"`
+	ConnectionPool   int           `yaml:"connection_pool" json:"connection_pool" validate:"min=5,max=50"`
+	MaxConnections   int           `yaml:"max_connections" json:"max_connections" validate:"min=5,max=50"`
+	WorkerMultiplier int           `yaml:"worker_multiplier" json:"worker_multiplier" validate:"min=1,max=10"` // Workers per CPU
+}
+
+// LocalConcurrency contains local development concurrency settings.
+type LocalConcurrency struct {
+	MaxWorkers       int           `yaml:"max_workers" json:"max_workers" validate:"min=1,max=50"`
+	BatchSize        int           `yaml:"batch_size" json:"batch_size" validate:"min=5,max=200"`
+	QueueSize        int           `yaml:"queue_size" json:"queue_size" validate:"min=50,max=2000"`
+	ConnectionPool   int           `yaml:"connection_pool" json:"connection_pool" validate:"min=2,max=20"`
+	MaxConnections   int           `yaml:"max_connections" json:"max_connections" validate:"min=2,max=20"`
+}
+
+// ============================================================================
 // CONFIGURATION LOADING
 // ============================================================================
 
@@ -366,6 +417,7 @@ func LoadConfig() Config {
 		CORS:        loadCORSConfig(),
 		Tracing:     loadTracingConfig(),
 		Events:      loadEventsConfig(),
+		Concurrency: loadConcurrencyConfig(),
 	}
 	
 	
@@ -783,6 +835,80 @@ func loadEventsConfig() Events {
 		RetryAttempts: getEnvInt("EVENT_RETRY_ATTEMPTS", 3),
 		BatchSize:     getEnvInt("EVENT_BATCH_SIZE", 10),
 	}
+}
+
+func loadConcurrencyConfig() Concurrency {
+	config := Concurrency{
+		AutoDetect: getEnvBool("CONCURRENCY_AUTO_DETECT", true),
+		ForceMode:  getEnvString("CONCURRENCY_FORCE_MODE", ""),
+		
+		Lambda: LambdaConcurrency{
+			MaxWorkers:     getEnvInt("LAMBDA_MAX_WORKERS", 4),
+			BatchSize:      getEnvInt("LAMBDA_BATCH_SIZE", 25),
+			QueueSize:      getEnvInt("LAMBDA_QUEUE_SIZE", 100),
+			TimeoutBuffer:  getEnvDuration("LAMBDA_TIMEOUT_BUFFER", 30*time.Second),
+			ChunkSize:      getEnvInt("LAMBDA_CHUNK_SIZE", 25),
+			MaxConnections: getEnvInt("LAMBDA_MAX_CONNECTIONS", 2),
+		},
+		
+		ECS: ECSConcurrency{
+			MaxWorkers:       getEnvInt("ECS_MAX_WORKERS", 20),
+			BatchSize:        getEnvInt("ECS_BATCH_SIZE", 100),
+			QueueSize:        getEnvInt("ECS_QUEUE_SIZE", 1000),
+			ConnectionPool:   getEnvInt("ECS_CONNECTION_POOL", 10),
+			MaxConnections:   getEnvInt("ECS_MAX_CONNECTIONS", 20),
+			WorkerMultiplier: getEnvInt("ECS_WORKER_MULTIPLIER", 4),
+		},
+		
+		Local: LocalConcurrency{
+			MaxWorkers:     getEnvInt("LOCAL_MAX_WORKERS", 10),
+			BatchSize:      getEnvInt("LOCAL_BATCH_SIZE", 50),
+			QueueSize:      getEnvInt("LOCAL_QUEUE_SIZE", 500),
+			ConnectionPool: getEnvInt("LOCAL_CONNECTION_POOL", 5),
+			MaxConnections: getEnvInt("LOCAL_MAX_CONNECTIONS", 10),
+		},
+	}
+	
+	// Validate the configuration
+	if err := config.Validate(); err != nil {
+		log.Printf("Warning: Concurrency configuration validation failed: %v", err)
+	}
+	
+	return config
+}
+
+// Validate validates the concurrency configuration
+func (c *Concurrency) Validate() error {
+	// Validate force mode if set
+	if c.ForceMode != "" && c.ForceMode != "lambda" && c.ForceMode != "ecs" && c.ForceMode != "local" {
+		return fmt.Errorf("invalid force_mode: %s (must be lambda, ecs, or local)", c.ForceMode)
+	}
+	
+	// Lambda-specific validation
+	if c.Lambda.MaxWorkers > 8 {
+		return fmt.Errorf("lambda max_workers should not exceed 8 (got %d)", c.Lambda.MaxWorkers)
+	}
+	if c.Lambda.BatchSize > 25 {
+		return fmt.Errorf("lambda batch_size cannot exceed 25 for DynamoDB (got %d)", c.Lambda.BatchSize)
+	}
+	if c.Lambda.ChunkSize > 25 {
+		return fmt.Errorf("lambda chunk_size cannot exceed 25 for DynamoDB (got %d)", c.Lambda.ChunkSize)
+	}
+	
+	// ECS-specific validation
+	if c.ECS.MaxWorkers > 100 {
+		return fmt.Errorf("ecs max_workers should not exceed 100 (got %d)", c.ECS.MaxWorkers)
+	}
+	if c.ECS.WorkerMultiplier > 10 {
+		return fmt.Errorf("ecs worker_multiplier should not exceed 10 (got %d)", c.ECS.WorkerMultiplier)
+	}
+	
+	// Local development validation
+	if c.Local.MaxWorkers > 50 {
+		return fmt.Errorf("local max_workers should not exceed 50 (got %d)", c.Local.MaxWorkers)
+	}
+	
+	return nil
 }
 
 // ============================================================================
