@@ -9,7 +9,16 @@ package di
 // Injectors from wire.go:
 
 // InitializeContainer wires together all dependencies using Wire.
-// This function signature tells Wire what to generate.
+// This function signature tells Wire what to generate by analyzing SuperSet.
+//
+// Wire Process:
+//  1. Analyzes all provider functions in SuperSet
+//  2. Builds dependency graph ensuring proper initialization order
+//  3. Generates wire_gen.go with concrete implementation
+//  4. Catches circular dependencies and missing providers at compile time
+//
+// The generated code is equivalent to manually calling all provider functions
+// in the correct order, but without the maintenance burden.
 func InitializeContainer() (*Container, error) {
 	config, err := provideConfig()
 	if err != nil {

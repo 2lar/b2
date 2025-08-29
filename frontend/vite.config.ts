@@ -57,7 +57,7 @@ export default defineConfig(({ mode }) => {
       minify: 'esbuild'
     },
     // Explicitly tell Vite where to find env files
-    envDir: '../',  // This tells Vite to look in the parent directory (frontend/) for .env files
+    envDir: '../',  // This tells Vite to look in the root directory for .env files
     resolve: {
       alias: {
         '@app': resolve(__dirname, './src/app'),

@@ -6,6 +6,15 @@ infra/node_modules/
 backend/build/
 backend/vendor/
 
+# Backend root executables (use backend/build.sh instead)
+backend/brain2
+backend/cleanup-handler
+backend/connect-node
+backend/main
+backend/ws-connect
+backend/ws-disconnect
+backend/ws-send-message
+
 # Local configuration overrides
 backend/config/local.yaml
 backend/config/local.yml
@@ -14,4 +23,9 @@ backend/config/local.json
 # Environment files
 .env
 .env.local
+.env.*
+!.env.example
 *.env
+
+# Environment migration backups
+env-migration-backup-*/

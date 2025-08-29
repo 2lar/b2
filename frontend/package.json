@@ -8,6 +8,8 @@
     "dev": "vite",
     "clean": "rm -rf node_modules dist",
     "build": "npm run clean && npm install && npm run generate-api-types && tsc --noEmit && vite build",
+    "build:with-env": "source ../scripts/load-env.sh frontend && npm run build",
+    "dev:with-env": "source ../scripts/load-env.sh frontend && npm run dev",
     "preview": "vite preview",
     "generate-api-types": "openapi-typescript ../openapi.yaml --output src/types/generated/generated-types.ts"
   },

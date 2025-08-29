@@ -31,6 +31,26 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Load environment variables from root .env file
+load_environment() {
+    if [[ -f ".env" ]]; then
+        print_status "Loading environment configuration from root .env file..."
+        source ./scripts/load-env.sh all
+        print_success "Environment variables loaded"
+    elif [[ -f ".env.example" ]]; then
+        print_warning "No .env file found, but .env.example exists"
+        print_warning "Copy .env.example to .env and configure your values:"
+        print_warning "  cp .env.example .env"
+        print_warning "Continuing with default values..."
+    else
+        print_warning "No environment configuration found"
+        print_warning "Using default build settings"
+    fi
+}
+
+# Load environment first
+load_environment
+
 # Validate prerequisites
 print_status "Checking required tools..."
 
@@ -80,6 +100,9 @@ fi
 
 chmod +x build.sh
 
+# Pass environment variables to backend build
+# Backend will use environment variables for its configuration
+print_status "Building backend with environment: ${PROJECT_ENV:-default}"
 ./build.sh
 
 if [ ! -f "build/function.zip" ]; then
@@ -139,7 +162,30 @@ if [ ! -f "package.json" ]; then
     exit 1
 fi
 
+# Create a temporary .env file for frontend with VITE_ variables
+print_status "Setting up frontend environment variables..."
+if [[ -n "${VITE_SUPABASE_URL:-}" ]]; then
+    # Create temporary .env file for Vite build
+    cat > .env.local << EOF
+# Auto-generated from root .env during build
+VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+VITE_API_BASE_URL=${VITE_API_BASE_URL}
+VITE_WEBSOCKET_URL=${VITE_WEBSOCKET_URL:-}
+VITE_DEBUG=${VITE_DEBUG:-false}
+VITE_MODE=${VITE_MODE:-production}
+EOF
+    print_success "Frontend environment configured"
+else
+    print_warning "No VITE_ variables found in root .env, using existing frontend/.env if present"
+fi
+
 npm run build
+
+# Clean up temporary env file
+if [[ -f ".env.local" ]]; then
+    rm .env.local
+fi
 
 if [ ! -d "dist" ]; then
     print_error "Frontend build failed - dist directory not created"

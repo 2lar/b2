@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-import 'dotenv/config'; // Loads variables from .env into process.env
+import { config as loadDotenv } from 'dotenv';
+import { resolve } from 'path';
+
+// Load environment variables from root .env file
+loadDotenv({ path: resolve(__dirname, '../../.env') });
 
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
