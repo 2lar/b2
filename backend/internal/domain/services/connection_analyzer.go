@@ -1,3 +1,24 @@
+// Package services implements domain services for Brain2's knowledge graph intelligence.
+//
+// PURPOSE: Contains complex business logic that operates across multiple domain entities
+// and doesn't naturally belong to a single aggregate. These are stateless services
+// that encapsulate sophisticated algorithms for graph analysis and connection discovery.
+//
+// DOMAIN SERVICE PATTERN: Following DDD principles, domain services handle business
+// logic that involves multiple entities or requires external knowledge/algorithms:
+//   • ConnectionAnalyzer: Discovers semantic relationships between memory nodes
+//   • GraphAnalyzer: Performs complex graph traversal and analysis operations
+//   • SimilarityCalculator: Implements content similarity algorithms
+//
+// KEY CAPABILITIES:
+//   • Semantic Analysis: NLP-based content similarity detection
+//   • Graph Algorithms: Path finding, clustering, centrality analysis
+//   • Real-time Processing: Optimized for Lambda execution environments
+//   • Parallel Execution: Utilizes goroutine pools for performance
+//
+// These services enable Brain2's core value proposition of automatic knowledge
+// discovery and intelligent connection suggestions that help users build
+// comprehensive, interconnected knowledge graphs effortlessly.
 package services
 
 import (

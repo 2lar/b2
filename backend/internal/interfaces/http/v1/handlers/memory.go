@@ -1,4 +1,29 @@
-// Package handlers provides HTTP handlers with clean dependency injection.
+// Package handlers implements HTTP request handlers following Clean Architecture principles.
+//
+// PURPOSE: Serves as the Interface Adapter layer that transforms HTTP requests into
+// application use cases and converts application responses back to HTTP format.
+// This is the entry point for all REST API operations in the Brain2 system.
+//
+// CLEAN ARCHITECTURE ROLE: This layer handles external communication concerns:
+//   • Request/Response transformation and validation
+//   • HTTP status code mapping from domain errors
+//   • Authentication and authorization enforcement
+//   • API versioning and backward compatibility
+//   • Request tracing and observability integration
+//
+// KEY HANDLERS:
+//   • MemoryHandler: CRUD operations for memory nodes and graph queries
+//   • CategoryHandler: Category management and auto-categorization
+//   • HealthHandler: System health checks and readiness probes
+//
+// DESIGN PRINCIPLES:
+//   • Thin Layer: No business logic, only coordination and transformation
+//   • Dependency Injection: All dependencies injected via constructor
+//   • Error Handling: Consistent error responses across all endpoints
+//   • Observability: Request tracing, metrics, and structured logging
+//
+// This package ensures HTTP concerns remain separate from business logic,
+// enabling easy testing and potential protocol changes in the future.
 package handlers
 
 import (

@@ -1,3 +1,35 @@
+// Package concurrency provides Lambda-optimized goroutine pool management.
+//
+// LAMBDA CONCURRENCY CHALLENGES:
+//
+// Lambda environments have unique constraints that require adaptive concurrency patterns:
+//   • MEMORY LIMITS: Fixed memory allocation per Lambda (128MB - 10GB)
+//   • CPU CONSTRAINTS: CPU allocation scales with memory (1.77GB = 1 vCPU)
+//   • TIMEOUT LIMITS: Maximum execution time of 15 minutes
+//   • COLD START IMPACT: Goroutine creation overhead during cold starts
+//
+// ADAPTIVE POOL STRATEGY:
+//
+// The AdaptiveWorkerPool adjusts its behavior based on the deployment environment:
+//
+// LAMBDA ENVIRONMENT:
+//   • Smaller worker pools to avoid memory pressure
+//   • CPU-based sizing (workers = availableCPU * 2)
+//   • Timeout-aware task processing
+//   • Conservative memory allocation
+//
+// ECS ENVIRONMENT:
+//   • Larger worker pools for sustained workloads
+//   • Container resource-based sizing
+//   • Longer-running task optimization
+//
+// LOCAL ENVIRONMENT:
+//   • Development-friendly defaults
+//   • Debugging and profiling support
+//
+// This approach ensures optimal performance across different deployment targets
+// while preventing resource exhaustion in constrained Lambda environments.
+
 package concurrency
 
 import (

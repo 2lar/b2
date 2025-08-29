@@ -1,3 +1,23 @@
+// Package category implements the Category domain entity for Brain2's knowledge organization system.
+//
+// PURPOSE: Provides hierarchical classification and tagging capabilities for memory nodes,
+// enabling users to organize their knowledge graph through both manual categorization
+// and intelligent auto-categorization based on content analysis.
+//
+// DOMAIN ROLE: Category is an Aggregate Root managing the business logic for:
+//   • Hierarchical category structures (parent-child relationships)
+//   • Automatic content-based categorization suggestions
+//   • Category-based node filtering and organization
+//   • Category usage analytics and optimization
+//
+// KEY FEATURES:
+//   • Smart Suggestions: AI-powered category recommendations based on node content
+//   • Hierarchy Management: Support for nested category structures
+//   • Usage Tracking: Monitor category effectiveness and popularity
+//   • Validation Rules: Prevent circular hierarchies and enforce naming conventions
+//
+// This entity supports Brain2's goal of making knowledge organization effortless
+// through intelligent automation while preserving user control and customization.
 package category
 
 import (

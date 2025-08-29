@@ -1,7 +1,27 @@
 //go:build !wireinject
 // +build !wireinject
 
-// Package di provides a centralized dependency injection container.
+// Package di provides a centralized dependency injection container for Lambda lifecycle management.
+//
+// CONTAINER PATTERN FOR LAMBDA ENVIRONMENTS:
+//
+// The Container pattern addresses Lambda-specific challenges:
+//   • COLD START OPTIMIZATION: All dependencies initialized once during init()
+//   • CONNECTION REUSE: Database and AWS service connections persist across invocations
+//   • LIFECYCLE MANAGEMENT: Graceful shutdown and resource cleanup on container termination
+//   • RESOURCE SHARING: Expensive resources (connection pools, caches) shared across requests
+//
+// INITIALIZATION PHASES:
+//   1. Configuration Loading: Environment variables and settings
+//   2. AWS Client Setup: DynamoDB, EventBridge with optimized connection pools
+//   3. Repository Layer: Database access patterns and caching
+//   4. Service Layer: Business logic orchestration
+//   5. Handler Layer: HTTP request/response processing
+//   6. Observability: Logging, metrics, and tracing
+//   7. Router Assembly: Request routing and middleware pipeline
+//
+// This phased approach ensures dependencies are initialized in correct order
+// and expensive operations happen only once per Lambda container lifecycle.
 package di
 
 import (

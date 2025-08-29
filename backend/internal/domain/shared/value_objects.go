@@ -1,3 +1,25 @@
+// Package shared contains domain value objects and shared domain concepts used across
+// multiple aggregates in the Brain2 domain model.
+//
+// PURPOSE: Implements Domain-Driven Design value objects that encapsulate business
+// rules and provide type safety throughout the application. These value objects
+// replace primitive obsession with rich, self-validating types.
+//
+// VALUE OBJECT PRINCIPLES:
+//   • Immutability: Values cannot be modified after creation
+//   • Self-Validation: Business rules enforced at construction time
+//   • Type Safety: Prevent invalid states through the type system
+//   • Equality: Value objects are equal if their properties are equal
+//
+// KEY VALUE OBJECTS:
+//   • NodeID, UserID: Strongly-typed identifiers preventing mix-ups
+//   • Content: Text content with validation, profanity filtering, keyword extraction
+//   • Keywords, Tags: Collections with normalization and deduplication
+//   • Title: Optional text with length and format validation
+//   • Version: Optimistic locking support for concurrent updates
+//
+// This approach eliminates primitive obsession and ensures domain concepts
+// have consistent behavior and validation across the entire application.
 package shared
 
 import (

@@ -1,3 +1,30 @@
+// Package repository defines the data access interfaces for Brain2's persistence layer.
+//
+// PURPOSE: Implements the Repository pattern from Domain-Driven Design, providing
+// an abstraction layer between the domain model and data persistence mechanisms.
+// This enables the domain layer to remain independent of specific database technologies.
+//
+// REPOSITORY PATTERN BENEFITS:
+//   • Domain Independence: Business logic doesn't depend on specific databases
+//   • Testability: Easy mocking and testing with in-memory implementations
+//   • Flexibility: Can switch between DynamoDB, SQL databases, or other stores
+//   • CQRS Support: Separate interfaces optimized for reads vs writes
+//   • Query Abstraction: Complex queries expressed in domain terms
+//
+// INTERFACE DESIGN PRINCIPLES:
+//   • Interface Segregation: Focused interfaces for specific responsibilities
+//   • Specification Pattern: Complex query logic encapsulated in specifications
+//   • Unit of Work: Transactional consistency across multiple operations
+//   • Functional Options: Flexible, extensible query configuration
+//
+// KEY INTERFACES:
+//   • NodeRepository: Memory node persistence and querying
+//   • EdgeRepository: Graph relationship management
+//   • CategoryRepository: Knowledge organization and hierarchies
+//   • UnitOfWork: Transaction boundary management
+//
+// This design enables Brain2 to maintain clean separation between business
+// logic and data persistence while supporting sophisticated querying needs.
 package repository
 
 import (

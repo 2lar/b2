@@ -1,5 +1,19 @@
-// Package dynamodb provides the refactored NodeRepository that uses composition
-// to eliminate code duplication. This reduces 1346 lines to ~150 lines.
+// Package dynamodb provides the refactored NodeRepository demonstrating the power
+// of composition-based generic repositories.
+//
+// BEFORE (node_repository.go): 1,346 lines of mostly duplicated CRUD operations
+// AFTER (this file): ~150 lines focusing only on node-specific business logic
+//
+// This 90% reduction in code is achieved through:
+//   1. Composition with GenericRepository[*node.Node] for all CRUD operations
+//   2. Domain-specific methods (FindByKeywords, FindByTags, FindByContent)
+//   3. Shared query building and filtering logic
+//
+// The composition pattern enables:
+//   • Code reuse without inheritance complexity
+//   • Type safety through Go generics
+//   • Easy addition of node-specific queries
+//   • Consistent behavior across all repositories
 package dynamodb
 
 import (

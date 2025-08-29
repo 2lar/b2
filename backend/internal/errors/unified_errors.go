@@ -1,7 +1,32 @@
 // Package errors provides a unified error handling system that consolidates
-// the multiple error handling approaches found in the codebase.
-// This unified system follows SOLID principles and provides consistent
-// error handling across all application layers.
+// multiple error handling approaches found across the codebase into a single,
+// consistent pattern following SOLID principles.
+//
+// PROBLEM ADDRESSED:
+// The original codebase had multiple error handling patterns:
+//   • pkg/errors: Basic error types with codes
+//   • domain/shared/errors: Domain-specific business rule violations  
+//   • repository/errors: Data persistence and infrastructure errors
+//   • HTTP handlers: Inconsistent error response formats
+//
+// UNIFIED ERROR SOLUTION:
+// This package provides a single UnifiedError type that:
+//   • CONSOLIDATES: All error types into one comprehensive structure
+//   • CATEGORIZES: Errors by type for proper handling and HTTP status mapping
+//   • CONTEXTUALIZES: Rich error context with stack traces and metadata
+//   • RECOVERS: Includes recovery strategies and retry logic
+//   • MONITORS: Provides error severity levels for alerting and logging
+//
+// BENEFITS:
+//   • Consistent error handling across all application layers
+//   • Better debugging with comprehensive error context
+//   • Improved client experience with structured error responses
+//   • Enhanced monitoring and alerting capabilities
+//   • Easier maintenance with centralized error logic
+//
+// MIGRATION STRATEGY:
+// Existing error types are gradually migrated to UnifiedError through
+// adapter functions, ensuring backward compatibility during the transition.
 package errors
 
 import (

@@ -1,3 +1,21 @@
+// Package edge implements the Edge domain entity for the Brain2 knowledge graph.
+//
+// PURPOSE: Represents directed relationships between memory nodes (thoughts/ideas),
+// enabling the system to build a connected knowledge graph where related concepts
+// are automatically linked based on content similarity and user-defined relationships.
+//
+// DOMAIN ROLE: Edge is an Aggregate Root that encapsulates all business logic
+// related to node connections, including relationship strength calculation,
+// bi-directional link management, and connection validation rules.
+//
+// KEY FEATURES:
+//   • Relationship Types: related, similar, reference connections
+//   • Strength Calculation: Automatic weight assignment based on content overlap
+//   • Business Rules: Prevents invalid connections (self-loops, cross-user links)
+//   • Event Generation: Publishes domain events for graph updates and analytics
+//
+// The Edge entity works with the Node entity to form the core graph structure
+// that powers Brain2's automatic knowledge discovery and visualization features.
 package edge
 
 import (
