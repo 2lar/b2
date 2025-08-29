@@ -1,1206 +1,668 @@
-openapi: 3.0.3
+basePath: /api
+definitions:
+  brain2-backend_pkg_api.BulkDeleteRequest:
+    properties:
+      nodeIds:
+        items:
+          type: string
+        type: array
+    type: object
+  brain2-backend_pkg_api.BulkDeleteResponse:
+    properties:
+      deletedCount:
+        type: integer
+      failedIds:
+        items:
+          type: string
+        type: array
+    type: object
+  brain2-backend_pkg_api.CategoryResponse:
+    properties:
+      color:
+        example: '#FF5722'
+        type: string
+      createdAt:
+        example: "2024-01-15T10:30:00Z"
+        type: string
+      description:
+        example: AI and ML related content
+        type: string
+      id:
+        example: cat-123
+        type: string
+      level:
+        example: 1
+        type: integer
+      nodeCount:
+        example: 15
+        type: integer
+      parentId:
+        example: parent-category-id
+        type: string
+      title:
+        example: Machine Learning
+        type: string
+      updatedAt:
+        example: "2024-01-16T10:30:00Z"
+        type: string
+    type: object
+  brain2-backend_pkg_api.CreateCategoryRequest:
+    properties:
+      color:
+        example: '#FF5722'
+        type: string
+      description:
+        example: AI and ML related content
+        type: string
+      parentId:
+        example: parent-category-id
+        type: string
+      title:
+        example: Machine Learning
+        type: string
+    required:
+    - title
+    type: object
+  brain2-backend_pkg_api.CreateNodeRequest:
+    properties:
+      content:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      title:
+        type: string
+    type: object
+  brain2-backend_pkg_api.ErrorResponse:
+    properties:
+      error:
+        example: Invalid request body
+        type: string
+    type: object
+  brain2-backend_pkg_api.GraphDataResponse:
+    properties:
+      elements:
+        items:
+          $ref: '#/definitions/brain2-backend_pkg_api.GraphDataResponse_Elements_Item'
+        type: array
+    type: object
+  brain2-backend_pkg_api.GraphDataResponse_Elements_Item:
+    properties:
+      data: {}
+      group:
+        type: string
+    type: object
+  brain2-backend_pkg_api.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+  brain2-backend_pkg_api.Node:
+    properties:
+      content:
+        type: string
+      createdAt:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      nodeId:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      timestamp:
+        type: string
+      title:
+        type: string
+      updatedAt:
+        type: string
+      user_id:
+        type: string
+    type: object
+  brain2-backend_pkg_api.NodeDetailsResponse:
+    properties:
+      content:
+        type: string
+      edges:
+        items:
+          type: string
+        type: array
+      nodeId:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      timestamp:
+        type: string
+      title:
+        type: string
+      version:
+        type: integer
+    type: object
+  brain2-backend_pkg_api.NodeResponse:
+    properties:
+      content:
+        type: string
+      nodeId:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      timestamp:
+        type: string
+      title:
+        type: string
+      version:
+        type: integer
+    type: object
+  brain2-backend_pkg_api.UpdateCategoryRequest:
+    properties:
+      color:
+        example: '#2196F3'
+        type: string
+      description:
+        example: Neural networks and deep learning
+        type: string
+      title:
+        example: Deep Learning
+        type: string
+    type: object
+  brain2-backend_pkg_api.UpdateNodeRequest:
+    properties:
+      content:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      title:
+        type: string
+    type: object
+host: api.brain2.example.com
 info:
-  title: Brain2 API
+  contact:
+    email: support@brain2.example.com
+    name: Brain2 API Support
+    url: https://github.com/your-org/brain2-backend
+  description: |-
+    A RESTful API for managing personal knowledge graphs with automatic memory connections and intelligent categorization.
+
+    ## Overview
+    The Brain2 API allows users to create, manage, and explore their personal knowledge graphs.
+    It provides endpoints for managing memory nodes, categories, and graph relationships with
+    automatic connection discovery and intelligent categorization features.
+
+    ## Authentication
+    All API endpoints require JWT authentication via the Authorization header.
+
+    ## Rate Limiting
+    API requests are rate-limited per user to ensure fair usage and system stability.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: Brain2 Knowledge Graph API
   version: 1.0.0
-  description: |
-    ## Brain2 Knowledge Graph API
-    A RESTful API for managing personal knowledge graphs with automatic memory connections.
-
 paths:
-  /api/nodes:
+  /categories:
     get:
-      summary: List all memory nodes for the authenticated user
-      operationId: listNodes
-      tags:
-        - Memory Management
-      responses:
-        '200':
-          description: Successfully retrieved user's memory nodes
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  nodes:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Node'
-                    description: Array of memory nodes owned by the authenticated user
-                example:
-                  nodes:
-                    - nodeId: "abc-123"
-                      content: "Learning about serverless architecture"
-                      timestamp: "2024-01-15T10:30:00Z"
-                      version: 1
-        '401':
-          description: Authentication required - invalid or missing JWT token
-        '500':
-          description: Internal server error - check logs for details
-          
-    post:
-      summary: Create a new memory node with automatic keyword extraction
-      operationId: createNode
-      tags:
-        - Memory Management
-      requestBody:
-        required: true
-        description: Memory content to be processed and stored
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateNodeRequest'
-            example:
-              content: "GraphQL is a query language for APIs that provides a complete description of the data in your API"
-      responses:
-        '201':
-          description: Memory node created successfully with automatic connections
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Node'
-              example:
-                nodeId: "def-456"
-                content: "GraphQL is a query language for APIs that provides a complete description of the data in your API"
-                timestamp: "2024-01-15T14:22:00Z"
-                version: 0
-        '400':
-          description: Validation error - content is required and cannot be empty
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "content cannot be empty"
-        '401':
-          description: Authentication required - invalid or missing JWT token
-        '500':
-          description: Internal server error - node creation failed
-
-  /api/nodes/{nodeId}:
-    get:
-      summary: Get detailed information for a single memory node
-      operationId: getNode
-      tags:
-        - Memory Management
+      description: Retrieves all categories belonging to the authenticated user with
+        optional filtering by level
       parameters:
-        - name: nodeId
-          in: path
-          required: true
-          description: Unique identifier for the memory node
+      - description: Filter by category level
+        example: 1
+        in: query
+        name: level
+        type: integer
+      - default: 50
+        description: Maximum number of categories to return
+        example: 20
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Number of categories to skip
+        example: 0
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved categories
           schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-            example: "abc-123-def-456"
-      responses:
-        '200':
-          description: Successfully retrieved node details with connections
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NodeDetails'
-              example:
-                nodeId: "abc-123-def-456"
-                content: "Machine learning models require large datasets for training"
-                timestamp: "2024-01-15T10:30:00Z"
-                version: 2
-                edges: ["def-456-ghi-789", "ghi-789-jkl-012"]
-        '404':
-          description: Node not found or user doesn't have access
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "node not found"
-        '401':
+            items:
+              $ref: '#/definitions/brain2-backend_pkg_api.CategoryResponse'
+            type: array
+        "401":
           description: Authentication required
-        '500':
-          description: Internal server error
-          
-    put:
-      summary: Update a memory node's content with automatic reconnection
-      operationId: updateNode
-      tags:
-        - Memory Management
-      parameters:
-        - name: nodeId
-          in: path
-          required: true
-          description: Unique identifier for the memory node to update
           schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-      requestBody:
-        required: true
-        description: Updated content for the memory node
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateNodeRequest'
-            example:
-              content: "Deep learning models require even larger datasets and more computational power than traditional ML"
-      responses:
-        '200':
-          description: Node updated successfully with recalculated connections
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Node updated successfully"
-                  nodeId:
-                    type: string
-                    example: "abc-123-def-456"
-                  version:
-                    type: integer
-                    example: 3
-        '400':
-          description: Validation error - content cannot be empty
-        '404':
-          description: Node not found or user doesn't have access
-        '409':
-          description: Version conflict - node was modified by another process
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error during update
-          
-    delete:
-      summary: Delete a memory node and clean up all connections
-      operationId: deleteNode
-      tags:
-        - Memory Management
-      parameters:
-        - name: nodeId
-          in: path
-          required: true
-          description: Unique identifier for the memory node to delete
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
           schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-      responses:
-        '204':
-          description: Node deleted successfully (no content returned)
-        '404':
-          description: Node not found or user doesn't have access
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "node not found"
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error during deletion
-
-  /api/nodes/bulk-delete:
-    post:
-      summary: Delete multiple memory nodes efficiently in a single operation
-      operationId: bulkDeleteNodes
-      tags:
-        - Memory Management
-        - Bulk Operations
-      requestBody:
-        required: true
-        description: List of node IDs to delete (max 100)
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BulkDeleteRequest'
-            example:
-              nodeIds: 
-                - "abc-123-def-456"
-                - "def-456-ghi-789"
-                - "ghi-789-jkl-012"
-      responses:
-        '200':
-          description: Bulk delete operation completed (may include partial failures)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BulkDeleteResponse'
-              example:
-                deletedCount: 2
-                failedNodeIds: ["ghi-789-jkl-012"]
-                message: "Successfully deleted 2 out of 3 nodes"
-        '400':
-          description: Validation error - invalid request format or too many nodes
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "cannot delete more than 100 nodes at once"
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error during bulk operation
-  
-  /api/graph-data:
-    get:
-      summary: Get complete graph data optimized for visualization libraries
-      operationId: getGraphData
-      tags:
-        - Graph Visualization
-        - Data Export
-      responses:
-        '200':
-          description: Complete graph data ready for visualization
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GraphDataResponse'
-              example:
-                elements:
-                  - data:
-                      id: "node-abc-123"
-                      label: "Machine Learning Basics"
-                  - data:
-                      id: "node-def-456" 
-                      label: "Neural Networks"
-                  - data:
-                      id: "edge-1"
-                      source: "node-abc-123"
-                      target: "node-def-456"
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error retrieving graph data
-
-  /api/categories:
-    get:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
       summary: List all categories for the authenticated user
-      operationId: listCategories
       tags:
-        - Category Management
-      responses:
-        '200':
-          description: Successfully retrieved user's categories
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  categories:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Category'
-                    description: Array of categories owned by the authenticated user
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error
-
+      - Category Management
     post:
+      consumes:
+      - application/json
+      description: Creates a new category for organizing memory nodes with optional
+        parent hierarchy
+      parameters:
+      - description: Category creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/brain2-backend_pkg_api.CreateCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Successfully created category
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.CategoryResponse'
+        "400":
+          description: Invalid request body or validation failed
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "401":
+          description: Authentication required
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
       summary: Create a new category
-      operationId: createCategory
       tags:
-        - Category Management
-      requestBody:
-        required: true
-        description: Category details to create
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateCategoryRequest'
-      responses:
-        '201':
-          description: Category created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Category'
-        '400':
-          description: Validation error - title is required
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error
-
-  /api/categories/{categoryId}:
-    get:
-      summary: Get detailed information for a single category
-      operationId: getCategory
-      tags:
-        - Category Management
+      - Category Management
+  /categories/{categoryId}:
+    delete:
+      description: Deletes a category and optionally removes it from all associated
+        nodes
       parameters:
-        - name: categoryId
-          in: path
-          required: true
-          description: Unique identifier for the category
-          schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
+      - description: Category ID
+        in: path
+        name: categoryId
+        required: true
+        type: string
       responses:
-        '200':
-          description: Successfully retrieved category details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Category'
-        '404':
-          description: Category not found
-        '401':
+        "204":
+          description: Category successfully deleted
+        "401":
           description: Authentication required
-        '500':
-          description: Internal server error
-
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "404":
+          description: Category not found
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Delete a category
+      tags:
+      - Category Management
+    get:
+      description: Retrieves a specific category by its ID including node count and
+        hierarchy information
+      parameters:
+      - description: Category ID
+        in: path
+        name: categoryId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved category
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.CategoryResponse'
+        "401":
+          description: Authentication required
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "404":
+          description: Category not found
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Get a specific category by ID
+      tags:
+      - Category Management
     put:
-      summary: Update a category's details
-      operationId: updateCategory
-      tags:
-        - Category Management
+      consumes:
+      - application/json
+      description: Updates an existing category's title, description, or color
       parameters:
-        - name: categoryId
-          in: path
-          required: true
-          description: Unique identifier for the category to update
-          schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-      requestBody:
+      - description: Category ID
+        in: path
+        name: categoryId
         required: true
-        description: Updated category details
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateCategoryRequest'
+        type: string
+      - description: Category update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/brain2-backend_pkg_api.UpdateCategoryRequest'
+      produces:
+      - application/json
       responses:
-        '200':
-          description: Category updated successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Category updated successfully"
-                  categoryId:
-                    type: string
-                    example: "abc-123-def-456"
-        '400':
-          description: Validation error
-        '404':
-          description: Category not found
-        '401':
+        "200":
+          description: Successfully updated category
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.CategoryResponse'
+        "400":
+          description: Invalid request body or validation failed
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "401":
           description: Authentication required
-        '500':
-          description: Internal server error
-
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "404":
+          description: Category not found
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Update an existing category
+      tags:
+      - Category Management
+  /graph-data:
+    get:
+      description: Retrieves graph data for visualization including nodes and edges
+        in a format suitable for graph libraries
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Graph data for visualization
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.GraphDataResponse'
+        "401":
+          description: Authentication required
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Get graph visualization data
+      tags:
+      - Graph Operations
+  /health:
+    get:
+      description: Returns the basic health status of the application
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Application is healthy
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.HealthResponse'
+      summary: Basic health check
+      tags:
+      - System
+  /nodes:
+    get:
+      description: Retrieves all memory nodes belonging to the authenticated user,
+        including content, tags, and metadata
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved user's memory nodes
+          schema:
+            items:
+              $ref: '#/definitions/brain2-backend_pkg_api.Node'
+            type: array
+        "401":
+          description: Authentication required
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: List all memory nodes for the authenticated user
+      tags:
+      - Memory Management
+    post:
+      consumes:
+      - application/json
+      description: Creates a new memory node with content, optional title and tags.
+        The system automatically extracts keywords and establishes connections to
+        existing nodes.
+      parameters:
+      - description: Memory node creation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/brain2-backend_pkg_api.CreateNodeRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Successfully created memory node
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.Node'
+        "400":
+          description: Invalid request body or validation failed
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "401":
+          description: Authentication required
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Create a new memory node
+      tags:
+      - Memory Management
+  /nodes/{nodeId}:
     delete:
-      summary: Delete a category and all its memory associations
-      operationId: deleteCategory
-      tags:
-        - Category Management
+      description: Deletes a memory node and all its connections. This operation cannot
+        be undone.
       parameters:
-        - name: categoryId
-          in: path
-          required: true
-          description: Unique identifier for the category to delete
-          schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-      responses:
-        '204':
-          description: Category deleted successfully
-        '404':
-          description: Category not found
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error
-
-  /api/categories/{categoryId}/nodes:
-    get:
-      summary: Get all nodes in a specific category
-      operationId: getNodesInCategory
-      tags:
-        - Category Management
-        - Memory Organization
-      parameters:
-        - name: categoryId
-          in: path
-          required: true
-          description: Unique identifier for the category
-          schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-      responses:
-        '200':
-          description: Successfully retrieved memories in category
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  memories:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Node'
-        '404':
-          description: Category not found
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error
-
-    post:
-      summary: Assign a node to a category
-      operationId: assignNodeToCategory
-      tags:
-        - Category Management
-        - Memory Organization
-      parameters:
-        - name: categoryId
-          in: path
-          required: true
-          description: Unique identifier for the category
-          schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-      requestBody:
+      - description: Memory node ID
+        in: path
+        name: nodeId
         required: true
-        description: Node to assign to category
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AssignNodeToCategoryRequest'
+        type: string
       responses:
-        '200':
-          description: Node assigned to category successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Memory added to category successfully"
-        '400':
-          description: Validation error
-        '404':
-          description: Category or memory not found
-        '401':
+        "204":
+          description: Memory node successfully deleted
+        "401":
           description: Authentication required
-        '500':
-          description: Internal server error
-
-  /api/categories/{categoryId}/nodes/{nodeId}:
-    delete:
-      summary: Remove a node from a category
-      operationId: removeNodeFromCategory
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "404":
+          description: Memory node not found
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Delete a memory node
       tags:
-        - Category Management
-        - Memory Organization
-      parameters:
-        - name: categoryId
-          in: path
-          required: true
-          description: Unique identifier for the category
-          schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-        - name: nodeId
-          in: path
-          required: true
-          description: Unique identifier for the node
-          schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-      responses:
-        '204':
-          description: Memory removed from category successfully
-        '404':
-          description: Category or memory not found
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error
-
-  # Enhanced Category Endpoints
-  /api/categories/hierarchy:
+      - Memory Management
     get:
-      summary: Get hierarchical category tree
-      operationId: getCategoryHierarchy
-      tags:
-        - Category Management
-        - Hierarchy
-      responses:
-        '200':
-          description: Successfully retrieved category hierarchy
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  categories:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Category'
-                  hierarchy:
-                    type: object
-                    additionalProperties:
-                      type: array
-                      items:
-                        type: string
-                    description: "Map of parent category IDs to arrays of child category IDs"
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error
-
-  /api/categories/suggest:
-    post:
-      summary: Get AI-powered category suggestions for content
-      operationId: suggestCategories
-      tags:
-        - Category Management
-        - AI Features
-      requestBody:
+      description: Retrieves a specific memory node by its ID, including full details
+        and connected edges
+      parameters:
+      - description: Memory node ID
+        in: path
+        name: nodeId
         required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - content
-              properties:
-                content:
-                  type: string
-                  minLength: 1
-                  maxLength: 10000
-                  description: "Content to analyze for category suggestions"
-                  example: "Learning about machine learning algorithms and neural networks"
+        type: string
+      produces:
+      - application/json
       responses:
-        '200':
-          description: Successfully generated category suggestions
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  suggestions:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/CategorySuggestion'
-        '400':
-          description: Validation error - content is required
-        '401':
-          description: Authentication required
-        '503':
-          description: AI service temporarily unavailable
-        '500':
-          description: Internal server error
-
-  /api/categories/rebuild:
-    post:
-      summary: Rebuild and optimize category structure
-      operationId: rebuildCategories
-      tags:
-        - Category Management
-        - AI Features
-      responses:
-        '200':
-          description: Category rebuild completed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Category structure rebuilt successfully"
-                  categoriesProcessed:
-                    type: integer
-                    example: 25
-                  hierarchiesCreated:
-                    type: integer
-                    example: 8
-                  categoriesMerged:
-                    type: integer
-                    example: 3
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error
-
-  /api/categories/insights:
-    get:
-      summary: Get category usage insights and analytics
-      operationId: getCategoryInsights
-      tags:
-        - Category Management
-        - Analytics
-      responses:
-        '200':
-          description: Successfully retrieved category insights
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CategoryInsights'
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error
-
-  /api/nodes/{nodeId}/categories:
-    get:
-      summary: Get all categories assigned to a node
-      operationId: getNodeCategories
-      tags:
-        - Memory Management
-        - Category Management
-      parameters:
-        - name: nodeId
-          in: path
-          required: true
-          description: Unique identifier for the memory node
+        "200":
+          description: Successfully retrieved memory node details
           schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-      responses:
-        '200':
-          description: Successfully retrieved node categories
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  categories:
-                    type: array
-                    items:
-                      allOf:
-                        - $ref: '#/components/schemas/Category'
-                        - type: object
-                          properties:
-                            confidence:
-                              type: number
-                              minimum: 0
-                              maximum: 1
-                              description: "AI confidence score for this categorization"
-                            method:
-                              type: string
-                              enum: ["ai", "manual", "rule-based"]
-                              description: "How this category was assigned"
-        '404':
-          description: Node not found
-        '401':
-          description: Authentication required
-        '500':
-          description: Internal server error
-
-    post:
-      summary: Auto-categorize a node using AI
-      operationId: categorizeNode
-      tags:
-        - Memory Management
-        - AI Features
-      parameters:
-        - name: nodeId
-          in: path
-          required: true
-          description: Unique identifier for the memory node
+            $ref: '#/definitions/brain2-backend_pkg_api.NodeDetailsResponse'
+        "400":
+          description: Invalid node ID format
           schema:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-      responses:
-        '200':
-          description: Successfully categorized node
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  categories:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Category'
-                  message:
-                    type: string
-                    example: "Node categorized successfully"
-        '404':
-          description: Node not found
-        '401':
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "401":
           description: Authentication required
-        '503':
-          description: AI service temporarily unavailable
-        '500':
-          description: Internal server error
-
-components:
-  schemas:
-    Node:
-      type: object
-      required:
-        - nodeId
-        - content
-        - timestamp
-        - version
-      properties:
-        nodeId:
-          type: string
-          pattern: '^[a-zA-Z0-9-]+$'
-          example: "abc-123-def-456-ghi-789"
-        content:
-          type: string
-          minLength: 1
-          maxLength: 10000
-          example: "Machine learning requires large datasets for effective model training"
-        tags:
-          type: array
-          items:
-            type: string
-          example: ["urgent", "work", "ml"]
-          description: "User-defined tags for organizing and categorizing memories"
-        timestamp:
-          type: string
-          format: date-time
-          example: "2024-01-15T14:30:00Z"
-        version:
-          type: integer
-          minimum: 0
-          example: 1
-
-    NodeDetails:
-      allOf:
-        - $ref: '#/components/schemas/Node'
-        - type: object
-          properties:
-            edges:
-              type: array
-              items:
-                type: string
-                pattern: '^[a-zA-Z0-9-]+$'
-              example: 
-                - "def-456-ghi-789"
-                - "ghi-789-jkl-012"
-                - "jkl-012-mno-345"
-
-    CreateNodeRequest:
-      type: object
-      required:
-        - content
-      properties:
-        content:
-          type: string
-          minLength: 1
-          maxLength: 10000
-          example: "GraphQL provides a more efficient alternative to REST for complex data fetching requirements"
-        tags:
-          type: array
-          items:
-            type: string
-          description: User-defined tags for organizing and categorizing memories
-          maxItems: 10
-          example: ["work", "graphql", "api"]
-
-    UpdateNodeRequest:
-      type: object
-      required:
-        - content
-      properties:
-        content:
-          type: string
-          minLength: 1
-          maxLength: 10000
-          example: "GraphQL and REST both have their place, but GraphQL excels in scenarios requiring flexible data fetching"
-        tags:
-          type: array
-          items:
-            type: string
-          description: User-defined tags for organizing and categorizing memories
-          maxItems: 10
-          example: ["work", "graphql", "api", "updated"]
-
-    BulkDeleteRequest:
-      type: object
-      required:
-        - nodeIds
-      properties:
-        nodeIds:
-          type: array
-          items:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-          minItems: 1
-          maxItems: 100
-          example: 
-            - "abc-123-def-456"
-            - "def-456-ghi-789"
-            - "ghi-789-jkl-012"
-
-    BulkDeleteResponse:
-      type: object
-      properties:
-        deletedCount:
-          type: integer
-          minimum: 0
-          example: 2
-        failedNodeIds:
-          type: array
-          items:
-            type: string
-            pattern: '^[a-zA-Z0-9-]+$'
-          example: ["ghi-789-jkl-012"]
-        message:
-          type: string
-          example: "Successfully deleted 2 out of 3 nodes. 1 node could not be found."
-          
-    GraphDataResponse:
-      type: object
-      properties:
-        elements:
-          type: array
-          items:
-            oneOf:
-              - $ref: '#/components/schemas/GraphNode'
-              - $ref: '#/components/schemas/GraphEdge'
-          example:
-            - data:
-                id: "node-abc-123"
-                label: "Machine Learning"
-            - data:
-                id: "node-def-456"
-                label: "Neural Networks" 
-            - data:
-                id: "edge-1"
-                source: "node-abc-123"
-                target: "node-def-456"
-
-    GraphNode:
-      type: object
-      properties:
-        data:
-          $ref: '#/components/schemas/NodeData'
-
-    NodeData:
-      type: object
-      required:
-        - id
-        - label
-      properties:
-        id:
-          type: string
-          pattern: '^node-[a-zA-Z0-9-]+$'
-          example: "node-abc-123-def-456"
-        label:
-          type: string
-          maxLength: 100
-          example: "Machine Learning Fundamentals"
-
-    GraphEdge:
-      type: object
-      properties:
-        data:
-          $ref: '#/components/schemas/EdgeData'
-
-    EdgeData:
-      type: object
-      required:
-        - id
-        - source
-        - target
-      properties:
-        id:
-          type: string
-          pattern: '^edge-[a-zA-Z0-9-]+$'
-          example: "edge-abc-123-to-def-456"
-        source:
-          type: string
-          pattern: '^node-[a-zA-Z0-9-]+$'
-          example: "node-abc-123-def-456"
-        target:
-          type: string
-          pattern: '^node-[a-zA-Z0-9-]+$'
-          example: "node-def-456-ghi-789"
-
-    Category:
-      type: object
-      required:
-        - id
-        - title
-        - level
-        - createdAt
-        - updatedAt
-      properties:
-        id:
-          type: string
-          pattern: '^[a-zA-Z0-9-]+$'
-          example: "cat-abc-123-def-456"
-        title:
-          type: string
-          minLength: 1
-          maxLength: 100
-          example: "Work Projects"
-        description:
-          type: string
-          maxLength: 500
-          example: "All work-related memories and tasks"
-        level:
-          type: integer
-          minimum: 0
-          maximum: 2
-          description: "Hierarchy level: 0 = top level, 1 = sub, 2 = sub-sub"
-          example: 0
-        parentId:
-          type: string
-          pattern: '^[a-zA-Z0-9-]+$'
-          description: "ID of parent category (null for root categories)"
-          example: "cat-parent-123"
-        color:
-          type: string
-          pattern: '^#[0-9A-Fa-f]{6}$'
-          description: "Hex color code for UI"
-          example: "#2563eb"
-        icon:
-          type: string
-          maxLength: 50
-          description: "Icon identifier for UI"
-          example: "folder"
-        aiGenerated:
-          type: boolean
-          description: "Whether this category was created by AI"
-          example: false
-        noteCount:
-          type: integer
-          minimum: 0
-          description: "Number of memories in this category"
-          example: 5
-        createdAt:
-          type: string
-          format: date-time
-          example: "2024-01-15T14:30:00Z"
-        updatedAt:
-          type: string
-          format: date-time
-          example: "2024-01-15T14:30:00Z"
-
-    CreateCategoryRequest:
-      type: object
-      required:
-        - title
-      properties:
-        title:
-          type: string
-          minLength: 1
-          maxLength: 100
-          example: "Personal Projects"
-        description:
-          type: string
-          maxLength: 500
-          example: "Side projects and personal learning"
-
-    UpdateCategoryRequest:
-      type: object
-      required:
-        - title
-      properties:
-        title:
-          type: string
-          minLength: 1
-          maxLength: 100
-          example: "Updated Category Title"
-        description:
-          type: string
-          maxLength: 500
-          example: "Updated category description"
-
-    AssignNodeToCategoryRequest:
-      type: object
-      required:
-        - nodeId
-      properties:
-        nodeId:
-          type: string
-          pattern: '^[a-zA-Z0-9-]+$'
-          example: "abc-123-def-456"
-
-    # Enhanced Category Schemas
-    CategorySuggestion:
-      type: object
-      required:
-        - name
-        - level
-        - confidence
-        - reason
-      properties:
-        name:
-          type: string
-          minLength: 1
-          maxLength: 100
-          description: "Suggested category name"
-          example: "Technology"
-        level:
-          type: integer
-          minimum: 0
-          maximum: 2
-          description: "Suggested hierarchy level"
-          example: 0
-        confidence:
-          type: number
-          minimum: 0
-          maximum: 1
-          description: "AI confidence score for this suggestion"
-          example: 0.85
-        reason:
-          type: string
-          maxLength: 500
-          description: "Explanation for why this category was suggested"
-          example: "Content discusses artificial intelligence and technology concepts"
-        parentId:
-          type: string
-          pattern: '^[a-zA-Z0-9-]+$'
-          description: "ID of suggested parent category"
-          example: "cat-parent-123"
-
-    CategoryInsights:
-      type: object
-      properties:
-        mostActiveCategories:
-          type: array
-          items:
-            $ref: '#/components/schemas/CategoryActivity'
-          description: "Categories with the most recent activity"
-        categoryGrowthTrends:
-          type: array
-          items:
-            $ref: '#/components/schemas/CategoryGrowthTrend'
-          description: "Growth patterns over time"
-        suggestedConnections:
-          type: array
-          items:
-            $ref: '#/components/schemas/CategoryConnection'
-          description: "Suggested relationships between categories"
-        knowledgeGaps:
-          type: array
-          items:
-            $ref: '#/components/schemas/KnowledgeGap'
-          description: "Identified areas for knowledge expansion"
-
-    CategoryActivity:
-      type: object
-      required:
-        - categoryId
-        - categoryName
-        - memoryCount
-        - recentAdds
-      properties:
-        categoryId:
-          type: string
-          pattern: '^[a-zA-Z0-9-]+$'
-          example: "cat-abc-123"
-        categoryName:
-          type: string
-          example: "Machine Learning"
-        memoryCount:
-          type: integer
-          minimum: 0
-          example: 15
-        recentAdds:
-          type: integer
-          minimum: 0
-          description: "Memories added in the last 7 days"
-          example: 3
-
-    CategoryGrowthTrend:
-      type: object
-      required:
-        - categoryId
-        - categoryName
-        - date
-        - memoryCount
-      properties:
-        categoryId:
-          type: string
-          pattern: '^[a-zA-Z0-9-]+$'
-          example: "cat-abc-123"
-        categoryName:
-          type: string
-          example: "Machine Learning"
-        date:
-          type: string
-          format: date-time
-          example: "2024-01-15T00:00:00Z"
-        memoryCount:
-          type: integer
-          minimum: 0
-          example: 12
-
-    CategoryConnection:
-      type: object
-      required:
-        - category1Id
-        - category1Name
-        - category2Id
-        - category2Name
-        - strength
-        - reason
-      properties:
-        category1Id:
-          type: string
-          pattern: '^[a-zA-Z0-9-]+$'
-          example: "cat-abc-123"
-        category1Name:
-          type: string
-          example: "Machine Learning"
-        category2Id:
-          type: string
-          pattern: '^[a-zA-Z0-9-]+$'
-          example: "cat-def-456"
-        category2Name:
-          type: string
-          example: "Data Science"
-        strength:
-          type: number
-          minimum: 0
-          maximum: 1
-          description: "Connection strength score"
-          example: 0.78
-        reason:
-          type: string
-          maxLength: 500
-          description: "Explanation for the suggested connection"
-          example: "Both categories contain content about statistical analysis and algorithms"
-
-    KnowledgeGap:
-      type: object
-      required:
-        - topic
-        - confidence
-        - suggestedCategories
-        - reason
-      properties:
-        topic:
-          type: string
-          maxLength: 200
-          description: "Identified knowledge gap topic"
-          example: "Deep Learning Optimization"
-        confidence:
-          type: number
-          minimum: 0
-          maximum: 1
-          description: "Confidence in this gap identification"
-          example: 0.72
-        suggestedCategories:
-          type: array
-          items:
-            type: string
-          description: "Categories that could be created to fill this gap"
-          example: ["Optimization Algorithms", "Neural Network Tuning"]
-        reason:
-          type: string
-          maxLength: 500
-          description: "Explanation for why this is a knowledge gap"
-          example: "You have extensive ML content but limited coverage of optimization techniques"
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "404":
+          description: Memory node not found
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Get a specific memory node by ID
+      tags:
+      - Memory Management
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing memory node's content, title, and tags. The
+        system will re-analyze connections.
+      parameters:
+      - description: Memory node ID
+        in: path
+        name: nodeId
+        required: true
+        type: string
+      - description: Memory node update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/brain2-backend_pkg_api.UpdateNodeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated memory node
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.NodeResponse'
+        "400":
+          description: Invalid request body or node ID
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "401":
+          description: Authentication required
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "404":
+          description: Memory node not found
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Update an existing memory node
+      tags:
+      - Memory Management
+  /nodes/bulk-delete:
+    post:
+      consumes:
+      - application/json
+      description: Deletes multiple memory nodes and all their connections in a single
+        operation
+      parameters:
+      - description: Bulk delete request with node IDs
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/brain2-backend_pkg_api.BulkDeleteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Bulk delete operation completed
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.BulkDeleteResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "401":
+          description: Authentication required
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Delete multiple memory nodes
+      tags:
+      - Memory Management
+  /ready:
+    get:
+      description: Returns the readiness status of the application for load balancer
+        health checks
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Application is ready to serve requests
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.HealthResponse'
+      summary: Application readiness check
+      tags:
+      - System
+securityDefinitions:
+  Bearer:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

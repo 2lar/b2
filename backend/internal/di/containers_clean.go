@@ -170,7 +170,7 @@ type HandlerContainer struct {
 	CategoryHandler *v1handlers.CategoryHandler
 	Category        *v1handlers.CategoryHandler // Alias
 	EdgeHandler     interface{} // TODO: Add edge handler
-	HealthHandler   http.HandlerFunc
+	HealthHandler   *v1handlers.HealthHandler
 	MetricsHandler  http.HandlerFunc
 	
 	// Router

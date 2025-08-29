@@ -56,6 +56,18 @@ func NewCategoryHandler(
 }
 
 // ListCategories handles GET /api/categories with clean separation of concerns.
+// @Summary List all categories for the authenticated user
+// @Description Retrieves all categories belonging to the authenticated user with optional filtering by level
+// @Tags Category Management
+// @Produce json
+// @Security Bearer
+// @Param level query int false "Filter by category level" example(1)
+// @Param limit query int false "Maximum number of categories to return" default(50) example(20)
+// @Param offset query int false "Number of categories to skip" default(0) example(0)
+// @Success 200 {array} api.CategoryResponse "Successfully retrieved categories"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /categories [get]
 func (h *CategoryHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
 	// Apply middleware chain for cross-cutting concerns
 	handler := h.serviceChecker.Check(
@@ -99,6 +111,18 @@ func (h *CategoryHandler) listCategoriesCore(w http.ResponseWriter, r *http.Requ
 }
 
 // CreateCategory handles POST /api/categories with focused validation and conversion.
+// @Summary Create a new category
+// @Description Creates a new category for organizing memory nodes with optional parent hierarchy
+// @Tags Category Management
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param request body api.CreateCategoryRequest true "Category creation request"
+// @Success 201 {object} api.CategoryResponse "Successfully created category"
+// @Failure 400 {object} api.ErrorResponse "Invalid request body or validation failed"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /categories [post]
 func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 	// Apply middleware chain
 	serviceCheck := middleware.NewServiceAvailabilityCheck("CategoryService", func() bool {
@@ -161,6 +185,17 @@ func (h *CategoryHandler) createCategoryCore(w http.ResponseWriter, r *http.Requ
 }
 
 // GetCategory handles GET /api/categories/{categoryId} with clean separation.
+// @Summary Get a specific category by ID
+// @Description Retrieves a specific category by its ID including node count and hierarchy information
+// @Tags Category Management
+// @Produce json
+// @Security Bearer
+// @Param categoryId path string true "Category ID"
+// @Success 200 {object} api.CategoryResponse "Successfully retrieved category"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 404 {object} api.ErrorResponse "Category not found"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /categories/{categoryId} [get]
 func (h *CategoryHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
 	handler := h.serviceChecker.Check(
 		h.userExtractor.Extract(
@@ -203,6 +238,20 @@ func (h *CategoryHandler) getCategoryCore(w http.ResponseWriter, r *http.Request
 }
 
 // UpdateCategory handles PUT /api/categories/{categoryId} with focused validation.
+// @Summary Update an existing category
+// @Description Updates an existing category's title, description, or color
+// @Tags Category Management
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param categoryId path string true "Category ID"
+// @Param request body api.UpdateCategoryRequest true "Category update request"
+// @Success 200 {object} api.CategoryResponse "Successfully updated category"
+// @Failure 400 {object} api.ErrorResponse "Invalid request body or validation failed"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 404 {object} api.ErrorResponse "Category not found"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /categories/{categoryId} [put]
 func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
 	serviceCheck := middleware.NewServiceAvailabilityCheck("CategoryService", func() bool {
 		return h.categoryService != nil
@@ -257,6 +306,16 @@ func (h *CategoryHandler) updateCategoryCore(w http.ResponseWriter, r *http.Requ
 }
 
 // DeleteCategory handles DELETE /api/categories/{categoryId} with clean separation.
+// @Summary Delete a category
+// @Description Deletes a category and optionally removes it from all associated nodes
+// @Tags Category Management
+// @Security Bearer
+// @Param categoryId path string true "Category ID"
+// @Success 204 "Category successfully deleted"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 404 {object} api.ErrorResponse "Category not found"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /categories/{categoryId} [delete]
 func (h *CategoryHandler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
 	serviceCheck := middleware.NewServiceAvailabilityCheck("CategoryService", func() bool {
 		return h.categoryService != nil

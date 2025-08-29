@@ -47,6 +47,7 @@ import (
 	"brain2-backend/internal/infrastructure/messaging"
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
+	"brain2-backend/pkg/api"
 	"brain2-backend/internal/infrastructure/persistence/cache"
 	infradynamodb "brain2-backend/internal/infrastructure/persistence/dynamodb"
 	"brain2-backend/internal/repository"
@@ -634,6 +635,12 @@ func (c *Container) initializeRouter() {
 		r.Get("/nodes/{nodeId}/categories", c.CategoryHandler.GetNodeCategories)
 		r.Post("/nodes/{nodeId}/categories", c.CategoryHandler.CategorizeNode)
 	})
+
+	// API Documentation routes - available in all environments  
+	router.Get("/api/swagger", api.SwaggerHandler())
+	router.Get("/api/swagger.yaml", api.SwaggerHandler())
+	router.Get("/api/swagger-ui", api.SwaggerUIHandler())
+	router.Get("/api/docs", api.SwaggerUIHandler()) // Alternative path for documentation
 
 	// Backward compatibility redirects for old API routes
 	router.Route("/api", func(r chi.Router) {

@@ -120,6 +120,13 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "📝 Generating OpenAPI specification from code annotations..."
+./generate-openapi.sh
+if [ $? -ne 0 ]; then
+    echo "❌ OpenAPI generation failed."
+    exit 1
+fi
+
 echo "🏗️ Building Lambda functions..."
 
 # Determine which components to build

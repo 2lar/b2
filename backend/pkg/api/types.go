@@ -1,10 +1,48 @@
 package api
 
+// ErrorResponse represents a standardized error response
+type ErrorResponse struct {
+	Error string `json:"error" example:"Invalid request body"`
+}
+
+// HealthResponse represents a health check response
+type HealthResponse struct {
+	Status string `json:"status" example:"ok"`
+}
+
 // CreateNodeRequest represents the request to create a node
 type CreateNodeRequest struct {
 	Content string   `json:"content"`
 	Title   string   `json:"title,omitempty"`
 	Tags    []string `json:"tags,omitempty"`
+}
+
+// CreateCategoryRequest represents the request to create a category
+type CreateCategoryRequest struct {
+	Title       string  `json:"title" validate:"required" example:"Machine Learning"`
+	Description string  `json:"description,omitempty" example:"AI and ML related content"`
+	ParentID    *string `json:"parentId,omitempty" example:"parent-category-id"`
+	Color       *string `json:"color,omitempty" example:"#FF5722"`
+}
+
+// UpdateCategoryRequest represents the request to update a category
+type UpdateCategoryRequest struct {
+	Title       string  `json:"title,omitempty" example:"Deep Learning"`
+	Description string  `json:"description,omitempty" example:"Neural networks and deep learning"`
+	Color       *string `json:"color,omitempty" example:"#2196F3"`
+}
+
+// CategoryResponse represents a category in API responses
+type CategoryResponse struct {
+	ID          string  `json:"id" example:"cat-123"`
+	Title       string  `json:"title" example:"Machine Learning"`
+	Description string  `json:"description" example:"AI and ML related content"`
+	Level       int     `json:"level" example:"1"`
+	ParentID    *string `json:"parentId,omitempty" example:"parent-category-id"`
+	Color       *string `json:"color,omitempty" example:"#FF5722"`
+	NodeCount   int     `json:"nodeCount" example:"15"`
+	CreatedAt   string  `json:"createdAt" example:"2024-01-15T10:30:00Z"`
+	UpdatedAt   string  `json:"updatedAt" example:"2024-01-16T10:30:00Z"`
 }
 
 // UpdateNodeRequest represents the request to update a node

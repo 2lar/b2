@@ -26,6 +26,48 @@
 //   - Dependency injection container caching
 //   - Pre-compilation of common objects
 //   - Cold start duration monitoring and alerting
+//
+// @title Brain2 Knowledge Graph API
+// @version 1.0.0
+// @description A RESTful API for managing personal knowledge graphs with automatic memory connections and intelligent categorization.
+// @description
+// @description ## Overview
+// @description The Brain2 API allows users to create, manage, and explore their personal knowledge graphs.
+// @description It provides endpoints for managing memory nodes, categories, and graph relationships with
+// @description automatic connection discovery and intelligent categorization features.
+// @description
+// @description ## Authentication
+// @description All API endpoints require JWT authentication via the Authorization header.
+// @description
+// @description ## Rate Limiting
+// @description API requests are rate-limited per user to ensure fair usage and system stability.
+//
+// @contact.name Brain2 API Support
+// @contact.url https://github.com/your-org/brain2-backend
+// @contact.email support@brain2.example.com
+//
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+//
+// @host api.brain2.example.com
+// @BasePath /api
+//
+// @securityDefinitions.apikey Bearer
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
+//
+// @tag.name Memory Management
+// @tag.description Operations for managing memory nodes and content
+//
+// @tag.name Category Management  
+// @tag.description Operations for managing categories and auto-categorization
+//
+// @tag.name Graph Operations
+// @tag.description Operations for exploring and analyzing the knowledge graph
+//
+// @tag.name System
+// @tag.description System health checks and operational endpoints
 package main
 
 import (

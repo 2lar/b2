@@ -151,7 +151,7 @@ func provideNodeRepository(
 	metrics *observability.Collector,
 ) repository.NodeRepository {
 	// Use the new refactored NodeRepositoryV2 with composition pattern
-	base := infraDynamodb.NewNodeRepositoryV2(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
+	base := infraDynamodb.NewNodeRepository(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
 	// Return optimized repository with 74% less code duplication
 	return base

@@ -86,6 +86,18 @@ func NewMemoryHandler(
 }
 
 // CreateNode handles POST /api/nodes
+// @Summary Create a new memory node
+// @Description Creates a new memory node with content, optional title and tags. The system automatically extracts keywords and establishes connections to existing nodes.
+// @Tags Memory Management
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param request body api.CreateNodeRequest true "Memory node creation request"
+// @Success 201 {object} api.Node "Successfully created memory node"
+// @Failure 400 {object} api.ErrorResponse "Invalid request body or validation failed"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /nodes [post]
 func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	// Process create node request
 	// Check if CQRS services are available
@@ -182,6 +194,15 @@ func (h *MemoryHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListNodes handles GET /api/nodes
+// @Summary List all memory nodes for the authenticated user
+// @Description Retrieves all memory nodes belonging to the authenticated user, including content, tags, and metadata
+// @Tags Memory Management
+// @Produce json
+// @Security Bearer
+// @Success 200 {array} api.Node "Successfully retrieved user's memory nodes"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /nodes [get]
 func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 	// Check if CQRS services are available
 	if h.nodeQueryService == nil {
@@ -276,6 +297,18 @@ func (h *MemoryHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetNode handles GET /api/nodes/{nodeId}
+// @Summary Get a specific memory node by ID
+// @Description Retrieves a specific memory node by its ID, including full details and connected edges
+// @Tags Memory Management
+// @Produce json
+// @Security Bearer
+// @Param nodeId path string true "Memory node ID"
+// @Success 200 {object} api.NodeDetailsResponse "Successfully retrieved memory node details"
+// @Failure 400 {object} api.ErrorResponse "Invalid node ID format"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 404 {object} api.ErrorResponse "Memory node not found"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /nodes/{nodeId} [get]
 func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	// Check if CQRS services are available
 	if h.nodeQueryService == nil {
@@ -364,6 +397,20 @@ func (h *MemoryHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateNode handles PUT /api/nodes/{nodeId}
+// @Summary Update an existing memory node
+// @Description Updates an existing memory node's content, title, and tags. The system will re-analyze connections.
+// @Tags Memory Management
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param nodeId path string true "Memory node ID"
+// @Param request body api.UpdateNodeRequest true "Memory node update request"
+// @Success 200 {object} api.NodeResponse "Successfully updated memory node"
+// @Failure 400 {object} api.ErrorResponse "Invalid request body or node ID"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 404 {object} api.ErrorResponse "Memory node not found"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /nodes/{nodeId} [put]
 func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 	// Check if CQRS services are available
 	if h.nodeService == nil {
@@ -420,6 +467,16 @@ func (h *MemoryHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteNode handles DELETE /api/nodes/{nodeId}
+// @Summary Delete a memory node
+// @Description Deletes a memory node and all its connections. This operation cannot be undone.
+// @Tags Memory Management
+// @Security Bearer
+// @Param nodeId path string true "Memory node ID"
+// @Success 204 "Memory node successfully deleted"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 404 {object} api.ErrorResponse "Memory node not found"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /nodes/{nodeId} [delete]
 func (h *MemoryHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 	// Check if CQRS services are available
 	if h.nodeService == nil {
@@ -450,6 +507,18 @@ func (h *MemoryHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 }
 
 // BulkDeleteNodes handles POST /api/nodes/bulk-delete
+// @Summary Delete multiple memory nodes
+// @Description Deletes multiple memory nodes and all their connections in a single operation
+// @Tags Memory Management
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param request body api.BulkDeleteRequest true "Bulk delete request with node IDs"
+// @Success 200 {object} api.BulkDeleteResponse "Bulk delete operation completed"
+// @Failure 400 {object} api.ErrorResponse "Invalid request body"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /nodes/bulk-delete [post]
 func (h *MemoryHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) {
 	// Check if CQRS services are available
 	if h.nodeService == nil {
@@ -503,6 +572,15 @@ func (h *MemoryHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) 
 }
 
 // GetGraphData handles GET /api/graph-data
+// @Summary Get graph visualization data
+// @Description Retrieves graph data for visualization including nodes and edges in a format suitable for graph libraries
+// @Tags Graph Operations
+// @Produce json
+// @Security Bearer
+// @Success 200 {object} api.GraphDataResponse "Graph data for visualization"
+// @Failure 401 {object} api.ErrorResponse "Authentication required"
+// @Failure 503 {object} api.ErrorResponse "Service temporarily unavailable"
+// @Router /graph-data [get]
 func (h *MemoryHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 	// Check if CQRS services are available
 	if h.graphQueryService == nil {

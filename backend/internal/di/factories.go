@@ -18,6 +18,7 @@ import (
 	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
 	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/repository"
+	"brain2-backend/pkg/api"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -414,8 +415,8 @@ func (rf *RouterFactory) applyMiddleware(router *chi.Mux) {
 // setupRoutes configures all application routes.
 func (rf *RouterFactory) setupRoutes(router *chi.Mux) {
 	// Health check (public)
-	// router.Get("/health", rf.handlers.Health.Check)
-	// router.Get("/ready", rf.handlers.Health.Ready)
+	router.Get("/health", rf.handlers.HealthHandler.Check)
+	router.Get("/ready", rf.handlers.HealthHandler.Ready)
 	
 	// API routes (protected)
 	router.Route("/api", func(r chi.Router) {
@@ -458,6 +459,12 @@ func (rf *RouterFactory) setupRoutes(router *chi.Mux) {
 		r.Get("/nodes/{nodeId}/categories", rf.handlers.Category.GetNodeCategories)
 		r.Post("/nodes/{nodeId}/categories", rf.handlers.Category.CategorizeNode)
 	})
+	
+	// API Documentation routes - available in all environments
+	router.Get("/api/swagger", api.SwaggerHandler())
+	router.Get("/api/swagger.yaml", api.SwaggerHandler())
+	router.Get("/api/swagger-ui", api.SwaggerUIHandler())
+	router.Get("/api/docs", api.SwaggerUIHandler()) // Alternative path for documentation
 	
 	// Development-only routes
 	// if rf.config.Environment == config.Development {

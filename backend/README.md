@@ -27,6 +27,8 @@ Brain2 follows a **Domain-Driven Design (DDD)** approach with **Clean Architectu
 
 **Lambda-lith**: Balances serverless benefits with cold start optimization - better than microservices for moderate traffic, better than monoliths for scaling.
 
+**Automated OpenAPI Generation**: Complete API documentation generated automatically from code annotations, ensuring documentation is always current and accurate.
+
 ## Project Structure
 
 The project is structured to follow Clean Architecture principles with clear layer boundaries:
@@ -383,3 +385,45 @@ infrastructure/dynamodb/tests/integration_test.go
 # End-to-end tests (not implemented yet)
 tests/e2e/
 ```
+
+## API Documentation
+
+The Brain2 backend features **automated OpenAPI specification generation** that ensures API documentation is always accurate and up-to-date.
+
+### 📚 Documentation System
+
+- **Interactive Documentation**: Access Swagger UI at `/api/swagger-ui` or `/api/docs`
+- **OpenAPI Specification**: Download from `/api/swagger.yaml` or `/api/swagger.json`
+- **Automatic Generation**: Documentation generated from code annotations during build
+- **Type Safety**: All request/response models properly typed with examples
+
+### 🚀 Quick Access
+
+```bash
+# Generate documentation locally
+./generate-openapi.sh
+
+# Generate with validation
+./generate-openapi.sh --validate
+
+# Build with automatic generation
+./build.sh
+```
+
+### 📖 Documentation Guides
+
+| Guide | Purpose |
+|-------|---------|
+| **[OpenAPI Overview](docs/OPENAPI_GENERATION.md)** | System architecture and features |
+| **[Developer Guide](docs/OPENAPI_DEVELOPER_GUIDE.md)** | Annotation patterns and examples |
+| **[Build Integration](docs/OPENAPI_BUILD_INTEGRATION.md)** | CI/CD integration and workflows |
+| **[Troubleshooting](docs/OPENAPI_TROUBLESHOOTING.md)** | Error diagnosis and solutions |
+
+### 📊 Current API Stats
+
+- **13 Endpoints** fully documented
+- **15+ Models** with examples and validation
+- **JWT Authentication** properly configured
+- **4 Logical Groups** (Memory, Category, Graph, System)
+
+For complete documentation, see [docs/README.md](docs/README.md).
