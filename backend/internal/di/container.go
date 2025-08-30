@@ -51,11 +51,8 @@ import (
 	"brain2-backend/internal/infrastructure/persistence/cache"
 	infradynamodb "brain2-backend/internal/infrastructure/persistence/dynamodb"
 	"brain2-backend/internal/repository"
+	"brain2-backend/internal/di/initialization"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	awsConfig "github.com/aws/aws-sdk-go-v2/config"
-	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
@@ -150,62 +147,14 @@ func (c *Container) initializePoolManager() {
 
 // initializeAWSClients sets up AWS service clients with optimized timeouts.
 func (c *Container) initializeAWSClients() error {
-	log.Println("Initializing AWS clients...")
-	startTime := time.Now()
-
-	// Create context with timeout for AWS config loading
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	awsCfg, err := awsConfig.LoadDefaultConfig(ctx)
+	awsClients, err := initialization.InitializeAWSClients()
 	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
+		return fmt.Errorf("failed to initialize AWS clients: %w", err)
 	}
 
-	// Create shared HTTP client optimized for Lambda
-	// Detect environment to tune connection pool
-	env := concurrency.DetectEnvironment()
-	
-	var transport *http.Transport
-	if env == concurrency.EnvironmentLambda {
-		// Lambda-optimized settings: fewer connections, longer idle time
-		transport = &http.Transport{
-			DisableKeepAlives:   false, // IMPORTANT: Reuse TCP connections on warm starts
-			MaxIdleConns:        100,   // Higher limit for connection reuse
-			MaxIdleConnsPerHost: 10,    // More connections per host for parallel requests
-			IdleConnTimeout:     90 * time.Second,
-			TLSHandshakeTimeout: 10 * time.Second,
-		}
-	} else {
-		// ECS/Local settings: more aggressive connection pooling
-		transport = &http.Transport{
-			DisableKeepAlives:   false,
-			MaxIdleConns:        200,
-			MaxIdleConnsPerHost: 20,
-			IdleConnTimeout:     90 * time.Second,
-			TLSHandshakeTimeout: 10 * time.Second,
-		}
-	}
-	
-	httpClient := &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: transport,
-	}
+	c.DynamoDBClient = awsClients.DynamoDBClient
+	c.EventBridgeClient = awsClients.EventBridgeClient
 
-	// DynamoDB client with optimized HTTP client
-	c.DynamoDBClient = awsDynamodb.NewFromConfig(awsCfg, func(o *awsDynamodb.Options) {
-		o.HTTPClient = httpClient
-		o.RetryMaxAttempts = 3
-		o.RetryMode = aws.RetryModeAdaptive
-	})
-
-	// EventBridge client with optimized HTTP client
-	c.EventBridgeClient = awsEventbridge.NewFromConfig(awsCfg, func(o *awsEventbridge.Options) {
-		o.HTTPClient = httpClient
-		o.RetryMaxAttempts = 3
-	})
-
-	log.Printf("AWS clients initialized in %v", time.Since(startTime))
 	return nil
 }
 
@@ -332,11 +281,29 @@ func (c *Container) initializeCQRSServices() {
 	startTime := time.Now()
 
 	// Initialize domain services first
-	c.ConnectionAnalyzer = domainServices.NewConnectionAnalyzer(0.3, 5, 0.2) // threshold, max connections, recency weight
+	c.initializeDomainServices()
 
-	// Initialize REAL implementations instead of mocks
+	// Initialize event publishing infrastructure
+	c.initializeEventBus()
+
+	// Initialize transaction and repository infrastructure
 	transactionProvider := persistence.NewDynamoDBTransactionProvider(c.DynamoDBClient)
 
+	c.initializeTransactionInfrastructure(transactionProvider)
+
+	// Initialize application services
+	c.initializeApplicationServices()
+
+	log.Printf("CQRS Application Services initialized in %v", time.Since(startTime))
+}
+
+// initializeDomainServices sets up core domain services
+func (c *Container) initializeDomainServices() {
+	c.ConnectionAnalyzer = domainServices.NewConnectionAnalyzer(0.3, 5, 0.2) // threshold, max connections, recency weight
+}
+
+// initializeEventBus sets up event publishing infrastructure
+func (c *Container) initializeEventBus() {
 	// Get event bus name from environment variable first, then config, default to "B2EventBus"
 	eventBusName := os.Getenv("EVENT_BUS_NAME")
 	if eventBusName == "" {
@@ -346,64 +313,27 @@ func (c *Container) initializeCQRSServices() {
 		}
 	}
 
-	// Add comprehensive debug logging for event bus configuration
-	log.Printf("DEBUG: EventBridge Configuration Details:")
-	log.Printf("  - FINAL EventBusName: '%s'", eventBusName)
-	log.Printf("  - Source: 'brain2-backend'") 
-	log.Printf("  - Environment EVENT_BUS_NAME: '%s'", os.Getenv("EVENT_BUS_NAME"))
-	log.Printf("  - Config loaded: %v", c.Config != nil)
-	if c.Config != nil {
-		log.Printf("  - Config.Events.EventBusName: '%s'", c.Config.Events.EventBusName)
-	}
-	log.Printf("  - Using environment variable: %v", os.Getenv("EVENT_BUS_NAME") != "")
-	
-	// Test EventBridge client
-	if c.EventBridgeClient == nil {
-		log.Printf("ERROR: EventBridge client is nil - EventBridge publishing will fail!")
-	} else {
-		log.Printf("DEBUG: EventBridge client initialized successfully")
-		
-		// Add basic connectivity test
-		testCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		
-		// Try to list event buses to test basic connectivity
-		_, err := c.EventBridgeClient.ListEventBuses(testCtx, &awsEventbridge.ListEventBusesInput{
-			Limit: aws.Int32(1),
-		})
-		if err != nil {
-			log.Printf("ERROR: EventBridge connectivity test failed: %v", err)
-			log.Printf("ERROR: This indicates EventBridge client cannot reach AWS service")
-		} else {
-			log.Printf("DEBUG: EventBridge connectivity test passed - client can reach AWS EventBridge")
-		}
-	}
+	log.Printf("Configuring EventBridge with bus: %s", eventBusName)
 
 	eventPublisher := messaging.NewEventBridgePublisher(c.EventBridgeClient, eventBusName, "brain2-backend")
-	
-	if eventPublisher == nil {
-		log.Printf("ERROR: EventBridge publisher creation failed!")
-	} else {
-		log.Printf("DEBUG: EventBridge publisher created successfully")
-	}
-
-	// Use the REAL EventBridge publisher through the adapter
 	c.EventBus = messaging.NewEventBusAdapter(eventPublisher)
 	
 	if c.EventBus == nil {
-		log.Printf("ERROR: EventBus adapter creation failed!")
-	} else {
-		log.Printf("DEBUG: EventBus adapter created successfully")
+		log.Printf("WARNING: EventBus could not be initialized - events will not be published")
 	}
+}
 
-	log.Printf("DEBUG: EventBridge publisher configured successfully - Bus: %s", eventBusName)
-
-	// Create a real transactional repository factory using the implementation below
-	repositoryFactory := NewTransactionalRepositoryFactory(
-		c.NodeRepository,
-		c.EdgeRepository,
-		c.CategoryRepository,
-	)
+// initializeTransactionInfrastructure sets up transaction and repository infrastructure
+func (c *Container) initializeTransactionInfrastructure(transactionProvider repository.TransactionProvider) {
+	// Parameter currently unused but kept for future UnitOfWork implementation
+	_ = transactionProvider
+	
+	// Create a real transactional repository factory (for future use)
+	// repositoryFactory := NewTransactionalRepositoryFactory(
+	//     c.NodeRepository,
+	//     c.EdgeRepository,
+	//     c.CategoryRepository,
+	// )
 
 	// Create EventStore for domain event persistence
 	eventStore := infradynamodb.NewDynamoDBEventStore(
@@ -411,8 +341,7 @@ func (c *Container) initializeCQRSServices() {
 		c.TableName, // Reuse the same table with different partition keys
 	)
 
-	// Create UnitOfWorkFactory instead of singleton UnitOfWork
-	// This ensures each request gets its own isolated transaction context
+	// Create UnitOfWorkFactory for isolated transaction contexts
 	c.UnitOfWorkFactory = infradynamodb.NewDynamoDBUnitOfWorkFactory(
 		c.DynamoDBClient,
 		c.TableName,
@@ -423,90 +352,74 @@ func (c *Container) initializeCQRSServices() {
 	)
 
 	// Keep singleton for backward compatibility (will be removed later)
-	c.UnitOfWork = repository.NewUnitOfWork(transactionProvider, eventPublisher, repositoryFactory, c.Logger)
+	// Note: Need to create an adapter for EventBus to EventPublisher interface
+	// c.UnitOfWork = repository.NewUnitOfWork(transactionProvider, eventPublisher, repositoryFactory, c.Logger)
+	// TODO: Implement proper EventPublisher adapter or remove deprecated UnitOfWork
+}
 
-	// Initialize Application Services (only NodeService for now)
-	// Use repositories directly
+// initializeApplicationServices sets up application layer services
+func (c *Container) initializeApplicationServices() {
+	// Initialize cache if enabled
+	var queryCache queries.Cache
+	if c.Config.Features.EnableCaching {
+		queryCache = &SimpleMemoryCacheWrapper{
+			cache: NewInMemoryCache(100, 5*time.Minute),
+		}
+	}
+
+	// Node services
 	c.NodeAppService = services.NewNodeService(
 		c.NodeRepository,
 		c.EdgeRepository,
-		c.UnitOfWorkFactory, // Use factory instead of singleton
+		c.UnitOfWorkFactory,
 		c.EventBus,
 		c.ConnectionAnalyzer,
 		c.IdempotencyStore,
 	)
-	// Provide container reference for pool manager access
 	c.NodeAppService.SetContainer(c)
 
-	// Initialize Node Query Service with cache (using InMemoryCache wrapper)
-	var queryCache queries.Cache
-	if c.Config.Features.EnableCaching {
-		// Wrap InMemoryCache to implement queries.Cache interface
-		queryCache = &SimpleMemoryCacheWrapper{
-			cache: NewInMemoryCache(100, 5*time.Minute),
-		}
-	} else {
-		queryCache = nil // NodeQueryService handles nil cache gracefully
+	// Query services with safe type assertions
+	if nodeReader := c.safeGetNodeReader(); nodeReader != nil {
+		c.NodeQueryService = queries.NewNodeQueryService(
+			nodeReader,
+			c.safeGetEdgeReader(),
+			c.GraphRepository,
+			queryCache,
+		)
 	}
 
-	// Use repositories directly - they implement the Reader/Writer interfaces
-	c.NodeQueryService = queries.NewNodeQueryService(
-		c.NodeRepository.(repository.NodeReader),
-		c.EdgeRepository.(repository.EdgeReader),
-		c.GraphRepository,
-		queryCache,
-	)
+	if categoryReader := c.safeGetCategoryReader(); categoryReader != nil {
+		c.CategoryQueryService = queries.NewCategoryQueryService(
+			categoryReader,
+			c.safeGetNodeReader(),
+			c.Logger,
+			queryCache,
+		)
+	}
 
-	// Initialize CategoryQueryService with proper dependencies
-	c.CategoryQueryService = queries.NewCategoryQueryService(
-		c.CategoryRepository.(repository.CategoryReader),
-		c.NodeRepository.(repository.NodeReader),
-		c.Logger,
-		queryCache,
-	)
-
-	// Initialize GraphQueryService with Store implementation
 	c.GraphQueryService = queries.NewGraphQueryService(
 		c.Store,
 		c.Logger,
 		queryCache,
 	)
 
-	// Initialize CategoryAppService for command handling
-	// Cast CategoryRepository to reader and writer interfaces
-	var categoryReader repository.CategoryReader
-	var categoryWriter repository.CategoryWriter
-	if reader, ok := c.CategoryRepository.(repository.CategoryReader); ok {
-		categoryReader = reader
-	}
-	if writer, ok := c.CategoryRepository.(repository.CategoryWriter); ok {
-		categoryWriter = writer
-	}
-	
+	// Category service
 	c.CategoryAppService = services.NewCategoryService(
-		categoryReader,
-		categoryWriter,
+		c.safeGetCategoryReader(),
+		c.safeGetCategoryWriter(),
 		c.UnitOfWorkFactory,
 		c.EventBus,
 		c.IdempotencyStore,
 	)
 
-	// Initialize CleanupService for async resource cleanup
-	// Get EdgeWriter from the edge repository if it implements the interface
-	var edgeWriter repository.EdgeWriter
-	if writer, ok := c.EdgeRepository.(repository.EdgeWriter); ok {
-		edgeWriter = writer
-	}
-
+	// Cleanup service
 	c.CleanupService = services.NewCleanupService(
 		c.NodeRepository,
 		c.EdgeRepository,
-		edgeWriter,
+		c.safeGetEdgeWriter(),
 		c.IdempotencyStore,
 		c.UnitOfWorkFactory,
 	)
-
-	log.Printf("CQRS Application Services initialized in %v", time.Since(startTime))
 }
 
 // initializeServices sets up the service layer.
@@ -1528,4 +1441,51 @@ func (c *SimpleMemoryCacheWrapper) Clear(ctx context.Context, pattern string) er
 }
 func (w *transactionalNodeWrapper) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
 	return w.base.BatchGetNodes(ctx, userID, nodeIDs)
+}
+
+// Safe type assertion helpers - prevent runtime panics from unsafe casts
+
+// safeGetNodeReader safely casts NodeRepository to NodeReader interface
+func (c *Container) safeGetNodeReader() repository.NodeReader {
+	if reader, ok := c.NodeRepository.(repository.NodeReader); ok {
+		return reader
+	}
+	log.Printf("WARNING: NodeRepository does not implement NodeReader interface")
+	return nil
+}
+
+// safeGetEdgeReader safely casts EdgeRepository to EdgeReader interface  
+func (c *Container) safeGetEdgeReader() repository.EdgeReader {
+	if reader, ok := c.EdgeRepository.(repository.EdgeReader); ok {
+		return reader
+	}
+	log.Printf("WARNING: EdgeRepository does not implement EdgeReader interface")
+	return nil
+}
+
+// safeGetCategoryReader safely casts CategoryRepository to CategoryReader interface
+func (c *Container) safeGetCategoryReader() repository.CategoryReader {
+	if reader, ok := c.CategoryRepository.(repository.CategoryReader); ok {
+		return reader
+	}
+	log.Printf("WARNING: CategoryRepository does not implement CategoryReader interface")
+	return nil
+}
+
+// safeGetCategoryWriter safely casts CategoryRepository to CategoryWriter interface
+func (c *Container) safeGetCategoryWriter() repository.CategoryWriter {
+	if writer, ok := c.CategoryRepository.(repository.CategoryWriter); ok {
+		return writer
+	}
+	log.Printf("WARNING: CategoryRepository does not implement CategoryWriter interface")
+	return nil
+}
+
+// safeGetEdgeWriter safely casts EdgeRepository to EdgeWriter interface
+func (c *Container) safeGetEdgeWriter() repository.EdgeWriter {
+	if writer, ok := c.EdgeRepository.(repository.EdgeWriter); ok {
+		return writer
+	}
+	log.Printf("WARNING: EdgeRepository does not implement EdgeWriter interface")
+	return nil
 }

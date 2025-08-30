@@ -13,7 +13,6 @@ import (
 	"os"
 	"time"
 
-	"brain2-backend/infrastructure/dynamodb"
 	infraDynamodb "brain2-backend/internal/infrastructure/persistence/dynamodb"
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
@@ -463,7 +462,7 @@ func provideTransactionalRepository(
 	cfg *config.Config,
 	logger *zap.Logger,
 ) repository.TransactionalRepository {
-	return dynamodb.NewTransactionalRepository(
+	return infraDynamodb.NewTransactionalRepository(
 		dynamoClient,
 		cfg.Database.TableName,
 		cfg.Database.IndexName,
@@ -487,16 +486,29 @@ func provideGraphRepository(
 
 // provideRepository creates the composed repository for backward compatibility.
 func provideRepository(
-	dynamoClient *awsDynamodb.Client,
-	cfg *config.Config,
-	logger *zap.Logger,
+	nodeRepo repository.NodeRepository,
+	edgeRepo repository.EdgeRepository,
+	categoryRepo repository.CategoryRepository,
+	keywordRepo repository.KeywordRepository,
+	transactionalRepo repository.TransactionalRepository,
+	graphRepo repository.GraphRepository,
 ) repository.Repository {
-	return dynamodb.NewRepository(
-		dynamoClient,
-		cfg.Database.TableName,
-		cfg.Database.IndexName,
-		logger,
-	)
+	// Create a composite repository that embeds all specific repositories
+	return &struct {
+		repository.NodeRepository
+		repository.EdgeRepository
+		repository.CategoryRepository
+		repository.KeywordRepository
+		repository.TransactionalRepository
+		repository.GraphRepository
+	}{
+		NodeRepository:          nodeRepo,
+		EdgeRepository:          edgeRepo,
+		CategoryRepository:      categoryRepo,
+		KeywordRepository:       keywordRepo,
+		TransactionalRepository: transactionalRepo,
+		GraphRepository:         graphRepo,
+	}
 }
 
 // provideIdempotencyStore creates the idempotency store.
@@ -504,7 +516,7 @@ func provideIdempotencyStore(
 	dynamoClient *awsDynamodb.Client,
 	cfg *config.Config,
 ) repository.IdempotencyStore {
-	return dynamodb.NewIdempotencyStore(
+	return infraDynamodb.NewIdempotencyStore(
 		dynamoClient,
 		cfg.Database.TableName,
 		cfg.Infrastructure.IdempotencyTTL,

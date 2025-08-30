@@ -4,14 +4,12 @@ import (
 	"context"
 	"time"
 	
-	"brain2-backend/internal/domain/node"
-	"brain2-backend/internal/domain/edge"
-	"brain2-backend/internal/domain/category"
-	"brain2-backend/internal/domain/shared"
-	// Store-based repository creation moved to infrastructure layer
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
+
+// Note: Interface compliance checks moved to individual repository implementations
+// to avoid import cycles between factory and implementation packages.
 
 // RepositoryFactory creates repository instances with configurable decorators.
 //
@@ -257,56 +255,8 @@ func (f *RepositoryFactory) CreateUnitOfWork(
 	return NewUnitOfWork(provider, eventPublisher, repoFactory, f.logger)
 }
 
-// CQRS Repository Creation Methods - Advanced Pattern Support
-
-// CreateCQRSNodeRepository creates a CQRS-enabled NodeRepository with separated read/write operations
-func (f *RepositoryFactory) CreateCQRSNodeRepository(
-	reader NodeReader,
-	writer NodeWriter,
-	logger *zap.Logger,
-	cache Cache,
-	metrics MetricsCollector,
-) NodeRepository {
-	// Create a combined repository from reader and writer
-	combined := &cqrsNodeRepository{reader: reader, writer: writer}
-	
-	// Apply decorators if enabled
-	var repo NodeRepository = combined
-	repo = f.applyNodeDecorators(repo, logger, cache, metrics)
-	
-	// Return as CQRS interface
-	return repo
-}
-
-// CreateCQRSEdgeRepository creates a CQRS-enabled EdgeRepository
-func (f *RepositoryFactory) CreateCQRSEdgeRepository(
-	reader EdgeReader,
-	writer EdgeWriter,
-	logger *zap.Logger,
-	cache Cache,
-	metrics MetricsCollector,
-) EdgeRepository {
-	// Similar pattern for edge repositories
-	combined := &cqrsEdgeRepository{reader: reader, writer: writer}
-	var repo EdgeRepository = combined
-	repo = f.applyEdgeDecorators(repo, logger, cache, metrics)
-	return repo
-}
-
-// CreateCQRSCategoryRepository creates a CQRS-enabled CategoryRepository
-func (f *RepositoryFactory) CreateCQRSCategoryRepository(
-	reader CategoryReader,
-	writer CategoryWriter,
-	logger *zap.Logger,
-	cache Cache,
-	metrics MetricsCollector,
-) CategoryRepository {
-	// Similar pattern for category repositories
-	combined := &cqrsCategoryRepository{reader: reader, writer: writer}
-	var repo CategoryRepository = combined
-	repo = f.applyCategoryDecorators(repo, logger, cache, metrics)
-	return repo
-}
+// Note: CQRS factory methods removed as they were using placeholder implementations.
+// The system uses direct repository implementations with proper decorator patterns.
 
 // Decorator Application Methods
 
@@ -360,6 +310,10 @@ func (f *RepositoryFactory) applyEdgeDecorators(
 	cache Cache,
 	metrics MetricsCollector,
 ) EdgeRepository {
+	// Parameters kept for future decorator implementations
+	_ = cache
+	_ = metrics
+	
 	if f.config.EnableValidation {
 		f.validateEdgeRepository(base)
 	}
@@ -394,6 +348,10 @@ func (f *RepositoryFactory) applyCategoryDecorators(
 	cache Cache,
 	metrics MetricsCollector,
 ) CategoryRepository {
+	// Parameters kept for future decorator implementations
+	_ = cache
+	_ = metrics
+	
 	if f.config.EnableValidation {
 		f.validateCategoryRepository(base)
 	}
@@ -682,174 +640,5 @@ func ExampleCustomFactory() {
 	_ = factory
 }
 
-// CQRS Repository Implementation Types
-// These implement the consolidated repository interfaces by combining readers and writers
-
-// cqrsNodeRepository combines NodeReader and NodeWriter into a single repository
-type cqrsNodeRepository struct {
-	reader NodeReader
-	writer NodeWriter
-}
-
-// Implement NodeRepository interface by delegating to reader/writer
-func (r *cqrsNodeRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
-	return r.writer.Save(ctx, node) // Delegate to writer
-}
-
-func (r *cqrsNodeRepository) FindNodeByID(ctx context.Context, userID, nodeID string) (*node.Node, error) {
-	// Convert string ID to domain type and delegate to reader
-	// Note: node.NodeID conversion depends on the domain implementation
-	// This is a simplified implementation for consolidation
-	return nil, nil // Placeholder: would implement proper conversion and delegation
-}
-
-func (r *cqrsNodeRepository) FindNodes(ctx context.Context, query NodeQuery) ([]*node.Node, error) {
-	// Placeholder: would implement proper query conversion and delegation
-	return nil, nil
-}
-
-func (r *cqrsNodeRepository) DeleteNode(ctx context.Context, userID, nodeID string) error {
-	// Placeholder: would implement proper ID conversion and delegation
-	return nil
-}
-
-func (r *cqrsNodeRepository) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) (deleted []string, failed []string, err error) {
-	// Placeholder: would delegate to writer for batch operations
-	return nil, nil, nil
-}
-
-func (r *cqrsNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
-	// Placeholder: would delegate to reader for batch operations
-	return nil, nil
-}
-
-func (r *cqrsNodeRepository) GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error) {
-	// Placeholder: would delegate to reader
-	return nil, nil
-}
-
-func (r *cqrsNodeRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*shared.Graph, error) {
-	// Placeholder: would implement neighborhood discovery
-	return nil, nil
-}
-
-func (r *cqrsNodeRepository) CountNodes(ctx context.Context, userID string) (int, error) {
-	// Placeholder: would delegate to reader
-	return 0, nil
-}
-
-// Phase 2 enhanced methods - simplified for consolidation
-func (r *cqrsNodeRepository) FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]*node.Node, error) {
-	// Placeholder: would delegate to reader
-	return nil, nil
-}
-
-func (r *cqrsNodeRepository) CountBySpecification(ctx context.Context, spec Specification) (int, error) {
-	// Placeholder: would delegate to reader
-	return 0, nil
-}
-
-func (r *cqrsNodeRepository) ExistsBySpecification(ctx context.Context, spec Specification) (bool, error) {
-	// Placeholder: would delegate to reader
-	return false, nil
-}
-
-func (r *cqrsNodeRepository) FindNodesWithOptions(ctx context.Context, query NodeQuery, opts ...QueryOption) ([]*node.Node, error) {
-	// Placeholder: would delegate to reader with options
-	return nil, nil
-}
-
-func (r *cqrsNodeRepository) FindNodesPageWithOptions(ctx context.Context, query NodeQuery, pagination Pagination, opts ...QueryOption) (*NodePage, error) {
-	// Placeholder: would delegate to reader with pagination
-	return nil, nil
-}
-
-// cqrsEdgeRepository combines EdgeReader and EdgeWriter into a single repository
-type cqrsEdgeRepository struct {
-	reader EdgeReader
-	writer EdgeWriter
-}
-
-// Implement EdgeRepository interface - simplified for consolidation
-func (r *cqrsEdgeRepository) CreateEdges(ctx context.Context, userID, sourceNodeID string, relatedNodeIDs []string) error {
-	// Placeholder: would create edges using writer
-	return nil
-}
-
-func (r *cqrsEdgeRepository) CreateEdge(ctx context.Context, edge *edge.Edge) error {
-	// Placeholder: would delegate to writer
-	return nil
-}
-
-func (r *cqrsEdgeRepository) FindEdges(ctx context.Context, query EdgeQuery) ([]*edge.Edge, error) {
-	// Placeholder: would delegate to reader
-	return nil, nil
-}
-
-// Remaining EdgeRepository methods - simplified for consolidation
-func (r *cqrsEdgeRepository) GetEdgesPage(ctx context.Context, query EdgeQuery, pagination Pagination) (*EdgePage, error) {
-	return nil, nil // Placeholder
-}
-
-func (r *cqrsEdgeRepository) FindBySpecification(ctx context.Context, spec Specification, opts ...QueryOption) ([]*edge.Edge, error) {
-	return nil, nil // Placeholder
-}
-
-func (r *cqrsEdgeRepository) CountBySpecification(ctx context.Context, spec Specification) (int, error) {
-	return 0, nil // Placeholder
-}
-
-func (r *cqrsEdgeRepository) ExistsBySpecification(ctx context.Context, spec Specification) (bool, error) {
-	return false, nil // Placeholder
-}
-
-func (r *cqrsEdgeRepository) FindEdgesWithOptions(ctx context.Context, query EdgeQuery, opts ...QueryOption) ([]*edge.Edge, error) {
-	return nil, nil // Placeholder
-}
-
-func (r *cqrsEdgeRepository) DeleteBySpecification(ctx context.Context, spec Specification) (int, error) {
-	return 0, nil // Placeholder
-}
-
-func (r *cqrsEdgeRepository) DeleteEdge(ctx context.Context, userID, edgeID string) error {
-	return nil // Placeholder
-}
-
-func (r *cqrsEdgeRepository) DeleteEdgesByNode(ctx context.Context, userID, nodeID string) error {
-	return nil // Placeholder
-}
-
-func (r *cqrsEdgeRepository) DeleteEdgesBetweenNodes(ctx context.Context, userID, sourceNodeID, targetNodeID string) error {
-	return nil // Placeholder
-}
-
-// cqrsCategoryRepository combines CategoryReader and CategoryWriter into a single repository  
-type cqrsCategoryRepository struct {
-	reader CategoryReader
-	writer CategoryWriter
-}
-
-// All CategoryRepository methods - simplified placeholders for consolidation
-func (r *cqrsCategoryRepository) CreateCategory(ctx context.Context, category category.Category) error { return nil }
-func (r *cqrsCategoryRepository) UpdateCategory(ctx context.Context, category category.Category) error { return nil }
-func (r *cqrsCategoryRepository) DeleteCategory(ctx context.Context, userID, categoryID string) error { return nil }
-func (r *cqrsCategoryRepository) FindCategoryByID(ctx context.Context, userID, categoryID string) (*category.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) FindCategories(ctx context.Context, query CategoryQuery) ([]category.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]category.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) CreateCategoryHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error { return nil }
-func (r *cqrsCategoryRepository) DeleteCategoryHierarchy(ctx context.Context, userID, parentID, childID string) error { return nil }
-func (r *cqrsCategoryRepository) FindChildCategories(ctx context.Context, userID, parentID string) ([]category.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) FindParentCategory(ctx context.Context, userID, childID string) (*category.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) GetCategoryTree(ctx context.Context, userID string) ([]category.Category, error) { return nil, nil }
-
-// CQRS-compatible methods
-func (r *cqrsCategoryRepository) Save(ctx context.Context, category *category.Category) error { return nil }
-func (r *cqrsCategoryRepository) FindByID(ctx context.Context, userID, categoryID string) (*category.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) Delete(ctx context.Context, userID, categoryID string) error { return nil }
-
-func (r *cqrsCategoryRepository) AssignNodeToCategory(ctx context.Context, mapping node.NodeCategory) error { return nil }
-func (r *cqrsCategoryRepository) RemoveNodeFromCategory(ctx context.Context, userID, nodeID, categoryID string) error { return nil }
-func (r *cqrsCategoryRepository) FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*node.Node, error) { return nil, nil }
-func (r *cqrsCategoryRepository) FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]category.Category, error) { return nil, nil }
-func (r *cqrsCategoryRepository) BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error { return nil }
-func (r *cqrsCategoryRepository) UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error { return nil }
+// Note: CQRS repository wrapper types have been removed as they contained only placeholder methods.
+// The actual repositories implement their interfaces directly through composition patterns.

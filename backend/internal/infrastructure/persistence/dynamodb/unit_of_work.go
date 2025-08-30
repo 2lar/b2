@@ -26,6 +26,7 @@ type ProperUnitOfWork struct {
 	
 	// Transaction state
 	mu              sync.Mutex
+	ctx             context.Context // Store context from Begin() for use in Commit()
 	isInTransaction bool
 	isCommitted     bool
 	isRolledBack    bool
@@ -99,6 +100,8 @@ func (uow *ProperUnitOfWork) Begin(ctx context.Context) error {
 		return errors.Validation(errors.CodeValidationFailed.String(), "unit of work already rolled back").Build()
 	}
 	
+	// Store context for use in Commit() and other operations
+	uow.ctx = ctx
 	uow.isInTransaction = true
 	uow.transactItems = make([]types.TransactWriteItem, 0)
 	uow.pendingEvents = make([]shared.DomainEvent, 0)
@@ -130,7 +133,7 @@ func (uow *ProperUnitOfWork) Commit() error {
 			TransactItems: uow.transactItems,
 		}
 		
-		_, err := uow.client.TransactWriteItems(context.TODO(), input)
+		_, err := uow.client.TransactWriteItems(uow.ctx, input)
 		if err != nil {
 			uow.logger.Error("Transaction commit failed",
 				zap.Error(err),
@@ -155,7 +158,7 @@ func (uow *ProperUnitOfWork) Commit() error {
 			zap.String("event_id", event.EventID()),
 		)
 		
-		if err := uow.eventBus.Publish(context.TODO(), event); err != nil {
+		if err := uow.eventBus.Publish(uow.ctx, event); err != nil {
 			uow.logger.Warn("Failed to publish event",
 				zap.String("event_type", event.EventType()),
 				zap.Error(err),

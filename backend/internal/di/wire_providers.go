@@ -4,6 +4,10 @@
 // Package di provides provider functions for Wire dependency injection.
 // This file contains provider function declarations for Wire to use during code generation.
 // The actual implementations are in providers.go (excluded during Wire generation).
+//
+// IMPORTANT: The panic("wire") statements in this file are INTENTIONAL and expected.
+// Wire replaces these function declarations with actual implementations during code generation.
+// These panics will never execute in the generated code.
 package di
 
 import (
@@ -84,9 +88,12 @@ func provideGraphRepository(
 ) repository.GraphRepository { panic("wire") }
 
 func provideRepository(
-	dynamoClient *awsDynamodb.Client,
-	cfg *config.Config,
-	logger *zap.Logger,
+	nodeRepo repository.NodeRepository,
+	edgeRepo repository.EdgeRepository,
+	categoryRepo repository.CategoryRepository,
+	keywordRepo repository.KeywordRepository,
+	transactionalRepo repository.TransactionalRepository,
+	graphRepo repository.GraphRepository,
 ) repository.Repository { panic("wire") }
 
 func provideIdempotencyStore(

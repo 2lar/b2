@@ -377,7 +377,8 @@ func LoadWithLoader() (*Config, error) {
 }
 
 // MustLoadWithLoader loads configuration and panics on error.
-// Use this only in main() or init() functions.
+// Use this only in main() or init() functions where configuration failure should halt the program.
+// For normal operation, use LoadConfig() or LoadWithLoader() which return errors.
 func MustLoadWithLoader() *Config {
 	cfg, err := LoadWithLoader()
 	if err != nil {

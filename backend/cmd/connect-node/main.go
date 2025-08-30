@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"log"
 
-	infraDynamoDB "brain2-backend/infrastructure/dynamodb"
+	infradynamodb "brain2-backend/internal/infrastructure/persistence/dynamodb"
 	"brain2-backend/internal/repository"
 	"brain2-backend/pkg/config"
 
@@ -22,6 +22,16 @@ import (
 var repo repository.Repository
 var eventbridgeClient *eventbridge.Client
 
+// compositeRepository implements the repository.Repository interface by embedding all repositories
+type compositeRepository struct {
+	repository.NodeRepository
+	repository.EdgeRepository
+	repository.CategoryRepository
+	repository.KeywordRepository
+	repository.TransactionalRepository
+	repository.GraphRepository
+}
+
 func init() {
 	cfg := config.New()
 	awsCfg, err := awsConfig.LoadDefaultConfig(context.Background(), awsConfig.WithRegion(cfg.Region))
@@ -37,7 +47,24 @@ func init() {
 	
 	dbClient := dynamodb.NewFromConfig(awsCfg)
 	eventbridgeClient = eventbridge.NewFromConfig(awsCfg)
-	repo = infraDynamoDB.NewRepository(dbClient, cfg.TableName, cfg.KeywordIndexName, logger)
+	
+	// Create a simple composite repository for backward compatibility
+	nodeRepo := infradynamodb.NewNodeRepository(dbClient, cfg.TableName, cfg.KeywordIndexName, logger)
+	edgeRepo := infradynamodb.NewEdgeRepository(dbClient, cfg.TableName, cfg.KeywordIndexName, logger)
+	categoryRepo := infradynamodb.NewCategoryRepository(dbClient, cfg.TableName, cfg.KeywordIndexName, logger)
+	keywordRepo := infradynamodb.NewKeywordRepository(dbClient, cfg.TableName, cfg.KeywordIndexName)
+	transactionalRepo := infradynamodb.NewTransactionalRepository(dbClient, cfg.TableName, cfg.KeywordIndexName, logger)
+	graphRepo := infradynamodb.NewGraphRepository(dbClient, cfg.TableName, cfg.KeywordIndexName, logger)
+	
+	// Create composite repository
+	repo = &compositeRepository{
+		NodeRepository:          nodeRepo,
+		EdgeRepository:          edgeRepo,
+		CategoryRepository:      categoryRepo,
+		KeywordRepository:       keywordRepo,
+		TransactionalRepository: transactionalRepo,
+		GraphRepository:         graphRepo,
+	}
 }
 
 type NodeCreatedEvent struct {

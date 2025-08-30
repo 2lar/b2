@@ -44,7 +44,7 @@ func InitializeContainer() (*Container, error) {
 	keywordRepository := provideKeywordRepository(client, config)
 	transactionalRepository := provideTransactionalRepository(client, config, logger)
 	graphRepository := provideGraphRepository(client, config, logger)
-	repository := provideRepository(client, config, logger)
+	repository := provideRepository(nodeRepository, edgeRepository, categoryRepository, keywordRepository, transactionalRepository, graphRepository)
 	idempotencyStore := provideIdempotencyStore(client, config)
 	store := provideStore(client, config, logger)
 	tracerProvider, err := provideTracerProvider(config)
