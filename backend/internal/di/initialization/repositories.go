@@ -6,6 +6,7 @@ import (
 
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/infrastructure/persistence"
 	infradynamodb "brain2-backend/internal/infrastructure/persistence/dynamodb"
 	"brain2-backend/internal/repository"
 
@@ -28,7 +29,14 @@ func InitializeRepositoryLayer(config RepositoryConfig) (*RepositoryServices, er
 	log.Println("Initializing repository layer...")
 	startTime := time.Now()
 
-	// No store initialization needed - repositories work directly with DynamoDB client
+	// Initialize store for compatibility with legacy query services
+	storeConfig := persistence.StoreConfig{
+		TableName: config.TableName,
+		IndexNames: map[string]string{
+			"GSI1": config.IndexName,
+		},
+	}
+	store := persistence.NewDynamoDBStore(config.DynamoDBClient, storeConfig, config.Logger)
 
 	// Initialize repositories
 	nodeRepo := infradynamodb.NewNodeRepository(config.DynamoDBClient, config.TableName, config.IndexName, config.Logger)
@@ -37,6 +45,12 @@ func InitializeRepositoryLayer(config RepositoryConfig) (*RepositoryServices, er
 	
 	// Create graph repository for unified access
 	graphRepo := infradynamodb.NewGraphRepository(config.DynamoDBClient, config.TableName, config.IndexName, config.Logger)
+	
+	// Create keyword repository for keyword-based search
+	keywordRepo := infradynamodb.NewKeywordRepository(config.DynamoDBClient, config.TableName, config.IndexName)
+	
+	// Create transactional repository for complex transactional operations
+	transactionalRepo := infradynamodb.NewTransactionalRepository(config.DynamoDBClient, config.TableName, config.IndexName, config.Logger)
 
 	// Initialize domain services
 	connectionAnalyzer := domainServices.NewConnectionAnalyzer(0.3, 5, 0.2)
@@ -56,13 +70,16 @@ func InitializeRepositoryLayer(config RepositoryConfig) (*RepositoryServices, er
 	)
 
 	services := &RepositoryServices{
-		NodeRepository:     nodeRepo,
-		EdgeRepository:     edgeRepo, 
-		CategoryRepository: categoryRepo,
-		GraphRepository:    graphRepo,
-		ConnectionAnalyzer: connectionAnalyzer,
-		IdempotencyStore:   idempotencyStore,
-		UnitOfWorkFactory:  unitOfWorkFactory,
+		Store:                   store,
+		NodeRepository:          nodeRepo,
+		EdgeRepository:          edgeRepo, 
+		CategoryRepository:      categoryRepo,
+		GraphRepository:         graphRepo,
+		KeywordRepository:       keywordRepo,
+		TransactionalRepository: transactionalRepo,
+		ConnectionAnalyzer:      connectionAnalyzer,
+		IdempotencyStore:        idempotencyStore,
+		UnitOfWorkFactory:       unitOfWorkFactory,
 	}
 
 	log.Printf("Repository layer initialized in %v", time.Since(startTime))
@@ -71,13 +88,16 @@ func InitializeRepositoryLayer(config RepositoryConfig) (*RepositoryServices, er
 
 // RepositoryServices holds all initialized repository-layer services
 type RepositoryServices struct {
-	NodeRepository     repository.NodeRepository
-	EdgeRepository     repository.EdgeRepository
-	CategoryRepository repository.CategoryRepository
-	GraphRepository    repository.GraphRepository
-	ConnectionAnalyzer *domainServices.ConnectionAnalyzer
-	IdempotencyStore   repository.IdempotencyStore
-	UnitOfWorkFactory  repository.UnitOfWorkFactory
+	Store                   persistence.Store
+	NodeRepository          repository.NodeRepository
+	EdgeRepository          repository.EdgeRepository
+	CategoryRepository      repository.CategoryRepository
+	GraphRepository         repository.GraphRepository
+	KeywordRepository       repository.KeywordRepository
+	TransactionalRepository repository.TransactionalRepository
+	ConnectionAnalyzer      *domainServices.ConnectionAnalyzer
+	IdempotencyStore        repository.IdempotencyStore
+	UnitOfWorkFactory       repository.UnitOfWorkFactory
 }
 
 // safeGetNodeReader safely converts NodeRepository to NodeReader interface

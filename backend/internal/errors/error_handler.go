@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 	
+	sharedContext "brain2-backend/internal/context"
 	"brain2-backend/pkg/api"
 	"go.uber.org/zap"
 )
@@ -339,11 +340,10 @@ func (h *ErrorHandler) HandleRepositoryError(operation, resource string, err err
 // ============================================================================
 
 // getUserIDFromContext extracts user ID from request context.
+// This uses the shared context package for consistency across the application.
 func getUserIDFromContext(ctx context.Context) string {
-	if userID := ctx.Value("userID"); userID != nil {
-		if uid, ok := userID.(string); ok {
-			return uid
-		}
+	if userID, ok := sharedContext.GetUserIDFromContext(ctx); ok {
+		return userID
 	}
 	return ""
 }

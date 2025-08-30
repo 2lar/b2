@@ -5,6 +5,7 @@
 import { Stack, StackProps, Duration, CfnOutput } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
@@ -39,18 +40,26 @@ export class ComputeStack extends Stack {
       eventBusName: 'B2EventBus',
     });
 
-    // JWT Authorization Lambda (Node.js) - Match original b2-stack pattern
-    this.authorizerLambda = new lambda.Function(this, 'JWTAuthorizerLambda', {
+    // JWT Authorization Lambda (Node.js) - Auto-compiles TypeScript
+    this.authorizerLambda = new NodejsFunction(this, 'JWTAuthorizerLambda', {
       functionName: `${config.stackName}-jwt-authorizer`,
+      entry: path.join(__dirname, '../../lambda/authorizer/index.ts'),
+      handler: 'handler',
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/authorizer')),
       environment: {
         SUPABASE_URL: config.supabase.url!,
         SUPABASE_SERVICE_ROLE_KEY: config.supabase.serviceRoleKey!,
       },
       timeout: Duration.seconds(10),
       memorySize: 128,
+      bundling: {
+        minify: false,  // Keep readable for debugging
+        sourceMap: true, // Enable source maps
+        target: 'node20',
+        esbuildArgs: {
+          '--packages': 'bundle',  // Fix for esbuild 0.22+ compatibility
+        },
+      },
     });
 
     // Main Backend Lambda (Go) - Match original b2-stack pattern

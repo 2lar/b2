@@ -80,6 +80,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
+	"github.com/go-chi/chi/v5"
 )
 
 // Global variables for Lambda lifecycle management
@@ -140,9 +141,15 @@ func init() {
 	// The router contains all HTTP routes and middleware configured via DI
 	router := container.GetRouter()
 	
+	// Type assert to *chi.Mux for the Lambda adapter
+	chiRouter, ok := router.(*chi.Mux)
+	if !ok {
+		log.Fatal("Router is not a *chi.Mux")
+	}
+	
 	// Create the Lambda adapter that bridges Chi router and AWS Lambda runtime
 	// This adapter handles AWS-specific request/response format conversion
-	chiLambda = chiadapter.NewV2(router)
+	chiLambda = chiadapter.NewV2(chiRouter)
 	
 	initDuration := time.Since(initStart)
 	

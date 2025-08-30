@@ -21,7 +21,7 @@
 //   • NodeRepository: Memory node persistence and querying
 //   • EdgeRepository: Graph relationship management
 //   • CategoryRepository: Knowledge organization and hierarchies
-//   • UnitOfWork: Transaction boundary management
+//   • UnitOfWork: Transaction boundary management for aggregate consistency
 //
 // This design enables Brain2 to maintain clean separation between business
 // logic and data persistence while supporting sophisticated querying needs.

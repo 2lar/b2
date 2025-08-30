@@ -17,6 +17,7 @@ import (
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
+	dicache "brain2-backend/internal/di/cache"
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/features"
@@ -196,12 +197,12 @@ func provideCategoryRepository(
 func provideCache(cfg *config.Config, logger *zap.Logger) cache.Cache {
 	// Create cache based on configuration
 	if !cfg.Features.EnableCaching {
-		return NewNoOpCache()
+		return dicache.NewNoOpCache()
 	}
 	
 	// Use in-memory cache for now
 	// In production, this could be Redis, Memcached, etc.
-	return NewInMemoryCache(1000, 5*time.Minute)
+	return dicache.NewInMemoryCache(1000, 5*time.Minute)
 }
 
 // provideCacheAdapter returns the cache directly since interfaces are unified.

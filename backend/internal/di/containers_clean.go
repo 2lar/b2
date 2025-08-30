@@ -4,7 +4,6 @@ package di
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -86,12 +85,13 @@ func (c *InfrastructureContainer) Shutdown() error {
 // Single Responsibility: Data access and persistence only.
 type RepositoryContainer struct {
 	// Combined repositories (for backward compatibility)
-	Node       repository.NodeRepository
-	Edge       repository.EdgeRepository
-	Category   repository.CategoryRepository
-	Graph      repository.GraphRepository
-	Keyword    repository.KeywordRepository
-	Idempotency repository.IdempotencyStore
+	Node            repository.NodeRepository
+	Edge            repository.EdgeRepository
+	Category        repository.CategoryRepository
+	Graph           repository.GraphRepository
+	Keyword         repository.KeywordRepository
+	Transactional   repository.TransactionalRepository
+	Idempotency     repository.IdempotencyStore
 	
 	// CQRS Readers - Read models
 	NodeReader     repository.NodeReader
@@ -315,13 +315,22 @@ func (c *ApplicationContainer) Validate() error {
 	
 	// Validate key components are initialized
 	if c.Infrastructure.Logger == nil {
-		return fmt.Errorf("logger is not initialized")
+		return errors.Internal("LOGGER_NIL", "Logger is not initialized").
+			WithOperation("ValidateContainers").
+			WithResource("infrastructure_container").
+			Build()
 	}
 	if c.Infrastructure.Cache == nil {
-		return fmt.Errorf("cache is not initialized")
+		return errors.Internal("CACHE_NIL", "Cache is not initialized").
+			WithOperation("ValidateContainers").
+			WithResource("infrastructure_container").
+			Build()
 	}
 	if c.Handlers.Router == nil {
-		return fmt.Errorf("router is not initialized")
+		return errors.Internal("ROUTER_NIL", "Router is not initialized").
+			WithOperation("ValidateContainers").
+			WithResource("handler_container").
+			Build()
 	}
 	
 	return nil
@@ -353,22 +362,38 @@ func (c *ApplicationContainer) GetRouter() *chi.Mux {
 func (c *InfrastructureContainer) initialize() error {
 	// Initialize observability components
 	if err := c.initializeObservability(); err != nil {
-		return fmt.Errorf("failed to initialize observability: %w", err)
+		return errors.Internal("OBSERVABILITY_INIT_FAILED", "Failed to initialize observability").
+			WithOperation("initialize").
+			WithResource("infrastructure_container").
+			WithCause(err).
+			Build()
 	}
 	
 	// Initialize AWS clients
 	if err := c.initializeAWSClients(); err != nil {
-		return fmt.Errorf("failed to initialize AWS clients: %w", err)
+		return errors.Internal("AWS_CLIENTS_INIT_FAILED", "Failed to initialize AWS clients").
+			WithOperation("initialize").
+			WithResource("infrastructure_container").
+			WithCause(err).
+			Build()
 	}
 	
 	// Initialize cache
 	if err := c.initializeCache(); err != nil {
-		return fmt.Errorf("failed to initialize cache: %w", err)
+		return errors.Internal("CACHE_INIT_FAILED", "Failed to initialize cache").
+			WithOperation("initialize").
+			WithResource("infrastructure_container").
+			WithCause(err).
+			Build()
 	}
 	
 	// Initialize store
 	if err := c.initializeStore(); err != nil {
-		return fmt.Errorf("failed to initialize store: %w", err)
+		return errors.Internal("STORE_INIT_FAILED", "Failed to initialize store").
+			WithOperation("initialize").
+			WithResource("infrastructure_container").
+			WithCause(err).
+			Build()
 	}
 	
 	return nil
@@ -388,7 +413,11 @@ func (c *RepositoryContainer) initialize(infra *InfrastructureContainer) error {
 	// Initialize repository services
 	services, err := initialization.InitializeRepositoryLayer(repoConfig)
 	if err != nil {
-		return fmt.Errorf("failed to initialize repository layer: %w", err)
+		return errors.Internal("REPOSITORY_INIT_FAILED", "Failed to initialize repository layer").
+			WithOperation("initialize").
+			WithResource("repository_container").
+			WithCause(err).
+			Build()
 	}
 	
 	// Set up combined repositories
@@ -396,6 +425,8 @@ func (c *RepositoryContainer) initialize(infra *InfrastructureContainer) error {
 	c.Edge = services.EdgeRepository
 	c.Category = services.CategoryRepository
 	c.Graph = services.GraphRepository
+	c.Keyword = services.KeywordRepository
+	c.Transactional = services.TransactionalRepository
 	c.Idempotency = services.IdempotencyStore
 	
 	// Set up CQRS readers/writers
@@ -407,6 +438,7 @@ func (c *RepositoryContainer) initialize(infra *InfrastructureContainer) error {
 	
 	// Set up specialized repositories
 	c.GraphRepository = services.GraphRepository
+	c.KeywordRepository = services.KeywordRepository
 	c.IdempotencyStore = services.IdempotencyStore
 	
 	// Set up Unit of Work

@@ -4,6 +4,7 @@ package di
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"brain2-backend/internal/application/queries"
@@ -20,7 +21,6 @@ import (
 
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
-	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
 
@@ -80,12 +80,17 @@ type Container struct {
 	UnitOfWorkFactory  repository.UnitOfWorkFactory
 
 	// Handler Layer
+	Memory          *v1handlers.MemoryHandler // Alias for MemoryHandler
 	MemoryHandler   *v1handlers.MemoryHandler
+	Category        *v1handlers.CategoryHandler // Alias for CategoryHandler
 	CategoryHandler *v1handlers.CategoryHandler
+	CategoryService *services.CategoryService // For backward compatibility
 	HealthHandler   *v1handlers.HealthHandler
+	MetricsHandler  interface{} // Will be http.HandlerFunc
 
-	// HTTP Router
-	Router *chi.Mux
+	// HTTP Router and Middleware
+	Router     http.Handler
+	Middleware []func(http.Handler) http.Handler
 
 	// Concurrency Management
 	PoolManager *concurrency.PoolManager
@@ -95,6 +100,9 @@ type Container struct {
 
 	// Lifecycle management
 	shutdownFunctions []func() error
+	
+	// Reference to new ApplicationContainer (for migration)
+	appContainer *ApplicationContainer
 }
 
 // ColdStartInfoProvider interface for cold start tracking.

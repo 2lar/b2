@@ -78,12 +78,12 @@ func InitializeApplicationServices(config ServiceConfig, repos *RepositoryServic
 		)
 	}
 
-	// TODO: GraphQueryService expects persistence.Store but we have repository.GraphRepository
-	// appServices.GraphQueryService = queries.NewGraphQueryService(
-	//	repos.GraphRepository,
-	//	config.Logger,
-	//	queryCache,
-	// )
+	// GraphQueryService using the persistence.Store
+	appServices.GraphQueryService = queries.NewGraphQueryService(
+		repos.Store,
+		config.Logger,
+		queryCache,
+	)
 
 	// Category service
 	appServices.CategoryAppService = services.NewCategoryService(
