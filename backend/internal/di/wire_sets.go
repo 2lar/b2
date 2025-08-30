@@ -13,12 +13,29 @@ import (
 // This demonstrates how to compose multiple provider sets in Wire.
 var SuperSet = wire.NewSet(
 	ConfigProviders,
+	CleanContainerProviders, // New clean container providers
+	
+	// Legacy providers for backward compatibility (will be removed in Phase 3)
 	InfrastructureProviders,
 	DomainProviders,
 	ApplicationProviders,
 	InterfaceProviders,
 	AdditionalProviders,
 	provideContainer,
+	wire.Bind(new(http.Handler), new(*chi.Mux)), // Bind router as http.Handler
+)
+
+// CleanSuperSet is the new provider set using only the clean containers.
+// This will eventually replace SuperSet once migration is complete.
+var CleanSuperSet = wire.NewSet(
+	ConfigProviders,
+	CleanContainerProviders,
+	
+	// Backward compatibility extractors (only for non-conflicting types)
+	provideRouterFromApplicationContainer,
+	provideDynamoDBClientFromInfrastructure,
+	provideEventBridgeClientFromInfrastructure,
+	
 	wire.Bind(new(http.Handler), new(*chi.Mux)), // Bind router as http.Handler
 )
 

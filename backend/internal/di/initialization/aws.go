@@ -2,11 +2,11 @@ package initialization
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
 
+	"brain2-backend/internal/errors"
 	"brain2-backend/internal/infrastructure/concurrency"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -32,7 +32,12 @@ func InitializeAWSClients() (*AWSClients, error) {
 
 	awsCfg, err := awsConfig.LoadDefaultConfig(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		return nil, errors.Connection("AWS_CONFIG_LOAD_FAILED", "Failed to load AWS config").
+			WithOperation("InitializeAWSConfig").
+			WithResource("aws").
+			WithCause(err).
+			WithRetryable(true).
+			Build()
 	}
 
 	// Create shared HTTP client optimized for Lambda

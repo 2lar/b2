@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"brain2-backend/internal/errors"
 )
 
 // BatchProcessor handles batch processing with environment-aware optimizations
@@ -122,7 +124,10 @@ func (p *BatchProcessor) ProcessBatchWithDeadline(
 		// Check if we need to adjust the deadline
 		safeDeadline := deadline.Add(-timeoutBuffer)
 		if time.Now().After(safeDeadline) {
-			return nil, fmt.Errorf("insufficient time remaining for batch processing")
+			return nil, errors.Timeout("BATCH_TIMEOUT", "Insufficient time remaining for batch processing").
+				WithOperation("ProcessBatch").
+				WithResource("batch_processor").
+				Build()
 		}
 		
 		// Only create new context if we need to adjust the deadline
@@ -146,7 +151,11 @@ func (p *BatchProcessor) ProcessBatchWithDeadline(
 	shouldManagePool := false
 	if !p.pool.running {
 		if err := p.pool.Start(); err != nil {
-			return nil, fmt.Errorf("failed to start worker pool: %w", err)
+			return nil, errors.Internal("WORKER_POOL_START_FAILED", "Failed to start worker pool").
+				WithOperation("ProcessBatch").
+				WithResource("worker_pool").
+				WithCause(err).
+				Build()
 		}
 		shouldManagePool = true
 		defer func() {

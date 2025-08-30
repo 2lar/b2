@@ -71,3 +71,18 @@ func InitializeContainer() (*Container, error) {
 	container := provideContainer(config, logger, client, eventbridgeClient, nodeRepository, edgeRepository, categoryRepository, keywordRepository, transactionalRepository, graphRepository, repository, idempotencyStore, store, cache, collector, tracerProvider, nodeService, categoryService, cleanupService, nodeQueryService, categoryQueryService, graphQueryService, connectionAnalyzer, eventBus, unitOfWork, memoryHandler, categoryHandler, healthHandler, mux, repositoryFactory, coldStartTracker)
 	return container, nil
 }
+
+// InitializeApplicationContainer wires together the new clean container architecture.
+// This function uses the CleanSuperSet to create an ApplicationContainer with
+// all the focused sub-containers properly initialized and wired.
+func InitializeApplicationContainer() (*ApplicationContainer, error) {
+	config, err := provideConfig()
+	if err != nil {
+		return nil, err
+	}
+	applicationContainer, err := provideApplicationContainer(config)
+	if err != nil {
+		return nil, err
+	}
+	return applicationContainer, nil
+}

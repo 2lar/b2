@@ -7,7 +7,9 @@ import (
 	"net/http"
 	
 	sharedContext "brain2-backend/internal/context"
+	"brain2-backend/internal/errors"
 	"brain2-backend/pkg/api"
+	"go.uber.org/zap"
 )
 
 // HandlerMiddleware provides common functionality for HTTP handlers.
@@ -60,7 +62,7 @@ func NewUserIDExtractor() *UserIDExtractor {
 // Extract extracts user ID from request and adds it to context.
 func (u *UserIDExtractor) Extract(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID, ok := getUserID(r)
+		userID, ok := sharedContext.GetUserIDFromContext(r.Context())
 		if !ok {
 			log.Printf("ERROR: Authentication failed, getUserID returned false")
 			api.Error(w, http.StatusUnauthorized, "Authentication required")
@@ -90,7 +92,13 @@ func NewErrorHandler() *ErrorHandler {
 
 // HandleServiceError handles service layer errors and converts them to HTTP responses.
 func (e *ErrorHandler) HandleServiceError(w http.ResponseWriter, err error) {
-	handleServiceError(w, err)
+	// Use the unified error system directly for consistent error handling
+	// Create a logger for error handling
+	logger, _ := zap.NewProduction()
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	errors.WriteHTTPError(w, err, logger)
 }
 
 // HandlerLoggingHelper provides request logging functionality specific to handlers.
@@ -109,20 +117,4 @@ func (l *HandlerLoggingHelper) LogHandlerCall(handlerName string, next http.Hand
 		log.Printf("DEBUG: %s called for userID: %s", handlerName, userID)
 		next(w, r)
 	}
-}
-
-// getUserID extracts user ID from request using shared context.
-func getUserID(r *http.Request) (string, bool) {
-	// Use the shared context utility to get user ID
-	return sharedContext.GetUserIDFromContext(r.Context())
-}
-
-// handleServiceError handles service errors using proper error classification.
-func handleServiceError(w http.ResponseWriter, err error) {
-	// This should delegate to the handlers.handleServiceError implementation
-	// For now, provide basic error handling
-	if err != nil {
-		log.Printf("Service error: %v", err)
-	}
-	api.Error(w, http.StatusInternalServerError, "Internal server error")
 }

@@ -351,10 +351,6 @@ func (c *Container) initializeTransactionInfrastructure(transactionProvider repo
 		c.Logger,
 	)
 
-	// Keep singleton for backward compatibility (will be removed later)
-	// Note: Need to create an adapter for EventBus to EventPublisher interface
-	// c.UnitOfWork = repository.NewUnitOfWork(transactionProvider, eventPublisher, repositoryFactory, c.Logger)
-	// TODO: Implement proper EventPublisher adapter or remove deprecated UnitOfWork
 }
 
 // initializeApplicationServices sets up application layer services

@@ -10,6 +10,7 @@ import (
 
 	"brain2-backend/internal/domain/edge"
 	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/errors"
 	"brain2-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -292,7 +293,7 @@ func (r *EdgeRepository) Delete(ctx context.Context, userID shared.UserID, edgeI
 	// First, try to find the edge by ID to get source and target
 	allEdges, err := r.FindByUser(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("failed to find edges for deletion: %w", err)
+		return errors.RepositoryError("Delete", fmt.Sprintf("edge:%s", edgeID), err)
 	}
 	
 	// Find the specific edge
@@ -402,7 +403,11 @@ func (r *EdgeRepository) BatchDeleteEdges(ctx context.Context, userID string, ed
 	}
 	
 	if len(failed) > 0 {
-		err = fmt.Errorf("failed to delete %d edges", len(failed))
+		err = errors.Internal("BATCH_DELETE_FAILED", fmt.Sprintf("Failed to delete %d edges", len(failed))).
+			WithOperation("DeleteByNodes").
+			WithResource("edges").
+			WithSeverity(errors.SeverityHigh).
+			Build()
 	}
 	
 	return deleted, failed, err
@@ -461,7 +466,10 @@ func (r *EdgeRepository) FindWeakConnections(ctx context.Context, userID shared.
 func (r *EdgeRepository) FindBySpecification(ctx context.Context, spec repository.Specification, opts ...repository.QueryOption) ([]*edge.Edge, error) {
 	// Simplified implementation - would need proper specification pattern
 	if spec == nil {
-		return nil, fmt.Errorf("invalid specification")
+		return nil, errors.Validation("INVALID_SPECIFICATION", "Specification cannot be nil").
+			WithOperation("FindBySpecification").
+			WithResource("edge").
+			Build()
 	}
 	// This would need proper specification implementation
 	return []*edge.Edge{}, nil
@@ -649,7 +657,10 @@ func (r *EdgeRepository) DeleteByNodeID(ctx context.Context, nodeID shared.NodeI
 	// This method needs userID, but we can't get it without querying
 	// For now, this is a limitation that needs to be addressed at the interface level
 	// The proper method to use is DeleteByNode with userID
-	return fmt.Errorf("DeleteByNodeID requires userID, use DeleteByNode instead")
+	return errors.Validation("MISSING_USER_ID", "DeleteByNodeID requires userID, use DeleteByNode instead").
+		WithOperation("DeleteByNodeID").
+		WithResource("edge").
+		Build()
 }
 
 // SaveBatch saves multiple edges

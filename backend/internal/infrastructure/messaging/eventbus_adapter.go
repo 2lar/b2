@@ -27,9 +27,9 @@ package messaging
 
 import (
 	"context"
-	"fmt"
 
 	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/errors"
 	"brain2-backend/internal/repository"
 )
 
@@ -51,7 +51,10 @@ func NewEventBusAdapter(publisher repository.EventPublisher) shared.EventBus {
 func (a *EventBusAdapter) Publish(ctx context.Context, event shared.DomainEvent) error {
 	// Check if publisher is nil
 	if a.publisher == nil {
-		return fmt.Errorf("underlying event publisher is nil")
+		return errors.Internal("EVENT_PUBLISHER_NIL", "Underlying event publisher is nil").
+			WithOperation("PublishEvent").
+			WithResource("eventbus").
+			Build()
 	}
 	
 	// EventPublisher expects an array of events
@@ -59,7 +62,12 @@ func (a *EventBusAdapter) Publish(ctx context.Context, event shared.DomainEvent)
 	
 	err := a.publisher.Publish(ctx, events)
 	if err != nil {
-		return fmt.Errorf("event publisher failed: %w", err)
+		return errors.External("EVENT_PUBLISH_FAILED", "Event publisher failed").
+			WithOperation("PublishEvent").
+			WithResource("eventbus").
+			WithCause(err).
+			WithRetryable(true).
+			Build()
 	}
 	
 	return nil

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"brain2-backend/internal/errors"
 )
 
 // ErrorCollector safely collects errors from concurrent operations
@@ -248,7 +250,11 @@ func (ec *ErrorCollector) ToError() error {
 		return summary.FirstError
 	}
 	
-	return fmt.Errorf(summary.ErrorMessage)
+	return errors.Internal("CONCURRENT_ERRORS", summary.ErrorMessage).
+		WithOperation("CollectErrors").
+		WithResource("error_collector").
+		WithSeverity(errors.SeverityHigh).
+		Build()
 }
 
 // ErrorGroup provides a way to group related errors

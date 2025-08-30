@@ -6,10 +6,12 @@ lambda/authorizer/
 
 # CDK synthesized artifacts (CloudFormation templates, etc.)
 /cdk.out/
+/.cdk.staging/
 
 # TypeScript build artifacts
 *.js
 *.d.ts
+*.js.map
 !jest.config.js
 !**/*.config.js
 

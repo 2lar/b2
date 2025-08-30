@@ -10,6 +10,7 @@ import (
 	"brain2-backend/internal/domain/category"
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/errors"
 	"brain2-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -202,7 +203,7 @@ func (r *CategoryRepository) Save(ctx context.Context, cat *category.Category) e
 	if cat.ParentID != nil {
 		parent, err := r.FindByID(ctx, cat.UserID, string(*cat.ParentID))
 		if err != nil {
-			return fmt.Errorf("parent category not found: %w", err)
+			return errors.RepositoryError("ValidateParentCategory", string(*cat.ParentID), err)
 		}
 		
 		// Set level based on parent
@@ -227,14 +228,17 @@ func (r *CategoryRepository) Update(ctx context.Context, cat *category.Category)
 		
 		for _, ancestor := range ancestors {
 			if ancestor.ID == cat.ID {
-				return fmt.Errorf("circular dependency detected")
+				return errors.Conflict("CIRCULAR_DEPENDENCY", "Circular dependency detected in category hierarchy").
+					WithOperation("ValidateParentCategory").
+					WithResource(fmt.Sprintf("category:%s", cat.ID)).
+					Build()
 			}
 		}
 		
 		// Update level based on parent
 		parent, err := r.FindByID(ctx, cat.UserID, string(*cat.ParentID))
 		if err != nil {
-			return fmt.Errorf("parent category not found: %w", err)
+			return errors.RepositoryError("SetCategoryLevel", string(*cat.ParentID), err)
 		}
 		cat.Level = parent.Level + 1
 	} else {
@@ -254,7 +258,10 @@ func (r *CategoryRepository) Delete(ctx context.Context, userID string, category
 	}
 	
 	if len(children) > 0 {
-		return fmt.Errorf("cannot delete category with children")
+		return errors.Conflict("CATEGORY_HAS_CHILDREN", "Cannot delete category with children").
+			WithOperation("Delete").
+			WithResource(fmt.Sprintf("category:%s", categoryID)).
+			Build()
 	}
 	
 	return r.GenericRepository.Delete(ctx, userID, categoryID)
@@ -316,7 +323,11 @@ func (r *CategoryRepository) BatchDeleteCategories(ctx context.Context, userID s
 	}
 	
 	if len(failed) > 0 {
-		err = fmt.Errorf("failed to delete %d categories", len(failed))
+		err = errors.Internal("BATCH_DELETE_FAILED", fmt.Sprintf("Failed to delete %d categories", len(failed))).
+			WithOperation("DeleteCascade").
+			WithResource("categories").
+			WithSeverity(errors.SeverityHigh).
+			Build()
 	}
 	
 	return deleted, failed, err
@@ -462,7 +473,10 @@ func (r *CategoryRepository) FindRecentlyUsed(ctx context.Context, userID string
 func (r *CategoryRepository) FindBySpecification(ctx context.Context, spec repository.Specification, opts ...repository.QueryOption) ([]category.Category, error) {
 	// Simplified implementation - would need proper specification pattern
 	if spec == nil {
-		return nil, fmt.Errorf("invalid specification")
+		return nil, errors.Validation("INVALID_SPECIFICATION", "Specification cannot be nil").
+			WithOperation("FindBySpecification").
+			WithResource("category").
+			Build()
 	}
 	return []category.Category{}, nil
 }
@@ -558,7 +572,10 @@ func (r *CategoryRepository) DeleteHierarchy(ctx context.Context, userID string,
 func (r *CategoryRepository) CreateHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error {
 	// This would need to be implemented based on hierarchy structure
 	// For now, simplified
-	return fmt.Errorf("CreateHierarchy not implemented")
+	return errors.NotFound("NOT_IMPLEMENTED", "CreateHierarchy not implemented").
+		WithOperation("CreateHierarchy").
+		WithResource("category").
+		Build()
 }
 
 // DeleteHierarchyRelation removes a parent-child relationship

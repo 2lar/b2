@@ -4,12 +4,12 @@ package services
 
 import (
 	"context"
-	"fmt"
 	
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/edge"
 	"brain2-backend/internal/domain/category"
 	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/errors"
 	"brain2-backend/internal/repository"
 	
 	"go.uber.org/zap"
@@ -50,7 +50,7 @@ func NewFixedTransactionManager(
 func (tm *FixedTransactionManager) CreateNode(ctx context.Context, n *node.Node) error {
 	// Use CreateNodeAndKeywords which handles both node and keyword creation
 	if err := tm.nodeRepo.CreateNodeAndKeywords(ctx, n); err != nil {
-		return fmt.Errorf("failed to create node: %w", err)
+		return errors.RepositoryError("CreateNode", "node", err)
 	}
 	
 	// Publish domain events
@@ -70,7 +70,7 @@ func (tm *FixedTransactionManager) CreateNode(ctx context.Context, n *node.Node)
 func (tm *FixedTransactionManager) UpdateNode(ctx context.Context, n *node.Node) error {
 	// CreateNodeAndKeywords acts as an upsert operation
 	if err := tm.nodeRepo.CreateNodeAndKeywords(ctx, n); err != nil {
-		return fmt.Errorf("failed to update node: %w", err)
+		return errors.RepositoryError("UpdateNode", "node", err)
 	}
 	
 	// Publish domain events
@@ -90,7 +90,7 @@ func (tm *FixedTransactionManager) UpdateNode(ctx context.Context, n *node.Node)
 func (tm *FixedTransactionManager) DeleteNode(ctx context.Context, userID string, nodeID string) error {
 	// Use the repository's DeleteNode method
 	if err := tm.nodeRepo.DeleteNode(ctx, userID, nodeID); err != nil {
-		return fmt.Errorf("failed to delete node: %w", err)
+		return errors.RepositoryError("DeleteNode", "node", err)
 	}
 	
 	// Note: EdgeRepository doesn't have DeleteEdgesByNode method
@@ -110,7 +110,7 @@ func (tm *FixedTransactionManager) DeleteNode(ctx context.Context, userID string
 func (tm *FixedTransactionManager) CreateEdge(ctx context.Context, e *edge.Edge) error {
 	// Use the repository's CreateEdge method
 	if err := tm.edgeRepo.CreateEdge(ctx, e); err != nil {
-		return fmt.Errorf("failed to create edge: %w", err)
+		return errors.RepositoryError("CreateEdge", "edge", err)
 	}
 	
 	// Publish domain events
@@ -130,7 +130,7 @@ func (tm *FixedTransactionManager) CreateEdge(ctx context.Context, e *edge.Edge)
 func (tm *FixedTransactionManager) CreateEdges(ctx context.Context, userID string, sourceNodeID string, targetNodeIDs []string) error {
 	// Use the repository's batch method
 	if err := tm.edgeRepo.CreateEdges(ctx, userID, sourceNodeID, targetNodeIDs); err != nil {
-		return fmt.Errorf("failed to create edges: %w", err)
+		return errors.RepositoryError("CreateEdges", "edges", err)
 	}
 	
 	return nil
@@ -140,14 +140,20 @@ func (tm *FixedTransactionManager) CreateEdges(ctx context.Context, userID strin
 func (tm *FixedTransactionManager) DeleteEdge(ctx context.Context, userID string, edgeID string) error {
 	// Note: EdgeRepository doesn't have DeleteEdgeByID method
 	// This is a limitation of the current interface
-	return fmt.Errorf("edge deletion not supported in current EdgeRepository interface")
+	return errors.NotFound("EDGE_DELETE_NOT_IMPLEMENTED", "Edge deletion not supported in current EdgeRepository interface").
+		WithOperation("DeleteEdge").
+		WithResource("edge").
+		Build()
 }
 
 // DeleteEdgesByNode deletes all edges connected to a node.
 func (tm *FixedTransactionManager) DeleteEdgesByNode(ctx context.Context, userID string, nodeID string) error {
 	// Note: EdgeRepository doesn't have DeleteEdgesByNode method
 	// This is a limitation of the current interface
-	return fmt.Errorf("batch edge deletion not supported in current EdgeRepository interface")
+	return errors.NotFound("BATCH_EDGE_DELETE_NOT_IMPLEMENTED", "Batch edge deletion not supported in current EdgeRepository interface").
+		WithOperation("DeleteEdges").
+		WithResource("edges").
+		Build()
 }
 
 // ============================================================================
@@ -158,7 +164,7 @@ func (tm *FixedTransactionManager) DeleteEdgesByNode(ctx context.Context, userID
 func (tm *FixedTransactionManager) CreateCategory(ctx context.Context, cat *category.Category) error {
 	// Use the repository's Save method
 	if err := tm.categoryRepo.Save(ctx, cat); err != nil {
-		return fmt.Errorf("failed to create category: %w", err)
+		return errors.RepositoryError("CreateCategory", "category", err)
 	}
 	
 	// Publish domain events
@@ -178,7 +184,7 @@ func (tm *FixedTransactionManager) CreateCategory(ctx context.Context, cat *cate
 func (tm *FixedTransactionManager) UpdateCategory(ctx context.Context, cat *category.Category) error {
 	// Save acts as upsert
 	if err := tm.categoryRepo.Save(ctx, cat); err != nil {
-		return fmt.Errorf("failed to update category: %w", err)
+		return errors.RepositoryError("UpdateCategory", "category", err)
 	}
 	
 	// Publish domain events
@@ -198,7 +204,7 @@ func (tm *FixedTransactionManager) UpdateCategory(ctx context.Context, cat *cate
 func (tm *FixedTransactionManager) DeleteCategory(ctx context.Context, userID string, categoryID string) error {
 	// Use the repository's Delete method
 	if err := tm.categoryRepo.Delete(ctx, userID, categoryID); err != nil {
-		return fmt.Errorf("failed to delete category: %w", err)
+		return errors.RepositoryError("DeleteCategory", "category", err)
 	}
 	
 	return nil
@@ -212,7 +218,7 @@ func (tm *FixedTransactionManager) DeleteCategory(ctx context.Context, userID st
 func (tm *FixedTransactionManager) BatchCreateNodes(ctx context.Context, nodes []*node.Node) error {
 	for _, n := range nodes {
 		if err := tm.CreateNode(ctx, n); err != nil {
-			return fmt.Errorf("failed to create node %s: %w", n.GetID(), err)
+			return errors.RepositoryError("BulkCreateNode", n.GetID(), err)
 		}
 	}
 	return nil
@@ -222,7 +228,7 @@ func (tm *FixedTransactionManager) BatchCreateNodes(ctx context.Context, nodes [
 func (tm *FixedTransactionManager) BatchDeleteNodes(ctx context.Context, userID string, nodeIDs []string) error {
 	for _, nodeID := range nodeIDs {
 		if err := tm.DeleteNode(ctx, userID, nodeID); err != nil {
-			return fmt.Errorf("failed to delete node %s: %w", nodeID, err)
+			return errors.RepositoryError("BulkDeleteNode", nodeID, err)
 		}
 	}
 	return nil
@@ -232,7 +238,7 @@ func (tm *FixedTransactionManager) BatchDeleteNodes(ctx context.Context, userID 
 func (tm *FixedTransactionManager) BatchCreateCategories(ctx context.Context, categories []*category.Category) error {
 	for _, cat := range categories {
 		if err := tm.CreateCategory(ctx, cat); err != nil {
-			return fmt.Errorf("failed to create category %s: %w", cat.ID, err)
+			return errors.RepositoryError("BulkCreateCategory", string(cat.ID), err)
 		}
 	}
 	return nil
@@ -250,7 +256,7 @@ func (tm *FixedTransactionManager) CreateNodeWithEdges(
 ) error {
 	// Create the node first
 	if err := tm.CreateNode(ctx, n); err != nil {
-		return fmt.Errorf("failed to create node: %w", err)
+		return errors.RepositoryError("CreateNode", "node", err)
 	}
 	
 	// Create edges to target nodes
@@ -258,7 +264,7 @@ func (tm *FixedTransactionManager) CreateNodeWithEdges(
 		if err := tm.CreateEdges(ctx, n.GetUserID().String(), n.GetID(), targetNodeIDs); err != nil {
 			// Try to rollback by deleting the node
 			_ = tm.DeleteNode(ctx, n.GetUserID().String(), n.GetID())
-			return fmt.Errorf("failed to create edges: %w", err)
+			return errors.RepositoryError("CreateEdges", "edges", err)
 		}
 	}
 	
@@ -278,7 +284,7 @@ func (tm *FixedTransactionManager) DeleteNodeCascade(
 	
 	// Delete the node
 	if err := tm.DeleteNode(ctx, userID, nodeID); err != nil {
-		return fmt.Errorf("failed to delete node: %w", err)
+		return errors.RepositoryError("DeleteNode", "node", err)
 	}
 	
 	return nil
@@ -292,7 +298,7 @@ func (tm *FixedTransactionManager) UpdateNodeAndRecalculateEdges(
 ) error {
 	// Update the node
 	if err := tm.UpdateNode(ctx, n); err != nil {
-		return fmt.Errorf("failed to update node: %w", err)
+		return errors.RepositoryError("UpdateNode", "node", err)
 	}
 	
 	// Note: Can't delete existing edges due to interface limitation
@@ -303,7 +309,7 @@ func (tm *FixedTransactionManager) UpdateNodeAndRecalculateEdges(
 	// Create new edges
 	if len(newTargetNodeIDs) > 0 {
 		if err := tm.CreateEdges(ctx, n.GetUserID().String(), n.GetID(), newTargetNodeIDs); err != nil {
-			return fmt.Errorf("failed to create new edges: %w", err)
+			return errors.RepositoryError("UpdateNodeCreateEdges", "edges", err)
 		}
 	}
 	

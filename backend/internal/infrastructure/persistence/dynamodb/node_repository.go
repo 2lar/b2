@@ -23,6 +23,7 @@ import (
 
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/errors"
 	"brain2-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
@@ -217,7 +218,10 @@ func (r *NodeRepository) CountByUser(ctx context.Context, userID shared.UserID) 
 func (r *NodeRepository) FindBySpecification(ctx context.Context, spec repository.Specification, opts ...repository.QueryOption) ([]*node.Node, error) {
 	// For now, delegate to FindByUser as specifications need more complex implementation
 	if spec == nil {
-		return nil, fmt.Errorf("invalid specification")
+		return nil, errors.Validation("INVALID_SPECIFICATION", "Specification cannot be nil").
+			WithOperation("FindBySpecification").
+			WithResource("node").
+			Build()
 	}
 	// This would need proper specification pattern implementation
 	return r.FindByUser(ctx, shared.UserID{})
@@ -315,7 +319,10 @@ func (r *NodeRepository) UpdateVersion(ctx context.Context, userID shared.UserID
 	}
 	// Check version matches
 	if n.Version() != expectedVersion.Int() {
-		return fmt.Errorf("optimistic lock error: version mismatch")
+		return errors.Conflict("VERSION_MISMATCH", "Optimistic lock error: version mismatch").
+			WithOperation("UpdateNodeVersion").
+			WithResource(fmt.Sprintf("node:%s", nodeID)).
+			Build()
 	}
 	// Update with incremented version
 	return r.Update(ctx, n)

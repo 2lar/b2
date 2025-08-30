@@ -53,3 +53,13 @@ func InitializeContainer() (*Container, error) {
 	wire.Build(SuperSet)
 	return nil, nil // Wire replaces this entire function body
 }
+
+// InitializeApplicationContainer wires together the new clean container architecture.
+// This function uses the CleanSuperSet to create an ApplicationContainer with
+// all the focused sub-containers properly initialized and wired.
+func InitializeApplicationContainer() (*ApplicationContainer, error) {
+	// Wire will replace this implementation with generated code
+	// The CleanSuperSet contains the new focused container providers
+	wire.Build(CleanSuperSet)
+	return nil, nil // Wire replaces this entire function body
+}

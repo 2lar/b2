@@ -57,7 +57,7 @@ const commonConfig = {
 export const environments: Record<string, EnvironmentConfig> = {
   development: {
     ...commonConfig,
-    region: 'us-east-1',
+    region: 'us-west-2',
     stackName: 'b2-dev',
     resourcePrefix: 'b2-dev',
     dynamodb: {
@@ -81,7 +81,7 @@ export const environments: Record<string, EnvironmentConfig> = {
   
   staging: {
     ...commonConfig,
-    region: 'us-east-1',
+    region: 'us-west-2',
     stackName: 'b2-staging',
     resourcePrefix: 'b2-staging',
     dynamodb: {
@@ -105,7 +105,7 @@ export const environments: Record<string, EnvironmentConfig> = {
   
   production: {
     ...commonConfig,
-    region: 'us-east-1',
+    region: 'us-west-2',
     stackName: 'b2-prod',
     resourcePrefix: 'b2-prod',
     lambda: {

@@ -79,7 +79,7 @@ func (h *CreateNodeHandler) Handle(ctx context.Context, cmd *commands.CreateNode
 	// Ensure proper cleanup even on panic
 	defer func() {
 		if r := recover(); r != nil {
-			span.RecordError(fmt.Errorf("panic: %v", r))
+			span.RecordError(errors.Internal("HANDLER_PANIC", fmt.Sprintf("panic: %v", r)).Build())
 			span.SetStatus(codes.Error, "Panic occurred")
 			// Attempt rollback on panic
 			if rollbackErr := uow.Rollback(); rollbackErr != nil {
@@ -228,7 +228,10 @@ func (h *CreateNodeHandler) checkIdempotency(ctx context.Context, key, operation
 // reconstructCreateNodeResult reconstructs result from map
 func (h *CreateNodeHandler) reconstructCreateNodeResult(data map[string]interface{}) (*dto.CreateNodeResult, error) {
 	// Placeholder implementation - would reconstruct DTO from map
-	return nil, fmt.Errorf("reconstruction not implemented")
+	return nil, errors.NotFound("RECONSTRUCTION_NOT_IMPLEMENTED", "Reconstruction not implemented").
+		WithOperation("ReconstructFromCache").
+		WithResource("node").
+		Build()
 }
 
 // storeIdempotencyResult stores result for idempotency

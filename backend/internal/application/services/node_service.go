@@ -122,7 +122,7 @@ func (s *NodeService) CreateNode(ctx context.Context, cmd *commands.CreateNodeCo
 	// Ensure proper cleanup even on panic
 	defer func() {
 		if r := recover(); r != nil {
-			span.RecordError(fmt.Errorf("panic: %v", r))
+			span.RecordError(errors.Internal("SERVICE_PANIC", fmt.Sprintf("panic: %v", r)).Build())
 			span.SetStatus(codes.Error, "Panic occurred")
 			// Attempt rollback on panic
 			if rollbackErr := uow.Rollback(); rollbackErr != nil {
@@ -690,7 +690,10 @@ func (s *NodeService) reconstructCreateNodeResult(data map[string]interface{}) (
 	
 	// Validate that Node was reconstructed successfully
 	if result.Node == nil {
-		return nil, fmt.Errorf("failed to reconstruct node from cached data")
+		return nil, errors.Internal("CACHE_RECONSTRUCTION_FAILED", "Failed to reconstruct node from cached data").
+			WithOperation("LoadCachedNode").
+			WithResource("node").
+			Build()
 	}
 	
 	// Reconstruct created edges

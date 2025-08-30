@@ -4,11 +4,11 @@
 package middleware
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"time"
 	
+	sharedContext "brain2-backend/internal/context"
 	"brain2-backend/pkg/api"
 	"go.uber.org/zap"
 )
@@ -127,7 +127,7 @@ func (a *AuthenticationMiddleware) Priority() int { return 10 } // High priority
 
 func (a *AuthenticationMiddleware) Execute(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID, ok := getUserID(r)
+		userID, ok := sharedContext.GetUserIDFromContext(r.Context())
 		if !ok {
 			if a.logger != nil {
 				a.logger.Warn("Authentication failed", zap.String("path", r.URL.Path))
@@ -136,8 +136,8 @@ func (a *AuthenticationMiddleware) Execute(next http.HandlerFunc) http.HandlerFu
 			return
 		}
 		
-		// Add user ID to context
-		ctx := context.WithValue(r.Context(), "userID", userID)
+		// Add user ID to context using shared context utilities
+		ctx := sharedContext.WithUserID(r.Context(), userID)
 		next(w, r.WithContext(ctx))
 	}
 }

@@ -2,11 +2,11 @@ package dynamodb
 
 import (
 	"context"
-	"fmt"
 
 	"brain2-backend/internal/domain/edge"
 	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/errors"
 	"brain2-backend/internal/repository"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -38,7 +38,7 @@ func (r *TransactionalRepository) CreateNodeWithEdges(ctx context.Context, node 
 	// to atomically create the node and all edges
 	nodeRepo := NewNodeRepository(r.client, r.tableName, r.indexName, r.logger)
 	if err := nodeRepo.Save(ctx, node); err != nil {
-		return fmt.Errorf("failed to create node: %w", err)
+		return errors.RepositoryError("CreateNodeWithEdges", node.ID().String(), err)
 	}
 	
 	// Create edges if any
@@ -53,11 +53,11 @@ func (r *TransactionalRepository) CreateNodeWithEdges(ctx context.Context, node 
 			// Create edge using proper constructor
 			newEdge, err := edge.NewEdge(sourceID, targetNodeID, userID, 1.0)
 			if err != nil {
-				return fmt.Errorf("failed to create edge: %w", err)
+				return errors.RepositoryError("CreateEdgeInTransaction", targetID, err)
 			}
 			
 			if err := edgeRepo.Save(ctx, newEdge); err != nil {
-				return fmt.Errorf("failed to save edge: %w", err)
+				return errors.RepositoryError("SaveEdgeInTransaction", newEdge.ID.String(), err)
 			}
 		}
 	}
@@ -71,7 +71,7 @@ func (r *TransactionalRepository) UpdateNodeAndEdges(ctx context.Context, node *
 	// In a real implementation, this would use DynamoDB transactions
 	nodeRepo := NewNodeRepository(r.client, r.tableName, r.indexName, r.logger)
 	if err := nodeRepo.Update(ctx, node); err != nil {
-		return fmt.Errorf("failed to update node: %w", err)
+		return errors.RepositoryError("UpdateNodeWithEdges", node.ID().String(), err)
 	}
 	
 	// Update edges if needed

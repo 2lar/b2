@@ -122,17 +122,19 @@ func (w *SimpleMemoryCacheWrapper) Set(ctx context.Context, key string, value []
 }
 
 func (w *SimpleMemoryCacheWrapper) Delete(ctx context.Context, key string) error {
-	return nil // TODO: implement if needed
+	return w.cache.Delete(ctx, key)
 }
 
 func (w *SimpleMemoryCacheWrapper) Clear(ctx context.Context, pattern string) error {
-	return nil // TODO: implement if needed
+	return w.cache.Clear(ctx, pattern)
 }
 
 // Cache interface for memory cache wrapper
 type Cache interface {
 	Get(ctx context.Context, key string) ([]byte, bool, error)
 	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	Delete(ctx context.Context, key string) error
+	Clear(ctx context.Context, pattern string) error
 }
 
 // NewInMemoryCache creates a new in-memory cache
@@ -173,5 +175,22 @@ func (c *memoryCache) Set(ctx context.Context, key string, value []byte, ttl tim
 		data:      value,
 		expiresAt: time.Now().Add(ttl),
 	}
+	return nil
+}
+
+func (c *memoryCache) Delete(ctx context.Context, key string) error {
+	delete(c.data, key)
+	return nil
+}
+
+func (c *memoryCache) Clear(ctx context.Context, pattern string) error {
+	// Simple implementation: if pattern is empty or "*", clear all
+	if pattern == "" || pattern == "*" {
+		c.data = make(map[string]cacheItem)
+		return nil
+	}
+	
+	// For patterns, would need pattern matching - for now just clear all
+	c.data = make(map[string]cacheItem)
 	return nil
 }

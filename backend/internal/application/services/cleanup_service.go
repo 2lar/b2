@@ -305,7 +305,11 @@ func (s *CleanupService) BulkCleanupNodes(ctx context.Context, userID string, no
 	log.Printf("Bulk cleanup complete: success=%d, failed=%d", successCount, failedCount)
 
 	if failedCount > 0 {
-		return fmt.Errorf("failed to cleanup %d out of %d nodes", failedCount, len(nodeIDs))
+		return errors.Internal("CLEANUP_PARTIAL_FAILURE", fmt.Sprintf("Failed to cleanup %d out of %d nodes", failedCount, len(nodeIDs))).
+			WithOperation("BulkCleanup").
+			WithResource("nodes").
+			WithSeverity(errors.SeverityHigh).
+			Build()
 	}
 
 	return nil

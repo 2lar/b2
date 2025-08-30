@@ -41,6 +41,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"brain2-backend/internal/errors"
 )
 
 // RuntimeEnvironment represents the deployment environment
@@ -238,7 +240,10 @@ func (p *AdaptiveWorkerPool) Start() error {
 	defer p.mu.Unlock()
 	
 	if p.running {
-		return fmt.Errorf("worker pool is already running")
+		return errors.Conflict("POOL_ALREADY_RUNNING", "Worker pool is already running").
+			WithOperation("Start").
+			WithResource("worker_pool").
+			Build()
 	}
 	
 	// Start workers with panic recovery
@@ -363,7 +368,11 @@ func (p *AdaptiveWorkerPool) Submit(task Task) error {
 	// Check context first to avoid race with Stop()
 	select {
 	case <-p.ctx.Done():
-		return fmt.Errorf("worker pool is shutting down")
+		return errors.Conflict("POOL_SHUTTING_DOWN", "Worker pool is shutting down").
+			WithOperation("Submit").
+			WithResource("worker_pool").
+			WithRetryable(true).
+			Build()
 	default:
 		// Continue with submission
 	}
@@ -371,7 +380,10 @@ func (p *AdaptiveWorkerPool) Submit(task Task) error {
 	p.mu.RLock()
 	if !p.running {
 		p.mu.RUnlock()
-		return fmt.Errorf("worker pool is not running")
+		return errors.Conflict("POOL_NOT_RUNNING", "Worker pool is not running").
+			WithOperation("Submit").
+			WithResource("worker_pool").
+			Build()
 	}
 	// Keep the lock until we've submitted to prevent Stop() from closing queue
 	defer p.mu.RUnlock()
@@ -381,7 +393,11 @@ func (p *AdaptiveWorkerPool) Submit(task Task) error {
 		return nil
 		
 	case <-p.ctx.Done():
-		return fmt.Errorf("worker pool is shutting down")
+		return errors.Conflict("POOL_SHUTTING_DOWN", "Worker pool is shutting down").
+			WithOperation("Submit").
+			WithResource("worker_pool").
+			WithRetryable(true).
+			Build()
 		
 	default:
 		// Queue is full
@@ -395,7 +411,11 @@ func (p *AdaptiveWorkerPool) Submit(task Task) error {
 		case p.taskQueue <- task:
 			return nil
 		case <-p.ctx.Done():
-			return fmt.Errorf("worker pool is shutting down")
+			return errors.Conflict("POOL_SHUTTING_DOWN", "Worker pool is shutting down").
+			WithOperation("Submit").
+			WithResource("worker_pool").
+			WithRetryable(true).
+			Build()
 		}
 	}
 }

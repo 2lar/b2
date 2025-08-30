@@ -4,7 +4,6 @@ package dynamodb
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	
 	"brain2-backend/internal/domain/shared"
@@ -142,7 +141,7 @@ func (uow *ProperUnitOfWork) Commit() error {
 			// Attempt rollback
 			uow.isInTransaction = false
 			uow.isRolledBack = true
-			return fmt.Errorf("failed to commit transaction: %w", err)
+			return errors.RepositoryError("CommitTransaction", "dynamodb", err)
 		}
 	}
 	
