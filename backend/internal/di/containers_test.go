@@ -60,7 +60,7 @@ func TestApplicationContainer(t *testing.T) {
 		if app.StartTime.IsZero() {
 			t.Error("StartTime is not set")
 		}
-		if !app.IsColdStart {
+		if !app.IsColdStart() {
 			t.Error("IsColdStart should be true for new container")
 		}
 

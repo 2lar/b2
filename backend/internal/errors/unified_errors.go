@@ -30,6 +30,7 @@
 package errors
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"runtime"
@@ -93,10 +94,11 @@ type UnifiedError struct {
 	Details  string        `json:"details"`   // Additional context information
 	
 	// Error context
-	Operation string        `json:"operation"` // The operation that failed
-	Resource  string        `json:"resource"`  // The resource being operated on
-	UserID    string        `json:"userId"`    // User context (if applicable)
-	RequestID string        `json:"requestId"` // Request tracing ID
+	Operation     string        `json:"operation"`     // The operation that failed
+	Resource      string        `json:"resource"`      // The resource being operated on
+	UserID        string        `json:"userId"`        // User context (if applicable)
+	RequestID     string        `json:"requestId"`     // Request tracing ID
+	CorrelationID string        `json:"correlationId"` // Correlation ID for distributed tracing
 	
 	// Error metadata
 	Severity  ErrorSeverity `json:"severity"`
@@ -147,6 +149,9 @@ func (e *UnifiedError) String() string {
 	}
 	if e.RequestID != "" {
 		builder.WriteString(fmt.Sprintf("RequestID: %s\n", e.RequestID))
+	}
+	if e.CorrelationID != "" {
+		builder.WriteString(fmt.Sprintf("CorrelationID: %s\n", e.CorrelationID))
 	}
 	
 	builder.WriteString(fmt.Sprintf("Severity: %s\n", e.Severity))
@@ -218,6 +223,12 @@ func (b *ErrorBuilder) WithUserID(userID string) *ErrorBuilder {
 // WithRequestID adds request tracing information.
 func (b *ErrorBuilder) WithRequestID(requestID string) *ErrorBuilder {
 	b.error.RequestID = requestID
+	return b
+}
+
+// WithCorrelationID adds correlation ID for distributed tracing.
+func (b *ErrorBuilder) WithCorrelationID(correlationID string) *ErrorBuilder {
+	b.error.CorrelationID = correlationID
 	return b
 }
 
@@ -422,8 +433,9 @@ func Wrap(err error, operation, message string) *UnifiedError {
 			Details:    existingErr.Message, // Original message becomes details
 			Operation:  operation,
 			Resource:   existingErr.Resource,
-			UserID:     existingErr.UserID,
-			RequestID:  existingErr.RequestID,
+			UserID:        existingErr.UserID,
+			RequestID:     existingErr.RequestID,
+			CorrelationID: existingErr.CorrelationID,
 			Severity:   existingErr.Severity,
 			Retryable:  existingErr.Retryable,
 			Cause:      err,
@@ -512,4 +524,102 @@ func captureStackTrace() []string {
 	}
 	
 	return stack
+}
+
+// ============================================================================
+// CONTEXT HELPERS FOR CORRELATION ID
+// ============================================================================
+
+// errorContextKey is a type for context keys to avoid collisions.
+type errorContextKey string
+
+const (
+	// CorrelationIDKey is the context key for correlation ID.
+	CorrelationIDKey errorContextKey = "correlation_id"
+	// RequestIDKey is the context key for request ID.
+	RequestIDKey errorContextKey = "request_id"
+	// UserIDKey is the context key for user ID.
+	UserIDKey errorContextKey = "user_id"
+)
+
+// WithContext creates an error with context values automatically extracted.
+func WithContext(ctx context.Context, err *ErrorBuilder) *ErrorBuilder {
+	// Extract correlation ID
+	if correlationID, ok := ctx.Value(CorrelationIDKey).(string); ok && correlationID != "" {
+		err.WithCorrelationID(correlationID)
+	}
+	
+	// Extract request ID
+	if requestID, ok := ctx.Value(RequestIDKey).(string); ok && requestID != "" {
+		err.WithRequestID(requestID)
+	}
+	
+	// Extract user ID
+	if userID, ok := ctx.Value(UserIDKey).(string); ok && userID != "" {
+		err.WithUserID(userID)
+	}
+	
+	return err
+}
+
+// EnrichWithContext wraps an error with context values automatically extracted.
+func EnrichWithContext(ctx context.Context, err error, operation, message string) *UnifiedError {
+	wrapped := Wrap(err, operation, message)
+	if wrapped == nil {
+		return nil
+	}
+	
+	// Extract context values
+	if correlationID, ok := ctx.Value(CorrelationIDKey).(string); ok && correlationID != "" {
+		wrapped.CorrelationID = correlationID
+	}
+	
+	if requestID, ok := ctx.Value(RequestIDKey).(string); ok && requestID != "" {
+		wrapped.RequestID = requestID
+	}
+	
+	if userID, ok := ctx.Value(UserIDKey).(string); ok && userID != "" {
+		wrapped.UserID = userID
+	}
+	
+	return wrapped
+}
+
+// SetCorrelationID adds correlation ID to context.
+func SetCorrelationID(ctx context.Context, correlationID string) context.Context {
+	return context.WithValue(ctx, CorrelationIDKey, correlationID)
+}
+
+// GetCorrelationID extracts correlation ID from context.
+func GetCorrelationID(ctx context.Context) string {
+	if correlationID, ok := ctx.Value(CorrelationIDKey).(string); ok {
+		return correlationID
+	}
+	return ""
+}
+
+// SetRequestID adds request ID to context.
+func SetRequestID(ctx context.Context, requestID string) context.Context {
+	return context.WithValue(ctx, RequestIDKey, requestID)
+}
+
+// GetRequestID extracts request ID from context.
+func GetRequestID(ctx context.Context) string {
+	if requestID, ok := ctx.Value(RequestIDKey).(string); ok {
+		return requestID
+	}
+	return ""
+}
+
+// SetUserID adds user ID to context.
+func SetUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, UserIDKey, userID)
+}
+
+// GetUserID extracts user ID from context.
+func GetUserID(ctx context.Context) string {
+	if userID, ok := ctx.Value(UserIDKey).(string); ok {
+		return userID
+	}
+	return ""
 }

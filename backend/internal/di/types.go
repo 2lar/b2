@@ -33,6 +33,7 @@ type Container struct {
 	IndexName string
 
 	// Cold start tracking
+	StartTime     time.Time
 	ColdStartTime *time.Time
 	IsColdStart   bool
 

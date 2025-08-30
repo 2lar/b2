@@ -82,7 +82,7 @@ func provideApplicationContainer(cfg *config.Config) (*ApplicationContainer, err
 
 // provideRouterFromApplicationContainer extracts the router from the application container.
 func provideRouterFromApplicationContainer(app *ApplicationContainer) *chi.Mux {
-	if router, ok := app.Handlers.Router.(*chi.Mux); ok {
+	if router, ok := app.Handlers.GetRouter().(*chi.Mux); ok {
 		return router
 	}
 	return nil
@@ -90,20 +90,20 @@ func provideRouterFromApplicationContainer(app *ApplicationContainer) *chi.Mux {
 
 // provideLoggerFromInfrastructure extracts logger from infrastructure container.
 func provideLoggerFromInfrastructure(infra *InfrastructureContainer) *zap.Logger {
-	return infra.Logger
+	return infra.GetLogger()
 }
 
 // provideConfigFromInfrastructure extracts config from infrastructure container.
 func provideConfigFromInfrastructure(infra *InfrastructureContainer) *config.Config {
-	return infra.Config
+	return infra.GetConfig()
 }
 
 // provideDynamoDBClientFromInfrastructure extracts DynamoDB client.
 func provideDynamoDBClientFromInfrastructure(infra *InfrastructureContainer) *awsDynamodb.Client {
-	return infra.DynamoDBClient
+	return infra.GetDynamoDBClient()
 }
 
 // provideEventBridgeClientFromInfrastructure extracts EventBridge client.
 func provideEventBridgeClientFromInfrastructure(infra *InfrastructureContainer) *awsEventbridge.Client {
-	return infra.EventBridgeClient
+	return infra.GetEventBridgeClient()
 }

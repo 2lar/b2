@@ -78,6 +78,55 @@ func (c *InfrastructureContainer) Shutdown() error {
 }
 
 // ============================================================================
+// INTERFACE IMPLEMENTATIONS FOR INFRASTRUCTURE CONTAINER
+// ============================================================================
+
+// GetConfig returns the configuration.
+func (c *InfrastructureContainer) GetConfig() *config.Config {
+	return c.Config
+}
+
+// GetDynamoDBClient returns the DynamoDB client.
+func (c *InfrastructureContainer) GetDynamoDBClient() *awsDynamodb.Client {
+	return c.DynamoDBClient
+}
+
+// GetEventBridgeClient returns the EventBridge client.
+func (c *InfrastructureContainer) GetEventBridgeClient() *awsEventbridge.Client {
+	return c.EventBridgeClient
+}
+
+// GetHTTPClient returns the HTTP client.
+func (c *InfrastructureContainer) GetHTTPClient() *http.Client {
+	return c.HTTPClient
+}
+
+// GetLogger returns the logger.
+func (c *InfrastructureContainer) GetLogger() *zap.Logger {
+	return c.Logger
+}
+
+// GetCache returns the cache.
+func (c *InfrastructureContainer) GetCache() persistenceCache.Cache {
+	return c.Cache
+}
+
+// GetMetricsCollector returns the metrics collector.
+func (c *InfrastructureContainer) GetMetricsCollector() *observability.Collector {
+	return c.MetricsCollector
+}
+
+// GetTracerProvider returns the tracer provider.
+func (c *InfrastructureContainer) GetTracerProvider() *observability.TracerProvider {
+	return c.TracerProvider
+}
+
+// GetStore returns the persistence store.
+func (c *InfrastructureContainer) GetStore() persistence.Store {
+	return c.Store
+}
+
+// ============================================================================
 // REPOSITORY CONTAINER - Data access layer with CQRS
 // ============================================================================
 
@@ -117,7 +166,7 @@ type RepositoryContainer struct {
 }
 
 // NewRepositoryContainer creates a new repository container.
-func NewRepositoryContainer(infra *InfrastructureContainer) (*RepositoryContainer, error) {
+func NewRepositoryContainer(infra IInfrastructureContainer) (*RepositoryContainer, error) {
 	c := &RepositoryContainer{}
 	
 	if err := c.initialize(infra); err != nil {
@@ -125,6 +174,90 @@ func NewRepositoryContainer(infra *InfrastructureContainer) (*RepositoryContaine
 	}
 	
 	return c, nil
+}
+
+// ============================================================================
+// INTERFACE IMPLEMENTATIONS FOR REPOSITORY CONTAINER
+// ============================================================================
+
+// GetNodeRepository returns the node repository.
+func (c *RepositoryContainer) GetNodeRepository() repository.NodeRepository {
+	return c.Node
+}
+
+// GetEdgeRepository returns the edge repository.
+func (c *RepositoryContainer) GetEdgeRepository() repository.EdgeRepository {
+	return c.Edge
+}
+
+// GetCategoryRepository returns the category repository.
+func (c *RepositoryContainer) GetCategoryRepository() repository.CategoryRepository {
+	return c.Category
+}
+
+// GetGraphRepository returns the graph repository.
+func (c *RepositoryContainer) GetGraphRepository() repository.GraphRepository {
+	return c.Graph
+}
+
+// GetKeywordRepository returns the keyword repository.
+func (c *RepositoryContainer) GetKeywordRepository() repository.KeywordRepository {
+	return c.Keyword
+}
+
+// GetTransactionalRepository returns the transactional repository.
+func (c *RepositoryContainer) GetTransactionalRepository() repository.TransactionalRepository {
+	return c.Transactional
+}
+
+// GetIdempotencyStore returns the idempotency store.
+func (c *RepositoryContainer) GetIdempotencyStore() repository.IdempotencyStore {
+	return c.Idempotency
+}
+
+// GetNodeReader returns the node reader.
+func (c *RepositoryContainer) GetNodeReader() repository.NodeReader {
+	return c.NodeReader
+}
+
+// GetEdgeReader returns the edge reader.
+func (c *RepositoryContainer) GetEdgeReader() repository.EdgeReader {
+	return c.EdgeReader
+}
+
+// GetCategoryReader returns the category reader.
+func (c *RepositoryContainer) GetCategoryReader() repository.CategoryReader {
+	return c.CategoryReader
+}
+
+// GetNodeWriter returns the node writer.
+func (c *RepositoryContainer) GetNodeWriter() repository.NodeWriter {
+	return c.NodeWriter
+}
+
+// GetEdgeWriter returns the edge writer.
+func (c *RepositoryContainer) GetEdgeWriter() repository.EdgeWriter {
+	return c.EdgeWriter
+}
+
+// GetCategoryWriter returns the category writer.
+func (c *RepositoryContainer) GetCategoryWriter() repository.CategoryWriter {
+	return c.CategoryWriter
+}
+
+// GetUnitOfWork returns the unit of work.
+func (c *RepositoryContainer) GetUnitOfWork() repository.UnitOfWork {
+	return c.UnitOfWork
+}
+
+// GetUnitOfWorkFactory returns the unit of work factory.
+func (c *RepositoryContainer) GetUnitOfWorkFactory() repository.UnitOfWorkFactory {
+	return c.UnitOfWorkFactory
+}
+
+// GetRepositoryFactory returns the repository factory.
+func (c *RepositoryContainer) GetRepositoryFactory() repository.RepositoryFactory {
+	return c.RepositoryFactory
 }
 
 // ============================================================================
@@ -152,7 +285,7 @@ type ServiceContainer struct {
 }
 
 // NewServiceContainer creates a new service container.
-func NewServiceContainer(repos *RepositoryContainer, infra *InfrastructureContainer) (*ServiceContainer, error) {
+func NewServiceContainer(repos IRepositoryContainer, infra IInfrastructureContainer) (*ServiceContainer, error) {
 	c := &ServiceContainer{}
 	
 	if err := c.initialize(repos, infra); err != nil {
@@ -160,6 +293,50 @@ func NewServiceContainer(repos *RepositoryContainer, infra *InfrastructureContai
 	}
 	
 	return c, nil
+}
+
+// ============================================================================
+// INTERFACE IMPLEMENTATIONS FOR SERVICE CONTAINER
+// ============================================================================
+
+// GetNodeCommandService returns the node command service.
+func (c *ServiceContainer) GetNodeCommandService() *services.NodeService {
+	return c.NodeCommandService
+}
+
+// GetCategoryCommandService returns the category command service.
+func (c *ServiceContainer) GetCategoryCommandService() *services.CategoryService {
+	return c.CategoryCommandService
+}
+
+// GetNodeQueryService returns the node query service.
+func (c *ServiceContainer) GetNodeQueryService() *queries.NodeQueryService {
+	return c.NodeQueryService
+}
+
+// GetCategoryQueryService returns the category query service.
+func (c *ServiceContainer) GetCategoryQueryService() *queries.CategoryQueryService {
+	return c.CategoryQueryService
+}
+
+// GetGraphQueryService returns the graph query service.
+func (c *ServiceContainer) GetGraphQueryService() *queries.GraphQueryService {
+	return c.GraphQueryService
+}
+
+// GetConnectionAnalyzer returns the connection analyzer.
+func (c *ServiceContainer) GetConnectionAnalyzer() *domainServices.ConnectionAnalyzer {
+	return c.ConnectionAnalyzer
+}
+
+// GetEventBus returns the event bus.
+func (c *ServiceContainer) GetEventBus() shared.EventBus {
+	return c.EventBus
+}
+
+// GetCleanupService returns the cleanup service.
+func (c *ServiceContainer) GetCleanupService() *services.CleanupService {
+	return c.CleanupService
 }
 
 // ============================================================================
@@ -185,7 +362,7 @@ type HandlerContainer struct {
 }
 
 // NewHandlerContainer creates a new handler container.
-func NewHandlerContainer(services *ServiceContainer, infra *InfrastructureContainer) (*HandlerContainer, error) {
+func NewHandlerContainer(services IServiceContainer, infra IInfrastructureContainer) (*HandlerContainer, error) {
 	c := &HandlerContainer{}
 	
 	if err := c.initialize(services, infra); err != nil {
@@ -196,23 +373,57 @@ func NewHandlerContainer(services *ServiceContainer, infra *InfrastructureContai
 }
 
 // ============================================================================
+// INTERFACE IMPLEMENTATIONS FOR HANDLER CONTAINER
+// ============================================================================
+
+// GetRouter returns the HTTP router.
+func (c *HandlerContainer) GetRouter() http.Handler {
+	return c.Router
+}
+
+// GetMiddleware returns the middleware chain.
+func (c *HandlerContainer) GetMiddleware() []func(http.Handler) http.Handler {
+	return c.Middleware
+}
+
+// GetNodeHandler returns the node handler.
+func (c *HandlerContainer) GetNodeHandler() interface{} {
+	return c.NodeHandler
+}
+
+// GetCategoryHandler returns the category handler.
+func (c *HandlerContainer) GetCategoryHandler() interface{} {
+	return c.CategoryHandler
+}
+
+// GetHealthHandler returns the health handler.
+func (c *HandlerContainer) GetHealthHandler() interface{} {
+	return c.HealthHandler
+}
+
+// GetMetricsHandler returns the metrics handler.
+func (c *HandlerContainer) GetMetricsHandler() http.HandlerFunc {
+	return c.MetricsHandler
+}
+
+// ============================================================================
 // APPLICATION CONTAINER - Root container that orchestrates all others
 // ============================================================================
 
 // ApplicationContainer is the root container that manages all sub-containers.
 // This replaces the God Container with proper separation of concerns.
 type ApplicationContainer struct {
-	// Sub-containers with clear responsibilities
-	Infrastructure *InfrastructureContainer
-	Repositories   *RepositoryContainer
-	Services       *ServiceContainer
-	Handlers       *HandlerContainer
+	// Sub-containers with clear responsibilities (using interfaces)
+	Infrastructure IInfrastructureContainer
+	Repositories   IRepositoryContainer
+	Services       IServiceContainer
+	Handlers       IHandlerContainer
 	
 	// Application metadata
 	Version       string
 	Environment   string
 	StartTime     time.Time
-	IsColdStart   bool
+	coldStart     bool
 }
 
 // NewApplicationContainer creates the root application container.
@@ -249,7 +460,7 @@ func NewApplicationContainer(cfg *config.Config) (*ApplicationContainer, error) 
 		Version:        cfg.Version,
 		Environment:    string(cfg.Environment),
 		StartTime:      time.Now(),
-		IsColdStart:    true,
+		coldStart:      true,
 	}, nil
 }
 
@@ -266,7 +477,7 @@ func (c *ApplicationContainer) Shutdown(ctx context.Context) error {
 
 // GetHTTPHandler returns the main HTTP handler.
 func (c *ApplicationContainer) GetHTTPHandler() http.Handler {
-	return c.Handlers.Router
+	return c.Handlers.GetRouter()
 }
 
 // Health returns the application health status.
@@ -276,7 +487,7 @@ func (c *ApplicationContainer) Health(ctx context.Context) map[string]interface{
 		"version":     c.Version,
 		"environment": c.Environment,
 		"uptime":      time.Since(c.StartTime).String(),
-		"cold_start":  c.IsColdStart,
+		"cold_start":  c.coldStart,
 	}
 }
 
@@ -314,19 +525,19 @@ func (c *ApplicationContainer) Validate() error {
 	}
 	
 	// Validate key components are initialized
-	if c.Infrastructure.Logger == nil {
+	if c.Infrastructure.GetLogger() == nil {
 		return errors.Internal("LOGGER_NIL", "Logger is not initialized").
 			WithOperation("ValidateContainers").
 			WithResource("infrastructure_container").
 			Build()
 	}
-	if c.Infrastructure.Cache == nil {
+	if c.Infrastructure.GetCache() == nil {
 		return errors.Internal("CACHE_NIL", "Cache is not initialized").
 			WithOperation("ValidateContainers").
 			WithResource("infrastructure_container").
 			Build()
 	}
-	if c.Handlers.Router == nil {
+	if c.Handlers.GetRouter() == nil {
 		return errors.Internal("ROUTER_NIL", "Router is not initialized").
 			WithOperation("ValidateContainers").
 			WithResource("handler_container").
@@ -338,16 +549,60 @@ func (c *ApplicationContainer) Validate() error {
 
 // SetColdStartInfo updates cold start tracking information.
 func (c *ApplicationContainer) SetColdStartInfo(coldStartTime time.Time, isColdStart bool) {
-	c.IsColdStart = isColdStart
+	c.coldStart = isColdStart
 	if !coldStartTime.IsZero() {
 		c.StartTime = coldStartTime
 	}
 }
 
+// ============================================================================
+// INTERFACE IMPLEMENTATIONS FOR APPLICATION CONTAINER
+// ============================================================================
+
+// GetInfrastructure returns the infrastructure container.
+func (c *ApplicationContainer) GetInfrastructure() IInfrastructureContainer {
+	return c.Infrastructure
+}
+
+// GetRepositories returns the repository container.
+func (c *ApplicationContainer) GetRepositories() IRepositoryContainer {
+	return c.Repositories
+}
+
+// GetServices returns the service container.
+func (c *ApplicationContainer) GetServices() IServiceContainer {
+	return c.Services
+}
+
+// GetHandlers returns the handler container.
+func (c *ApplicationContainer) GetHandlers() IHandlerContainer {
+	return c.Handlers
+}
+
+// GetVersion returns the application version.
+func (c *ApplicationContainer) GetVersion() string {
+	return c.Version
+}
+
+// GetEnvironment returns the application environment.
+func (c *ApplicationContainer) GetEnvironment() string {
+	return c.Environment
+}
+
+// GetStartTime returns the application start time.
+func (c *ApplicationContainer) GetStartTime() time.Time {
+	return c.StartTime
+}
+
+// IsColdStart returns whether this is a cold start.
+func (c *ApplicationContainer) IsColdStart() bool {
+	return c.coldStart
+}
+
 // GetRouter returns the HTTP router from the handler container.
 func (c *ApplicationContainer) GetRouter() *chi.Mux {
 	if c.Handlers != nil {
-		if router, ok := c.Handlers.Router.(*chi.Mux); ok {
+		if router, ok := c.Handlers.GetRouter().(*chi.Mux); ok {
 			return router
 		}
 	}
@@ -400,14 +655,15 @@ func (c *InfrastructureContainer) initialize() error {
 }
 
 // initialize sets up the repository container.
-func (c *RepositoryContainer) initialize(infra *InfrastructureContainer) error {
+func (c *RepositoryContainer) initialize(infra IInfrastructureContainer) error {
 	// Create repository configuration
+	cfg := infra.GetConfig()
 	repoConfig := initialization.RepositoryConfig{
-		TableName:       infra.Config.Database.TableName,
-		IndexName:       infra.Config.Database.IndexName,
-		DynamoDBClient:  infra.DynamoDBClient,
-		Logger:          infra.Logger,
-		EnableCaching:   infra.Config.Features.EnableCaching,
+		TableName:       cfg.Database.TableName,
+		IndexName:       cfg.Database.IndexName,
+		DynamoDBClient:  infra.GetDynamoDBClient(),
+		Logger:          infra.GetLogger(),
+		EnableCaching:   cfg.Features.EnableCaching,
 	}
 	
 	// Initialize repository services
@@ -451,7 +707,7 @@ func (c *RepositoryContainer) initialize(infra *InfrastructureContainer) error {
 }
 
 // initialize sets up the service container.
-func (c *ServiceContainer) initialize(repos *RepositoryContainer, infra *InfrastructureContainer) error {
+func (c *ServiceContainer) initialize(repos IRepositoryContainer, infra IInfrastructureContainer) error {
 	// Initialize domain services
 	c.ConnectionAnalyzer = domainServices.NewConnectionAnalyzer(0.3, 5, 0.2)
 	
@@ -460,22 +716,23 @@ func (c *ServiceContainer) initialize(repos *RepositoryContainer, infra *Infrast
 	c.EventBus = nil
 	
 	// Create service configuration
+	cfg := infra.GetConfig()
 	serviceConfig := initialization.ServiceConfig{
-		Config:        infra.Config,
+		Config:        cfg,
 		EventBus:      c.EventBus,
-		Logger:        infra.Logger,
-		EnableCaching: infra.Config.Features.EnableCaching,
+		Logger:        infra.GetLogger(),
+		EnableCaching: cfg.Features.EnableCaching,
 	}
 	
 	// Convert RepositoryContainer to RepositoryServices for initialization
 	repoServices := &initialization.RepositoryServices{
-		NodeRepository:     repos.Node,
-		EdgeRepository:     repos.Edge,
-		CategoryRepository: repos.Category,
-		GraphRepository:    repos.GraphRepository,
+		NodeRepository:     repos.GetNodeRepository(),
+		EdgeRepository:     repos.GetEdgeRepository(),
+		CategoryRepository: repos.GetCategoryRepository(),
+		GraphRepository:    repos.GetGraphRepository(),
 		ConnectionAnalyzer: c.ConnectionAnalyzer,
-		IdempotencyStore:   repos.IdempotencyStore,
-		UnitOfWorkFactory:  repos.UnitOfWorkFactory,
+		IdempotencyStore:   repos.GetIdempotencyStore(),
+		UnitOfWorkFactory:  repos.GetUnitOfWorkFactory(),
 	}
 	
 	// Initialize application services
@@ -495,7 +752,7 @@ func (c *ServiceContainer) initialize(repos *RepositoryContainer, infra *Infrast
 }
 
 // initialize sets up the handler container.
-func (c *HandlerContainer) initialize(services *ServiceContainer, infra *InfrastructureContainer) error {
+func (c *HandlerContainer) initialize(services IServiceContainer, infra IInfrastructureContainer) error {
 	// Initialize handlers
 	c.initializeHandlers(services, infra)
 	
@@ -590,27 +847,32 @@ func (c *InfrastructureContainer) initializeStore() error {
 // ============================================================================
 
 // initializeHandlers sets up HTTP handlers.
-func (c *HandlerContainer) initializeHandlers(services *ServiceContainer, infra *InfrastructureContainer) {
+func (c *HandlerContainer) initializeHandlers(services IServiceContainer, infra IInfrastructureContainer) {
 	// Create cold start provider (simple implementation)
 	coldStartProvider := &simpleColdStartProvider{startTime: time.Now()}
 	
 	// Memory handler (nodes/edges)
-	if services.NodeCommandService != nil && services.NodeQueryService != nil && services.GraphQueryService != nil {
+	nodeCmd := services.GetNodeCommandService()
+	nodeQuery := services.GetNodeQueryService()
+	graphQuery := services.GetGraphQueryService()
+	if nodeCmd != nil && nodeQuery != nil && graphQuery != nil {
 		c.NodeHandler = v1handlers.NewMemoryHandler(
-			services.NodeCommandService,
-			services.NodeQueryService,
-			services.GraphQueryService,
-			infra.EventBridgeClient,
+			nodeCmd,
+			nodeQuery,
+			graphQuery,
+			infra.GetEventBridgeClient(),
 			coldStartProvider,
 		)
 		c.Memory = c.NodeHandler // Alias
 	}
 	
 	// Category handler
-	if services.CategoryCommandService != nil && services.CategoryQueryService != nil {
+	catCmd := services.GetCategoryCommandService()
+	catQuery := services.GetCategoryQueryService()
+	if catCmd != nil && catQuery != nil {
 		c.CategoryHandler = v1handlers.NewCategoryHandler(
-			services.CategoryCommandService,
-			services.CategoryQueryService,
+			catCmd,
+			catQuery,
 		)
 		c.Category = c.CategoryHandler // Alias
 	}
@@ -627,7 +889,7 @@ func (c *HandlerContainer) initializeHandlers(services *ServiceContainer, infra 
 }
 
 // initializeRouter sets up the HTTP router with all routes.
-func (c *HandlerContainer) initializeRouter(_ *InfrastructureContainer) {
+func (c *HandlerContainer) initializeRouter(_ IInfrastructureContainer) {
 	router := chi.NewRouter()
 	
 	// Health endpoints
@@ -681,7 +943,7 @@ func (c *HandlerContainer) initializeRouter(_ *InfrastructureContainer) {
 }
 
 // initializeMiddleware sets up middleware chain.
-func (c *HandlerContainer) initializeMiddleware(_ *InfrastructureContainer) {
+func (c *HandlerContainer) initializeMiddleware(_ IInfrastructureContainer) {
 	// Initialize basic middleware
 	// TODO: Add proper middleware based on configuration
 	c.Middleware = []func(http.Handler) http.Handler{

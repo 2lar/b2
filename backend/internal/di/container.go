@@ -12,10 +12,12 @@ import (
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
 	"brain2-backend/internal/errors"
+	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
 )
 
 // NewContainer creates a new Container by wrapping ApplicationContainer.
-// This maintains backward compatibility while using the clean architecture.
+// DEPRECATED: This function exists only for Wire compatibility.
+// New code should use NewApplicationContainer directly.
 func NewContainer() (*Container, error) {
 	// Load configuration first
 	cfg := config.LoadConfig()
@@ -28,8 +30,7 @@ func NewContainer() (*Container, error) {
 			Build()
 	}
 	
-	// Create a compatibility wrapper that maps the old Container interface
-	// to the new ApplicationContainer structure
+	// Create compatibility wrapper
 	container := createCompatibilityWrapper(appContainer, &cfg)
 	
 	return container, nil
@@ -37,7 +38,13 @@ func NewContainer() (*Container, error) {
 
 // createCompatibilityWrapper creates a Container that wraps the ApplicationContainer
 // for backward compatibility with existing code.
-func createCompatibilityWrapper(app *ApplicationContainer, cfg *config.Config) *Container {
+func createCompatibilityWrapper(app IApplicationContainer, cfg *config.Config) *Container {
+	// Get infrastructure container
+	infra := app.GetInfrastructure()
+	repos := app.GetRepositories()
+	services := app.GetServices()
+	handlers := app.GetHandlers()
+	
 	// Create the Container with all fields mapped from ApplicationContainer
 	c := &Container{
 		// Configuration
@@ -46,59 +53,64 @@ func createCompatibilityWrapper(app *ApplicationContainer, cfg *config.Config) *
 		IndexName: cfg.Database.IndexName,
 		
 		// Cold start tracking
-		ColdStartTime: &app.StartTime,
-		IsColdStart:   app.IsColdStart,
+		StartTime:     app.GetStartTime(),
+		IsColdStart:   app.IsColdStart(),
 		
 		// AWS Clients (from Infrastructure container)
-		DynamoDBClient:    app.Infrastructure.DynamoDBClient,
-		EventBridgeClient: app.Infrastructure.EventBridgeClient,
+		DynamoDBClient:    infra.GetDynamoDBClient(),
+		EventBridgeClient: infra.GetEventBridgeClient(),
 		
 		// Repository Layer (from Repository container)
-		NodeRepository:          app.Repositories.Node,
-		EdgeRepository:          app.Repositories.Edge,
-		KeywordRepository:       app.Repositories.Keyword,
-		TransactionalRepository: app.Repositories.Transactional,
-		CategoryRepository:      app.Repositories.Category,
-		GraphRepository:         app.Repositories.Graph,
-		IdempotencyStore:        app.Repositories.Idempotency,
+		NodeRepository:          repos.GetNodeRepository(),
+		EdgeRepository:          repos.GetEdgeRepository(),
+		KeywordRepository:       repos.GetKeywordRepository(),
+		TransactionalRepository: repos.GetTransactionalRepository(),
+		CategoryRepository:      repos.GetCategoryRepository(),
+		GraphRepository:         repos.GetGraphRepository(),
+		IdempotencyStore:        repos.GetIdempotencyStore(),
 		// UnitOfWorkProvider is intentionally left nil as it's being deprecated
 		
 		// Cross-cutting concerns (from Infrastructure container)
-		Logger:           app.Infrastructure.Logger,
-		Cache:            app.Infrastructure.Cache,
-		MetricsCollector: app.Infrastructure.MetricsCollector,
-		TracerProvider:   app.Infrastructure.TracerProvider,
+		Logger:           infra.GetLogger(),
+		Cache:            infra.GetCache(),
+		MetricsCollector: infra.GetMetricsCollector(),
+		TracerProvider:   infra.GetTracerProvider(),
 		
 		// Application Services (from Service container)
-		NodeAppService:       app.Services.NodeCommandService,
-		CategoryService:      app.Services.CategoryCommandService,
-		CategoryAppService:   app.Services.CategoryCommandService,  // Set both for backward compatibility
-		NodeQueryService:     app.Services.NodeQueryService,
-		CategoryQueryService: app.Services.CategoryQueryService,
-		GraphQueryService:    app.Services.GraphQueryService,
-		CleanupService:       app.Services.CleanupService,
+		NodeAppService:       services.GetNodeCommandService(),
+		CategoryService:      services.GetCategoryCommandService(),
+		CategoryAppService:   services.GetCategoryCommandService(),  // Set both for backward compatibility
+		NodeQueryService:     services.GetNodeQueryService(),
+		CategoryQueryService: services.GetCategoryQueryService(),
+		GraphQueryService:    services.GetGraphQueryService(),
+		CleanupService:       services.GetCleanupService(),
 		
 		// Domain Services (from Service container)
-		ConnectionAnalyzer: app.Services.ConnectionAnalyzer,
-		EventBus:           app.Services.EventBus,
+		ConnectionAnalyzer: services.GetConnectionAnalyzer(),
+		EventBus:           services.GetEventBus(),
 		
 		// HTTP Handlers (from Handler container)
-		Memory:          app.Handlers.Memory,
-		MemoryHandler:   app.Handlers.Memory,  // Set both for backward compatibility
-		Category:        app.Handlers.Category,
-		CategoryHandler: app.Handlers.Category,  // Set both for backward compatibility
-		HealthHandler:   app.Handlers.HealthHandler,
-		MetricsHandler:  app.Handlers.MetricsHandler,
+		// Note: These return interface{} so need type assertions
+		Memory:          handlers.GetNodeHandler().(*v1handlers.MemoryHandler),
+		MemoryHandler:   handlers.GetNodeHandler().(*v1handlers.MemoryHandler),
+		Category:        handlers.GetCategoryHandler().(*v1handlers.CategoryHandler),
+		CategoryHandler: handlers.GetCategoryHandler().(*v1handlers.CategoryHandler),
+		HealthHandler:   handlers.GetHealthHandler().(*v1handlers.HealthHandler),
+		MetricsHandler:  handlers.GetMetricsHandler(),
 		
 		// Router and middleware
-		Router:     app.Handlers.Router,
-		Middleware: app.Handlers.Middleware,
+		Router:     handlers.GetRouter(),
+		Middleware: handlers.GetMiddleware(),
 		
-		// Store reference to app container for shutdown
-		appContainer:      app,
+		// Store reference to app container (using concrete type for now)
+		appContainer:      app.(*ApplicationContainer),
 		shutdownFunctions: make([]func() error, 0),
 		middlewareConfig:  make(map[string]any),
 	}
+	
+	// Set cold start time pointer
+	coldStartTime := app.GetStartTime()
+	c.ColdStartTime = &coldStartTime
 	
 	// Add shutdown function that delegates to app container
 	c.shutdownFunctions = append(c.shutdownFunctions, func() error {
