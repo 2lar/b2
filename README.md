@@ -179,7 +179,7 @@ Navigate to the `frontend/` directory to run these commands.
 
 *   `npm install`: Installs all necessary Node.js dependencies.
 *   `npm run dev`: Starts the development server with hot-reloading for local development.
-*   `npm run build`: Cleans the `dist` directory, reinstalls dependencies, generates API types from `openapi.yaml`, performs TypeScript type checking, and then builds the production-ready frontend assets.
+*   `npm run build`: Cleans the `dist` directory, reinstalls dependencies, generates API types from `openapi.yaml`, performs TypeScript type checking, and then builds the production-ready frontend assets. Outputs to `frontend/dist/`.
 *   `npm run preview`: Serves the production build locally for testing.
 *   `npm run generate-api-types`: Generates TypeScript types for the API client based on `openapi.yaml`. This ensures type safety between the frontend and backend.
 *   `npm test`: Runs TypeScript type checking (`tsc --noEmit`) to catch type-related errors. (Note: This project currently lacks comprehensive unit/integration tests for the frontend beyond type checking.)
@@ -189,7 +189,7 @@ Navigate to the `frontend/` directory to run these commands.
 
 Navigate to the `backend/` directory to run these commands.
 
-*   `./build.sh`: This script cleans, installs dependencies, runs tests, generates dependency injection code, and builds all Go Lambda functions.
+*   `./build.sh`: This script cleans, installs dependencies, runs tests, generates dependency injection code, and builds all Go Lambda functions. Outputs to `backend/build/[function-name]/bootstrap`.
 *   **Wire (Dependency Injection) Commands:**
     *   `go install github.com/google/wire/cmd/wire@latest`: Installs the Wire code generation tool.
     *   `go generate ./internal/di`: Generates dependency injection code based on `wire` directives. This is also run by `./build.sh`.
@@ -204,9 +204,47 @@ Navigate to the `backend/` directory to run these commands.
 
 Navigate to the `infra/` directory to run these commands.
 
+*   `./buildauth.sh`: Builds the Lambda authorizer function (located in `infra/lambda/authorizer/`). This TypeScript Lambda validates JWT tokens from Supabase for API Gateway authorization. It's in the infra package because it's tightly coupled with API Gateway configuration and uses Node.js (unlike the Go backend services). While CDK's NodejsFunction can auto-bundle TypeScript, pre-building ensures compatibility and faster CDK deployments. Outputs to `infra/lambda/authorizer/index.js`.
 *   `npm install`: Installs all necessary Node.js dependencies for the AWS CDK project.
 *   `npx cdk deploy [STACK_NAME]`: Deploys the specified CDK stack (e.g., `npx cdk deploy Brain2Stack`). Use `--all` to deploy all stacks.
 *   `npx cdk synth [STACK_NAME]`: Synthesizes the CDK application into CloudFormation templates. This shows you what AWS resources will be created.
 *   `npx cdk diff [STACK_NAME]`: Compares the current CDK stack definition with the already deployed CloudFormation stack, showing proposed changes.
 *   `npx cdk destroy [STACK_NAME]`: Destroys the specified deployed CDK stack and all its resources. **Use with extreme caution!**
 *   `npm test`: Runs Jest tests for the infrastructure code.
+
+##### Stack Architecture & Deployment Groups
+
+The application consists of several CDK stacks with dependencies:
+
+**Stack Hierarchy:**
+- `Brain2Stack/Database` - DynamoDB tables (independent)
+- `Brain2Stack/Compute` - Lambda functions & EventBridge (depends on Database)
+- `Brain2Stack/Api` - HTTP API Gateway (depends on Compute)
+- `Brain2Stack/Frontend` - S3 & CloudFront (independent)
+- `Brain2Stack/Monitoring` - CloudWatch dashboards (optional, depends on all)
+
+**Targeted Deployment Examples:**
+
+*   **Backend-only deployment** (when backend code changes):
+    ```bash
+    npx cdk deploy Brain2Stack/Database Brain2Stack/Compute Brain2Stack/Api
+    ```
+
+*   **Frontend-only deployment** (when only UI changes):
+    ```bash
+    npx cdk deploy Brain2Stack/Frontend
+    ```
+
+*   **Lambda updates only** (when Lambda code changes):
+    ```bash
+    npx cdk deploy Brain2Stack/Compute
+    # Also deploy Api stack if API routes changed
+    npx cdk deploy Brain2Stack/Api
+    ```
+
+*   **Full deployment** (all stacks):
+    ```bash
+    npx cdk deploy --all
+    ```
+
+**Note:** CDK automatically handles dependencies, but deploying in dependency order (Database → Compute → Api) is clearer and avoids potential issues.

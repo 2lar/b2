@@ -105,9 +105,9 @@ chmod +x build.sh
 print_status "Building backend with environment: ${PROJECT_ENV:-default}"
 ./build.sh
 
-if [ ! -f "build/function.zip" ]; then
-    print_error "Backend build failed - function.zip not created"
-    print_error "Expected artifact: backend/build/function.zip"
+if [ ! -d "build/main" ] || [ ! -f "build/main/bootstrap" ]; then
+    print_error "Backend build failed - Lambda functions not created"
+    print_error "Expected artifacts in: backend/build/"
     print_error "Check backend build logs for compilation errors"
     exit 1
 fi

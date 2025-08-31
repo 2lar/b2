@@ -427,21 +427,33 @@ npm test -- --updateSnapshot
 1. **Build Backend Functions**
    ```bash
    cd ../backend
-   # Build Go functions for AWS Lambda
-   GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/main ./cmd/main
-   cd infra
+   ./build.sh  # Builds all Go Lambda functions to backend/build/[function-name]/bootstrap
    ```
 
-2. **Build Frontend Assets**
+2. **Build Lambda Authorizer**
+   ```bash
+   cd ../infra
+   ./buildauth.sh  # Compiles TypeScript authorizer to infra/lambda/authorizer/index.js
+   ```
+
+3. **Build Frontend Assets**
    ```bash
    cd ../frontend
    npm run build  # Creates dist/ directory
-   cd infra
    ```
 
-3. **Deploy Infrastructure**
+4. **Deploy Infrastructure**
    ```bash
-   npm run deploy
+   cd infra
+   npm run deploy  # Deploy all stacks
+   ```
+
+   Or use the root build script to build everything:
+   ```bash
+   # From project root
+   ./build.sh  # Builds backend, authorizer, and frontend
+   cd infra
+   npx cdk deploy --all
    ```
 
 ## 🤝 Contributing
@@ -477,6 +489,30 @@ If deploying stacks individually, follow this order:
 3. **API Stack** (requires Compute) 
 4. **Frontend Stack** (independent, can deploy anytime)
 5. **Monitoring Stack** (requires all others if enabled)
+
+### Targeted Deployment Groups
+
+**Backend-only deployment** (when backend code changes):
+```bash
+npx cdk deploy Brain2Stack/Database Brain2Stack/Compute Brain2Stack/Api
+```
+
+**Frontend-only deployment** (when only UI changes):
+```bash
+npx cdk deploy Brain2Stack/Frontend
+```
+
+**Lambda updates only** (when Lambda code changes):
+```bash
+npx cdk deploy Brain2Stack/Compute
+# Also deploy Api stack if API routes changed
+npx cdk deploy Brain2Stack/Api
+```
+
+**Full deployment** (all stacks):
+```bash
+npx cdk deploy --all
+```
 
 ### Clean Deployment
 
