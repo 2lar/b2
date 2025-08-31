@@ -673,9 +673,9 @@ func (c *ServiceContainer) initialize(repos IRepositoryContainer, infra IInfrast
 	// Initialize domain services
 	c.ConnectionAnalyzer = domainServices.NewConnectionAnalyzer(0.3, 5, 0.2)
 	
-	// Initialize event bus (placeholder for now)
+	// Initialize event bus (using mock for now)
 	// TODO: Initialize proper event bus with EventBridge
-	c.EventBus = nil
+	c.EventBus = shared.NewMockEventBus()
 	
 	// Create service configuration
 	cfg := infra.GetConfig()
@@ -688,6 +688,7 @@ func (c *ServiceContainer) initialize(repos IRepositoryContainer, infra IInfrast
 	
 	// Convert RepositoryContainer to RepositoryServices for initialization
 	repoServices := &initialization.RepositoryServices{
+		Store:              infra.GetStore(),
 		NodeRepository:     repos.GetNodeRepository(),
 		EdgeRepository:     repos.GetEdgeRepository(),
 		CategoryRepository: repos.GetCategoryRepository(),
@@ -864,7 +865,10 @@ func (c *HandlerContainer) initializeRouter(_ IInfrastructureContainer) {
 	router.Get("/metrics", c.MetricsHandler)
 	
 	// API routes
-	router.Route("/api", func(r chi.Router) {
+	router.Route("/api/v1", func(r chi.Router) {
+		// Apply authentication middleware to all API routes
+		r.Use(v1handlers.Authenticator)
+		
 		// Node routes
 		if c.Memory != nil {
 			r.Route("/nodes", func(r chi.Router) {

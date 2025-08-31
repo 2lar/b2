@@ -976,17 +976,6 @@ func (m *MockRepository) CountNodes(ctx context.Context, userID string) (int, er
 
 // Phase 2 Enhanced Methods - Added for interface compatibility
 
-
-
-// FindEdgesWithOptions implements enhanced edge queries with options
-func (m *MockRepository) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*edge.Edge, error) {
-	if err := m.checkError("FindEdgesWithOptions"); err != nil {
-		return nil, err
-	}
-	// Delegate to existing FindEdges method for simplicity
-	return m.FindEdges(ctx, query)
-}
-
 // GetSubgraph implements subgraph extraction
 func (m *MockRepository) GetSubgraph(ctx context.Context, nodeIDs []string) (*shared.Graph, error) {
 	if err := m.checkError("GetSubgraph"); err != nil {

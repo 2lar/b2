@@ -49,7 +49,7 @@ func NewNodeRepository(client *dynamodb.Client, tableName, indexName string, log
 // ============================================================================
 
 // FindByKeywords searches nodes by keywords using DynamoDB filter expressions
-func (r *NodeRepository) FindByKeywords(ctx context.Context, userID shared.UserID, keywords []string, opts ...repository.QueryOption) ([]*node.Node, error) {
+func (r *NodeRepository) FindByKeywords(ctx context.Context, userID shared.UserID, keywords []string) ([]*node.Node, error) {
 	if len(keywords) == 0 {
 		return r.Query(ctx, userID.String(), WithSKPrefix("NODE#"))
 	}
@@ -79,7 +79,7 @@ func (r *NodeRepository) FindByKeywords(ctx context.Context, userID shared.UserI
 }
 
 // FindByTags searches nodes by tags using DynamoDB filter expressions
-func (r *NodeRepository) FindByTags(ctx context.Context, userID shared.UserID, tags []string, opts ...repository.QueryOption) ([]*node.Node, error) {
+func (r *NodeRepository) FindByTags(ctx context.Context, userID shared.UserID, tags []string) ([]*node.Node, error) {
 	if len(tags) == 0 {
 		return r.Query(ctx, userID.String(), WithSKPrefix("NODE#"))
 	}
@@ -108,7 +108,7 @@ func (r *NodeRepository) FindByTags(ctx context.Context, userID shared.UserID, t
 }
 
 // FindByContent searches nodes by content using DynamoDB filter expressions
-func (r *NodeRepository) FindByContent(ctx context.Context, userID shared.UserID, searchTerm string, fuzzy bool, opts ...repository.QueryOption) ([]*node.Node, error) {
+func (r *NodeRepository) FindByContent(ctx context.Context, userID shared.UserID, searchTerm string, fuzzy bool) ([]*node.Node, error) {
 	if searchTerm == "" {
 		return r.Query(ctx, userID.String(), WithSKPrefix("NODE#"))
 	}
@@ -128,7 +128,7 @@ func (r *NodeRepository) FindByContent(ctx context.Context, userID shared.UserID
 }
 
 // FindRecentlyCreated finds nodes created within the specified number of days
-func (r *NodeRepository) FindRecentlyCreated(ctx context.Context, userID shared.UserID, days int, opts ...repository.QueryOption) ([]*node.Node, error) {
+func (r *NodeRepository) FindRecentlyCreated(ctx context.Context, userID shared.UserID, days int) ([]*node.Node, error) {
 	cutoff := time.Now().AddDate(0, 0, -days)
 	
 	// Build filter for created date
@@ -141,7 +141,7 @@ func (r *NodeRepository) FindRecentlyCreated(ctx context.Context, userID shared.
 }
 
 // FindRecentlyUpdated finds nodes updated within the specified number of days
-func (r *NodeRepository) FindRecentlyUpdated(ctx context.Context, userID shared.UserID, days int, opts ...repository.QueryOption) ([]*node.Node, error) {
+func (r *NodeRepository) FindRecentlyUpdated(ctx context.Context, userID shared.UserID, days int) ([]*node.Node, error) {
 	cutoff := time.Now().AddDate(0, 0, -days)
 	
 	// Build filter for updated date
@@ -201,7 +201,7 @@ func (r *NodeRepository) BatchDeleteNodes(ctx context.Context, userID string, no
 }
 
 // FindByUser retrieves all nodes for a user - delegates to Query
-func (r *NodeRepository) FindByUser(ctx context.Context, userID shared.UserID, opts ...repository.QueryOption) ([]*node.Node, error) {
+func (r *NodeRepository) FindByUser(ctx context.Context, userID shared.UserID) ([]*node.Node, error) {
 	return r.Query(ctx, userID.String(), WithSKPrefix("NODE#"))
 }
 
@@ -215,7 +215,7 @@ func (r *NodeRepository) CountByUser(ctx context.Context, userID shared.UserID) 
 }
 
 // FindBySpecification finds nodes matching a specification
-func (r *NodeRepository) FindBySpecification(ctx context.Context, spec repository.Specification, opts ...repository.QueryOption) ([]*node.Node, error) {
+func (r *NodeRepository) FindBySpecification(ctx context.Context, spec repository.Specification) ([]*node.Node, error) {
 	// For now, delegate to FindByUser as specifications need more complex implementation
 	if spec == nil {
 		return nil, errors.Validation("INVALID_SPECIFICATION", "Specification cannot be nil").
@@ -266,13 +266,13 @@ func (r *NodeRepository) FindPage(ctx context.Context, query repository.NodeQuer
 }
 
 // FindConnected finds nodes connected to a specific node
-func (r *NodeRepository) FindConnected(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, depth int, opts ...repository.QueryOption) ([]*node.Node, error) {
+func (r *NodeRepository) FindConnected(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, depth int) ([]*node.Node, error) {
 	// This requires graph traversal logic - simplified for now
 	return r.FindByUser(ctx, userID)
 }
 
 // FindSimilar finds nodes similar to a specific node
-func (r *NodeRepository) FindSimilar(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, threshold float64, opts ...repository.QueryOption) ([]*node.Node, error) {
+func (r *NodeRepository) FindSimilar(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, threshold float64) ([]*node.Node, error) {
 	// This requires similarity calculation - simplified for now
 	return r.FindByUser(ctx, userID)
 }
@@ -353,10 +353,6 @@ func (r *NodeRepository) DeleteBatch(ctx context.Context, userID shared.UserID, 
 	return r.GenericRepository.BatchDelete(ctx, userID.String(), stringIDs)
 }
 
-// FindByUser with options
-func (r *NodeRepository) FindByUserWithOpts(ctx context.Context, userID shared.UserID, opts ...repository.QueryOption) ([]*node.Node, error) {
-	return r.Query(ctx, userID.String(), WithSKPrefix("NODE#"))
-}
 
 
 // CreateNodeAndKeywords creates a node with keywords (alias for Save)
@@ -410,15 +406,7 @@ func (r *NodeRepository) FindNodesByTags(ctx context.Context, userID string, tag
 	return r.FindByTags(ctx, uid, tags)
 }
 
-// FindNodesPageWithOptions retrieves a page of nodes with options
-func (r *NodeRepository) FindNodesPageWithOptions(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination, opts ...repository.QueryOption) (*repository.NodePage, error) {
-	return r.FindPage(ctx, query, pagination)
-}
 
-// FindNodesWithOptions finds nodes with options
-func (r *NodeRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
-	return r.FindNodes(ctx, query)
-}
 
 // GetNodeNeighborhood retrieves a node's neighborhood graph
 func (r *NodeRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*shared.Graph, error) {

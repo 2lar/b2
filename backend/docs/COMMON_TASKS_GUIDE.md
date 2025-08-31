@@ -486,7 +486,7 @@ func isValidURL(str string) bool {
 type BookmarkRepository interface {
     Save(ctx context.Context, bookmark *bookmark.Bookmark) error
     FindByID(ctx context.Context, userID shared.UserID, id shared.BookmarkID) (*bookmark.Bookmark, error)
-    FindByUserID(ctx context.Context, userID shared.UserID, opts ...QueryOption) ([]*bookmark.Bookmark, error)
+    FindByUserID(ctx context.Context, userID shared.UserID) ([]*bookmark.Bookmark, error)
     FindByNodeID(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) ([]*bookmark.Bookmark, error)
     Delete(ctx context.Context, userID shared.UserID, id shared.BookmarkID) error
 }

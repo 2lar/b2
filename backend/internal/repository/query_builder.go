@@ -8,37 +8,8 @@ import (
 	"brain2-backend/internal/domain/shared"
 )
 
-// QueryOptions represents options for query execution
-type QueryOptions struct {
-	ReadPreference ReadPreference
-	Timeout        time.Duration
-	MaxResults     int
-	UseCache       bool
-	CacheTimeout   time.Duration
-	IncludeDeleted bool
-	Fields         []string
-	Limit          int
-	Offset         int
-	Cursor         string
-	SortBy         string
-	SortOrder      SortDirection
-	Filters        map[string]interface{}
-}
-
-// ReadPreference specifies the read preference for queries
-type ReadPreference int
-
-const (
-	ReadPreferencePrimary ReadPreference = iota
-	ReadPreferenceSecondary
-	ReadPreferenceNearest
-)
-
 // SortOrder is an alias for SortDirection for compatibility
 type SortOrder = SortDirection
-
-// QueryOption is a function that modifies QueryOptions
-type QueryOption func(*QueryOptions)
 
 // QueryBuilder provides a fluent API for building complex repository queries.
 //
@@ -76,7 +47,6 @@ type QueryBuilder struct {
 	specifications []Specification
 	sorting        []SortCriteria
 	pagination     PaginationConfig
-	options        QueryOptions
 	filters        []QueryFilter
 	projections    []string
 	aggregations   []Aggregation
@@ -169,7 +139,6 @@ func NewQueryBuilder() *QueryBuilder {
 		filters:        make([]QueryFilter, 0),
 		projections:    make([]string, 0),
 		aggregations:   make([]Aggregation, 0),
-		options:        QueryOptions{},
 		pagination: PaginationConfig{
 			Style:  OffsetPagination,
 			Limit:  50, // Default limit
@@ -375,32 +344,6 @@ func (qb *QueryBuilder) GroupBy(field string) *QueryBuilder {
 	return qb
 }
 
-// Advanced Query Options
-
-// WithCache enables caching for this query
-func (qb *QueryBuilder) WithCache(ttl time.Duration) *QueryBuilder {
-	qb.options.UseCache = true
-	qb.options.CacheTimeout = ttl
-	return qb
-}
-
-// WithReadPreference sets the read preference
-func (qb *QueryBuilder) WithReadPreference(preference ReadPreference) *QueryBuilder {
-	qb.options.ReadPreference = preference
-	return qb
-}
-
-// IncludeDeleted includes soft-deleted entities in results
-func (qb *QueryBuilder) IncludeDeleted() *QueryBuilder {
-	qb.options.IncludeDeleted = true
-	return qb
-}
-
-// Explain enables query execution plan explanation (for debugging)
-func (qb *QueryBuilder) Explain() *QueryBuilder {
-	qb.options.Fields = append(qb.options.Fields, "_explain")
-	return qb
-}
 
 // Build Methods
 
@@ -450,32 +393,6 @@ func (qb *QueryBuilder) BuildQuery() NodeQuery {
 	return query
 }
 
-// BuildOptions builds query options from the builder state
-func (qb *QueryBuilder) BuildOptions() *QueryOptions {
-	options := qb.options
-	options.Limit = qb.pagination.Limit
-	options.Offset = qb.pagination.Offset
-	options.Cursor = qb.pagination.Cursor
-	options.Fields = qb.projections
-	
-	// Convert sorting to options
-	if len(qb.sorting) > 0 {
-		// Use the first sort criteria (can be extended to support multiple)
-		primary := qb.sorting[0]
-		options.SortBy = primary.Field
-		options.SortOrder = SortOrder(primary.Direction)
-	}
-	
-	// Convert filters to map
-	if len(qb.filters) > 0 && options.Filters == nil {
-		options.Filters = make(map[string]interface{})
-	}
-	for i, filter := range qb.filters {
-		options.Filters[fmt.Sprintf("filter_%d", i)] = filter
-	}
-	
-	return &options
-}
 
 // Helper Methods
 
@@ -828,8 +745,9 @@ func optimizeLargeQueries(qb *QueryBuilder) *QueryBuilder {
 }
 
 func optimizeSorting(qb *QueryBuilder) *QueryBuilder {
-	// Add cache preference for sorted queries
-	return qb.WithReadPreference(ReadPreferenceSecondary)
+	// For sorted queries, could add index hints or other optimizations
+	// Currently just returns the query as-is
+	return qb
 }
 
 // Example Usage Functions
@@ -869,8 +787,7 @@ func ExampleComplexQuery(userID shared.UserID, searchTerm string) (Specification
 			NewCreatedAfterSpec(time.Now().AddDate(0, -3, 0)).
 			And(NewArchivedSpec(false))).
 		OrderByRelevance().
-		Limit(50).
-		WithCache(5 * time.Minute)
+		Limit(50)
 	
 	// Validate the query
 	if err := validator.Validate(builder); err != nil {

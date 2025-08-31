@@ -64,9 +64,6 @@ type NodeRepository interface {
 	GetNodesPage(ctx context.Context, query NodeQuery, pagination Pagination) (*NodePage, error)
 	GetNodeNeighborhood(ctx context.Context, userID, nodeID string, depth int) (*shared.Graph, error)
 	CountNodes(ctx context.Context, userID string) (int, error)
-	
-	// Phase 2 Enhancements - Advanced Query Support  
-	// Note: QueryOption pattern removed - use query parameters directly
 }
 
 // EdgeRepository handles edge-specific operations with Phase 2 enhancements
@@ -83,9 +80,6 @@ type EdgeRepository interface {
 	
 	// Enhanced edge operations with pagination (existing - maintained)
 	GetEdgesPage(ctx context.Context, query EdgeQuery, pagination Pagination) (*EdgePage, error)
-	
-	// Phase 2 Enhancements - Advanced Edge Operations
-	// Note: QueryOption pattern removed - use query parameters directly
 }
 
 // KeywordRepository handles keyword indexing and search
