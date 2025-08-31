@@ -85,6 +85,14 @@ func NewRetryNodeRepository(
 	}
 }
 
+// UpdateNode retries node update on transient failures.
+// Updates are generally idempotent if versioning is handled properly.
+func (r *RetryNodeRepository) UpdateNode(ctx context.Context, n *node.Node) error {
+	return r.executeWithRetry(ctx, "UpdateNode", func() error {
+		return r.inner.UpdateNode(ctx, n)
+	}, true) // true = idempotent (with versioning)
+}
+
 // CreateNodeAndKeywords retries node creation on transient failures.
 // Note: This operation is NOT idempotent, so we're careful about retries.
 func (r *RetryNodeRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
@@ -344,6 +352,24 @@ func (r *RetryEdgeRepository) CreateEdge(ctx context.Context, edge *edge.Edge) e
 	return r.executeWithRetry(ctx, "CreateEdge", func() error {
 		return r.inner.CreateEdge(ctx, edge)
 	}, false)
+}
+
+// FindEdgeByID retries edge lookup by ID.
+func (r *RetryEdgeRepository) FindEdgeByID(ctx context.Context, userID, edgeID string) (*edge.Edge, error) {
+	var result *edge.Edge
+	err := r.executeWithRetry(ctx, "FindEdgeByID", func() error {
+		var err error
+		result, err = r.inner.FindEdgeByID(ctx, userID, edgeID)
+		return err
+	}, true) // Read operation is idempotent
+	return result, err
+}
+
+// UpdateEdge retries edge update.
+func (r *RetryEdgeRepository) UpdateEdge(ctx context.Context, e *edge.Edge) error {
+	return r.executeWithRetry(ctx, "UpdateEdge", func() error {
+		return r.inner.UpdateEdge(ctx, e)
+	}, true) // Update with versioning is idempotent
 }
 
 // FindEdges retries edge queries.

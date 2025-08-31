@@ -54,6 +54,7 @@ type NodeRepository interface {
 	CreateNodeAndKeywords(ctx context.Context, node *node.Node) error
 	FindNodeByID(ctx context.Context, userID, nodeID string) (*node.Node, error)
 	FindNodes(ctx context.Context, query NodeQuery) ([]*node.Node, error)
+	UpdateNode(ctx context.Context, node *node.Node) error
 	DeleteNode(ctx context.Context, userID, nodeID string) error
 	
 	// Batch operations for performance optimization
@@ -71,7 +72,9 @@ type EdgeRepository interface {
 	// Core edge operations (existing - maintained for compatibility)
 	CreateEdges(ctx context.Context, userID, sourceNodeID string, relatedNodeIDs []string) error
 	CreateEdge(ctx context.Context, edge *edge.Edge) error
+	FindEdgeByID(ctx context.Context, userID, edgeID string) (*edge.Edge, error)
 	FindEdges(ctx context.Context, query EdgeQuery) ([]*edge.Edge, error)
+	UpdateEdge(ctx context.Context, edge *edge.Edge) error
 	
 	// Delete operations
 	DeleteEdge(ctx context.Context, userID, edgeID string) error

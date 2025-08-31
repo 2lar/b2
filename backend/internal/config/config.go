@@ -284,8 +284,10 @@ type Security struct {
 	AllowedOrigins  []string
 	TrustedProxies  []string
 	SecureHeaders   bool
-	EnableCSRF      bool
-	CSRFTokenLength int `validate:"min=16,max=256"`
+	EnableCSRF         bool
+	CSRFTokenLength    int   `validate:"min=16,max=256"`
+	MaxRequestBodySize int64 // Maximum request body size in bytes
+	MaxUploadSize      int64 // Maximum file upload size in bytes
 }
 
 // ============================================================================
@@ -719,7 +721,7 @@ func loadFeatures() Features {
 		EnableEventBus:       getEnvBool("ENABLE_EVENT_BUS", false),
 		EnableRetries:        getEnvBool("ENABLE_RETRIES", true),
 		EnableCircuitBreaker: getEnvBool("ENABLE_CIRCUIT_BREAKER", false),
-		EnableRateLimiting:   getEnvBool("ENABLE_RATE_LIMITING", false),
+		EnableRateLimiting:   getEnvBool("ENABLE_RATE_LIMITING", true),
 		EnableCompression:    getEnvBool("ENABLE_COMPRESSION", false),
 		EnableDebugEndpoints: getEnvBool("ENABLE_DEBUG_ENDPOINTS", false),
 		EnableProfiling:      getEnvBool("ENABLE_PROFILING", false),
@@ -786,14 +788,16 @@ func loadSecurityConfig() Security {
 		AllowedOrigins:  getEnvStringSlice("ALLOWED_ORIGINS", []string{"*"}),
 		TrustedProxies:  getEnvStringSlice("TRUSTED_PROXIES", []string{}),
 		SecureHeaders:   getEnvBool("SECURE_HEADERS", true),
-		EnableCSRF:      getEnvBool("ENABLE_CSRF", false),
-		CSRFTokenLength: getEnvInt("CSRF_TOKEN_LENGTH", 32),
+		EnableCSRF:         getEnvBool("ENABLE_CSRF", true),
+		CSRFTokenLength:    getEnvInt("CSRF_TOKEN_LENGTH", 32),
+		MaxRequestBodySize: getEnvInt64("MAX_REQUEST_BODY_SIZE", 10*1024*1024),  // 10MB default
+		MaxUploadSize:      getEnvInt64("MAX_UPLOAD_SIZE", 100*1024*1024),      // 100MB default
 	}
 }
 
 func loadRateLimitConfig() RateLimit {
 	return RateLimit{
-		Enabled:           getEnvBool("RATE_LIMIT_ENABLED", false),
+		Enabled:           getEnvBool("RATE_LIMIT_ENABLED", true),
 		RequestsPerMinute: getEnvInt("RATE_LIMIT_RPM", 100),
 		Burst:             getEnvInt("RATE_LIMIT_BURST", 10),
 		CleanupInterval:   getEnvDuration("RATE_LIMIT_CLEANUP", 1*time.Minute),

@@ -104,6 +104,31 @@ func NewCachingNodeRepository(
 	}
 }
 
+// UpdateNode updates a node with cache invalidation
+func (r *CachingNodeRepository) UpdateNode(ctx context.Context, n *node.Node) error {
+	// Execute the update operation first
+	err := r.inner.UpdateNode(ctx, n)
+	if err != nil {
+		return err
+	}
+	
+	// Invalidate the cache for this specific node
+	cacheKey := r.buildNodeKey(n.UserID().String(), n.ID().String())
+	r.cache.Delete(ctx, cacheKey)
+	
+	// If write caching is enabled, cache the updated node
+	if r.config.EnableWrites {
+		if cacheData, marshalErr := r.marshalNode(n); marshalErr == nil {
+			r.cache.Set(ctx, cacheKey, cacheData, r.config.DefaultTTL)
+		}
+	}
+	
+	// Invalidate related caches  
+	r.invalidateUserCaches(ctx, n.UserID().String())
+	
+	return nil
+}
+
 // CreateNodeAndKeywords handles cache invalidation on node creation
 func (r *CachingNodeRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
 	// Execute the write operation first

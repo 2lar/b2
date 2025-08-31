@@ -100,6 +100,12 @@ type UpdateConnectionCommand struct {
 	UserID   string  `validate:"required,uuid"`
 }
 
+// UpdateConnectionResult represents the result of updating a connection.
+type UpdateConnectionResult struct {
+	EdgeID   string  `json:"edgeId"`
+	Strength float64 `json:"strength"`
+}
+
 // DeleteConnectionCommand encapsulates a connection deletion request.
 type DeleteConnectionCommand struct {
 	EdgeID string `validate:"required"`
@@ -269,8 +275,8 @@ func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeComma
 	}
 	
 	// 6. Persist changes
-	// TODO: Implement proper node update method
-	if err := fmt.Errorf("node update not yet implemented"); err != nil {
+	// Use the repository's UpdateNode method which properly handles updates
+	if err := s.nodeRepo.UpdateNode(ctx, node); err != nil {
 		return nil, fmt.Errorf("persistence failed: %w", err)
 	}
 	
@@ -471,9 +477,44 @@ func (s *NodeCommandService) UpdateConnection(ctx context.Context, cmd UpdateCon
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid command")
 	}
 	
-	// 2. Edge update not yet fully implemented
-	// TODO: Implement edge FindByID and Update methods
-	return nil, fmt.Errorf("edge update not yet implemented")
+	// 2. Find the edge
+	existingEdge, err := s.edgeRepo.FindEdgeByID(ctx, cmd.UserID, cmd.EdgeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find edge: %w", err)
+	}
+	
+	// 3. Update the edge strength
+	existingEdge.Strength = cmd.Strength
+	existingEdge.UpdatedAt = time.Now()
+	existingEdge.IncrementVersion()
+	
+	// 4. Persist the update
+	if err := s.edgeRepo.UpdateEdge(ctx, existingEdge); err != nil {
+		return nil, fmt.Errorf("failed to update edge: %w", err)
+	}
+	
+	// 5. Publish update event
+	event := shared.NewEdgeWeightUpdatedEvent(
+		existingEdge.ID,
+		existingEdge.UserID,
+		existingEdge.SourceID,
+		existingEdge.TargetID,
+		existingEdge.Strength, // old strength (we don't have it)
+		cmd.Strength,          // new strength
+		shared.ParseVersion(existingEdge.Version),
+	)
+	if err := s.eventBus.Publish(ctx, event); err != nil {
+		s.logger.Warn("Failed to publish edge updated event",
+			zap.String("edge_id", cmd.EdgeID),
+			zap.Error(err),
+		)
+	}
+	
+	// 6. Return result
+	return &UpdateConnectionResult{
+		EdgeID:   existingEdge.ID.String(),
+		Strength: existingEdge.Strength,
+	}, nil
 }
 
 // DeleteConnection deletes an edge.
@@ -483,16 +524,36 @@ func (s *NodeCommandService) DeleteConnection(ctx context.Context, cmd DeleteCon
 		return fmt.Errorf("invalid command: %w", err)
 	}
 	
-	// 2. Delete the edge (we don't have the edge object for event)
-	// TODO: Implement edge FindByID to get edge details before deletion
+	// 2. Get edge details before deletion for event publishing
+	existingEdge, err := s.edgeRepo.FindEdgeByID(ctx, cmd.UserID, cmd.EdgeID)
+	if err != nil {
+		return fmt.Errorf("failed to find edge: %w", err)
+	}
+	
+	// 3. Delete the edge
 	if err := s.edgeRepo.DeleteEdge(ctx, cmd.UserID, cmd.EdgeID); err != nil {
 		return fmt.Errorf("failed to delete edge: %w", err)
 	}
 	
-	// 4. Publish event (skipped since we don't have edge details)
-	// TODO: Retrieve edge details before deletion to publish proper event
+	// 4. Publish deletion event
+	event := shared.NewEdgeDeletedEvent(
+		existingEdge.ID,
+		existingEdge.UserID,
+		existingEdge.SourceID,
+		existingEdge.TargetID,
+		shared.ParseVersion(existingEdge.Version),
+	)
+	if err := s.eventBus.Publish(ctx, event); err != nil {
+		s.logger.Warn("Failed to publish edge deleted event",
+			zap.String("edge_id", cmd.EdgeID),
+			zap.Error(err),
+		)
+	}
+	
 	s.logger.Info("Edge deleted",
 		zap.String("edge_id", cmd.EdgeID),
+		zap.String("source_id", existingEdge.SourceID.String()),
+		zap.String("target_id", existingEdge.TargetID.String()),
 	)
 	
 	return nil

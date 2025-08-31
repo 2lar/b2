@@ -81,6 +81,46 @@ func NewLoggingNodeRepository(
 	}
 }
 
+// UpdateNode wraps the update operation with logging
+func (r *LoggingNodeRepository) UpdateNode(ctx context.Context, n *node.Node) error {
+	start := time.Now()
+	operationID := generateOperationID()
+	
+	logFields := []zap.Field{
+		zap.String("operation", "update_node"),
+		zap.String("operation_id", operationID),
+		zap.String("user_id", n.UserID().String()),
+		zap.String("node_id", n.ID().String()),
+	}
+	
+	if r.config.LogRequests {
+		r.logger.Debug("updating node", logFields...)
+	}
+	
+	err := r.inner.UpdateNode(ctx, n)
+	
+	duration := time.Since(start)
+	logFields = append(logFields, zap.Duration("duration", duration))
+	
+	if err != nil {
+		if r.config.LogErrors {
+			r.logger.Error("node update failed", append(logFields, zap.Error(err))...)
+		}
+	} else {
+		logLevel := zap.DebugLevel
+		message := "node update completed"
+		
+		if r.config.LogTiming && duration > r.config.SlowThreshold {
+			logLevel = zap.WarnLevel
+			message = "slow node update completed"
+		}
+		
+		r.logger.Check(logLevel, message).Write(logFields...)
+	}
+	
+	return err
+}
+
 // CreateNodeAndKeywords wraps the create operation with logging
 func (r *LoggingNodeRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
 	start := time.Now()
@@ -505,6 +545,90 @@ func NewLoggingEdgeRepository(
 		logger: logger.Named("edge_repository"),
 		config: config,
 	}
+}
+
+// FindEdgeByID wraps the find edge by ID operation with logging
+func (r *LoggingEdgeRepository) FindEdgeByID(ctx context.Context, userID, edgeID string) (*edge.Edge, error) {
+	start := time.Now()
+	operationID := generateOperationID()
+	
+	logFields := []zap.Field{
+		zap.String("operation", "find_edge_by_id"),
+		zap.String("operation_id", operationID),
+		zap.String("user_id", userID),
+		zap.String("edge_id", edgeID),
+	}
+	
+	if r.config.LogRequests {
+		r.logger.Debug("finding edge by ID", logFields...)
+	}
+	
+	e, err := r.inner.FindEdgeByID(ctx, userID, edgeID)
+	
+	duration := time.Since(start)
+	logFields = append(logFields, zap.Duration("duration", duration))
+	
+	if err != nil {
+		if r.config.LogErrors {
+			if repository.IsNotFound(err) {
+				r.logger.Debug("edge not found", append(logFields, zap.Error(err))...)
+			} else {
+				r.logger.Error("edge lookup failed", append(logFields, zap.Error(err))...)
+			}
+		}
+	} else {
+		logLevel := zap.DebugLevel
+		message := "edge lookup completed"
+		
+		if r.config.LogTiming && duration > r.config.SlowThreshold {
+			logLevel = zap.WarnLevel
+			message = "slow edge lookup completed"
+		}
+		
+		r.logger.Check(logLevel, message).Write(logFields...)
+	}
+	
+	return e, err
+}
+
+// UpdateEdge wraps the update edge operation with logging
+func (r *LoggingEdgeRepository) UpdateEdge(ctx context.Context, e *edge.Edge) error {
+	start := time.Now()
+	operationID := generateOperationID()
+	
+	logFields := []zap.Field{
+		zap.String("operation", "update_edge"),
+		zap.String("operation_id", operationID),
+		zap.String("edge_id", e.ID.String()),
+		zap.String("user_id", e.UserID().String()),
+	}
+	
+	if r.config.LogRequests {
+		r.logger.Debug("updating edge", logFields...)
+	}
+	
+	err := r.inner.UpdateEdge(ctx, e)
+	
+	duration := time.Since(start)
+	logFields = append(logFields, zap.Duration("duration", duration))
+	
+	if err != nil {
+		if r.config.LogErrors {
+			r.logger.Error("edge update failed", append(logFields, zap.Error(err))...)
+		}
+	} else {
+		logLevel := zap.DebugLevel
+		message := "edge update completed"
+		
+		if r.config.LogTiming && duration > r.config.SlowThreshold {
+			logLevel = zap.WarnLevel
+			message = "slow edge update completed"
+		}
+		
+		r.logger.Check(logLevel, message).Write(logFields...)
+	}
+	
+	return err
 }
 
 // CreateEdges wraps the create edges operation with logging

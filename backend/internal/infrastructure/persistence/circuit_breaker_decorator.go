@@ -319,6 +319,13 @@ func NewCircuitBreakerNodeRepository(
 	}
 }
 
+// UpdateNode wraps update operation with circuit breaker.
+func (r *CircuitBreakerNodeRepository) UpdateNode(ctx context.Context, n *node.Node) error {
+	return r.circuitBreaker.Execute(func() error {
+		return r.inner.UpdateNode(ctx, n)
+	})
+}
+
 // CreateNodeAndKeywords wraps create operation with circuit breaker.
 func (r *CircuitBreakerNodeRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
 	return r.circuitBreaker.Execute(func() error {

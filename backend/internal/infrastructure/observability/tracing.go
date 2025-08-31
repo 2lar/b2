@@ -271,6 +271,23 @@ type tracedNodeRepository struct {
 	tracer trace.Tracer
 }
 
+func (r *tracedNodeRepository) UpdateNode(ctx context.Context, n *node.Node) error {
+	ctx, span := r.tracer.Start(ctx, "repository.UpdateNode",
+		trace.WithAttributes(
+			attribute.String("node.id", n.ID().String()),
+			attribute.String("user.id", n.UserID().String()),
+		),
+	)
+	defer span.End()
+	
+	err := r.inner.UpdateNode(ctx, n)
+	if err != nil {
+		span.RecordError(err)
+	}
+	
+	return err
+}
+
 func (r *tracedNodeRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
 	ctx, span := r.tracer.Start(ctx, "repository.CreateNodeAndKeywords",
 		trace.WithAttributes(

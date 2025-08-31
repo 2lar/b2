@@ -119,6 +119,50 @@ func NewMetricsNodeRepository(
 	}
 }
 
+// UpdateNode wraps node update with comprehensive metrics
+func (r *MetricsNodeRepository) UpdateNode(ctx context.Context, n *node.Node) error {
+	start := time.Now()
+	operation := "update_node"
+	
+	// Base tags for all metrics
+	tags := r.buildBaseTags(operation)
+	tags["user_id"] = n.UserID().String()
+	
+	// Increment operation counter
+	if r.config.EnableThroughput {
+		r.metrics.IncrementCounter("repository.operations.total", tags)
+		r.metrics.IncrementCounter("repository.operations.update.total", tags)
+	}
+	
+	// Execute the operation
+	err := r.inner.UpdateNode(ctx, n)
+	
+	// Record completion metrics
+	duration := time.Since(start)
+	
+	if r.config.EnableLatency {
+		r.metrics.RecordDuration("repository.operations.duration", duration, tags)
+		r.metrics.RecordDuration("repository.operations.update.duration", duration, tags)
+		
+		// Track slow operations
+		if duration > r.config.SlowThreshold {
+			slowTags := r.copyTags(tags)
+			slowTags["slow"] = "true"
+			r.metrics.IncrementCounter("repository.operations.slow.total", slowTags)
+		}
+	}
+	
+	// Record errors
+	if err != nil && r.config.EnableErrors {
+		errorTags := r.copyTags(tags)
+		errorTags["error_type"] = r.classifyError(err)
+		r.metrics.IncrementCounter("repository.operations.errors.total", errorTags)
+		r.metrics.IncrementCounter("repository.operations.update.errors.total", errorTags)
+	}
+	
+	return err
+}
+
 // CreateNodeAndKeywords wraps node creation with comprehensive metrics
 func (r *MetricsNodeRepository) CreateNodeAndKeywords(ctx context.Context, node *node.Node) error {
 	start := time.Now()

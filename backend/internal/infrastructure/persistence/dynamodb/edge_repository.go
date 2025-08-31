@@ -605,6 +605,22 @@ func (r *EdgeRepository) CreateEdges(ctx context.Context, userID, sourceNodeID s
 }
 
 // ============================================================================
+// INTERFACE WRAPPER METHODS
+// ============================================================================
+
+// FindEdgeByID finds an edge by ID (wrapper for interface compliance)
+func (r *EdgeRepository) FindEdgeByID(ctx context.Context, userID, edgeID string) (*edge.Edge, error) {
+	uid, _ := shared.NewUserID(userID)
+	eid, _ := shared.ParseNodeID(edgeID) // Using NodeID as EdgeID  
+	return r.FindByID(ctx, uid, eid)
+}
+
+// UpdateEdge updates an edge (wrapper for interface compliance)
+func (r *EdgeRepository) UpdateEdge(ctx context.Context, e *edge.Edge) error {
+	return r.Update(ctx, e)
+}
+
+// ============================================================================
 // ENSURE INTERFACES ARE IMPLEMENTED
 // ============================================================================
 

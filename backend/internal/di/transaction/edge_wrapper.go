@@ -31,9 +31,19 @@ func (w *transactionalEdgeWrapper) CreateEdges(ctx context.Context, userID, sour
 	return w.base.CreateEdges(ctx, userID, sourceNodeID, relatedNodeIDs)
 }
 
+func (w *transactionalEdgeWrapper) FindEdgeByID(ctx context.Context, userID, edgeID string) (*edge.Edge, error) {
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
+	return w.base.FindEdgeByID(ctx, userID, edgeID)
+}
+
 func (w *transactionalEdgeWrapper) FindEdges(ctx context.Context, query repository.EdgeQuery) ([]*edge.Edge, error) {
 	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindEdges(ctx, query)
+}
+
+func (w *transactionalEdgeWrapper) UpdateEdge(ctx context.Context, e *edge.Edge) error {
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
+	return w.base.UpdateEdge(ctx, e)
 }
 
 func (w *transactionalEdgeWrapper) GetEdgesPage(ctx context.Context, query repository.EdgeQuery, pagination repository.Pagination) (*repository.EdgePage, error) {

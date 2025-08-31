@@ -41,6 +41,11 @@ func (w *transactionalNodeWrapper) FindNodeByID(ctx context.Context, userID, nod
 	return w.base.FindNodeByID(ctx, userID, nodeID)
 }
 
+func (w *transactionalNodeWrapper) UpdateNode(ctx context.Context, n *node.Node) error {
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
+	return w.base.UpdateNode(ctx, n)
+}
+
 func (w *transactionalNodeWrapper) DeleteNode(ctx context.Context, userID, nodeID string) error {
 	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.DeleteNode(ctx, userID, nodeID)
