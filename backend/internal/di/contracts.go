@@ -56,15 +56,8 @@ type IRepositoryContainer interface {
 	GetTransactionalRepository() repository.TransactionalRepository
 	GetIdempotencyStore() repository.IdempotencyStore
 	
-	// CQRS Readers
-	GetNodeReader() repository.NodeReader
-	GetEdgeReader() repository.EdgeReader
-	GetCategoryReader() repository.CategoryReader
-	
-	// CQRS Writers
-	GetNodeWriter() repository.NodeWriter
-	GetEdgeWriter() repository.EdgeWriter
-	GetCategoryWriter() repository.CategoryWriter
+	// Note: Reader/Writer interfaces removed in favor of combined repositories
+	// Use GetNodeRepository(), GetEdgeRepository(), GetCategoryRepository() instead
 	
 	// Unit of Work
 	GetUnitOfWork() repository.UnitOfWork

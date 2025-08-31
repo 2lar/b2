@@ -1,6 +1,6 @@
 // Package repository provides focused repository interfaces following SOLID principles.
-// This file provides additional specialized interfaces that complement the CQRS
-// interfaces defined in read_write_separation.go.
+// This file provides specialized interfaces for specific query and relationship operations,
+// complementing the main unified repository interfaces.
 package repository
 
 import (
@@ -101,13 +101,8 @@ type DateRange struct {
 // FocusedRepositoryProvider provides access to focused repository interfaces.
 // This provider encourages clients to depend only on the specific interfaces they need.
 type FocusedRepositoryProvider interface {
-	// CQRS repositories
-	GetNodeReader() NodeReader
-	GetNodeWriter() NodeWriter
-	GetEdgeReader() EdgeReader
-	GetEdgeWriter() EdgeWriter
-	GetCategoryReader() CategoryReader
-	GetCategoryWriter() CategoryWriter
+	// Note: Reader/Writer interfaces removed - use combined repositories
+	// GetNodeRepository(), GetEdgeRepository(), GetCategoryRepository() instead
 	
 	// Specialized repositories
 	GetNodeSearcher() NodeSearcher

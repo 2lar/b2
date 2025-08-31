@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// CategoryRepository implements CategoryReader and CategoryWriter using composition
+// CategoryRepository implements the combined repository interface using composition
 // This eliminates duplicate code from the original category repository
 type CategoryRepository struct {
 	*GenericRepository[*category.Category]  // Composition - inherits all CRUD operations
@@ -334,7 +334,7 @@ func (r *CategoryRepository) BatchDeleteCategories(ctx context.Context, userID s
 }
 
 // FindByUser retrieves all categories for a user with options
-func (r *CategoryRepository) FindByUser(ctx context.Context, userID string, opts ...repository.QueryOption) ([]category.Category, error) {
+func (r *CategoryRepository) FindByUser(ctx context.Context, userID string) ([]category.Category, error) {
 	cats, err := r.Query(ctx, userID, WithSKPrefix("CATEGORY#"))
 	if err != nil {
 		return nil, err
@@ -350,7 +350,7 @@ func (r *CategoryRepository) FindByUser(ctx context.Context, userID string, opts
 }
 
 // FindRootCategories retrieves all root categories with options
-func (r *CategoryRepository) FindRootCategories(ctx context.Context, userID string, opts ...repository.QueryOption) ([]category.Category, error) {
+func (r *CategoryRepository) FindRootCategories(ctx context.Context, userID string) ([]category.Category, error) {
 	cats, err := r.FindByParent(ctx, userID, nil)
 	if err != nil {
 		return nil, err
@@ -405,7 +405,7 @@ func (r *CategoryRepository) FindCategoryTree(ctx context.Context, userID string
 }
 
 // FindByLevel retrieves categories at a specific level with options
-func (r *CategoryRepository) FindByLevel(ctx context.Context, userID string, level int, opts ...repository.QueryOption) ([]category.Category, error) {
+func (r *CategoryRepository) FindByLevel(ctx context.Context, userID string, level int) ([]category.Category, error) {
 	cats, err := r.FindByLevelInternal(ctx, userID, level)
 	if err != nil {
 		return nil, err
@@ -444,7 +444,7 @@ func (r *CategoryRepository) FindMostActive(ctx context.Context, userID string, 
 }
 
 // FindRecentlyUsed finds recently used categories
-func (r *CategoryRepository) FindRecentlyUsed(ctx context.Context, userID string, days int, opts ...repository.QueryOption) ([]category.Category, error) {
+func (r *CategoryRepository) FindRecentlyUsed(ctx context.Context, userID string, days int) ([]category.Category, error) {
 	cats, err := r.Query(ctx, userID, WithSKPrefix("CATEGORY#"))
 	if err != nil {
 		return nil, err
@@ -470,7 +470,7 @@ func (r *CategoryRepository) FindRecentlyUsed(ctx context.Context, userID string
 }
 
 // FindBySpecification finds categories matching a specification
-func (r *CategoryRepository) FindBySpecification(ctx context.Context, spec repository.Specification, opts ...repository.QueryOption) ([]category.Category, error) {
+func (r *CategoryRepository) FindBySpecification(ctx context.Context, spec repository.Specification) ([]category.Category, error) {
 	// Simplified implementation - would need proper specification pattern
 	if spec == nil {
 		return nil, errors.Validation("INVALID_SPECIFICATION", "Specification cannot be nil").
@@ -730,7 +730,5 @@ func (r *CategoryRepository) FindNodesByCategory(ctx context.Context, userID, ca
 // ============================================================================
 
 var (
-	_ repository.CategoryReader     = (*CategoryRepository)(nil)
-	_ repository.CategoryWriter     = (*CategoryRepository)(nil)
 	_ repository.CategoryRepository = (*CategoryRepository)(nil)
 )

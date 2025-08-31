@@ -31,7 +31,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// NodeRepository implements NodeReader and NodeWriter using composition
+// NodeRepository implements the combined repository interface using composition
 // This eliminates 90% of the duplicate code from the original 1346 lines
 type NodeRepository struct {
 	*GenericRepository[*node.Node]  // Composition - inherits all CRUD operations
@@ -435,7 +435,5 @@ func (r *NodeRepository) GetNodeNeighborhood(ctx context.Context, userID, nodeID
 // ============================================================================
 
 var (
-	_ repository.NodeReader     = (*NodeRepository)(nil)
-	_ repository.NodeWriter     = (*NodeRepository)(nil)
 	_ repository.NodeRepository = (*NodeRepository)(nil)
 )

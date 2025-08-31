@@ -133,7 +133,7 @@ func (c *InfrastructureContainer) GetStore() persistence.Store {
 // RepositoryContainer manages all repository dependencies.
 // Single Responsibility: Data access and persistence only.
 type RepositoryContainer struct {
-	// Combined repositories (for backward compatibility)
+	// Combined repositories (using single repository pattern)
 	Node            repository.NodeRepository
 	Edge            repository.EdgeRepository
 	Category        repository.CategoryRepository
@@ -142,15 +142,8 @@ type RepositoryContainer struct {
 	Transactional   repository.TransactionalRepository
 	Idempotency     repository.IdempotencyStore
 	
-	// CQRS Readers - Read models
-	NodeReader     repository.NodeReader
-	EdgeReader     repository.EdgeReader
-	CategoryReader repository.CategoryReader
-	
-	// CQRS Writers - Write models
-	NodeWriter     repository.NodeWriter
-	EdgeWriter     repository.EdgeWriter
-	CategoryWriter repository.CategoryWriter
+	// Note: CQRS Reader/Writer interfaces removed in favor of combined repositories
+	// Use Node, Edge, Category repositories directly
 	
 	// Specialized repositories
 	GraphRepository    repository.GraphRepository
@@ -215,35 +208,8 @@ func (c *RepositoryContainer) GetIdempotencyStore() repository.IdempotencyStore 
 	return c.Idempotency
 }
 
-// GetNodeReader returns the node reader.
-func (c *RepositoryContainer) GetNodeReader() repository.NodeReader {
-	return c.NodeReader
-}
-
-// GetEdgeReader returns the edge reader.
-func (c *RepositoryContainer) GetEdgeReader() repository.EdgeReader {
-	return c.EdgeReader
-}
-
-// GetCategoryReader returns the category reader.
-func (c *RepositoryContainer) GetCategoryReader() repository.CategoryReader {
-	return c.CategoryReader
-}
-
-// GetNodeWriter returns the node writer.
-func (c *RepositoryContainer) GetNodeWriter() repository.NodeWriter {
-	return c.NodeWriter
-}
-
-// GetEdgeWriter returns the edge writer.
-func (c *RepositoryContainer) GetEdgeWriter() repository.EdgeWriter {
-	return c.EdgeWriter
-}
-
-// GetCategoryWriter returns the category writer.
-func (c *RepositoryContainer) GetCategoryWriter() repository.CategoryWriter {
-	return c.CategoryWriter
-}
+// Note: GetNodeReader/Writer, GetEdgeReader/Writer, GetCategoryReader/Writer removed
+// Use GetNodeRepository(), GetEdgeRepository(), GetCategoryRepository() instead
 
 // GetUnitOfWork returns the unit of work.
 func (c *RepositoryContainer) GetUnitOfWork() repository.UnitOfWork {
@@ -686,11 +652,7 @@ func (c *RepositoryContainer) initialize(infra IInfrastructureContainer) error {
 	c.Idempotency = services.IdempotencyStore
 	
 	// Set up CQRS readers/writers
-	c.NodeReader = services.SafeGetNodeReader()
-	c.EdgeReader = services.SafeGetEdgeReader()
-	c.CategoryReader = services.SafeGetCategoryReader()
-	c.EdgeWriter = services.SafeGetEdgeWriter()
-	c.CategoryWriter = services.SafeGetCategoryWriter()
+	// Note: Reader/Writer interfaces removed - using combined repositories directly
 	
 	// Set up specialized repositories
 	c.GraphRepository = services.GraphRepository

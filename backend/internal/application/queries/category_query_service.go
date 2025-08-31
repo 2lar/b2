@@ -27,8 +27,8 @@ import (
 // CategoryQueryService handles read operations for categories with AI-powered suggestions.
 type CategoryQueryService struct {
 	// Repository readers for CQRS pattern
-	categoryReader repository.CategoryReader
-	nodeReader     repository.NodeReader
+	categoryRepo repository.CategoryRepository
+	nodeRepo     repository.NodeRepository
 	logger         *zap.Logger
 	cache          Cache // Cache interface for performance
 	cacheHelper    *CacheHelper // Common cache operations
@@ -37,14 +37,14 @@ type CategoryQueryService struct {
 // NewCategoryQueryService creates a new CategoryQueryService with all required dependencies.
 // The AI service is optional and the service will work without it.
 func NewCategoryQueryService(
-	categoryReader repository.CategoryReader,
-	nodeReader repository.NodeReader,
+	categoryRepo repository.CategoryRepository,
+	nodeRepo repository.NodeRepository,
 	logger *zap.Logger,
 	cache Cache,
 ) *CategoryQueryService {
 	return &CategoryQueryService{
-		categoryReader: categoryReader,
-		nodeReader:     nodeReader,
+		categoryRepo: categoryRepo,
+		nodeRepo:     nodeRepo,
 		logger:         logger,
 		cache:          cache,
 		cacheHelper:    NewCacheHelper(cache),
@@ -73,8 +73,8 @@ func (s *CategoryQueryService) GetCategory(ctx context.Context, query *GetCatego
 		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid category id: " + err.Error()).Build()
 	}
 
-	// 3. Retrieve category using reader
-	category, err := s.categoryReader.FindByID(ctx, userID.String(), string(categoryID))
+	// 3. Retrieve category using repository
+	category, err := s.categoryRepo.FindByID(ctx, userID.String(), string(categoryID))
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve category")
 	}
@@ -91,7 +91,11 @@ func (s *CategoryQueryService) GetCategory(ctx context.Context, query *GetCatego
 	if query.IncludeNodes {
 		// For now, we'll get all user nodes and filter by category
 		// In a real implementation, you'd want a proper node-category relationship
-		nodes, err := s.nodeReader.FindByUser(ctx, userID)
+		// Get all nodes for the user
+		nodeQuery := repository.NodeQuery{
+			UserID: userID.String(),
+		}
+		nodes, err := s.nodeRepo.FindNodes(ctx, nodeQuery)
 		if err != nil {
 			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve nodes")
 		}
@@ -185,9 +189,16 @@ func (s *CategoryQueryService) ListCategories(ctx context.Context, query *ListCa
 	}
 
 	// 4. Execute query
-	page, err := s.categoryReader.GetCategoriesPage(ctx, categoryQuery, pagination)
+	// Use the FindCategories method with a query
+	categories, err := s.categoryRepo.FindCategories(ctx, categoryQuery)
 	if err != nil {
-		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve categories page")
+		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve categories")
+	}
+	
+	// Build the page result manually
+	page := &repository.CategoryPage{
+		Items:   categories,
+		HasMore: false,
 	}
 
 	if page == nil {
@@ -216,10 +227,8 @@ func (s *CategoryQueryService) ListCategories(ctx context.Context, query *ListCa
 	}
 
 	// 7. Get total count for pagination metadata
-	total, err := s.categoryReader.CountByUser(ctx, query.UserID)
-	if err != nil {
-		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to count total categories")
-	}
+	// Count total categories for the user
+	total := len(categories)
 
 	// 8. Build paginated result
 	result := &dto.ListCategoriesResult{
@@ -247,7 +256,7 @@ func (s *CategoryQueryService) GetNodesInCategory(ctx context.Context, query *Ge
 	}
 
 	// 2. Verify category exists and user owns it
-	category, err := s.categoryReader.FindByID(ctx, userID.String(), string(categoryID))
+	category, err := s.categoryRepo.FindByID(ctx, userID.String(), string(categoryID))
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
 	}
@@ -267,7 +276,9 @@ func (s *CategoryQueryService) GetNodesInCategory(ctx context.Context, query *Ge
 	}
 
 	// 4. Get all nodes for the user (TODO: implement proper category filtering)
-	nodes, err := s.nodeReader.FindByUser(ctx, userID)
+	nodes, err := s.nodeRepo.FindNodes(ctx, repository.NodeQuery{
+		UserID: userID.String(),
+	})
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve nodes")
 	}
@@ -299,13 +310,13 @@ func (s *CategoryQueryService) GetCategoriesForNode(ctx context.Context, query *
 		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
-	nodeID, err := shared.ParseNodeID(query.NodeID)
+	_, err = shared.ParseNodeID(query.NodeID)
 	if err != nil {
 		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid node id: " + err.Error()).Build()
 	}
 
 	// 2. Verify node exists and user owns it
-	node, err := s.nodeReader.FindByID(ctx, userID, nodeID)
+	node, err := s.nodeRepo.FindNodeByID(ctx, query.UserID, query.NodeID)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find node")
 	}

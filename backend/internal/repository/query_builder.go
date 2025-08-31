@@ -8,6 +8,38 @@ import (
 	"brain2-backend/internal/domain/shared"
 )
 
+// QueryOptions represents options for query execution
+type QueryOptions struct {
+	ReadPreference ReadPreference
+	Timeout        time.Duration
+	MaxResults     int
+	UseCache       bool
+	CacheTimeout   time.Duration
+	IncludeDeleted bool
+	Fields         []string
+	Limit          int
+	Offset         int
+	Cursor         string
+	SortBy         string
+	SortOrder      SortDirection
+	Filters        map[string]interface{}
+}
+
+// ReadPreference specifies the read preference for queries
+type ReadPreference int
+
+const (
+	ReadPreferencePrimary ReadPreference = iota
+	ReadPreferenceSecondary
+	ReadPreferenceNearest
+)
+
+// SortOrder is an alias for SortDirection for compatibility
+type SortOrder = SortDirection
+
+// QueryOption is a function that modifies QueryOptions
+type QueryOption func(*QueryOptions)
+
 // QueryBuilder provides a fluent API for building complex repository queries.
 //
 // Key Concepts Illustrated:
@@ -348,7 +380,7 @@ func (qb *QueryBuilder) GroupBy(field string) *QueryBuilder {
 // WithCache enables caching for this query
 func (qb *QueryBuilder) WithCache(ttl time.Duration) *QueryBuilder {
 	qb.options.UseCache = true
-	qb.options.CacheTimeout = int(ttl.Seconds())
+	qb.options.CacheTimeout = ttl
 	return qb
 }
 
@@ -434,10 +466,12 @@ func (qb *QueryBuilder) BuildOptions() *QueryOptions {
 		options.SortOrder = SortOrder(primary.Direction)
 	}
 	
-	// Convert filters to Filter objects
-	for _, filter := range qb.filters {
-		filterObj := qb.convertToFilter(filter)
-		options.Filters = append(options.Filters, filterObj)
+	// Convert filters to map
+	if len(qb.filters) > 0 && options.Filters == nil {
+		options.Filters = make(map[string]interface{})
+	}
+	for i, filter := range qb.filters {
+		options.Filters[fmt.Sprintf("filter_%d", i)] = filter
 	}
 	
 	return &options

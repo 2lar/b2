@@ -17,7 +17,6 @@ import (
 type CleanupService struct {
 	nodeRepo         repository.NodeRepository
 	edgeRepo         repository.EdgeRepository
-	edgeWriter       repository.EdgeWriter
 	idempotencyStore repository.IdempotencyStore
 	uowFactory       repository.UnitOfWorkFactory
 }
@@ -26,14 +25,12 @@ type CleanupService struct {
 func NewCleanupService(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
-	edgeWriter repository.EdgeWriter,
 	idempotencyStore repository.IdempotencyStore,
 	uowFactory repository.UnitOfWorkFactory,
 ) *CleanupService {
 	return &CleanupService{
 		nodeRepo:         nodeRepo,
 		edgeRepo:         edgeRepo,
-		edgeWriter:       edgeWriter,
 		idempotencyStore: idempotencyStore,
 		uowFactory:       uowFactory,
 	}
@@ -129,8 +126,8 @@ func (s *CleanupService) CleanupNodeResiduals(ctx context.Context, userID, nodeI
 	
 	for _, edge := range allEdges {
 		// Use the EdgeWriter interface if available, otherwise try through repository
-		if s.edgeWriter != nil {
-			if err := s.edgeWriter.Delete(ctx, edge.UserID(), edge.ID); err != nil {
+		if s.edgeRepo != nil {
+			if err := s.edgeRepo.DeleteEdge(ctx, edge.UserID().String(), edge.ID.String()); err != nil {
 				log.Printf("WARNING: Failed to delete edge %s: %v", edge.ID.String(), err)
 				failedCount++
 			} else {
@@ -167,7 +164,7 @@ func (s *CleanupService) cleanupCanonicalEdges(ctx context.Context, userID share
 		DeleteByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error
 	}
 
-	if deleter, ok := s.edgeWriter.(edgeDeleter); ok {
+	if deleter, ok := s.edgeRepo.(edgeDeleter); ok {
 		log.Printf("Using DeleteByNode for efficient edge cleanup")
 		return deleter.DeleteByNode(ctx, userID, nodeID)
 	}
@@ -248,8 +245,8 @@ func (s *CleanupService) CleanupOrphanedEdges(ctx context.Context, userID string
 				edge.ID.String(), sourceExists, targetExists)
 
 			// Delete the orphaned edge
-			if s.edgeWriter != nil {
-				if err := s.edgeWriter.Delete(ctx, edge.UserID(), edge.ID); err != nil {
+			if s.edgeRepo != nil {
+				if err := s.edgeRepo.DeleteEdge(ctx, edge.UserID().String(), edge.ID.String()); err != nil {
 					log.Printf("WARNING: Failed to delete orphaned edge %s: %v", 
 						edge.ID.String(), err)
 				} else {

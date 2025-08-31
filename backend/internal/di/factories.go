@@ -145,13 +145,10 @@ func (f *ServiceFactory) CreateNodeQueryService() *queries.NodeQueryService {
 		cache = f.createQueryCache()
 	}
 	
-	// Create reader interfaces with read-optimized configurations
-	nodeReader := f.createNodeReader()
-	edgeReader := f.createEdgeReader()
-	
+	// Use repositories directly
 	service := queries.NewNodeQueryService(
-		nodeReader,
-		edgeReader,
+		f.repositories.Node,
+		f.repositories.Edge,
 		f.repositories.Graph,
 		cache,
 	)
@@ -172,11 +169,9 @@ func (f *ServiceFactory) CreateCategoryQueryService() *queries.CategoryQueryServ
 		cache = f.createQueryCache()
 	}
 	
-	categoryReader := f.createCategoryReader()
-	
 	service := queries.NewCategoryQueryService(
-		categoryReader,
-		nil, // nodeReader
+		f.repositories.Category,
+		f.repositories.Node,
 		f.logger,
 		cache,
 	)
@@ -505,23 +500,7 @@ func (f *ServiceFactory) createQueryCache() queries.Cache {
 	return f.infrastructure.Cache
 }
 
-// createNodeReader creates a read-optimized node reader.
-func (f *ServiceFactory) createNodeReader() repository.NodeReader {
-	// Use repository directly as it implements NodeReader
-	return f.repositories.Node.(repository.NodeReader)
-}
-
-// createEdgeReader creates a read-optimized edge reader.
-func (f *ServiceFactory) createEdgeReader() repository.EdgeReader {
-	// Use repository directly as it implements EdgeReader
-	return f.repositories.Edge.(repository.EdgeReader)
-}
-
-// createCategoryReader creates a read-optimized category reader.
-func (f *ServiceFactory) createCategoryReader() repository.CategoryReader {
-	// Use repository directly as it implements CategoryReader
-	return f.repositories.Category.(repository.CategoryReader)
-}
+// Note: createNodeReader, createEdgeReader, createCategoryReader removed - use repositories directly
 
 // registerShutdownHandler registers a function to be called on shutdown.
 func (f *ServiceFactory) registerShutdownHandler(handler func(context.Context) error) {

@@ -41,10 +41,7 @@ func (w *transactionalEdgeWrapper) GetEdgesPage(ctx context.Context, query repos
 	return w.base.GetEdgesPage(ctx, query, pagination)
 }
 
-func (w *transactionalEdgeWrapper) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*edge.Edge, error) {
-	ctx = context.WithValue(ctx, txContextKey, w.tx)
-	return w.base.FindEdgesWithOptions(ctx, query, opts...)
-}
+// Note: FindEdgesWithOptions removed - use FindEdges directly
 
 func (w *transactionalEdgeWrapper) DeleteEdge(ctx context.Context, userID, edgeID string) error {
 	ctx = context.WithValue(ctx, txContextKey, w.tx)

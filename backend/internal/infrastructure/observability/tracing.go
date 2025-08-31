@@ -415,40 +415,7 @@ func (r *tracedNodeRepository) CountNodes(ctx context.Context, userID string) (i
 	return count, err
 }
 
-// Add the missing methods from the NodeRepository interface
-func (r *tracedNodeRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
-	ctx, span := r.tracer.Start(ctx, "repository.FindNodesWithOptions",
-		trace.WithAttributes(
-			attribute.String("user.id", query.UserID),
-		),
-	)
-	defer span.End()
-	
-	nodes, err := r.inner.FindNodesWithOptions(ctx, query, opts...)
-	if err != nil {
-		span.RecordError(err)
-	}
-	
-	return nodes, err
-}
-
-func (r *tracedNodeRepository) FindNodesPageWithOptions(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination, opts ...repository.QueryOption) (*repository.NodePage, error) {
-	ctx, span := r.tracer.Start(ctx, "repository.FindNodesPageWithOptions",
-		trace.WithAttributes(
-			attribute.String("user.id", query.UserID),
-			attribute.Int("limit", pagination.Limit),
-			attribute.Int("offset", pagination.Offset),
-		),
-	)
-	defer span.End()
-	
-	page, err := r.inner.FindNodesPageWithOptions(ctx, query, pagination, opts...)
-	if err != nil {
-		span.RecordError(err)
-	}
-	
-	return page, err
-}
+// Note: FindNodesWithOptions and FindNodesPageWithOptions removed - use FindNodes and GetNodesPage directly
 func (r *tracedNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
 	return r.inner.BatchGetNodes(ctx, userID, nodeIDs)
 }

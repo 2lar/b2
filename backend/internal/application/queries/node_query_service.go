@@ -1,13 +1,14 @@
 // Package queries contains query services for read operations.
-// Query services implement the read side of Command/Query Responsibility Segregation (CQRS).
+// Query services implement the read side of service-level CQRS, providing
+// optimized read operations separate from command (write) operations.
 //
 // Key Concepts Illustrated:
-//   - CQRS: Separates read operations from write operations
-//   - Query Service Pattern: Optimized for read scenarios
-//   - Caching: Improves performance for frequently accessed data
-//   - View Models: Data structures optimized for presentation
-//   - Read-Only Operations: No side effects, focused on data retrieval
-//   - Performance Optimization: Efficient queries and caching strategies
+//   - Service-Level CQRS: Read operations handled separately from writes
+//   - Query Service Pattern: Optimized for read scenarios with caching
+//   - View Models: DTOs optimized for presentation layer needs
+//   - Read-Only Operations: No side effects, purely data retrieval
+//   - Performance Optimization: Caching strategies and efficient queries
+//   - No Repository Split: Uses unified repository interfaces, not Reader/Writer
 package queries
 
 import (
@@ -30,8 +31,8 @@ import (
 // This service is separate from the command service to allow for different optimizations.
 type NodeQueryService struct {
 	// Read-only dependencies
-	nodeReader repository.NodeReader // Focused interface for reading nodes
-	edgeReader repository.EdgeReader // Focused interface for reading edges
+	nodeRepo repository.NodeRepository // Combined repository for nodes
+	edgeRepo repository.EdgeRepository // Combined repository for edges
 	graphRepo  repository.GraphRepository // For complex graph queries
 	cache      Cache                 // Cache interface for performance
 	tracer     trace.Tracer          // For distributed tracing
@@ -39,14 +40,14 @@ type NodeQueryService struct {
 
 // NewNodeQueryService creates a new NodeQueryService with all required dependencies.
 func NewNodeQueryService(
-	nodeReader repository.NodeReader,
-	edgeReader repository.EdgeReader,
+	nodeRepo repository.NodeRepository,
+	edgeRepo repository.EdgeRepository,
 	graphRepo repository.GraphRepository,
 	cache Cache,
 ) *NodeQueryService {
 	return &NodeQueryService{
-		nodeReader: nodeReader,
-		edgeReader: edgeReader,
+		nodeRepo: nodeRepo,
+		edgeRepo: edgeRepo,
 		graphRepo:  graphRepo,
 		cache:      cache,
 		tracer:     otel.Tracer("brain2-backend.queries.node_query_service"),
@@ -96,13 +97,13 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
-	nodeID, err := shared.ParseNodeID(query.NodeID)
+	_, err = shared.ParseNodeID(query.NodeID)
 	if err != nil {
 		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid node id: " + err.Error()).Build()
 	}
 
 	// 3. Retrieve node from repository - userID passed explicitly
-	node, err := s.nodeReader.FindByID(ctx, userID, nodeID)
+	node, err := s.nodeRepo.FindNodeByID(ctx, query.UserID, query.NodeID)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve node")
 	}
@@ -127,7 +128,7 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 			UserID:   query.UserID,
 			SourceID: query.NodeID,
 		}
-		outgoingEdges, err := s.edgeReader.FindEdges(ctx, outgoingQuery)
+		outgoingEdges, err := s.edgeRepo.FindEdges(ctx, outgoingQuery)
 		if err != nil {
 			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve outgoing connections")
 		}
@@ -137,7 +138,7 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 			UserID:   query.UserID,
 			TargetID: query.NodeID,
 		}
-		incomingEdges, err := s.edgeReader.FindEdges(ctx, incomingQuery)
+		incomingEdges, err := s.edgeRepo.FindEdges(ctx, incomingQuery)
 		if err != nil {
 			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve incoming connections")
 		}
@@ -154,9 +155,14 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query *GetNodeQuery) (*d
 			connectionCount = len(result.Connections)
 		} else {
 			// Get connection count without loading all connections
-			count, err := s.edgeReader.CountBySourceID(ctx, nodeID)
+			// Count edges for this node
+			edgeQuery := repository.EdgeQuery{
+				UserID:   query.UserID,
+				SourceID: query.NodeID,
+			}
+			outgoingEdges, err := s.edgeRepo.FindEdges(ctx, edgeQuery)
 			if err == nil {
-				connectionCount = count
+				connectionCount = len(outgoingEdges)
 			}
 		}
 
@@ -215,7 +221,7 @@ func (s *NodeQueryService) ListNodes(ctx context.Context, query *ListNodesQuery)
 	}
 
 	// 4. Execute query - userID is in the query struct
-	page, err := s.nodeReader.GetNodesPage(ctx, nodeQuery, pagination)
+	page, err := s.nodeRepo.GetNodesPage(ctx, nodeQuery, pagination)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve nodes page")
 	}
@@ -230,7 +236,7 @@ func (s *NodeQueryService) ListNodes(ctx context.Context, query *ListNodesQuery)
 	}
 
 	// 5. Get total count for pagination metadata
-	total, err := s.nodeReader.CountNodes(ctx, query.UserID)
+	total, err := s.nodeRepo.CountNodes(ctx, query.UserID)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to count total nodes")
 	}
@@ -277,7 +283,7 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 	}
 
 	// 3. Verify node exists and user owns it
-	node, err := s.nodeReader.FindByID(ctx, userID, nodeID)
+	node, err := s.nodeRepo.FindNodeByID(ctx, userID.String(), nodeID.String())
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find node")
 	}
@@ -305,7 +311,7 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 		}
 	case "bidirectional":
 		// For bidirectional, we need to query both directions
-		outgoingEdges, err := s.edgeReader.FindEdges(ctx, repository.EdgeQuery{
+		outgoingEdges, err := s.edgeRepo.FindEdges(ctx, repository.EdgeQuery{
 			UserID:   query.UserID,
 			SourceID: query.NodeID,
 			Limit:    query.Limit / 2,
@@ -314,7 +320,7 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 			return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve outgoing connections")
 		}
 
-		incomingEdges, err := s.edgeReader.FindEdges(ctx, repository.EdgeQuery{
+		incomingEdges, err := s.edgeRepo.FindEdges(ctx, repository.EdgeQuery{
 			UserID:   query.UserID,
 			TargetID: query.NodeID,
 			Limit:    query.Limit / 2,
@@ -344,7 +350,7 @@ func (s *NodeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 	}
 
 	// 5. Execute query for single direction
-	edges, err := s.edgeReader.FindEdges(ctx, edgeQuery)
+	edges, err := s.edgeRepo.FindEdges(ctx, edgeQuery)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve connections")
 	}

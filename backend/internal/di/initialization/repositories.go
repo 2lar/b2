@@ -100,45 +100,8 @@ type RepositoryServices struct {
 	UnitOfWorkFactory       repository.UnitOfWorkFactory
 }
 
-// safeGetNodeReader safely converts NodeRepository to NodeReader interface
-func (s *RepositoryServices) SafeGetNodeReader() repository.NodeReader {
-	if reader, ok := s.NodeRepository.(repository.NodeReader); ok {
-		return reader
-	}
-	return nil
-}
-
-// safeGetEdgeReader safely converts EdgeRepository to EdgeReader interface
-func (s *RepositoryServices) SafeGetEdgeReader() repository.EdgeReader {
-	if reader, ok := s.EdgeRepository.(repository.EdgeReader); ok {
-		return reader
-	}
-	return nil
-}
-
-// safeGetCategoryReader safely converts CategoryRepository to CategoryReader interface
-func (s *RepositoryServices) SafeGetCategoryReader() repository.CategoryReader {
-	if reader, ok := s.CategoryRepository.(repository.CategoryReader); ok {
-		return reader
-	}
-	return nil
-}
-
-// safeGetCategoryWriter safely converts CategoryRepository to CategoryWriter interface
-func (s *RepositoryServices) SafeGetCategoryWriter() repository.CategoryWriter {
-	if writer, ok := s.CategoryRepository.(repository.CategoryWriter); ok {
-		return writer
-	}
-	return nil
-}
-
-// safeGetEdgeWriter safely converts EdgeRepository to EdgeWriter interface
-func (s *RepositoryServices) SafeGetEdgeWriter() repository.EdgeWriter {
-	if writer, ok := s.EdgeRepository.(repository.EdgeWriter); ok {
-		return writer
-	}
-	return nil
-}
+// Note: SafeGetNodeReader/Writer, SafeGetEdgeReader/Writer, SafeGetCategoryReader/Writer removed
+// Use NodeRepository, EdgeRepository, CategoryRepository directly
 
 // InitializeCQRSServices sets up CQRS-related services
 func (s *RepositoryServices) InitializeCQRSServices() {

@@ -17,20 +17,20 @@ import (
 // This service provides specialized methods for querying graph connections.
 type EdgeQueryService struct {
 	// Read-only dependencies
-	edgeReader repository.EdgeReader // Focused interface for reading edges
-	nodeReader repository.NodeReader // For enriching edge data with node information
+	edgeRepo repository.EdgeRepository // Combined repository for edges
+	nodeRepo repository.NodeRepository // Combined repository for nodes
 	cache      Cache                 // Cache interface for performance
 }
 
 // NewEdgeQueryService creates a new EdgeQueryService with all required dependencies.
 func NewEdgeQueryService(
-	edgeReader repository.EdgeReader,
-	nodeReader repository.NodeReader,
+	edgeRepo repository.EdgeRepository,
+	nodeRepo repository.NodeRepository,
 	cache Cache,
 ) *EdgeQueryService {
 	return &EdgeQueryService{
-		edgeReader: edgeReader,
-		nodeReader: nodeReader,
+		edgeRepo: edgeRepo,
+		nodeRepo: nodeRepo,
 		cache:      cache,
 	}
 }
@@ -56,18 +56,24 @@ func (s *EdgeQueryService) GetEdge(ctx context.Context, query *GetEdgeQuery) (*d
 		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
-	sourceID, err := shared.ParseNodeID(query.SourceNodeID)
+	_, err = shared.ParseNodeID(query.SourceNodeID)
 	if err != nil {
 		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid source node id: " + err.Error()).Build()
 	}
 
-	targetID, err := shared.ParseNodeID(query.TargetNodeID)
+	_, err = shared.ParseNodeID(query.TargetNodeID)
 	if err != nil {
 		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid target node id: " + err.Error()).Build()
 	}
 
 	// 3. Find the edge between the specified nodes
-	edges, err := s.edgeReader.FindBetweenNodes(ctx, userID, sourceID, targetID)
+	// Find edges between the nodes
+	edgeQuery := repository.EdgeQuery{
+		UserID:   query.UserID,
+		SourceID: query.SourceNodeID,
+		TargetID: query.TargetNodeID,
+	}
+	edges, err := s.edgeRepo.FindEdges(ctx, edgeQuery)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find edge")
 	}
@@ -90,12 +96,12 @@ func (s *EdgeQueryService) GetEdge(ctx context.Context, query *GetEdgeQuery) (*d
 
 	// 6. Include node data if requested
 	if query.IncludeNodes {
-		sourceNode, err := s.nodeReader.FindByID(ctx, userID, sourceID)
+		sourceNode, err := s.nodeRepo.FindNodeByID(ctx, query.UserID, query.SourceNodeID)
 		if err == nil && sourceNode != nil {
 			result.SourceNode = dto.ToNodeView(sourceNode)
 		}
 
-		targetNode, err := s.nodeReader.FindByID(ctx, userID, targetID)
+		targetNode, err := s.nodeRepo.FindNodeByID(ctx, query.UserID, query.TargetNodeID)
 		if err == nil && targetNode != nil {
 			result.TargetNode = dto.ToNodeView(targetNode)
 		}
@@ -160,7 +166,7 @@ func (s *EdgeQueryService) ListEdges(ctx context.Context, query *ListEdgesQuery)
 	}
 
 	// 5. Execute query
-	page, err := s.edgeReader.FindPage(ctx, edgeQuery, pagination)
+	page, err := s.edgeRepo.GetEdgesPage(ctx, edgeQuery, pagination)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve edges page")
 	}
@@ -205,13 +211,17 @@ func (s *EdgeQueryService) GetConnectionStatistics(ctx context.Context, query *G
 	}
 
 	// 2. Parse and validate domain identifiers
-	userID, err := shared.ParseUserID(query.UserID)
+	_, err := shared.ParseUserID(query.UserID)
 	if err != nil {
 		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
 	// 3. Get all edges for the user
-	edges, err := s.edgeReader.FindByUser(ctx, userID)
+	// Find all edges for the user
+	edgeQuery := repository.EdgeQuery{
+		UserID: query.UserID,
+	}
+	edges, err := s.edgeRepo.FindEdges(ctx, edgeQuery)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve user edges")
 	}
@@ -345,7 +355,7 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid user id: " + err.Error()).Build()
 	}
 
-	nodeID, err := shared.ParseNodeID(query.NodeID)
+	_, err = shared.ParseNodeID(query.NodeID)
 	if err != nil {
 		return nil, errors.Validation(errors.CodeValidationFailed.String(), "invalid node id: " + err.Error()).Build()
 	}
@@ -355,12 +365,28 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 
 	switch query.ConnectionType {
 	case "outgoing":
-		edges, err = s.edgeReader.FindBySourceNode(ctx, userID, nodeID)
+		edgeQuery := repository.EdgeQuery{
+			UserID:   query.UserID,
+			SourceID: query.NodeID,
+		}
+		edges, err = s.edgeRepo.FindEdges(ctx, edgeQuery)
 	case "incoming":
-		edges, err = s.edgeReader.FindByTargetNode(ctx, userID, nodeID)
+		edgeQuery := repository.EdgeQuery{
+			UserID:   query.UserID,
+			TargetID: query.NodeID,
+		}
+		edges, err = s.edgeRepo.FindEdges(ctx, edgeQuery)
 	case "bidirectional":
-		outgoing, err1 := s.edgeReader.FindBySourceNode(ctx, userID, nodeID)
-		incoming, err2 := s.edgeReader.FindByTargetNode(ctx, userID, nodeID)
+		outgoingQuery := repository.EdgeQuery{
+			UserID:   query.UserID,
+			SourceID: query.NodeID,
+		}
+		outgoing, err1 := s.edgeRepo.FindEdges(ctx, outgoingQuery)
+		incomingQuery := repository.EdgeQuery{
+			UserID:   query.UserID,
+			TargetID: query.NodeID,
+		}
+		incoming, err2 := s.edgeRepo.FindEdges(ctx, incomingQuery)
 		if err1 != nil {
 			err = err1
 		} else if err2 != nil {
@@ -403,12 +429,12 @@ func (s *EdgeQueryService) GetNodeConnections(ctx context.Context, query *GetNod
 
 		for _, edge := range userEdges {
 			// Get source node data
-			if sourceNode, err := s.nodeReader.FindByID(ctx, userID, edge.SourceID); err == nil && sourceNode != nil {
+			if sourceNode, err := s.nodeRepo.FindNodeByID(ctx, edge.UserID().String(), edge.SourceID.String()); err == nil && sourceNode != nil {
 				nodeDataMap[edge.SourceID.String()] = dto.ToNodeView(sourceNode)
 			}
 
 			// Get target node data
-			if targetNode, err := s.nodeReader.FindByID(ctx, userID, edge.TargetID); err == nil && targetNode != nil {
+			if targetNode, err := s.nodeRepo.FindNodeByID(ctx, edge.UserID().String(), edge.TargetID.String()); err == nil && targetNode != nil {
 				nodeDataMap[edge.TargetID.String()] = dto.ToNodeView(targetNode)
 			}
 		}

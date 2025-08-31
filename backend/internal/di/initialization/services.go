@@ -59,20 +59,20 @@ func InitializeApplicationServices(config ServiceConfig, repos *RepositoryServic
 		repos.IdempotencyStore,
 	)
 
-	// Query services with safe type assertions
-	if nodeReader := repos.SafeGetNodeReader(); nodeReader != nil {
+	// Query services with repositories
+	if nodeRepo := repos.NodeRepository; nodeRepo != nil {
 		appServices.NodeQueryService = queries.NewNodeQueryService(
-			nodeReader,
-			repos.SafeGetEdgeReader(),
+			nodeRepo,
+			repos.EdgeRepository,
 			repos.GraphRepository,
 			queryCache,
 		)
 	}
 
-	if categoryReader := repos.SafeGetCategoryReader(); categoryReader != nil {
+	if categoryRepo := repos.CategoryRepository; categoryRepo != nil {
 		appServices.CategoryQueryService = queries.NewCategoryQueryService(
-			categoryReader,
-			repos.SafeGetNodeReader(),
+			repos.CategoryRepository,
+			repos.NodeRepository,
 			config.Logger,
 			queryCache,
 		)
@@ -87,8 +87,7 @@ func InitializeApplicationServices(config ServiceConfig, repos *RepositoryServic
 
 	// Category service
 	appServices.CategoryAppService = services.NewCategoryService(
-		repos.SafeGetCategoryReader(),
-		repos.SafeGetCategoryWriter(),
+		repos.CategoryRepository,
 		repos.UnitOfWorkFactory,
 		config.EventBus,
 		repos.IdempotencyStore,
@@ -98,7 +97,6 @@ func InitializeApplicationServices(config ServiceConfig, repos *RepositoryServic
 	appServices.CleanupService = services.NewCleanupService(
 		repos.NodeRepository,
 		repos.EdgeRepository,
-		repos.SafeGetEdgeWriter(),
 		repos.IdempotencyStore,
 		repos.UnitOfWorkFactory,
 	)

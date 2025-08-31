@@ -1,4 +1,9 @@
+# [HISTORICAL - NOT CURRENT IMPLEMENTATION]
 # Perfect CQRS Implementation - Backend Architecture
+
+> **⚠️ ARCHIVED DOCUMENT**: This document describes a planned CQRS implementation that was never fully realized. 
+> The Reader/Writer interface separation described here was removed in favor of a simpler, more pragmatic approach.
+> For the current implementation, see `/docs/architecture/current-cqrs-implementation.md`
 
 ## Overview
 

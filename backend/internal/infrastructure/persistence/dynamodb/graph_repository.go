@@ -47,7 +47,7 @@ func (r *GraphRepository) GetGraphDataPaginated(ctx context.Context, query repos
 }
 
 // GetSubgraph retrieves a subgraph containing specified nodes.
-func (r *GraphRepository) GetSubgraph(ctx context.Context, nodeIDs []string, opts ...repository.QueryOption) (*shared.Graph, error) {
+func (r *GraphRepository) GetSubgraph(ctx context.Context, nodeIDs []string) (*shared.Graph, error) {
 	// Stub implementation - return empty graph
 	return &shared.Graph{
 		Nodes: []any{},
@@ -56,7 +56,7 @@ func (r *GraphRepository) GetSubgraph(ctx context.Context, nodeIDs []string, opt
 }
 
 // GetConnectedComponents retrieves all connected components for a user.
-func (r *GraphRepository) GetConnectedComponents(ctx context.Context, userID string, opts ...repository.QueryOption) ([]shared.Graph, error) {
+func (r *GraphRepository) GetConnectedComponents(ctx context.Context, userID string) ([]shared.Graph, error) {
 	// Stub implementation - return empty list of graphs
 	return []shared.Graph{}, nil
 }

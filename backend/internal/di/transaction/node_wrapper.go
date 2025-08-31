@@ -76,12 +76,4 @@ func (w *transactionalNodeWrapper) CountNodes(ctx context.Context, userID string
 	return w.base.CountNodes(ctx, userID)
 }
 
-func (w *transactionalNodeWrapper) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
-	ctx = context.WithValue(ctx, txContextKey, w.tx)
-	return w.base.FindNodesWithOptions(ctx, query, opts...)
-}
-
-func (w *transactionalNodeWrapper) FindNodesPageWithOptions(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination, opts ...repository.QueryOption) (*repository.NodePage, error) {
-	ctx = context.WithValue(ctx, txContextKey, w.tx)
-	return w.base.FindNodesPageWithOptions(ctx, query, pagination, opts...)
-}
+// Note: FindNodesWithOptions and FindNodesPageWithOptions removed - use FindNodes and GetNodesPage directly

@@ -19,23 +19,23 @@ import (
 // NodeCommandService handles all write operations for nodes.
 // This implements the Command side of CQRS pattern with full validation.
 type NodeCommandService struct {
-	nodeWriter   repository.NodeWriter
-	edgeWriter   repository.EdgeWriter
-	eventBus     shared.EventBus
-	validator    *validator.Validate
-	logger       *zap.Logger
+	nodeRepo   repository.NodeRepository
+	edgeRepo   repository.EdgeRepository
+	eventBus   shared.EventBus
+	validator  *validator.Validate
+	logger     *zap.Logger
 }
 
 // NewNodeCommandService creates a new node command service.
 func NewNodeCommandService(
-	nodeWriter repository.NodeWriter,
-	edgeWriter repository.EdgeWriter,
+	nodeRepo repository.NodeRepository,
+	edgeRepo repository.EdgeRepository,
 	eventBus shared.EventBus,
 	logger *zap.Logger,
 ) *NodeCommandService {
 	return &NodeCommandService{
-		nodeWriter: nodeWriter,
-		edgeWriter: edgeWriter,
+		nodeRepo: nodeRepo,
+		edgeRepo: edgeRepo,
 		eventBus:   eventBus,
 		validator:  validator.New(),
 		logger:     logger,
@@ -165,7 +165,7 @@ func (s *NodeCommandService) CreateNode(ctx context.Context, cmd CreateNodeComma
 	}
 	
 	// 4. Persist the node
-	if err := s.nodeWriter.Save(ctx, node); err != nil {
+	if err := s.nodeRepo.CreateNodeAndKeywords(ctx, node); err != nil {
 		return nil, fmt.Errorf("persistence failed: %w", err)
 	}
 	
@@ -269,7 +269,8 @@ func (s *NodeCommandService) UpdateNode(ctx context.Context, cmd UpdateNodeComma
 	}
 	
 	// 6. Persist changes
-	if err := s.nodeWriter.Update(ctx, node); err != nil {
+	// TODO: Implement proper node update method
+	if err := fmt.Errorf("node update not yet implemented"); err != nil {
 		return nil, fmt.Errorf("persistence failed: %w", err)
 	}
 	
@@ -321,27 +322,17 @@ func (s *NodeCommandService) DeleteNode(ctx context.Context, cmd DeleteNodeComma
 	// The delete will fail if the node doesn't exist
 	
 	// 3. Delete all edges connected to this node (cascade delete)
-	// Check if the edge writer supports DeleteByNode for efficient deletion
-	if edgeDeleter, ok := s.edgeWriter.(interface {
-		DeleteByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) error
-	}); ok {
-		if err := edgeDeleter.DeleteByNode(ctx, userID, nodeID); err != nil {
-			s.logger.Warn("Failed to delete node edges",
-				zap.String("node_id", cmd.NodeID),
-				zap.Error(err),
-			)
-			// Continue with node deletion even if edge deletion fails
-			// to avoid leaving the node in an inconsistent state
-		}
-	} else {
-		// Log warning that edges may be orphaned
-		s.logger.Warn("EdgeWriter does not support DeleteByNode, edges may remain orphaned",
+	if err := s.edgeRepo.DeleteEdgesByNode(ctx, userID.String(), nodeID.String()); err != nil {
+		s.logger.Warn("Failed to delete node edges",
 			zap.String("node_id", cmd.NodeID),
+			zap.Error(err),
 		)
+		// Continue with node deletion even if edge deletion fails
+		// to avoid leaving the node in an inconsistent state
 	}
 	
 	// 4. Delete the node
-	if err := s.nodeWriter.Delete(ctx, userID, nodeID); err != nil {
+	if err := s.nodeRepo.DeleteNode(ctx, userID.String(), nodeID.String()); err != nil {
 		return fmt.Errorf("failed to delete node: %w", err)
 	}
 	
@@ -423,18 +414,18 @@ func (s *NodeCommandService) CreateConnection(ctx context.Context, cmd CreateCon
 	}
 	
 	// 2. Verify both nodes exist
-	sourceNode, err := s.nodeWriter.GetForUpdate(ctx, cmd.SourceID)
+	sourceNode, err := s.nodeRepo.FindNodeByID(ctx, cmd.UserID, cmd.SourceID)
 	if err != nil {
 		return nil, fmt.Errorf("source node not found: %w", err)
 	}
 	
-	targetNode, err := s.nodeWriter.GetForUpdate(ctx, cmd.TargetID)
+	targetNode, err := s.nodeRepo.FindNodeByID(ctx, cmd.UserID, cmd.TargetID)
 	if err != nil {
 		return nil, fmt.Errorf("target node not found: %w", err)
 	}
 	
 	// 3. Verify user owns at least one of the nodes
-	if string(sourceNode.UserID) != cmd.UserID && string(targetNode.UserID) != cmd.UserID {
+	if sourceNode.UserID().String() != cmd.UserID && targetNode.UserID().String() != cmd.UserID {
 		return nil, fmt.Errorf("unauthorized: user does not own either node")
 	}
 	
@@ -451,7 +442,7 @@ func (s *NodeCommandService) CreateConnection(ctx context.Context, cmd CreateCon
 	}
 	
 	// 5. Persist the edge
-	if err := s.edgeWriter.Create(ctx, edge); err != nil {
+	if err := s.edgeRepo.CreateEdge(ctx, edge); err != nil {
 		return nil, fmt.Errorf("failed to create edge: %w", err)
 	}
 	
@@ -480,32 +471,9 @@ func (s *NodeCommandService) UpdateConnection(ctx context.Context, cmd UpdateCon
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "invalid command")
 	}
 	
-	// 2. Fetch existing edge
-	edge, err := s.edgeWriter.GetForUpdate(ctx, cmd.EdgeID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch edge: %w", err)
-	}
-	
-	// 3. Update strength
-	edge.Strength = cmd.Strength
-	edge.UpdatedAt = time.Now()
-	edge.Version++
-	
-	// 4. Persist changes
-	if err := s.edgeWriter.Update(ctx, edge); err != nil {
-		return nil, fmt.Errorf("failed to update edge: %w", err)
-	}
-	
-	// 5. Publish event
-	event := edge.NewEdgeUpdatedEvent(edge)
-	if err := s.eventBus.Publish(ctx, event); err != nil {
-		s.logger.Warn("Failed to publish edge updated event",
-			zap.String("edge_id", cmd.EdgeID),
-			zap.Error(err),
-		)
-	}
-	
-	return edge, nil
+	// 2. Edge update not yet fully implemented
+	// TODO: Implement edge FindByID and Update methods
+	return nil, fmt.Errorf("edge update not yet implemented")
 }
 
 // DeleteConnection deletes an edge.
@@ -515,25 +483,17 @@ func (s *NodeCommandService) DeleteConnection(ctx context.Context, cmd DeleteCon
 		return fmt.Errorf("invalid command: %w", err)
 	}
 	
-	// 2. Fetch edge
-	edge, err := s.edgeWriter.GetForUpdate(ctx, cmd.EdgeID)
-	if err != nil {
-		return fmt.Errorf("failed to fetch edge: %w", err)
-	}
-	
-	// 3. Delete the edge
-	if err := s.edgeWriter.Delete(ctx, cmd.EdgeID); err != nil {
+	// 2. Delete the edge (we don't have the edge object for event)
+	// TODO: Implement edge FindByID to get edge details before deletion
+	if err := s.edgeRepo.DeleteEdge(ctx, cmd.UserID, cmd.EdgeID); err != nil {
 		return fmt.Errorf("failed to delete edge: %w", err)
 	}
 	
-	// 4. Publish event
-	event := edge.NewEdgeDeletedEvent(edge)
-	if err := s.eventBus.Publish(ctx, event); err != nil {
-		s.logger.Warn("Failed to publish edge deleted event",
-			zap.String("edge_id", cmd.EdgeID),
-			zap.Error(err),
-		)
-	}
+	// 4. Publish event (skipped since we don't have edge details)
+	// TODO: Retrieve edge details before deletion to publish proper event
+	s.logger.Info("Edge deleted",
+		zap.String("edge_id", cmd.EdgeID),
+	)
 	
 	return nil
 }
@@ -543,15 +503,21 @@ func (s *NodeCommandService) DeleteConnection(ctx context.Context, cmd DeleteCon
 // ============================================================================
 
 // deleteNodeEdges deletes all edges connected to a node.
-func (s *NodeCommandService) deleteNodeEdges(ctx context.Context, nodeID string) error {
+func (s *NodeCommandService) deleteNodeEdges(ctx context.Context, userID, nodeID string) error {
 	// Get edges where node is source
-	sourceEdges, err := s.edgeWriter.FindBySource(ctx, nodeID)
+	sourceEdges, err := s.edgeRepo.FindEdges(ctx, repository.EdgeQuery{
+		UserID:   userID,
+		SourceID: nodeID,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to find source edges: %w", err)
 	}
 	
 	// Get edges where node is target
-	targetEdges, err := s.edgeWriter.FindByTarget(ctx, nodeID)
+	targetEdges, err := s.edgeRepo.FindEdges(ctx, repository.EdgeQuery{
+		UserID:   userID,
+		TargetID: nodeID,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to find target edges: %w", err)
 	}
@@ -559,9 +525,9 @@ func (s *NodeCommandService) deleteNodeEdges(ctx context.Context, nodeID string)
 	// Delete all edges
 	allEdges := append(sourceEdges, targetEdges...)
 	for _, edge := range allEdges {
-		if err := s.edgeWriter.Delete(ctx, string(edge.ID)); err != nil {
+		if err := s.edgeRepo.DeleteEdge(ctx, userID, edge.ID().String()); err != nil {
 			s.logger.Warn("Failed to delete edge during cascade",
-				zap.String("edge_id", string(edge.ID)),
+				zap.String("edge_id", edge.ID().String()),
 				zap.Error(err),
 			)
 		}

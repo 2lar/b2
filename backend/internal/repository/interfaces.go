@@ -8,7 +8,7 @@
 //   • Domain Independence: Business logic doesn't depend on specific databases
 //   • Testability: Easy mocking and testing with in-memory implementations
 //   • Flexibility: Can switch between DynamoDB, SQL databases, or other stores
-//   • CQRS Support: Separate interfaces optimized for reads vs writes
+//   • Unified Interfaces: Single repository interface per entity for simplicity
 //   • Query Abstraction: Complex queries expressed in domain terms
 //
 // INTERFACE DESIGN PRINCIPLES:
@@ -66,8 +66,7 @@ type NodeRepository interface {
 	CountNodes(ctx context.Context, userID string) (int, error)
 	
 	// Phase 2 Enhancements - Advanced Query Support  
-	FindNodesWithOptions(ctx context.Context, query NodeQuery, opts ...QueryOption) ([]*node.Node, error)
-	FindNodesPageWithOptions(ctx context.Context, query NodeQuery, pagination Pagination, opts ...QueryOption) (*NodePage, error)
+	// Note: QueryOption pattern removed - use query parameters directly
 }
 
 // EdgeRepository handles edge-specific operations with Phase 2 enhancements
@@ -86,7 +85,7 @@ type EdgeRepository interface {
 	GetEdgesPage(ctx context.Context, query EdgeQuery, pagination Pagination) (*EdgePage, error)
 	
 	// Phase 2 Enhancements - Advanced Edge Operations
-	FindEdgesWithOptions(ctx context.Context, query EdgeQuery, opts ...QueryOption) ([]*edge.Edge, error)
+	// Note: QueryOption pattern removed - use query parameters directly
 }
 
 // KeywordRepository handles keyword indexing and search
@@ -172,8 +171,8 @@ type GraphRepository interface {
 	GetGraphDataPaginated(ctx context.Context, query GraphQuery, pagination Pagination) (*shared.Graph, string, error)
 	
 	// Phase 2 Enhancements - Advanced Graph Operations
-	GetSubgraph(ctx context.Context, nodeIDs []string, opts ...QueryOption) (*shared.Graph, error)
-	GetConnectedComponents(ctx context.Context, userID string, opts ...QueryOption) ([]shared.Graph, error)
+	GetSubgraph(ctx context.Context, nodeIDs []string) (*shared.Graph, error)
+	GetConnectedComponents(ctx context.Context, userID string) ([]shared.Graph, error)
 }
 
 // Advanced Repository Interfaces for Phase 2 Excellence

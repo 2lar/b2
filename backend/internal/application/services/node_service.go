@@ -1,16 +1,17 @@
-// Package services contains application services that orchestrate use cases.
-// Application services implement the Application Layer in Clean Architecture.
+// Package services contains command services that handle write operations.
+// Command services implement the write side of service-level CQRS, handling
+// all operations that modify state.
 //
 // Key Concepts Illustrated:
-//   - Application Service Pattern: Orchestrates business operations
-//   - Command/Query Responsibility Segregation (CQRS): Separates reads from writes
+//   - Command Service Pattern: Handles write operations with business logic
+//   - Service-Level CQRS: Write operations separated from read operations
 //   - Transaction Management: Uses Unit of Work pattern for consistency
-//   - Domain Event Publishing: Communicates changes to other parts of the system
-//   - DTO Conversion: Transforms between domain objects and data transfer objects
-//   - Error Handling: Wraps domain errors with application context
+//   - Domain Event Publishing: Publishes events after successful writes
+//   - Business Logic Orchestration: Coordinates domain objects and services
+//   - Idempotency: Ensures operations can be safely retried
 //
-// This service is intentionally kept thin - it orchestrates but doesn't contain business logic.
-// Business logic belongs in the domain layer (see node.Node for examples).
+// Command services work with unified repository interfaces (not Reader/Writer split)
+// and are paired with Query services for complete CQRS at the service layer.
 package services
 
 import (

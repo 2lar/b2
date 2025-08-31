@@ -332,16 +332,12 @@ func provideNodeQueryService(
 	graphRepo repository.GraphRepository,
 	cache cache.Cache,
 ) *queries.NodeQueryService {
-	// Use repositories directly as they implement the reader interfaces
-	nodeReader := nodeRepo.(repository.NodeReader)
-	edgeReader := edgeRepo.(repository.EdgeReader)
-	
 	// Use cache directly since interfaces are unified
 	var queryCache queries.Cache = cache
 	
 	return queries.NewNodeQueryService(
-		nodeReader,
-		edgeReader,
+		nodeRepo,
+		edgeRepo,
 		graphRepo,
 		queryCache,
 	)
@@ -354,16 +350,12 @@ func provideCategoryQueryService(
 	cache cache.Cache,
 	logger *zap.Logger,
 ) *queries.CategoryQueryService {
-	// Use repositories directly as they implement the reader interfaces
-	categoryReader := categoryRepo.(repository.CategoryReader)
-	nodeReader := nodeRepo.(repository.NodeReader)
-	
 	// Use cache directly since interfaces are unified
 	var queryCache queries.Cache = cache
 	
 	return queries.NewCategoryQueryService(
-		categoryReader,
-		nodeReader,
+		categoryRepo,
+		nodeRepo,
 		logger,
 		queryCache,
 	)
@@ -584,16 +576,9 @@ func provideCleanupService(
 	idempotencyStore repository.IdempotencyStore,
 	uowFactory repository.UnitOfWorkFactory,
 ) *services.CleanupService {
-	// Get EdgeWriter from EdgeRepository
-	var edgeWriter repository.EdgeWriter
-	if writer, ok := edgeRepo.(repository.EdgeWriter); ok {
-		edgeWriter = writer
-	}
-	
 	return services.NewCleanupService(
 		nodeRepo,
 		edgeRepo,
-		edgeWriter,
 		idempotencyStore,
 		uowFactory,
 	)

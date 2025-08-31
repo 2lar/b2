@@ -10,7 +10,7 @@ Brain2 follows a **Domain-Driven Design (DDD)** approach with **Clean Architectu
 
 - **Domain-Driven Design (DDD)**: Rich domain models with business logic encapsulated in entities and value objects
 - **Clean Architecture**: Clear separation of concerns with dependency inversion
-- **Command Query Responsibility Segregation (CQRS)**: Separate read and write models for optimal performance
+- **Command Query Responsibility Segregation (CQRS)**: Service-level separation of commands and queries for optimal organization
 - **Event-Driven Architecture**: EventBridge for decoupled, scalable communication
 - **Generic Repository Pattern**: 90% code reduction through composition-based repositories
 - **Lambda-lith Pattern**: Single Lambda handling multiple routes for better cold start performance
@@ -19,7 +19,7 @@ Brain2 follows a **Domain-Driven Design (DDD)** approach with **Clean Architectu
 
 **DDD + Clean Architecture**: Ensures business logic remains independent of frameworks and infrastructure, making the system testable and maintainable as it grows in complexity.
 
-**CQRS**: Optimizes read operations for the knowledge graph (complex queries with joins) separately from write operations (simple CRUD with event generation).
+**CQRS**: Implements separation at the application service layer - Command Services handle writes with business logic and events, while Query Services optimize reads with caching and view models. This pragmatic approach avoids the complexity of full CQRS while capturing its core benefits.
 
 **Event-Driven Architecture**: Enables real-time graph updates, audit trails, and future extensibility without tight coupling between components.
 
@@ -45,10 +45,10 @@ The project is structured to follow Clean Architecture principles with clear lay
     -   Domain services for complex operations (connection analysis, graph algorithms)
     -   Domain events for communicating state changes
 
--   **`internal/application/`**: Use case orchestration (CQRS implementation)
-    -   `commands/`: Write operations with business validation
-    -   `queries/`: Optimized read operations with caching
-    -   `services/`: Application services orchestrating domain operations
+-   **`internal/application/`**: Use case orchestration (Service-level CQRS)
+    -   `commands/`: Command definitions and handlers for write operations
+    -   `queries/`: Query services with caching and view model transformations
+    -   `services/`: Command services with business logic, validation, and event publishing
 
 -   **`internal/infrastructure/`**: External concerns and implementations
     -   `persistence/dynamodb/`: Repository implementations with generic patterns

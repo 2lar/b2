@@ -15,9 +15,8 @@ import (
 
 // CategoryService implements category operations with PURE CQRS.
 type CategoryService struct {
-	// CQRS: Separate readers and writers
-	categoryReader repository.CategoryReader
-	categoryWriter repository.CategoryWriter
+	// Combined repository
+	categoryRepo repository.CategoryRepository
 	
 	// Supporting dependencies
 	uowFactory       repository.UnitOfWorkFactory
@@ -27,15 +26,13 @@ type CategoryService struct {
 
 // NewCategoryService creates a new CategoryService with CQRS interfaces.
 func NewCategoryService(
-	categoryReader repository.CategoryReader,
-	categoryWriter repository.CategoryWriter,
+	categoryRepo repository.CategoryRepository,
 	uowFactory repository.UnitOfWorkFactory,
 	eventBus shared.EventBus,
 	idempotencyStore repository.IdempotencyStore,
 ) *CategoryService {
 	return &CategoryService{
-		categoryReader:   categoryReader,
-		categoryWriter:   categoryWriter,
+		categoryRepo:     categoryRepo,
 		uowFactory:       uowFactory,
 		eventBus:         eventBus,
 		idempotencyStore: idempotencyStore,
@@ -145,7 +142,7 @@ func (s *CategoryService) CreateCategory(ctx context.Context, cmd *commands.Crea
 // GetCategory retrieves a category by ID - READ OPERATION.
 func (s *CategoryService) GetCategory(ctx context.Context, userID, categoryID string) (*dto.CategoryDTO, error) {
 	// Use reader directly - no transaction for reads
-	cat, err := s.categoryReader.FindByID(ctx, userID, categoryID)
+	cat, err := s.categoryRepo.FindByID(ctx, userID, categoryID)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
 	}
@@ -293,7 +290,11 @@ func (s *CategoryService) DeleteCategory(ctx context.Context, userID, categoryID
 // ListCategories lists categories for a user - READ OPERATION.
 func (s *CategoryService) ListCategories(ctx context.Context, userID string) ([]*dto.CategoryDTO, error) {
 	// Use reader directly
-	categories, err := s.categoryReader.FindByUser(ctx, userID)
+	// Use FindCategories with a query
+	categoryQuery := repository.CategoryQuery{
+		UserID: userID,
+	}
+	categories, err := s.categoryRepo.FindCategories(ctx, categoryQuery)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to list categories")
 	}
@@ -310,7 +311,7 @@ func (s *CategoryService) ListCategories(ctx context.Context, userID string) ([]
 // GetCategoryTree gets the category hierarchy tree - READ OPERATION.
 func (s *CategoryService) GetCategoryTree(ctx context.Context, userID string) ([]*dto.CategoryTreeNode, error) {
 	// Get all categories
-	categories, err := s.categoryReader.FindCategoryTree(ctx, userID)
+	categories, err := s.categoryRepo.GetCategoryTree(ctx, userID)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to get category tree")
 	}

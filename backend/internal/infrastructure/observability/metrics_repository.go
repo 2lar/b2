@@ -712,71 +712,7 @@ func boolToString(b bool) string {
 	return "false"
 }
 
-// Phase 2 Enhanced Methods - Added for interface compatibility
-
-// FindNodesWithOptions adds metrics collection to enhanced node queries with options
-func (r *MetricsNodeRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
-	start := time.Now()
-	nodes, err := r.inner.FindNodesWithOptions(ctx, query, opts...)
-	duration := time.Since(start)
-	
-	// Record metrics
-	tags := map[string]string{
-		"operation": "FindNodesWithOptions",
-		"userID":    query.UserID,
-		"success":   boolToString(err == nil),
-	}
-	
-	if r.config.EnableLatency {
-		r.metrics.RecordDuration("repository.operation.duration", duration, tags)
-	}
-	
-	if r.config.EnableThroughput {
-		r.metrics.IncrementCounter("repository.operation.count", tags)
-	}
-	
-	if err != nil && r.config.EnableErrors {
-		errorTags := map[string]string{
-			"operation":  "FindNodesWithOptions",
-			"error_type": fmt.Sprintf("%T", err),
-		}
-		r.metrics.IncrementCounter("repository.operation.errors", errorTags)
-	}
-	
-	return nodes, err
-}
-
-// FindNodesPageWithOptions adds metrics collection to enhanced paginated node queries with options
-func (r *MetricsNodeRepository) FindNodesPageWithOptions(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination, opts ...repository.QueryOption) (*repository.NodePage, error) {
-	start := time.Now()
-	page, err := r.inner.FindNodesPageWithOptions(ctx, query, pagination, opts...)
-	duration := time.Since(start)
-	
-	// Record metrics
-	tags := map[string]string{
-		"operation": "FindNodesPageWithOptions",
-		"userID":    query.UserID,
-		"success":   boolToString(err == nil),
-	}
-	
-	if r.config.EnableLatency {
-		r.metrics.RecordDuration("repository.operation.duration", duration, tags)
-	}
-	
-	if r.config.EnableThroughput {
-		r.metrics.IncrementCounter("repository.operation.count", tags)
-	}
-	
-	if err != nil && r.config.EnableErrors {
-		errorTags := map[string]string{
-			"operation":  "FindNodesPageWithOptions",
-			"error_type": fmt.Sprintf("%T", err),
-		}
-		r.metrics.IncrementCounter("repository.operation.errors", errorTags)
-	}
-	
-	return page, err
-}
+// Note: FindNodesWithOptions and FindNodesPageWithOptions removed - use FindNodes and GetNodesPage directly
 func (r *MetricsNodeRepository) BatchGetNodes(ctx context.Context, userID string, nodeIDs []string) (map[string]*node.Node, error) {
 	return r.inner.BatchGetNodes(ctx, userID, nodeIDs)
 }

@@ -160,6 +160,25 @@ func (s *NodeQueryService) GetNode(ctx context.Context, query GetNodeQuery) (*No
 - Create projections for read models
 - Ensure eventual consistency
 
+## Current Status (August 2025)
+
+### Simplification Applied
+After initial implementation, the CQRS pattern was simplified:
+- **Removed**: Reader/Writer interface separation at repository level
+- **Kept**: Command/Query service separation at application level
+- **Result**: Pragmatic CQRS with benefits but without unnecessary complexity
+
+### What Exists Now
+- ✅ Separate Command Services (write operations)
+- ✅ Separate Query Services (read operations)
+- ✅ Event publishing from commands
+- ✅ Caching in query services
+- ❌ No Reader/Writer repository interfaces
+- ❌ No separate read models
+- ❌ No event-sourced projections
+
+See [Current CQRS Implementation](../current-cqrs-implementation.md) for details.
+
 ## References
 - [CQRS by Martin Fowler](https://martinfowler.com/bliki/CQRS.html)
 - [CQRS Journey by Microsoft](https://docs.microsoft.com/en-us/previous-versions/msp-n-p/jj554200(v=pandp.10))

@@ -170,27 +170,7 @@ func (r *RetryNodeRepository) CountNodes(ctx context.Context, userID string) (in
 	return result, err
 }
 
-// FindNodesWithOptions retries enhanced queries with options.
-func (r *RetryNodeRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
-	var result []*node.Node
-	err := r.executeWithRetry(ctx, "FindNodesWithOptions", func() error {
-		var err error
-		result, err = r.inner.FindNodesWithOptions(ctx, query, opts...)
-		return err
-	}, true)
-	return result, err
-}
-
-// FindNodesPageWithOptions retries enhanced paginated queries.
-func (r *RetryNodeRepository) FindNodesPageWithOptions(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination, opts ...repository.QueryOption) (*repository.NodePage, error) {
-	var result *repository.NodePage
-	err := r.executeWithRetry(ctx, "FindNodesPageWithOptions", func() error {
-		var err error
-		result, err = r.inner.FindNodesPageWithOptions(ctx, query, pagination, opts...)
-		return err
-	}, true)
-	return result, err
-}
+// Note: FindNodesWithOptions and FindNodesPageWithOptions removed - use FindNodes and GetNodesPage directly
 
 // executeWithRetry implements the core retry logic with exponential backoff.
 func (r *RetryNodeRepository) executeWithRetry(
@@ -388,16 +368,7 @@ func (r *RetryEdgeRepository) GetEdgesPage(ctx context.Context, query repository
 	return result, err
 }
 
-// FindEdgesWithOptions retries enhanced edge queries.
-func (r *RetryEdgeRepository) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*edge.Edge, error) {
-	var result []*edge.Edge
-	err := r.executeWithRetry(ctx, "FindEdgesWithOptions", func() error {
-		var err error
-		result, err = r.inner.FindEdgesWithOptions(ctx, query, opts...)
-		return err
-	}, true)
-	return result, err
-}
+// Note: FindEdgesWithOptions removed - use FindEdges directly
 
 // DeleteEdge retries edge deletion operations.
 func (r *RetryEdgeRepository) DeleteEdge(ctx context.Context, userID, edgeID string) error {

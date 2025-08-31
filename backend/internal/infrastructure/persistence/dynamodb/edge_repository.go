@@ -25,7 +25,7 @@ func getCanonicalEdge(nodeA, nodeB string) (owner, target string) {
 	return nodeB, nodeA
 }
 
-// EdgeRepository implements EdgeReader and EdgeWriter using composition
+// EdgeRepository implements the combined repository interface using composition
 // This eliminates duplicate code from the original edge repository
 type EdgeRepository struct {
 	*GenericRepository[*edge.Edge]  // Composition - inherits all CRUD operations
@@ -209,7 +209,7 @@ func (r *EdgeRepository) CountByNode(ctx context.Context, userID shared.UserID, 
 }
 
 // FindByNode retrieves all edges connected to a specific node
-func (r *EdgeRepository) FindByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
+func (r *EdgeRepository) FindByNode(ctx context.Context, userID shared.UserID, nodeID shared.NodeID) ([]*edge.Edge, error) {
 	// Find edges where node is source
 	sourceEdges, err := r.FindBySource(ctx, userID, nodeID)
 	if err != nil {
@@ -338,7 +338,7 @@ func (r *EdgeRepository) DeleteByNodes(ctx context.Context, userID shared.UserID
 }
 
 // FindByUser retrieves all edges for a user
-func (r *EdgeRepository) FindByUser(ctx context.Context, userID shared.UserID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
+func (r *EdgeRepository) FindByUser(ctx context.Context, userID shared.UserID) ([]*edge.Edge, error) {
 	// Use GSI to query all edges for a user
 	return r.QueryByGSI(ctx, BuildUserEdgePK(userID.String()), "")
 }
@@ -414,12 +414,12 @@ func (r *EdgeRepository) BatchDeleteEdges(ctx context.Context, userID string, ed
 }
 
 // FindBySourceNode is an alias for FindBySource for interface compliance
-func (r *EdgeRepository) FindBySourceNode(ctx context.Context, userID shared.UserID, sourceID shared.NodeID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
+func (r *EdgeRepository) FindBySourceNode(ctx context.Context, userID shared.UserID, sourceID shared.NodeID) ([]*edge.Edge, error) {
 	return r.FindBySource(ctx, userID, sourceID)
 }
 
 // FindByTargetNode is an alias for FindByTarget for interface compliance
-func (r *EdgeRepository) FindByTargetNode(ctx context.Context, userID shared.UserID, targetID shared.NodeID, opts ...repository.QueryOption) ([]*edge.Edge, error) {
+func (r *EdgeRepository) FindByTargetNode(ctx context.Context, userID shared.UserID, targetID shared.NodeID) ([]*edge.Edge, error) {
 	return r.FindByTarget(ctx, userID, targetID)
 }
 
@@ -429,7 +429,7 @@ func (r *EdgeRepository) FindBetweenNodes(ctx context.Context, userID shared.Use
 }
 
 // FindStrongConnections finds edges above a weight threshold
-func (r *EdgeRepository) FindStrongConnections(ctx context.Context, userID shared.UserID, threshold float64, opts ...repository.QueryOption) ([]*edge.Edge, error) {
+func (r *EdgeRepository) FindStrongConnections(ctx context.Context, userID shared.UserID, threshold float64) ([]*edge.Edge, error) {
 	edges, err := r.FindByUser(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -446,7 +446,7 @@ func (r *EdgeRepository) FindStrongConnections(ctx context.Context, userID share
 }
 
 // FindWeakConnections finds edges below a weight threshold
-func (r *EdgeRepository) FindWeakConnections(ctx context.Context, userID shared.UserID, threshold float64, opts ...repository.QueryOption) ([]*edge.Edge, error) {
+func (r *EdgeRepository) FindWeakConnections(ctx context.Context, userID shared.UserID, threshold float64) ([]*edge.Edge, error) {
 	edges, err := r.FindByUser(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -463,7 +463,7 @@ func (r *EdgeRepository) FindWeakConnections(ctx context.Context, userID shared.
 }
 
 // FindBySpecification finds edges matching a specification
-func (r *EdgeRepository) FindBySpecification(ctx context.Context, spec repository.Specification, opts ...repository.QueryOption) ([]*edge.Edge, error) {
+func (r *EdgeRepository) FindBySpecification(ctx context.Context, spec repository.Specification) ([]*edge.Edge, error) {
 	// Simplified implementation - would need proper specification pattern
 	if spec == nil {
 		return nil, errors.Validation("INVALID_SPECIFICATION", "Specification cannot be nil").
@@ -571,10 +571,7 @@ func (r *EdgeRepository) GetEdgesPage(ctx context.Context, query repository.Edge
 	return r.FindPage(ctx, query, pagination)
 }
 
-// FindEdgesWithOptions finds edges with query options
-func (r *EdgeRepository) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*edge.Edge, error) {
-	return r.FindEdges(ctx, query)
-}
+// Note: FindEdgesWithOptions removed - use FindEdges directly
 
 // CreateEdges creates multiple edges from a source to multiple targets
 func (r *EdgeRepository) CreateEdges(ctx context.Context, userID, sourceNodeID string, relatedNodeIDs []string) error {
@@ -709,7 +706,5 @@ func (r *EdgeRepository) SaveOneToMany(ctx context.Context, userID shared.UserID
 }
 
 var (
-	_ repository.EdgeReader     = (*EdgeRepository)(nil)
-	_ repository.EdgeWriter     = (*EdgeRepository)(nil)
 	_ repository.EdgeRepository = (*EdgeRepository)(nil)
 )

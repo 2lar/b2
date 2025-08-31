@@ -1,4 +1,9 @@
+# [HISTORICAL - NOT CURRENT IMPLEMENTATION]
 # CQRS Migration Completion Report
+
+> **⚠️ ARCHIVED DOCUMENT**: This document describes a CQRS migration that was later simplified.
+> The Reader/Writer interfaces described here were removed in August 2025.
+> For the current implementation, see `/docs/architecture/current-cqrs-implementation.md`
 
 ## Date: 2025-01-23
 

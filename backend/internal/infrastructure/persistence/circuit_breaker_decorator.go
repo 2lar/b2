@@ -398,27 +398,7 @@ func (r *CircuitBreakerNodeRepository) CountNodes(ctx context.Context, userID st
 	return result, err
 }
 
-// FindNodesWithOptions wraps enhanced query with circuit breaker.
-func (r *CircuitBreakerNodeRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
-	var result []*node.Node
-	err := r.circuitBreaker.Execute(func() error {
-		var err error
-		result, err = r.inner.FindNodesWithOptions(ctx, query, opts...)
-		return err
-	})
-	return result, err
-}
-
-// FindNodesPageWithOptions wraps enhanced paginated query with circuit breaker.
-func (r *CircuitBreakerNodeRepository) FindNodesPageWithOptions(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination, opts ...repository.QueryOption) (*repository.NodePage, error) {
-	var result *repository.NodePage
-	err := r.circuitBreaker.Execute(func() error {
-		var err error
-		result, err = r.inner.FindNodesPageWithOptions(ctx, query, pagination, opts...)
-		return err
-	})
-	return result, err
-}
+// Note: FindNodesWithOptions and FindNodesPageWithOptions removed - use FindNodes and GetNodesPage directly
 
 // ============================================================================
 // SLIDING WINDOW - For tracking request statistics

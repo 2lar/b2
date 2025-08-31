@@ -633,14 +633,5 @@ func parseTime(i interface{}) time.Time {
 
 // Phase 2 Enhanced Methods - Added for interface compatibility
 
-// FindNodesWithOptions adds caching to enhanced node queries with options
-func (r *CachingNodeRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
-	// For consolidation phase, delegate to underlying repository without caching complex queries
-	return r.inner.FindNodesWithOptions(ctx, query, opts...)
-}
-
-// FindNodesPageWithOptions adds caching to enhanced paginated node queries with options  
-func (r *CachingNodeRepository) FindNodesPageWithOptions(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination, opts ...repository.QueryOption) (*repository.NodePage, error) {
-	// For consolidation phase, delegate to underlying repository without caching complex queries
-	return r.inner.FindNodesPageWithOptions(ctx, query, pagination, opts...)
-}
+// Note: FindNodesWithOptions and FindNodesPageWithOptions removed
+// Use FindNodes and GetNodesPage directly

@@ -976,23 +976,7 @@ func (m *MockRepository) CountNodes(ctx context.Context, userID string) (int, er
 
 // Phase 2 Enhanced Methods - Added for interface compatibility
 
-// FindNodesWithOptions implements enhanced node queries with options
-func (m *MockRepository) FindNodesWithOptions(ctx context.Context, query repository.NodeQuery, opts ...repository.QueryOption) ([]*node.Node, error) {
-	if err := m.checkError("FindNodesWithOptions"); err != nil {
-		return nil, err
-	}
-	// Delegate to existing FindNodes method for simplicity
-	return m.FindNodes(ctx, query)
-}
 
-// FindNodesPageWithOptions implements enhanced paginated node queries with options
-func (m *MockRepository) FindNodesPageWithOptions(ctx context.Context, query repository.NodeQuery, pagination repository.Pagination, opts ...repository.QueryOption) (*repository.NodePage, error) {
-	if err := m.checkError("FindNodesPageWithOptions"); err != nil {
-		return nil, err
-	}
-	// Delegate to existing GetNodesPage method for simplicity
-	return m.GetNodesPage(ctx, query, pagination)
-}
 
 // FindEdgesWithOptions implements enhanced edge queries with options
 func (m *MockRepository) FindEdgesWithOptions(ctx context.Context, query repository.EdgeQuery, opts ...repository.QueryOption) ([]*edge.Edge, error) {
@@ -1004,7 +988,7 @@ func (m *MockRepository) FindEdgesWithOptions(ctx context.Context, query reposit
 }
 
 // GetSubgraph implements subgraph extraction
-func (m *MockRepository) GetSubgraph(ctx context.Context, nodeIDs []string, opts ...repository.QueryOption) (*shared.Graph, error) {
+func (m *MockRepository) GetSubgraph(ctx context.Context, nodeIDs []string) (*shared.Graph, error) {
 	if err := m.checkError("GetSubgraph"); err != nil {
 		return nil, err
 	}
@@ -1013,7 +997,7 @@ func (m *MockRepository) GetSubgraph(ctx context.Context, nodeIDs []string, opts
 }
 
 // GetConnectedComponents implements graph connected components analysis
-func (m *MockRepository) GetConnectedComponents(ctx context.Context, userID string, opts ...repository.QueryOption) ([]shared.Graph, error) {
+func (m *MockRepository) GetConnectedComponents(ctx context.Context, userID string) ([]shared.Graph, error) {
 	if err := m.checkError("GetConnectedComponents"); err != nil {
 		return nil, err
 	}
