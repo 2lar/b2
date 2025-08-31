@@ -65,7 +65,7 @@ func TestApplicationContainer(t *testing.T) {
 		}
 
 		// Clean shutdown
-		if err := app.Shutdown(context.TODO()); err != nil {
+		if err := app.Shutdown(context.Background()); err != nil {
 			t.Logf("Shutdown warning (expected in test): %v", err)
 		}
 	})
@@ -195,7 +195,7 @@ func BenchmarkApplicationContainerCreation(b *testing.B) {
 		if err != nil {
 			b.Fatalf("Failed to create ApplicationContainer: %v", err)
 		}
-		app.Shutdown(context.TODO())
+		app.Shutdown(context.Background())
 	}
 }
 

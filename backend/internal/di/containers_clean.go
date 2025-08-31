@@ -16,6 +16,7 @@ import (
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
+	"brain2-backend/internal/infrastructure/messaging"
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence"
 	persistenceCache "brain2-backend/internal/infrastructure/persistence/cache"
@@ -155,7 +156,7 @@ type RepositoryContainer struct {
 	UnitOfWorkFactory repository.UnitOfWorkFactory
 	
 	// Repository Factory for decorators
-	RepositoryFactory repository.RepositoryFactory
+	RepositoryFactory *repository.RepositoryFactory
 }
 
 // NewRepositoryContainer creates a new repository container.
@@ -222,7 +223,7 @@ func (c *RepositoryContainer) GetUnitOfWorkFactory() repository.UnitOfWorkFactor
 }
 
 // GetRepositoryFactory returns the repository factory.
-func (c *RepositoryContainer) GetRepositoryFactory() repository.RepositoryFactory {
+func (c *RepositoryContainer) GetRepositoryFactory() *repository.RepositoryFactory {
 	return c.RepositoryFactory
 }
 
@@ -663,7 +664,44 @@ func (c *RepositoryContainer) initialize(infra IInfrastructureContainer) error {
 	c.UnitOfWorkFactory = services.UnitOfWorkFactory
 	
 	// Initialize repository factory for decorators
-	// TODO: Implement repository factory if needed
+	factoryConfig := repository.DefaultFactoryConfig()
+	if cfg.Environment == config.Production {
+		factoryConfig = repository.ProductionFactoryConfig()
+		factoryConfig.EnableCaching = cfg.Features.EnableCaching
+		factoryConfig.EnableMetrics = cfg.Features.EnableMetrics
+		factoryConfig.EnableRetries = cfg.Features.EnableRetries
+		factoryConfig.EnableLogging = cfg.Features.EnableLogging
+	} else if cfg.Environment == config.Development {
+		factoryConfig = repository.DevelopmentFactoryConfig()
+		factoryConfig.EnableCaching = cfg.Features.EnableCaching
+		factoryConfig.EnableMetrics = cfg.Features.EnableMetrics
+		factoryConfig.EnableLogging = cfg.Features.VerboseLogging
+	}
+	
+	c.RepositoryFactory = repository.NewRepositoryFactory(factoryConfig, infra.GetLogger())
+	
+	// Apply decorators to repositories using the factory
+	if c.RepositoryFactory != nil && (cfg.Features.EnableCaching || cfg.Features.EnableMetrics || cfg.Features.EnableLogging) {
+		// Decorate repositories with cross-cutting concerns
+		c.Node = c.RepositoryFactory.CreateNodeRepository(
+			c.Node,
+			infra.GetLogger(),
+			infra.GetCache(),
+			infra.GetMetricsCollector(),
+		)
+		c.Edge = c.RepositoryFactory.CreateEdgeRepository(
+			c.Edge,
+			infra.GetLogger(),
+			infra.GetCache(),
+			infra.GetMetricsCollector(),
+		)
+		c.Category = c.RepositoryFactory.CreateCategoryRepository(
+			c.Category,
+			infra.GetLogger(),
+			infra.GetCache(),
+			infra.GetMetricsCollector(),
+		)
+	}
 	
 	return nil
 }
@@ -673,12 +711,29 @@ func (c *ServiceContainer) initialize(repos IRepositoryContainer, infra IInfrast
 	// Initialize domain services
 	c.ConnectionAnalyzer = domainServices.NewConnectionAnalyzer(0.3, 5, 0.2)
 	
-	// Initialize event bus (using mock for now)
-	// TODO: Initialize proper event bus with EventBridge
-	c.EventBus = shared.NewMockEventBus()
-	
 	// Create service configuration
 	cfg := infra.GetConfig()
+	
+	// Initialize event bus with EventBridge
+	eventBridgeClient := infra.GetEventBridgeClient()
+	if eventBridgeClient != nil && cfg.Events.Provider == "eventbridge" {
+		// Use real EventBridge publisher
+		eventBusName := cfg.Events.EventBusName
+		if eventBusName == "" {
+			eventBusName = "default"
+		}
+		eventPublisher := messaging.NewEventBridgePublisher(
+			eventBridgeClient,
+			eventBusName,
+			"brain2-backend",
+		)
+		// Wrap in async publisher for better performance
+		asyncPublisher := messaging.NewAsyncEventPublisher(eventPublisher, 1000)
+		c.EventBus = messaging.NewEventBusAdapter(asyncPublisher)
+	} else {
+		// Fallback to mock for local development or when disabled
+		c.EventBus = shared.NewMockEventBus()
+	}
 	serviceConfig := initialization.ServiceConfig{
 		Config:        cfg,
 		EventBus:      c.EventBus,

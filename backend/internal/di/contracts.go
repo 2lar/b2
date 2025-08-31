@@ -64,7 +64,7 @@ type IRepositoryContainer interface {
 	GetUnitOfWorkFactory() repository.UnitOfWorkFactory
 	
 	// Repository Factory
-	GetRepositoryFactory() repository.RepositoryFactory
+	GetRepositoryFactory() *repository.RepositoryFactory
 }
 
 // ============================================================================

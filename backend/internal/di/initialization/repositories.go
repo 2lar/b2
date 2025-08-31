@@ -51,6 +51,9 @@ func InitializeRepositoryLayer(config RepositoryConfig) (*RepositoryServices, er
 	
 	// Create transactional repository for complex transactional operations
 	transactionalRepo := infradynamodb.NewTransactionalRepository(config.DynamoDBClient, config.TableName, config.IndexName, config.Logger)
+	
+	// Create node-category repository (stub for now until full implementation)
+	nodeCategoryRepo := infradynamodb.NewNodeCategoryRepositoryStub()
 
 	// Initialize domain services
 	connectionAnalyzer := domainServices.NewConnectionAnalyzer(0.3, 5, 0.2)
@@ -77,6 +80,7 @@ func InitializeRepositoryLayer(config RepositoryConfig) (*RepositoryServices, er
 		GraphRepository:         graphRepo,
 		KeywordRepository:       keywordRepo,
 		TransactionalRepository: transactionalRepo,
+		NodeCategoryRepository:  nodeCategoryRepo,
 		ConnectionAnalyzer:      connectionAnalyzer,
 		IdempotencyStore:        idempotencyStore,
 		UnitOfWorkFactory:       unitOfWorkFactory,
@@ -95,6 +99,7 @@ type RepositoryServices struct {
 	GraphRepository         repository.GraphRepository
 	KeywordRepository       repository.KeywordRepository
 	TransactionalRepository repository.TransactionalRepository
+	NodeCategoryRepository  repository.NodeCategoryRepository
 	ConnectionAnalyzer      *domainServices.ConnectionAnalyzer
 	IdempotencyStore        repository.IdempotencyStore
 	UnitOfWorkFactory       repository.UnitOfWorkFactory
