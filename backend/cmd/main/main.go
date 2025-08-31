@@ -80,7 +80,6 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
-	"github.com/go-chi/chi/v5"
 )
 
 // Global variables for Lambda lifecycle management
@@ -92,7 +91,7 @@ var (
 	
 	// container holds the dependency injection container with all application services
 	// Initialized once during cold start and reused across warm invocations
-	container *di.Container
+	container *di.ApplicationContainer
 	
 	// coldStart tracks whether this is a cold start invocation
 	// Used for performance monitoring and optimization decisions
@@ -122,9 +121,9 @@ func init() {
 	// This creates and wires all application services, repositories, and handlers
 	// The container pattern ensures proper dependency management and lifecycle
 	var err error
-	container, err = di.InitializeContainer()
+	container, err = di.InitializeApplicationContainer()
 	if err != nil {
-		log.Fatalf("Failed to initialize DI container: %v", err)
+		log.Fatalf("Failed to initialize application container: %v", err)
 	}
 
 	// Validate that all dependencies are properly initialized
@@ -139,12 +138,9 @@ func init() {
 	
 	// Extract the configured Chi router from the container
 	// The router contains all HTTP routes and middleware configured via DI
-	router := container.GetRouter()
-	
-	// Type assert to *chi.Mux for the Lambda adapter
-	chiRouter, ok := router.(*chi.Mux)
-	if !ok {
-		log.Fatal("Router is not a *chi.Mux")
+	chiRouter := container.GetRouter()
+	if chiRouter == nil {
+		log.Fatal("Router is not initialized")
 	}
 	
 	// Create the Lambda adapter that bridges Chi router and AWS Lambda runtime
@@ -163,7 +159,7 @@ func init() {
 		}
 		
 		coldStart = false // Mark that we're no longer in cold start
-		container.IsColdStart = false // Update container state too
+		container.SetColdStartInfo(coldStartTime, false) // Update container state too
 	} else {
 		log.Printf("Service initialized successfully with centralized DI container in %v", initDuration)
 		

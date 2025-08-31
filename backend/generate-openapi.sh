@@ -63,15 +63,19 @@ mkdir -p "$OUTPUT_DIR"
 
 # Generate OpenAPI specification
 echo "📝 Running swag init to generate OpenAPI spec..."
+# Suppress known warnings about no Go files in root and runtime parsing
 swag init \
     --generalInfo "./cmd/main/main.go" \
-    --dir "./" \
+    --dir "." \
+    --exclude "./vendor,./build,./docs,./examples,./infrastructure" \
     --output "$OUTPUT_DIR" \
     --outputTypes "go,json,yaml" \
     --parseDependency \
-    --parseInternal
+    --parseInternal \
+    --parseDepth 3 2>&1 | grep -v "warning: failed to get package name in dir" | grep -v "warning: failed to evaluate const mProfCycleWrap"
 
-if [ $? -ne 0 ]; then
+# Check if swag command succeeded (using PIPESTATUS to get swag's exit code, not grep's)
+if [ ${PIPESTATUS[0]} -ne 0 ]; then
     echo "❌ Failed to generate OpenAPI specification"
     exit 1
 fi

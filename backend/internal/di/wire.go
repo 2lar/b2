@@ -36,27 +36,18 @@ import (
 	"github.com/google/wire"
 )
 
-// InitializeContainer wires together all dependencies using Wire.
-// This function signature tells Wire what to generate by analyzing SuperSet.
+// InitializeApplicationContainer wires together the clean container architecture.
+// This function uses the CleanSuperSet to create an ApplicationContainer with
+// all the focused sub-containers properly initialized and wired.
 //
 // Wire Process:
-//   1. Analyzes all provider functions in SuperSet
+//   1. Analyzes all provider functions in CleanSuperSet
 //   2. Builds dependency graph ensuring proper initialization order
 //   3. Generates wire_gen.go with concrete implementation
 //   4. Catches circular dependencies and missing providers at compile time
 //
 // The generated code is equivalent to manually calling all provider functions
 // in the correct order, but without the maintenance burden.
-func InitializeContainer() (*Container, error) {
-	// Wire will replace this implementation with generated code
-	// The SuperSet contains all provider functions Wire needs to analyze
-	wire.Build(SuperSet)
-	return nil, nil // Wire replaces this entire function body
-}
-
-// InitializeApplicationContainer wires together the new clean container architecture.
-// This function uses the CleanSuperSet to create an ApplicationContainer with
-// all the focused sub-containers properly initialized and wired.
 func InitializeApplicationContainer() (*ApplicationContainer, error) {
 	// Wire will replace this implementation with generated code
 	// The CleanSuperSet contains the new focused container providers

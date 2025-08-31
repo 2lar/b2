@@ -30,7 +30,7 @@ type NodeDeletedDetail struct {
 
 var (
 	cleanupService *services.CleanupService
-	container      *di.Container
+	container      *di.ApplicationContainer
 )
 
 func init() {
@@ -43,9 +43,9 @@ func init() {
 	
 	// Initialize DI container
 	var err error
-	container, err = di.InitializeContainer()
+	container, err = di.InitializeApplicationContainer()
 	if err != nil {
-		log.Fatalf("Failed to initialize DI container: %v", err)
+		log.Fatalf("Failed to initialize application container: %v", err)
 	}
 
 	// Validate all dependencies are properly initialized
@@ -54,7 +54,7 @@ func init() {
 	}
 
 	// Get cleanup service from container
-	cleanupService = container.GetCleanupService()
+	cleanupService = container.GetServices().GetCleanupService()
 	if cleanupService == nil {
 		log.Fatal("Failed to initialize cleanup service")
 	}

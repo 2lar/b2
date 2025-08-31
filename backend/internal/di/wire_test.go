@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInitializeContainerIntegration(t *testing.T) {
-	container, err := InitializeContainer()
+func TestInitializeApplicationContainerIntegration(t *testing.T) {
+	container, err := InitializeApplicationContainer()
 
 	require.NoError(t, err)
 	require.NotNil(t, container)
