@@ -111,7 +111,7 @@ internal/
 - [ ] **Recovery Strategies**: Clear error recovery paths
 - [ ] **No Silent Failures**: All errors are handled or explicitly ignored
 
-### 2.4 Testing Quality
+### 2.4 Testing Quality - can be ignored.
 - [ ] **Test Coverage**: >80% for critical paths, >60% overall
 - [ ] **Test Types**: Unit, integration, and E2E tests present
 - [ ] **Test Independence**: Tests don't depend on execution order
@@ -149,7 +149,7 @@ func TestAddConnection(t *testing.T)
 - [ ] **Error Context**: Sufficient context for debugging
 - [ ] **User Impact**: Clear understanding of error impact on users
 
-### 3.3 Performance Monitoring
+### 3.3 Performance Monitoring - can be ignored
 - [ ] **Response Times**: P50, P95, P99 latencies tracked
 - [ ] **Resource Usage**: Memory, CPU, and connection pools monitored
 - [ ] **Cold Start Metrics**: Lambda cold start frequency and duration
@@ -172,13 +172,13 @@ func TestAddConnection(t *testing.T)
 
 ## 4. 🚀 Performance & Scalability (Weight: 15%)
 
-### 4.1 Response Time Requirements
+### 4.1 Response Time Requirements - can be ignored
 - [ ] **API Latency**: P95 < 200ms for queries, < 500ms for mutations
 - [ ] **Cold Start**: Lambda cold start < 1 second
 - [ ] **Database Queries**: All queries complete in < 100ms
 - [ ] **Batch Operations**: Efficient handling of bulk operations
 
-### 4.2 Scalability Patterns
+### 4.2 Scalability Patterns - can be ignored
 - [ ] **Horizontal Scaling**: Can scale by adding instances
 - [ ] **Database Sharding**: Strategy for data partitioning
 - [ ] **Caching Strategy**: Multi-level caching implemented
