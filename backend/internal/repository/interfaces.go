@@ -98,38 +98,8 @@ type TransactionalRepository interface {
 	UpdateNodeAndEdges(ctx context.Context, node *node.Node, relatedNodeIDs []string) error
 }
 
-// CategoryRepository handles category-specific operations
-type CategoryRepository interface {
-	// Core category operations
-	CreateCategory(ctx context.Context, category category.Category) error
-	UpdateCategory(ctx context.Context, category category.Category) error
-	DeleteCategory(ctx context.Context, userID, categoryID string) error
-	FindCategoryByID(ctx context.Context, userID, categoryID string) (*category.Category, error)
-	FindCategories(ctx context.Context, query CategoryQuery) ([]category.Category, error)
-	FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]category.Category, error)
-	
-	// CQRS-compatible methods
-	Save(ctx context.Context, category *category.Category) error
-	FindByID(ctx context.Context, userID, categoryID string) (*category.Category, error)
-	Delete(ctx context.Context, userID, categoryID string) error
-
-	// Category hierarchy operations
-	CreateCategoryHierarchy(ctx context.Context, hierarchy category.CategoryHierarchy) error
-	DeleteCategoryHierarchy(ctx context.Context, userID, parentID, childID string) error
-	FindChildCategories(ctx context.Context, userID, parentID string) ([]category.Category, error)
-	FindParentCategory(ctx context.Context, userID, childID string) (*category.Category, error)
-	GetCategoryTree(ctx context.Context, userID string) ([]category.Category, error)
-
-	// Node-Category mapping operations
-	AssignNodeToCategory(ctx context.Context, mapping node.NodeCategory) error
-	RemoveNodeFromCategory(ctx context.Context, userID, nodeID, categoryID string) error
-	FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*node.Node, error)
-	FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]category.Category, error)
-
-	// Batch operations for performance
-	BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error
-	UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error
-}
+// CategoryRepository is defined in the domain layer (internal/domain/category/category.go)
+// Use category.CategoryRepository directly
 
 // NodeCategoryRepository handles node-category mapping operations
 type NodeCategoryRepository interface {
@@ -161,16 +131,8 @@ type NodeCategoryRepository interface {
 	CountByNode(ctx context.Context, userID, nodeID string) (int, error)
 }
 
-// GraphRepository handles graph-wide operations with Phase 2 enhancements
-type GraphRepository interface {
-	// Graph data operations (existing - maintained for compatibility)
-	GetGraphData(ctx context.Context, query GraphQuery) (*shared.Graph, error)
-	GetGraphDataPaginated(ctx context.Context, query GraphQuery, pagination Pagination) (*shared.Graph, string, error)
-	
-	// Phase 2 Enhancements - Advanced Graph Operations
-	GetSubgraph(ctx context.Context, nodeIDs []string) (*shared.Graph, error)
-	GetConnectedComponents(ctx context.Context, userID string) ([]shared.Graph, error)
-}
+// GraphRepository is defined in the domain layer (internal/domain/shared/graph.go)
+// Use shared.GraphRepository directly
 
 // Advanced Repository Interfaces for Phase 2 Excellence
 
@@ -187,10 +149,10 @@ type UnitOfWorkProvider interface {
 type RepositoryProvider interface {
 	GetNodeRepository() NodeRepository
 	GetEdgeRepository() EdgeRepository
-	GetCategoryRepository() CategoryRepository
+	GetCategoryRepository() category.CategoryRepository
 	GetKeywordRepository() KeywordRepository
 	GetTransactionalRepository() TransactionalRepository
-	GetGraphRepository() GraphRepository
+	GetGraphRepository() shared.GraphRepository
 	
 	// Phase 2 additions
 	GetUnitOfWorkProvider() UnitOfWorkProvider

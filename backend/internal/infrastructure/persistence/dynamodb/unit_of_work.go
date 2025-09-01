@@ -8,6 +8,7 @@ import (
 	
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
+	"brain2-backend/internal/domain/category"
 	"brain2-backend/internal/errors"
 	
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -35,9 +36,9 @@ type ProperUnitOfWork struct {
 	// Repositories
 	nodeRepo     repository.NodeRepository
 	edgeRepo     repository.EdgeRepository
-	categoryRepo repository.CategoryRepository
+	categoryRepo category.CategoryRepository
 	keywordRepo  repository.KeywordRepository
-	graphRepo    repository.GraphRepository
+	graphRepo    shared.GraphRepository
 }
 
 // NewProperUnitOfWork creates a new unit of work without panics.
@@ -227,7 +228,7 @@ func (uow *ProperUnitOfWork) Edges() repository.EdgeRepository {
 }
 
 // Categories returns the CategoryRepository.
-func (uow *ProperUnitOfWork) Categories() repository.CategoryRepository {
+func (uow *ProperUnitOfWork) Categories() category.CategoryRepository {
 	if !uow.isInTransaction {
 		uow.logger.Warn("Accessing Categories repository outside of transaction")
 	}
@@ -243,7 +244,7 @@ func (uow *ProperUnitOfWork) Keywords() repository.KeywordRepository {
 }
 
 // Graph returns the GraphRepository.
-func (uow *ProperUnitOfWork) Graph() repository.GraphRepository {
+func (uow *ProperUnitOfWork) Graph() shared.GraphRepository {
 	if !uow.isInTransaction {
 		uow.logger.Warn("Accessing Graph repository outside of transaction")
 	}

@@ -33,7 +33,7 @@ type NodeQueryService struct {
 	// Read-only dependencies
 	nodeRepo repository.NodeRepository // Combined repository for nodes
 	edgeRepo repository.EdgeRepository // Combined repository for edges
-	graphRepo  repository.GraphRepository // For complex graph queries
+	graphRepo  shared.GraphRepository // For complex graph queries
 	cache      Cache                 // Cache interface for performance
 	tracer     trace.Tracer          // For distributed tracing
 }
@@ -42,7 +42,7 @@ type NodeQueryService struct {
 func NewNodeQueryService(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
-	graphRepo repository.GraphRepository,
+	graphRepo shared.GraphRepository,
 	cache Cache,
 ) *NodeQueryService {
 	return &NodeQueryService{
@@ -394,17 +394,16 @@ func (s *NodeQueryService) GetGraphData(ctx context.Context, query *GetGraphData
 	}
 
 	// 3. Build graph query
-	graphQuery := repository.GraphQuery{
-		UserID:          query.UserID,
-		IncludeEdges:    true,
-		IncludeArchived: query.IncludeArchived,
-		MaxNodes:        query.MaxNodes,
-		MaxEdges:        query.MaxEdges,
-	}
-
-	// Add tag filtering if specified
-	if len(query.TagFilter) > 0 {
-		graphQuery.TagFilter = query.TagFilter
+	graphQuery := shared.GraphQuery{
+		UserID:       query.UserID,
+		IncludeEdges: true,
+		// Additional fields can be mapped here
+		Filters: map[string]interface{}{
+			"includeArchived": query.IncludeArchived,
+			"maxNodes":        query.MaxNodes,
+			"maxEdges":        query.MaxEdges,
+			"tagFilter":       query.TagFilter,
+		},
 	}
 
 	// 4. Retrieve graph data from repository

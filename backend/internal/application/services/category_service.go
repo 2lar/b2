@@ -16,7 +16,7 @@ import (
 // CategoryService implements category operations with PURE CQRS.
 type CategoryService struct {
 	// Combined repository
-	categoryRepo repository.CategoryRepository
+	categoryRepo category.CategoryRepository
 	
 	// Supporting dependencies
 	uowFactory       repository.UnitOfWorkFactory
@@ -26,7 +26,7 @@ type CategoryService struct {
 
 // NewCategoryService creates a new CategoryService with CQRS interfaces.
 func NewCategoryService(
-	categoryRepo repository.CategoryRepository,
+	categoryRepo category.CategoryRepository,
 	uowFactory repository.UnitOfWorkFactory,
 	eventBus shared.EventBus,
 	idempotencyStore repository.IdempotencyStore,
@@ -142,7 +142,7 @@ func (s *CategoryService) CreateCategory(ctx context.Context, cmd *commands.Crea
 // GetCategory retrieves a category by ID - READ OPERATION.
 func (s *CategoryService) GetCategory(ctx context.Context, userID, categoryID string) (*dto.CategoryDTO, error) {
 	// Use reader directly - no transaction for reads
-	cat, err := s.categoryRepo.FindByID(ctx, userID, categoryID)
+	cat, err := s.categoryRepo.FindByID(ctx, userID, shared.CategoryID(categoryID))
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
 	}
@@ -175,7 +175,7 @@ func (s *CategoryService) UpdateCategory(ctx context.Context, cmd *commands.Upda
 	
 	// Read existing category
 	reader := uow.Categories()
-	existingCategory, err := reader.FindByID(ctx, cmd.UserID, cmd.CategoryID)
+	existingCategory, err := reader.FindByID(ctx, cmd.UserID, shared.CategoryID(cmd.CategoryID))
 	if err != nil {
 		uow.Rollback()
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
@@ -243,7 +243,7 @@ func (s *CategoryService) DeleteCategory(ctx context.Context, userID, categoryID
 	
 	// Check if category exists
 	reader := uow.Categories()
-	existingCategory, err := reader.FindByID(ctx, userID, categoryID)
+	existingCategory, err := reader.FindByID(ctx, userID, shared.CategoryID(categoryID))
 	if err != nil {
 		uow.Rollback()
 		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
@@ -268,7 +268,7 @@ func (s *CategoryService) DeleteCategory(ctx context.Context, userID, categoryID
 	
 	// Delete through writer
 	writer := uow.Categories()
-	if err := writer.Delete(ctx, userID, categoryID); err != nil {
+	if err := writer.Delete(ctx, userID, shared.CategoryID(categoryID)); err != nil {
 		uow.Rollback()
 		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to delete category")
 	}
@@ -291,7 +291,7 @@ func (s *CategoryService) DeleteCategory(ctx context.Context, userID, categoryID
 func (s *CategoryService) ListCategories(ctx context.Context, userID string) ([]*dto.CategoryDTO, error) {
 	// Use reader directly
 	// Use FindCategories with a query
-	categoryQuery := repository.CategoryQuery{
+	categoryQuery := category.CategoryQuery{
 		UserID: userID,
 	}
 	categories, err := s.categoryRepo.FindCategories(ctx, categoryQuery)
@@ -376,7 +376,7 @@ func (s *CategoryService) AssignNodeToCategory(ctx context.Context, userID, node
 	
 	// Verify category exists
 	reader := uow.Categories()
-	cat, err := reader.FindByID(ctx, userID, categoryID)
+	cat, err := reader.FindByID(ctx, userID, shared.CategoryID(categoryID))
 	if err != nil {
 		uow.Rollback()
 		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
@@ -395,7 +395,7 @@ func (s *CategoryService) AssignNodeToCategory(ctx context.Context, userID, node
 		CategoryID: categoryID,
 	}
 	
-	if err := writer.AssignNodeToCategory(ctx, mapping); err != nil {
+	if err := writer.AssignNodeToCategory(ctx, mapping.UserID, mapping.NodeID, mapping.CategoryID); err != nil {
 		uow.Rollback()
 		return errors.Wrap(err, errors.CodeInternalError.String(), "failed to assign node to category")
 	}

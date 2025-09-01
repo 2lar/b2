@@ -57,7 +57,7 @@ type UnitOfWork interface {
 	// Repository access
 	Nodes() repository.NodeRepository
 	Edges() repository.EdgeRepository
-	Categories() repository.CategoryRepository
+	Categories() category.CategoryRepository
 	
 	// Event publishing
 	PublishEvent(event shared.DomainEvent)
@@ -72,9 +72,9 @@ type Transaction interface {
 	// Repository access
 	Nodes() repository.NodeRepository
 	Edges() repository.EdgeRepository
-	Categories() repository.CategoryRepository
+	Categories() category.CategoryRepository
 	Keywords() repository.KeywordRepository
-	Graph() repository.GraphRepository
+	Graph() shared.GraphRepository
 	
 	// Event management
 	RecordEvent(event shared.DomainEvent)
@@ -89,9 +89,9 @@ type Transaction interface {
 type AllRepositories interface {
 	Nodes() repository.NodeRepository
 	Edges() repository.EdgeRepository
-	Categories() repository.CategoryRepository
+	Categories() category.CategoryRepository
 	Keywords() repository.KeywordRepository
-	Graph() repository.GraphRepository
+	Graph() shared.GraphRepository
 }
 
 // ============================================================================

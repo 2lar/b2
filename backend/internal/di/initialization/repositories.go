@@ -9,6 +9,7 @@ import (
 	"brain2-backend/internal/infrastructure/persistence"
 	infradynamodb "brain2-backend/internal/infrastructure/persistence/dynamodb"
 	"brain2-backend/internal/repository"
+	"brain2-backend/internal/domain/category"
 
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"go.uber.org/zap"
@@ -95,8 +96,8 @@ type RepositoryServices struct {
 	Store                   persistence.Store
 	NodeRepository          repository.NodeRepository
 	EdgeRepository          repository.EdgeRepository
-	CategoryRepository      repository.CategoryRepository
-	GraphRepository         repository.GraphRepository
+	CategoryRepository      category.CategoryRepository
+	GraphRepository         shared.GraphRepository
 	KeywordRepository       repository.KeywordRepository
 	TransactionalRepository repository.TransactionalRepository
 	NodeCategoryRepository  repository.NodeCategoryRepository

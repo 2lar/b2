@@ -21,6 +21,7 @@ import (
 	"brain2-backend/internal/infrastructure/persistence"
 	persistenceCache "brain2-backend/internal/infrastructure/persistence/cache"
 	"brain2-backend/internal/repository"
+	"brain2-backend/internal/domain/category"
 
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
@@ -137,8 +138,8 @@ type RepositoryContainer struct {
 	// Combined repositories (using single repository pattern)
 	Node            repository.NodeRepository
 	Edge            repository.EdgeRepository
-	Category        repository.CategoryRepository
-	Graph           repository.GraphRepository
+	Category        category.CategoryRepository
+	Graph           shared.GraphRepository
 	Keyword         repository.KeywordRepository
 	Transactional   repository.TransactionalRepository
 	Idempotency     repository.IdempotencyStore
@@ -147,7 +148,7 @@ type RepositoryContainer struct {
 	// Use Node, Edge, Category repositories directly
 	
 	// Specialized repositories
-	GraphRepository    repository.GraphRepository
+	GraphRepository    shared.GraphRepository
 	KeywordRepository  repository.KeywordRepository
 	IdempotencyStore   repository.IdempotencyStore
 	
@@ -185,12 +186,12 @@ func (c *RepositoryContainer) GetEdgeRepository() repository.EdgeRepository {
 }
 
 // GetCategoryRepository returns the category repository.
-func (c *RepositoryContainer) GetCategoryRepository() repository.CategoryRepository {
+func (c *RepositoryContainer) GetCategoryRepository() category.CategoryRepository {
 	return c.Category
 }
 
 // GetGraphRepository returns the graph repository.
-func (c *RepositoryContainer) GetGraphRepository() repository.GraphRepository {
+func (c *RepositoryContainer) GetGraphRepository() shared.GraphRepository {
 	return c.Graph
 }
 

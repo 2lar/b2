@@ -9,6 +9,7 @@ import (
 	"brain2-backend/internal/infrastructure/observability"
 	"brain2-backend/internal/infrastructure/persistence/cache"
 	"brain2-backend/internal/repository"
+	"brain2-backend/internal/domain/category"
 	
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -198,7 +199,7 @@ func (dc *DecoratorChain) DecorateEdgeRepository(base repository.EdgeRepository)
 // ============================================================================
 
 // DecorateCategoryRepository applies configured decorators to a category repository.
-func (dc *DecoratorChain) DecorateCategoryRepository(base repository.CategoryRepository) repository.CategoryRepository {
+func (dc *DecoratorChain) DecorateCategoryRepository(base category.CategoryRepository) category.CategoryRepository {
 	decorated := base
 	
 	// Retry decorator

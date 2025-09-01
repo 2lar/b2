@@ -24,6 +24,7 @@ import (
 	"context"
 	"time"
 
+	"brain2-backend/internal/domain/node"
 	"brain2-backend/internal/domain/shared"
 )
 
@@ -53,6 +54,7 @@ type Category struct {
 	UpdatedAt   time.Time   `json:"updated_at"`
 	Description string      `json:"description,omitempty"`
 	Version     shared.Version `json:"-"`  // For optimistic locking
+	IsArchived  bool        `json:"is_archived"`  // Whether the category is archived
 	
 	// Domain events
 	events []shared.DomainEvent
@@ -81,6 +83,7 @@ func NewCategory(userID shared.UserID, title, description string) (*Category, er
 		CreatedAt:   now,
 		UpdatedAt:   now,
 		Version:     shared.NewVersion(),
+		IsArchived:  false,
 		events:      []shared.DomainEvent{},
 	}
 	
@@ -91,46 +94,6 @@ func NewCategory(userID shared.UserID, title, description string) (*Category, er
 	return category, nil
 }
 
-// UpdateTitle updates the category title with event generation
-func (c *Category) UpdateTitle(title string) error {
-	if title == "" {
-		return shared.ErrValidation
-	}
-	
-	// Check if title actually changed
-	if c.Title == title {
-		return nil // No change needed
-	}
-	
-	c.Title = title
-	c.Name = title
-	c.UpdatedAt = time.Now()
-	c.Version = c.Version.Next()
-	
-	// Generate domain event for category update
-	updateEvent := NewCategoryUpdatedEvent(c)
-	c.addEvent(updateEvent)
-	
-	return nil
-}
-
-// UpdateDescription updates the category description with event generation
-func (c *Category) UpdateDescription(description string) error {
-	// Check if description actually changed
-	if c.Description == description {
-		return nil // No change needed
-	}
-	
-	c.Description = description
-	c.UpdatedAt = time.Now()
-	c.Version = c.Version.Next()
-	
-	// Generate domain event for category update
-	updateEvent := NewCategoryUpdatedEvent(c)
-	c.addEvent(updateEvent)
-	
-	return nil
-}
 
 // SetColor sets the category color with event generation
 func (c *Category) SetColor(color string) error {
@@ -140,6 +103,124 @@ func (c *Category) SetColor(color string) error {
 	}
 	
 	c.Color = &color
+	c.UpdatedAt = time.Now()
+	c.Version = c.Version.Next()
+	
+	// Generate domain event for category update
+	updateEvent := NewCategoryUpdatedEvent(c)
+	c.addEvent(updateEvent)
+	
+	return nil
+}
+
+// Move moves the category to a different parent
+func (c *Category) Move(newParentID shared.CategoryID) error {
+	// Validate that it's not moving to itself
+	if c.ID == newParentID {
+		return shared.NewDomainError("invalid_move", "category cannot be its own parent", nil)
+	}
+	
+	// Check if parent actually changed
+	if c.ParentID != nil && *c.ParentID == newParentID {
+		return nil // No change needed
+	}
+	
+	// Store old parent for event
+	var oldParentID shared.CategoryID
+	if c.ParentID != nil {
+		oldParentID = *c.ParentID
+	}
+	
+	// Apply changes
+	c.ParentID = &newParentID
+	c.UpdatedAt = time.Now()
+	c.Version = c.Version.Next()
+	
+	// Generate domain event
+	userID, _ := shared.NewUserID(c.UserID)
+	event := shared.NewCategoryMovedEvent(c.ID, userID, oldParentID, newParentID, c.Version)
+	c.addEvent(event)
+	
+	return nil
+}
+
+// Archive archives the category
+func (c *Category) Archive() error {
+	if c.IsArchived {
+		return shared.NewDomainError("already_archived", "category is already archived", nil)
+	}
+	
+	// Apply changes
+	c.IsArchived = true
+	c.UpdatedAt = time.Now()
+	c.Version = c.Version.Next()
+	
+	// Generate domain event
+	userID, _ := shared.NewUserID(c.UserID)
+	event := shared.NewCategoryArchivedEvent(c.ID, userID, c.Version)
+	c.addEvent(event)
+	
+	return nil
+}
+
+// Restore restores an archived category
+func (c *Category) Restore() error {
+	if !c.IsArchived {
+		return shared.NewDomainError("not_archived", "category is not archived", nil)
+	}
+	
+	// Apply changes
+	c.IsArchived = false
+	c.UpdatedAt = time.Now()
+	c.Version = c.Version.Next()
+	
+	// Generate domain event
+	userID, _ := shared.NewUserID(c.UserID)
+	event := shared.NewCategoryRestoredEvent(c.ID, userID, c.Version)
+	c.addEvent(event)
+	
+	return nil
+}
+
+// UpdateName updates the category name with proper event generation
+func (c *Category) UpdateName(name string) error {
+	if name == "" {
+		return shared.ErrValidation
+	}
+	
+	// Check if name actually changed
+	if c.Name == name {
+		return nil // No change needed
+	}
+	
+	// Apply changes
+	c.Name = name
+	c.Title = name
+	c.UpdatedAt = time.Now()
+	c.Version = c.Version.Next()
+	
+	// Generate domain event for category update
+	updateEvent := NewCategoryUpdatedEvent(c)
+	c.addEvent(updateEvent)
+	
+	return nil
+}
+
+// UpdateTitle updates the category title with proper event generation
+// This is an alias for UpdateName to maintain backward compatibility
+func (c *Category) UpdateTitle(title string) error {
+	return c.UpdateName(title)
+}
+
+// UpdateDescription updates the category description with proper event generation
+func (c *Category) UpdateDescription(description string) error {
+	// Check if description actually changed
+	if c.Description == description {
+		return nil // No change needed
+	}
+	
+	// Apply changes
+	c.Description = description
 	c.UpdatedAt = time.Now()
 	c.Version = c.Version.Next()
 	
@@ -264,22 +345,52 @@ func (c *Category) addEvent(event shared.DomainEvent) {
 	c.events = append(c.events, event) // Keep for backward compatibility
 }
 
+// CategoryQuery represents query parameters for searching categories
+type CategoryQuery struct {
+	UserID       string
+	ParentID     *shared.CategoryID
+	Level        *int
+	AIGenerated  *bool
+	NameContains string
+	Limit        int
+	Offset       int
+}
+
 // CategoryRepository defines the persistence methods required for a Category.
 // This interface is part of the domain layer and dictates the contract for
 // how category data is accessed, abstracting away the specific database implementation.
 type CategoryRepository interface {
-	// FindByID retrieves a single category by its unique ID for a given user.
-	FindByID(ctx context.Context, userID string, id shared.CategoryID) (*Category, error)
-
-	// ListByParentID retrieves all direct children of a given category for a user.
-	ListByParentID(ctx context.Context, userID string, parentID shared.CategoryID) ([]*Category, error)
-
-	// ListRoot retrieves all categories that do not have a parent for a user.
-	ListRoot(ctx context.Context, userID string) ([]*Category, error)
-
-	// Save persists a Category. It handles both creation and updates.
+	// Core CRUD operations
 	Save(ctx context.Context, category *Category) error
-
-	// Delete removes a category by its ID for a given user.
+	FindByID(ctx context.Context, userID string, id shared.CategoryID) (*Category, error)
 	Delete(ctx context.Context, userID string, id shared.CategoryID) error
+	
+	// Additional finder methods
+	FindCategoryByID(ctx context.Context, userID, categoryID string) (*Category, error)
+	FindCategories(ctx context.Context, query CategoryQuery) ([]Category, error)
+	FindCategoriesByLevel(ctx context.Context, userID string, level int) ([]Category, error)
+	
+	// Hierarchy operations
+	ListByParentID(ctx context.Context, userID string, parentID shared.CategoryID) ([]*Category, error)
+	ListRoot(ctx context.Context, userID string) ([]*Category, error)
+	CreateCategoryHierarchy(ctx context.Context, hierarchy CategoryHierarchy) error
+	DeleteCategoryHierarchy(ctx context.Context, userID, parentID, childID string) error
+	FindChildCategories(ctx context.Context, userID, parentID string) ([]Category, error)
+	FindParentCategory(ctx context.Context, userID, childID string) (*Category, error)
+	GetCategoryTree(ctx context.Context, userID string) ([]Category, error)
+	
+	// Legacy methods for compatibility
+	CreateCategory(ctx context.Context, category Category) error
+	UpdateCategory(ctx context.Context, category Category) error
+	DeleteCategory(ctx context.Context, userID, categoryID string) error
+	
+	// Node-Category mapping operations
+	AssignNodeToCategory(ctx context.Context, userID, nodeID, categoryID string) error
+	RemoveNodeFromCategory(ctx context.Context, userID, nodeID, categoryID string) error
+	FindNodesByCategory(ctx context.Context, userID, categoryID string) ([]*node.Node, error)
+	FindCategoriesForNode(ctx context.Context, userID, nodeID string) ([]Category, error)
+	
+	// Batch operations
+	BatchAssignCategories(ctx context.Context, mappings []node.NodeCategory) error
+	UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error
 }

@@ -52,7 +52,7 @@ func (cv *ConsistencyValidator) ValidateNodeConsistency(ctx context.Context, use
 
 // ValidateGraphConsistency validates the entire graph consistency for a user
 func (cv *ConsistencyValidator) ValidateGraphConsistency(ctx context.Context, userID string) error {
-	query := GraphQuery{UserID: userID, IncludeEdges: true}
+	query := shared.GraphQuery{UserID: userID, IncludeEdges: true}
 	graph, err := cv.repo.GetGraphData(ctx, query)
 	if err != nil {
 		return fmt.Errorf("failed to get graph data for consistency check: %w", err)
@@ -200,7 +200,7 @@ func (dcm *DataCleanupManager) CleanupUserData(ctx context.Context, userID strin
 	}
 
 	// Get all user data
-	query := GraphQuery{UserID: userID, IncludeEdges: true}
+	query := shared.GraphQuery{UserID: userID, IncludeEdges: true}
 	graph, err := dcm.repo.GetGraphData(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user data for cleanup: %w", err)
@@ -389,7 +389,7 @@ func (ic *IntegrityChecker) CheckIntegrity(ctx context.Context, userID string) (
 	report := &IntegrityReport{}
 
 	// Get all user data
-	query := GraphQuery{UserID: userID, IncludeEdges: true}
+	query := shared.GraphQuery{UserID: userID, IncludeEdges: true}
 	graph, err := ic.repo.GetGraphData(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user data for integrity check: %w", err)

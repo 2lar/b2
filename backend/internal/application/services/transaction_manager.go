@@ -20,7 +20,7 @@ import (
 type FixedTransactionManager struct {
 	nodeRepo     repository.NodeRepository
 	edgeRepo     repository.EdgeRepository
-	categoryRepo repository.CategoryRepository
+	categoryRepo category.CategoryRepository
 	eventBus     shared.EventBus
 	logger       *zap.Logger
 }
@@ -29,7 +29,7 @@ type FixedTransactionManager struct {
 func NewFixedTransactionManager(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
-	categoryRepo repository.CategoryRepository,
+	categoryRepo category.CategoryRepository,
 	eventBus shared.EventBus,
 	logger *zap.Logger,
 ) *FixedTransactionManager {
@@ -203,7 +203,7 @@ func (tm *FixedTransactionManager) UpdateCategory(ctx context.Context, cat *cate
 // DeleteCategory deletes a category by ID.
 func (tm *FixedTransactionManager) DeleteCategory(ctx context.Context, userID string, categoryID string) error {
 	// Use the repository's Delete method
-	if err := tm.categoryRepo.Delete(ctx, userID, categoryID); err != nil {
+	if err := tm.categoryRepo.Delete(ctx, userID, shared.CategoryID(categoryID)); err != nil {
 		return errors.RepositoryError("DeleteCategory", "category", err)
 	}
 	

@@ -216,6 +216,47 @@ func (e *NodeArchivedEvent) EventData() map[string]interface{} {
 	}
 }
 
+// NodeUpdatedEvent is fired when a node's title is updated
+type NodeUpdatedEvent struct {
+	BaseEvent
+	OldTitle string `json:"old_title"`
+	NewTitle string `json:"new_title"`
+}
+
+// NewNodeUpdatedEvent creates a new NodeUpdatedEvent
+func NewNodeUpdatedEvent(nodeID NodeID, userID UserID, oldTitle, newTitle Title, version Version) *NodeUpdatedEvent {
+	return &NodeUpdatedEvent{
+		BaseEvent: newBaseEvent("NodeUpdated", nodeID.String(), userID.String(), version.Int()),
+		OldTitle:  oldTitle.String(),
+		NewTitle:  newTitle.String(),
+	}
+}
+
+// EventData returns the event-specific data
+func (e *NodeUpdatedEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{
+		"old_title": e.OldTitle,
+		"new_title": e.NewTitle,
+	}
+}
+
+// NodeRestoredEvent is fired when a node is restored from archive
+type NodeRestoredEvent struct {
+	BaseEvent
+}
+
+// NewNodeRestoredEvent creates a new NodeRestoredEvent
+func NewNodeRestoredEvent(nodeID NodeID, userID UserID, version Version) *NodeRestoredEvent {
+	return &NodeRestoredEvent{
+		BaseEvent: newBaseEvent("NodeRestored", nodeID.String(), userID.String(), version.Int()),
+	}
+}
+
+// EventData returns the event-specific data
+func (e *NodeRestoredEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
 // Edge Events
 
 // EdgeCreatedEvent is fired when a new edge is created
@@ -242,6 +283,54 @@ func (e *EdgeCreatedEvent) EventData() map[string]interface{} {
 		"source_node_id": e.SourceNodeID,
 		"target_node_id": e.TargetNodeID,
 		"weight":         e.Weight,
+	}
+}
+
+// EdgeWeightUpdatedEvent is fired when an edge's weight is updated
+type EdgeWeightUpdatedEvent struct {
+	BaseEvent
+	OldWeight float64 `json:"old_weight"`
+	NewWeight float64 `json:"new_weight"`
+}
+
+// NewEdgeWeightUpdatedEvent creates a new EdgeWeightUpdatedEvent
+func NewEdgeWeightUpdatedEvent(edgeID NodeID, userID UserID, oldWeight, newWeight float64, version Version) *EdgeWeightUpdatedEvent {
+	return &EdgeWeightUpdatedEvent{
+		BaseEvent: newBaseEvent("EdgeWeightUpdated", edgeID.String(), userID.String(), version.Int()),
+		OldWeight: oldWeight,
+		NewWeight: newWeight,
+	}
+}
+
+// EventData returns the event-specific data
+func (e *EdgeWeightUpdatedEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{
+		"old_weight": e.OldWeight,
+		"new_weight": e.NewWeight,
+	}
+}
+
+// EdgeTypeChangedEvent is fired when an edge's type is changed
+type EdgeTypeChangedEvent struct {
+	BaseEvent
+	OldType string `json:"old_type"`
+	NewType string `json:"new_type"`
+}
+
+// NewEdgeTypeChangedEvent creates a new EdgeTypeChangedEvent
+func NewEdgeTypeChangedEvent(edgeID NodeID, userID UserID, oldType, newType string, version Version) *EdgeTypeChangedEvent {
+	return &EdgeTypeChangedEvent{
+		BaseEvent: newBaseEvent("EdgeTypeChanged", edgeID.String(), userID.String(), version.Int()),
+		OldType:   string(oldType),
+		NewType:   string(newType),
+	}
+}
+
+// EventData returns the event-specific data
+func (e *EdgeTypeChangedEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{
+		"old_type": e.OldType,
+		"new_type": e.NewType,
 	}
 }
 
@@ -272,38 +361,6 @@ func (e *EdgeDeletedEvent) EventData() map[string]interface{} {
 	}
 }
 
-// EdgeWeightUpdatedEvent is fired when an edge weight is updated
-type EdgeWeightUpdatedEvent struct {
-	BaseEvent
-	EdgeID       string  `json:"edge_id"`
-	SourceNodeID string  `json:"source_node_id"`
-	TargetNodeID string  `json:"target_node_id"`
-	OldWeight    float64 `json:"old_weight"`
-	NewWeight    float64 `json:"new_weight"`
-}
-
-// NewEdgeWeightUpdatedEvent creates a new EdgeWeightUpdatedEvent
-func NewEdgeWeightUpdatedEvent(edgeID, sourceNodeID, targetNodeID NodeID, userID UserID, oldWeight, newWeight Weight, version Version) *EdgeWeightUpdatedEvent {
-	return &EdgeWeightUpdatedEvent{
-		BaseEvent:    newBaseEvent("EdgeWeightUpdated", edgeID.String(), userID.String(), version.Int()),
-		EdgeID:       edgeID.String(),
-		SourceNodeID: sourceNodeID.String(),
-		TargetNodeID: targetNodeID.String(),
-		OldWeight:    oldWeight.Value(),
-		NewWeight:    newWeight.Value(),
-	}
-}
-
-// EventData returns the event-specific data
-func (e *EdgeWeightUpdatedEvent) EventData() map[string]interface{} {
-	return map[string]interface{}{
-		"edge_id":        e.EdgeID,
-		"source_node_id": e.SourceNodeID,
-		"target_node_id": e.TargetNodeID,
-		"old_weight":     e.OldWeight,
-		"new_weight":     e.NewWeight,
-	}
-}
 
 // Connection Events
 
@@ -373,6 +430,94 @@ func (e *CategoryCreatedEvent) EventData() map[string]interface{} {
 		"description": e.Description,
 		"level":       e.Level,
 	}
+}
+
+// CategoryUpdatedEvent is fired when a category is updated
+type CategoryUpdatedEvent struct {
+	BaseEvent
+	OldName        string `json:"old_name"`
+	NewName        string `json:"new_name"`
+	OldDescription string `json:"old_description"`
+	NewDescription string `json:"new_description"`
+}
+
+// NewCategoryUpdatedEvent creates a new CategoryUpdatedEvent
+func NewCategoryUpdatedEvent(categoryID CategoryID, userID UserID, oldName, newName, oldDesc, newDesc string, version Version) *CategoryUpdatedEvent {
+	return &CategoryUpdatedEvent{
+		BaseEvent:      newBaseEvent("CategoryUpdated", string(categoryID), userID.String(), version.Int()),
+		OldName:        oldName,
+		NewName:        newName,
+		OldDescription: oldDesc,
+		NewDescription: newDesc,
+	}
+}
+
+// EventData returns the event-specific data
+func (e *CategoryUpdatedEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{
+		"old_name":        e.OldName,
+		"new_name":        e.NewName,
+		"old_description": e.OldDescription,
+		"new_description": e.NewDescription,
+	}
+}
+
+// CategoryMovedEvent is fired when a category is moved to a different parent
+type CategoryMovedEvent struct {
+	BaseEvent
+	OldParentID string `json:"old_parent_id"`
+	NewParentID string `json:"new_parent_id"`
+}
+
+// NewCategoryMovedEvent creates a new CategoryMovedEvent
+func NewCategoryMovedEvent(categoryID CategoryID, userID UserID, oldParentID, newParentID CategoryID, version Version) *CategoryMovedEvent {
+	return &CategoryMovedEvent{
+		BaseEvent:   newBaseEvent("CategoryMoved", string(categoryID), userID.String(), version.Int()),
+		OldParentID: string(oldParentID),
+		NewParentID: string(newParentID),
+	}
+}
+
+// EventData returns the event-specific data
+func (e *CategoryMovedEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{
+		"old_parent_id": e.OldParentID,
+		"new_parent_id": e.NewParentID,
+	}
+}
+
+// CategoryArchivedEvent is fired when a category is archived
+type CategoryArchivedEvent struct {
+	BaseEvent
+}
+
+// NewCategoryArchivedEvent creates a new CategoryArchivedEvent
+func NewCategoryArchivedEvent(categoryID CategoryID, userID UserID, version Version) *CategoryArchivedEvent {
+	return &CategoryArchivedEvent{
+		BaseEvent: newBaseEvent("CategoryArchived", string(categoryID), userID.String(), version.Int()),
+	}
+}
+
+// EventData returns the event-specific data
+func (e *CategoryArchivedEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{}
+}
+
+// CategoryRestoredEvent is fired when a category is restored
+type CategoryRestoredEvent struct {
+	BaseEvent
+}
+
+// NewCategoryRestoredEvent creates a new CategoryRestoredEvent
+func NewCategoryRestoredEvent(categoryID CategoryID, userID UserID, version Version) *CategoryRestoredEvent {
+	return &CategoryRestoredEvent{
+		BaseEvent: newBaseEvent("CategoryRestored", string(categoryID), userID.String(), version.Int()),
+	}
+}
+
+// EventData returns the event-specific data
+func (e *CategoryRestoredEvent) EventData() map[string]interface{} {
+	return map[string]interface{}{}
 }
 
 // CategoryDeletedEvent is fired when a category is deleted

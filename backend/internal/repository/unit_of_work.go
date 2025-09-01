@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"brain2-backend/internal/domain/category"
 	"brain2-backend/internal/domain/shared"
 	"go.uber.org/zap"
 )
@@ -51,9 +52,9 @@ type UnitOfWork interface {
 	// Repository Access - Returns transactional repositories
 	Nodes() NodeRepository
 	Edges() EdgeRepository
-	Categories() CategoryRepository
+	Categories() category.CategoryRepository
 	Keywords() KeywordRepository
-	Graph() GraphRepository
+	Graph() shared.GraphRepository
 	NodeCategories() NodeCategoryRepository
 	
 	// Event Publishing - Events are published atomically with transaction
@@ -101,9 +102,9 @@ type unitOfWork struct {
 	// Repository instances (created when transaction begins)
 	nodeRepo         NodeRepository
 	edgeRepo         EdgeRepository
-	categoryRepo     CategoryRepository
+	categoryRepo     category.CategoryRepository
 	keywordRepo      KeywordRepository
-	graphRepo        GraphRepository
+	graphRepo        shared.GraphRepository
 	nodeCategoryRepo NodeCategoryRepository
 	
 	// Domain events to be published atomically
@@ -302,7 +303,7 @@ func (uow *unitOfWork) Edges() EdgeRepository {
 	return uow.edgeRepo
 }
 
-func (uow *unitOfWork) Categories() CategoryRepository {
+func (uow *unitOfWork) Categories() category.CategoryRepository {
 	if uow.categoryRepo == nil {
 		uow.logger.Error("unit of work not begun - call Begin() first")
 		return nil
@@ -318,7 +319,7 @@ func (uow *unitOfWork) Keywords() KeywordRepository {
 	return uow.keywordRepo
 }
 
-func (uow *unitOfWork) Graph() GraphRepository {
+func (uow *unitOfWork) Graph() shared.GraphRepository {
 	if uow.graphRepo == nil {
 		uow.logger.Error("unit of work not begun - call Begin() first")
 		return nil
@@ -371,9 +372,9 @@ func (uow *unitOfWork) IsRolledBack() bool {
 type TransactionalRepositoryFactory interface {
 	CreateNodeRepository(tx Transaction) NodeRepository
 	CreateEdgeRepository(tx Transaction) EdgeRepository
-	CreateCategoryRepository(tx Transaction) CategoryRepository
+	CreateCategoryRepository(tx Transaction) category.CategoryRepository
 	CreateKeywordRepository(tx Transaction) KeywordRepository
-	CreateGraphRepository(tx Transaction) GraphRepository
+	CreateGraphRepository(tx Transaction) shared.GraphRepository
 	CreateNodeCategoryRepository(tx Transaction) NodeCategoryRepository
 }
 

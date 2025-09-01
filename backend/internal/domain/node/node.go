@@ -278,17 +278,17 @@ func (n *Node) UpdateTitle(newTitle shared.Title) error {
 		return nil // No change needed
 	}
 
-	// Store old value for events (currently commented out)
-	// oldTitle := n.title
+	// Store old value for events
+	oldTitle := n.title
 
 	// Apply changes
 	n.title = newTitle
 	n.updatedAt = time.Now()
 	n.version = n.version.Next()
 
-	// Generate domain event (TODO: implement NewNodeTitleUpdatedEvent if needed)
-	// event := shared.NewNodeTitleUpdatedEvent(n.id, n.userID, oldTitle, newTitle, n.version)
-	// n.addEvent(event)
+	// Generate domain event
+	event := shared.NewNodeUpdatedEvent(n.id, n.userID, oldTitle, newTitle, n.version)
+	n.addEvent(event)
 
 	return nil
 }
@@ -342,6 +342,29 @@ func (n *Node) Archive(reason string) error {
 
 	// Generate domain event
 	event := shared.NewNodeArchivedEvent(n.id, n.userID, reason, n.version)
+	n.addEvent(event)
+
+	return nil
+}
+
+// Restore restores an archived node
+//
+// Business Rules Enforced:
+//   - Can only restore archived nodes
+//   - Version is incremented for optimistic locking
+//   - Domain events are generated
+func (n *Node) Restore() error {
+	if !n.archived {
+		return shared.NewDomainError("not_archived", "Node is not archived", nil)
+	}
+
+	// Apply changes
+	n.archived = false
+	n.updatedAt = time.Now()
+	n.version = n.version.Next()
+
+	// Generate domain event
+	event := shared.NewNodeRestoredEvent(n.id, n.userID, n.version)
 	n.addEvent(event)
 
 	return nil

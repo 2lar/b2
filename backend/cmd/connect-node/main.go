@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log"
 
+	"brain2-backend/internal/domain/category"
+	"brain2-backend/internal/domain/shared"
 	infradynamodb "brain2-backend/internal/infrastructure/persistence/dynamodb"
 	"brain2-backend/internal/repository"
 	"brain2-backend/pkg/config"
@@ -26,10 +28,10 @@ var eventbridgeClient *eventbridge.Client
 type compositeRepository struct {
 	repository.NodeRepository
 	repository.EdgeRepository
-	repository.CategoryRepository
+	category.CategoryRepository
 	repository.KeywordRepository
 	repository.TransactionalRepository
-	repository.GraphRepository
+	shared.GraphRepository
 }
 
 func init() {

@@ -2,6 +2,8 @@ package transaction
 
 import (
 	"brain2-backend/internal/repository"
+	"brain2-backend/internal/domain/shared"
+	"brain2-backend/internal/domain/category"
 )
 
 // transactionalRepositoryFactory implements repository.TransactionalRepositoryFactory
@@ -9,7 +11,7 @@ import (
 type transactionalRepositoryFactory struct {
 	nodeRepo     repository.NodeRepository
 	edgeRepo     repository.EdgeRepository
-	categoryRepo repository.CategoryRepository
+	categoryRepo category.CategoryRepository
 	transaction  repository.Transaction
 }
 
@@ -17,7 +19,7 @@ type transactionalRepositoryFactory struct {
 func NewTransactionalRepositoryFactory(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
-	categoryRepo repository.CategoryRepository,
+	categoryRepo category.CategoryRepository,
 ) repository.TransactionalRepositoryFactory {
 	return &transactionalRepositoryFactory{
 		nodeRepo:     nodeRepo,
@@ -46,7 +48,7 @@ func (f *transactionalRepositoryFactory) CreateEdgeRepository(tx repository.Tran
 	return f.edgeRepo
 }
 
-func (f *transactionalRepositoryFactory) CreateCategoryRepository(tx repository.Transaction) repository.CategoryRepository {
+func (f *transactionalRepositoryFactory) CreateCategoryRepository(tx repository.Transaction) category.CategoryRepository {
 	if tx != nil {
 		return NewTransactionalCategoryWrapper(f.categoryRepo, tx)
 	}
@@ -58,7 +60,7 @@ func (f *transactionalRepositoryFactory) CreateKeywordRepository(tx repository.T
 	return nil
 }
 
-func (f *transactionalRepositoryFactory) CreateGraphRepository(tx repository.Transaction) repository.GraphRepository {
+func (f *transactionalRepositoryFactory) CreateGraphRepository(tx repository.Transaction) shared.GraphRepository {
 	// Return nil as we don't have a graph repository for transactions yet
 	return nil
 }

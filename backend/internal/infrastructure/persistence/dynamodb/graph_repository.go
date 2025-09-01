@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"brain2-backend/internal/domain/shared"
-	"brain2-backend/internal/repository"
 
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"go.uber.org/zap"
@@ -19,7 +18,7 @@ type GraphRepository struct {
 }
 
 // NewGraphRepository creates a new GraphRepository instance.
-func NewGraphRepository(client *awsDynamodb.Client, tableName, indexName string, logger *zap.Logger) repository.GraphRepository {
+func NewGraphRepository(client *awsDynamodb.Client, tableName, indexName string, logger *zap.Logger) shared.GraphRepository {
 	return &GraphRepository{
 		client:    client,
 		tableName: tableName,
@@ -29,7 +28,7 @@ func NewGraphRepository(client *awsDynamodb.Client, tableName, indexName string,
 }
 
 // GetGraphData retrieves graph data based on query parameters.
-func (r *GraphRepository) GetGraphData(ctx context.Context, query repository.GraphQuery) (*shared.Graph, error) {
+func (r *GraphRepository) GetGraphData(ctx context.Context, query shared.GraphQuery) (*shared.Graph, error) {
 	// Stub implementation - return empty graph
 	return &shared.Graph{
 		Nodes: []any{},
@@ -38,7 +37,7 @@ func (r *GraphRepository) GetGraphData(ctx context.Context, query repository.Gra
 }
 
 // GetGraphDataPaginated retrieves paginated graph data.
-func (r *GraphRepository) GetGraphDataPaginated(ctx context.Context, query repository.GraphQuery, pagination repository.Pagination) (*shared.Graph, string, error) {
+func (r *GraphRepository) GetGraphDataPaginated(ctx context.Context, query shared.GraphQuery, pagination shared.GraphPagination) (*shared.Graph, string, error) {
 	// Stub implementation - return empty graph with no pagination
 	return &shared.Graph{
 		Nodes: []any{},
@@ -59,4 +58,31 @@ func (r *GraphRepository) GetSubgraph(ctx context.Context, nodeIDs []string) (*s
 func (r *GraphRepository) GetConnectedComponents(ctx context.Context, userID string) ([]shared.Graph, error) {
 	// Stub implementation - return empty list of graphs
 	return []shared.Graph{}, nil
+}
+
+// FindByID finds a graph by its ID
+func (r *GraphRepository) FindByID(ctx context.Context, userID string, id shared.GraphID) (*shared.Graph, error) {
+	// Stub implementation - return empty graph
+	return &shared.Graph{
+		Nodes: []any{},
+		Edges: []any{},
+	}, nil
+}
+
+// FindAll finds all graphs for a user
+func (r *GraphRepository) FindAll(ctx context.Context, userID string) ([]*shared.Graph, error) {
+	// Stub implementation - return empty list
+	return []*shared.Graph{}, nil
+}
+
+// Save saves a graph
+func (r *GraphRepository) Save(ctx context.Context, graph *shared.Graph) error {
+	// Stub implementation
+	return nil
+}
+
+// Delete deletes a graph
+func (r *GraphRepository) Delete(ctx context.Context, userID string, id shared.GraphID) error {
+	// Stub implementation
+	return nil
 }

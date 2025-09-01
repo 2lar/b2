@@ -17,6 +17,7 @@ import (
 	"brain2-backend/internal/infrastructure/persistence"
 	persistenceCache "brain2-backend/internal/infrastructure/persistence/cache"
 	"brain2-backend/internal/repository"
+	"brain2-backend/internal/domain/category"
 
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	awsEventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
@@ -50,8 +51,8 @@ type IRepositoryContainer interface {
 	// Combined repositories (for backward compatibility during migration)
 	GetNodeRepository() repository.NodeRepository
 	GetEdgeRepository() repository.EdgeRepository
-	GetCategoryRepository() repository.CategoryRepository
-	GetGraphRepository() repository.GraphRepository
+	GetCategoryRepository() category.CategoryRepository
+	GetGraphRepository() shared.GraphRepository
 	GetKeywordRepository() repository.KeywordRepository
 	GetTransactionalRepository() repository.TransactionalRepository
 	GetIdempotencyStore() repository.IdempotencyStore
@@ -165,7 +166,7 @@ type IDependencyProvider interface {
 	// Repository providers
 	ProvideNodeRepository() repository.NodeRepository
 	ProvideEdgeRepository() repository.EdgeRepository
-	ProvideCategoryRepository() repository.CategoryRepository
+	ProvideCategoryRepository() category.CategoryRepository
 	
 	// Service providers
 	ProvideNodeService() *services.NodeService

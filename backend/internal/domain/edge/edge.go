@@ -52,6 +52,7 @@ type Edge struct {
 	targetID shared.NodeID    // Target node of the relationship
 	userID   shared.UserID    // Owner of both nodes (enforced business rule)
 	weight   shared.Weight    // Strength of the connection (0.0 to 1.0)
+	edgeType EdgeType         // Type of the edge relationship
 	metadata shared.EdgeMetadata // Edge metadata for extensibility
 	createdAt time.Time // When the edge was created
 	updatedAt time.Time // When the edge was last updated
@@ -100,6 +101,7 @@ func NewEdge(sourceID, targetID shared.NodeID, userID shared.UserID, weight floa
 		targetID:  targetID,
 		userID:    userID,
 		weight:    weightVO,
+		edgeType:  EdgeTypeRelated, // Default edge type
 		metadata:  shared.NewEdgeMetadata(),
 		createdAt: now,
 		updatedAt: now,
@@ -109,6 +111,7 @@ func NewEdge(sourceID, targetID shared.NodeID, userID shared.UserID, weight floa
 		ID:        edgeID,
 		SourceID:  sourceID,
 		TargetID:  targetID,
+		EdgeType:  EdgeTypeRelated, // Default edge type
 		Strength:  weight,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -133,6 +136,7 @@ func ReconstructEdge(id, sourceID, targetID shared.NodeID, userID shared.UserID,
 		targetID:  targetID,
 		userID:    userID,
 		weight:    weightVO,
+		edgeType:  EdgeTypeRelated, // Default edge type
 		metadata:  shared.NewEdgeMetadata(),
 		createdAt: createdAt,
 		updatedAt: createdAt,
@@ -142,6 +146,7 @@ func ReconstructEdge(id, sourceID, targetID shared.NodeID, userID shared.UserID,
 		ID:        id,
 		SourceID:  sourceID,
 		TargetID:  targetID,
+		EdgeType:  EdgeTypeRelated, // Default edge type
 		Strength:  weight,
 		CreatedAt: createdAt,
 		UpdatedAt: createdAt,
@@ -268,7 +273,37 @@ func (e *Edge) UpdateWeight(newWeight float64) error {
 	e.Version = e.version.Int()
 	
 	// Generate domain event
-	event := shared.NewEdgeWeightUpdatedEvent(e.id, e.sourceID, e.targetID, e.userID, oldWeight, newWeightVO, e.version)
+	event := shared.NewEdgeWeightUpdatedEvent(e.id, e.userID, oldWeight.Value(), newWeightVO.Value(), e.version)
+	e.addEvent(event)
+	
+	return nil
+}
+
+// ChangeType changes the edge type
+func (e *Edge) ChangeType(newType EdgeType) error {
+	// Validate the new type
+	if newType != EdgeTypeRelated && newType != EdgeTypeSimilar && newType != EdgeTypeReference {
+		return shared.NewDomainError("invalid_edge_type", "invalid edge type", nil)
+	}
+	
+	// Check if type actually changed
+	if e.edgeType == newType {
+		return nil // No change needed
+	}
+	
+	// Store old type for event
+	oldType := e.edgeType
+	
+	// Apply changes
+	e.edgeType = newType
+	e.updatedAt = time.Now()
+	e.version = e.version.Next()
+	e.EdgeType = newType // Update public field for compatibility
+	e.UpdatedAt = e.updatedAt
+	e.Version = e.version.Int()
+	
+	// Generate domain event
+	event := shared.NewEdgeTypeChangedEvent(e.id, e.userID, string(oldType), string(newType), e.version)
 	e.addEvent(event)
 	
 	return nil

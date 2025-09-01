@@ -27,6 +27,7 @@ import (
 	"brain2-backend/internal/infrastructure/persistence/cache"
 	"brain2-backend/internal/infrastructure/messaging"
 	"brain2-backend/internal/repository"
+	"brain2-backend/internal/domain/category"
 
 	aws "github.com/aws/aws-sdk-go-v2/aws"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
@@ -180,7 +181,7 @@ func provideCategoryRepository(
 	factory *repository.RepositoryFactory,
 	cache cache.Cache,
 	metrics *observability.Collector,
-) repository.CategoryRepository {
+) category.CategoryRepository {
 	// Use the refactored CategoryRepository with composition pattern
 	base := infraDynamodb.NewCategoryRepository(client, cfg.Database.TableName, cfg.Database.IndexName, logger)
 	
@@ -317,7 +318,7 @@ func provideNodeService(
 
 // provideCategoryAppService creates the application service for categories.
 func provideCategoryAppService(
-	categoryRepo repository.CategoryRepository,
+	categoryRepo category.CategoryRepository,
 	uow repository.UnitOfWork,
 	eventBus shared.EventBus,
 ) *services.CategoryService {
@@ -329,7 +330,7 @@ func provideCategoryAppService(
 func provideNodeQueryService(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
-	graphRepo repository.GraphRepository,
+	graphRepo shared.GraphRepository,
 	cache cache.Cache,
 ) *queries.NodeQueryService {
 	// Use cache directly since interfaces are unified
@@ -345,7 +346,7 @@ func provideNodeQueryService(
 
 // provideCategoryQueryService creates the query service for categories.
 func provideCategoryQueryService(
-	categoryRepo repository.CategoryRepository,
+	categoryRepo category.CategoryRepository,
 	nodeRepo repository.NodeRepository,
 	cache cache.Cache,
 	logger *zap.Logger,
@@ -468,7 +469,7 @@ func provideGraphRepository(
 	dynamoClient *awsDynamodb.Client,
 	cfg *config.Config,
 	logger *zap.Logger,
-) repository.GraphRepository {
+) shared.GraphRepository {
 	return infraDynamodb.NewGraphRepository(
 		dynamoClient,
 		cfg.Database.TableName,
@@ -481,19 +482,19 @@ func provideGraphRepository(
 func provideRepository(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
-	categoryRepo repository.CategoryRepository,
+	categoryRepo category.CategoryRepository,
 	keywordRepo repository.KeywordRepository,
 	transactionalRepo repository.TransactionalRepository,
-	graphRepo repository.GraphRepository,
+	graphRepo shared.GraphRepository,
 ) repository.Repository {
 	// Create a composite repository that embeds all specific repositories
 	return &struct {
 		repository.NodeRepository
 		repository.EdgeRepository
-		repository.CategoryRepository
+		category.CategoryRepository
 		repository.KeywordRepository
 		repository.TransactionalRepository
-		repository.GraphRepository
+		shared.GraphRepository
 	}{
 		NodeRepository:          nodeRepo,
 		EdgeRepository:          edgeRepo,

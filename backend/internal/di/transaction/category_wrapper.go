@@ -5,17 +5,18 @@ import (
 
 	"brain2-backend/internal/domain/category"
 	"brain2-backend/internal/domain/node"
+	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 )
 
 // transactionalCategoryWrapper wraps category repository operations with transaction context
 type transactionalCategoryWrapper struct {
-	base repository.CategoryRepository
+	base category.CategoryRepository
 	tx   repository.Transaction
 }
 
 // NewTransactionalCategoryWrapper creates a new transactional category repository wrapper
-func NewTransactionalCategoryWrapper(base repository.CategoryRepository, tx repository.Transaction) repository.CategoryRepository {
+func NewTransactionalCategoryWrapper(base category.CategoryRepository, tx repository.Transaction) category.CategoryRepository {
 	return &transactionalCategoryWrapper{
 		base: base,
 		tx:   tx,
@@ -42,14 +43,14 @@ func (w *transactionalCategoryWrapper) DeleteCategory(ctx context.Context, userI
 	return w.base.DeleteCategory(ctx, userID, categoryID)
 }
 
-func (w *transactionalCategoryWrapper) FindCategories(ctx context.Context, query repository.CategoryQuery) ([]category.Category, error) {
+func (w *transactionalCategoryWrapper) FindCategories(ctx context.Context, query category.CategoryQuery) ([]category.Category, error) {
 	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindCategories(ctx, query)
 }
 
-func (w *transactionalCategoryWrapper) AssignNodeToCategory(ctx context.Context, mapping node.NodeCategory) error {
+func (w *transactionalCategoryWrapper) AssignNodeToCategory(ctx context.Context, userID, nodeID, categoryID string) error {
 	ctx = context.WithValue(ctx, txContextKey, w.tx)
-	return w.base.AssignNodeToCategory(ctx, mapping)
+	return w.base.AssignNodeToCategory(ctx, userID, nodeID, categoryID)
 }
 
 func (w *transactionalCategoryWrapper) RemoveNodeFromCategory(ctx context.Context, userID, nodeID, categoryID string) error {
@@ -67,12 +68,12 @@ func (w *transactionalCategoryWrapper) Save(ctx context.Context, category *categ
 	return w.base.Save(ctx, category)
 }
 
-func (w *transactionalCategoryWrapper) FindByID(ctx context.Context, userID, categoryID string) (*category.Category, error) {
+func (w *transactionalCategoryWrapper) FindByID(ctx context.Context, userID string, categoryID shared.CategoryID) (*category.Category, error) {
 	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.FindByID(ctx, userID, categoryID)
 }
 
-func (w *transactionalCategoryWrapper) Delete(ctx context.Context, userID, categoryID string) error {
+func (w *transactionalCategoryWrapper) Delete(ctx context.Context, userID string, categoryID shared.CategoryID) error {
 	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.Delete(ctx, userID, categoryID)
 }
@@ -120,4 +121,14 @@ func (w *transactionalCategoryWrapper) BatchAssignCategories(ctx context.Context
 func (w *transactionalCategoryWrapper) UpdateCategoryNoteCounts(ctx context.Context, userID string, categoryCounts map[string]int) error {
 	ctx = context.WithValue(ctx, txContextKey, w.tx)
 	return w.base.UpdateCategoryNoteCounts(ctx, userID, categoryCounts)
+}
+
+func (w *transactionalCategoryWrapper) ListByParentID(ctx context.Context, userID string, parentID shared.CategoryID) ([]*category.Category, error) {
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
+	return w.base.ListByParentID(ctx, userID, parentID)
+}
+
+func (w *transactionalCategoryWrapper) ListRoot(ctx context.Context, userID string) ([]*category.Category, error) {
+	ctx = context.WithValue(ctx, txContextKey, w.tx)
+	return w.base.ListRoot(ctx, userID)
 }

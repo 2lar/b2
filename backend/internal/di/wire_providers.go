@@ -24,6 +24,7 @@ import (
 	"brain2-backend/internal/infrastructure/persistence"
 	"brain2-backend/internal/infrastructure/persistence/cache"
 	"brain2-backend/internal/repository"
+	"brain2-backend/internal/domain/category"
 
 	aws "github.com/aws/aws-sdk-go-v2/aws"
 	awsDynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -68,7 +69,7 @@ func provideCategoryRepository(
 	factory *repository.RepositoryFactory,
 	cache cache.Cache,
 	metricsCollector *observability.Collector,
-) repository.CategoryRepository { panic("wire") }
+) category.CategoryRepository { panic("wire") }
 
 func provideKeywordRepository(
 	dynamoClient *awsDynamodb.Client,
@@ -85,15 +86,15 @@ func provideGraphRepository(
 	dynamoClient *awsDynamodb.Client,
 	cfg *config.Config,
 	logger *zap.Logger,
-) repository.GraphRepository { panic("wire") }
+) shared.GraphRepository { panic("wire") }
 
 func provideRepository(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
-	categoryRepo repository.CategoryRepository,
+	categoryRepo category.CategoryRepository,
 	keywordRepo repository.KeywordRepository,
 	transactionalRepo repository.TransactionalRepository,
-	graphRepo repository.GraphRepository,
+	graphRepo shared.GraphRepository,
 ) repository.Repository { panic("wire") }
 
 func provideIdempotencyStore(
@@ -149,7 +150,7 @@ func provideNodeService(
 ) *services.NodeService { panic("wire") }
 
 func provideCategoryAppService(
-	categoryRepo repository.CategoryRepository,
+	categoryRepo category.CategoryRepository,
 	uow repository.UnitOfWork,
 	eventBus shared.EventBus,
 ) *services.CategoryService { panic("wire") }
@@ -165,12 +166,12 @@ func provideCleanupService(
 func provideNodeQueryService(
 	nodeRepo repository.NodeRepository,
 	edgeRepo repository.EdgeRepository,
-	graphRepo repository.GraphRepository,
+	graphRepo shared.GraphRepository,
 	cache cache.Cache,
 ) *queries.NodeQueryService { panic("wire") }
 
 func provideCategoryQueryService(
-	categoryRepo repository.CategoryRepository,
+	categoryRepo category.CategoryRepository,
 	nodeRepo repository.NodeRepository,
 	cache cache.Cache,
 	logger *zap.Logger,

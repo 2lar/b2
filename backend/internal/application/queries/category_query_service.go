@@ -27,7 +27,7 @@ import (
 // CategoryQueryService handles read operations for categories with AI-powered suggestions.
 type CategoryQueryService struct {
 	// Repository readers for CQRS pattern
-	categoryRepo repository.CategoryRepository
+	categoryRepo category.CategoryRepository
 	nodeRepo     repository.NodeRepository
 	logger         *zap.Logger
 	cache          Cache // Cache interface for performance
@@ -37,7 +37,7 @@ type CategoryQueryService struct {
 // NewCategoryQueryService creates a new CategoryQueryService with all required dependencies.
 // The AI service is optional and the service will work without it.
 func NewCategoryQueryService(
-	categoryRepo repository.CategoryRepository,
+	categoryRepo category.CategoryRepository,
 	nodeRepo repository.NodeRepository,
 	logger *zap.Logger,
 	cache Cache,
@@ -74,7 +74,7 @@ func (s *CategoryQueryService) GetCategory(ctx context.Context, query *GetCatego
 	}
 
 	// 3. Retrieve category using repository
-	category, err := s.categoryRepo.FindByID(ctx, userID.String(), string(categoryID))
+	category, err := s.categoryRepo.FindByID(ctx, userID.String(), categoryID)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to retrieve category")
 	}
@@ -167,13 +167,10 @@ func (s *CategoryQueryService) ListCategories(ctx context.Context, query *ListCa
 	}
 
 	// 2. Build repository query
-	categoryQuery := repository.CategoryQuery{
-		UserID: query.UserID,
-	}
-
-	// Add search filtering if specified
-	if query.SearchQuery != "" {
-		categoryQuery.SearchText = query.SearchQuery
+	categoryQuery := category.CategoryQuery{
+		UserID:       query.UserID,
+		NameContains: query.SearchQuery,
+		Limit:        query.Limit,
 	}
 
 	// 3. Build pagination parameters
@@ -256,7 +253,7 @@ func (s *CategoryQueryService) GetNodesInCategory(ctx context.Context, query *Ge
 	}
 
 	// 2. Verify category exists and user owns it
-	category, err := s.categoryRepo.FindByID(ctx, userID.String(), string(categoryID))
+	category, err := s.categoryRepo.FindByID(ctx, userID.String(), categoryID)
 	if err != nil {
 		return nil, errors.Wrap(err, errors.CodeInternalError.String(), "failed to find category")
 	}

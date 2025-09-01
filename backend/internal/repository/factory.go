@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 	
+	"brain2-backend/internal/domain/category"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -223,13 +224,13 @@ func (f *RepositoryFactory) CreateNodeRepository(
 
 // Store-based repository creation is handled directly in the infrastructure layer
 
-// CreateCategoryRepository creates a CategoryRepository with configured decorators
+// CreateCategoryRepository creates a category.CategoryRepository with configured decorators
 func (f *RepositoryFactory) CreateCategoryRepository(
-	base CategoryRepository,
+	base category.CategoryRepository,
 	logger *zap.Logger,
 	cache Cache,
 	metrics MetricsCollector,
-) CategoryRepository {
+) category.CategoryRepository {
 	return f.applyCategoryDecorators(base, logger, cache, metrics)
 }
 
@@ -341,13 +342,13 @@ func (f *RepositoryFactory) applyEdgeDecorators(
 	return repo
 }
 
-// applyCategoryDecorators applies decorators to a CategoryRepository
+// applyCategoryDecorators applies decorators to a category.CategoryRepository
 func (f *RepositoryFactory) applyCategoryDecorators(
-	base CategoryRepository,
+	base category.CategoryRepository,
 	logger *zap.Logger,
 	cache Cache,
 	metrics MetricsCollector,
-) CategoryRepository {
+) category.CategoryRepository {
 	// Parameters kept for future decorator implementations
 	_ = cache
 	_ = metrics
@@ -356,7 +357,7 @@ func (f *RepositoryFactory) applyCategoryDecorators(
 		f.validateCategoryRepository(base)
 	}
 	
-	var repo CategoryRepository = base
+	var repo category.CategoryRepository = base
 	
 	// Apply decorators (similar pattern, would need category-specific decorators)
 	// For consolidation phase, decorators are simplified to avoid import cycles  
@@ -364,11 +365,11 @@ func (f *RepositoryFactory) applyCategoryDecorators(
 		switch decoratorName {
 		case "logging":
 			if f.config.EnableLogging && logger != nil {
-				// Placeholder: Would implement LoggingCategoryRepository in production
+				// Placeholder: Would implement Loggingcategory.CategoryRepository in production
 			}
 		case "metrics":
 			if f.config.EnableMetrics && metrics != nil {
-				// Placeholder: Would implement MetricsCategoryRepository in production
+				// Placeholder: Would implement Metricscategory.CategoryRepository in production
 			}
 		}
 	}
@@ -403,11 +404,11 @@ func (f *RepositoryFactory) validateEdgeRepository(repo EdgeRepository) {
 	}
 }
 
-// validateCategoryRepository validates that a CategoryRepository implementation is correct
-func (f *RepositoryFactory) validateCategoryRepository(repo CategoryRepository) {
+// validateCategoryRepository validates that a category.CategoryRepository implementation is correct
+func (f *RepositoryFactory) validateCategoryRepository(repo category.CategoryRepository) {
 	if repo == nil {
 		if f.config.StrictMode {
-			f.logger.Error("CategoryRepository cannot be nil in strict mode")
+			f.logger.Error("category.CategoryRepository cannot be nil in strict mode")
 			return
 		}
 		return
