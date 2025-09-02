@@ -340,6 +340,21 @@ func (a *Aggregate) IsArchived() bool {
 	return a.archived
 }
 
+// GetCategoryIDs returns the node's category IDs
+func (a *Aggregate) GetCategoryIDs() []string {
+	return a.categoryIDs
+}
+
+// GetCreatedAt returns when the node was created
+func (a *Aggregate) GetCreatedAt() time.Time {
+	return a.CreatedAt
+}
+
+// GetUpdatedAt returns when the node was last updated
+func (a *Aggregate) GetUpdatedAt() time.Time {
+	return a.UpdatedAt
+}
+
 // GetConnectionCount returns the number of connections
 func (a *Aggregate) GetConnectionCount() int {
 	return a.connectionCount
@@ -411,4 +426,38 @@ func (a *Aggregate) RestoreFromSnapshot(snapshot *aggregates.Snapshot) error {
 	a.Version = snapshot.Version
 	
 	return nil
+}
+
+// NewAggregateWithData creates a node aggregate with all data (for reconstruction from persistence)
+func NewAggregateWithData(
+	id valueobjects.NodeID,
+	userID valueobjects.UserID,
+	content valueobjects.Content,
+	title valueobjects.Title,
+	tags valueobjects.Tags,
+	keywords valueobjects.Keywords,
+	categoryIDs []string,
+	isArchived bool,
+	version int64,
+	createdAt time.Time,
+	updatedAt time.Time,
+	metadata map[string]interface{},
+) *Aggregate {
+	return &Aggregate{
+		BaseAggregate: aggregates.BaseAggregate{
+			ID:        string(id),
+			Version:   version,
+			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
+		},
+		id:          id,
+		userID:      userID,
+		content:     content,
+		title:       title,
+		tags:        tags,
+		keywords:    keywords,
+		categoryIDs: categoryIDs,
+		archived:    isArchived,
+		metadata:    metadata,
+	}
 }
