@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
+	coreEvents "brain2-backend/internal/core/domain/events"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/repository"
 )
@@ -161,6 +162,119 @@ func (p *EventBridgePublisher) createEventEntry(event shared.DomainEvent) (types
 	// Add trace ID if available
 	if traceID := getTraceID(event); traceID != "" {
 		entry.TraceHeader = aws.String(traceID)
+	}
+	
+	return entry, nil
+}
+
+// PublishDomainEvent publishes a single core domain event to EventBridge
+func (p *EventBridgePublisher) PublishDomainEvent(ctx context.Context, event coreEvents.DomainEvent) error {
+	return p.PublishDomainEvents(ctx, []coreEvents.DomainEvent{event})
+}
+
+// PublishDomainEvents publishes multiple core domain events to EventBridge
+func (p *EventBridgePublisher) PublishDomainEvents(ctx context.Context, events []coreEvents.DomainEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	
+	// Process events in batches
+	for i := 0; i < len(events); i += p.batchSize {
+		end := i + p.batchSize
+		if end > len(events) {
+			end = len(events)
+		}
+		
+		batch := events[i:end]
+		if err := p.publishCoreBatch(ctx, batch); err != nil {
+			return fmt.Errorf("failed to publish core event batch: %w", err)
+		}
+	}
+	
+	return nil
+}
+
+// publishCoreBatch publishes a batch of core domain events to EventBridge
+func (p *EventBridgePublisher) publishCoreBatch(ctx context.Context, events []coreEvents.DomainEvent) error {
+	entries := make([]types.PutEventsRequestEntry, 0, len(events))
+	
+	// Create entries for each event
+	for _, event := range events {
+		entry, err := p.createCoreEventEntry(event)
+		if err != nil {
+			return fmt.Errorf("failed to create core event entry for %s: %w", event.GetEventType(), err)
+		}
+		entries = append(entries, entry)
+	}
+	
+	// Call EventBridge API
+	output, err := p.client.PutEvents(ctx, &eventbridge.PutEventsInput{
+		Entries: entries,
+	})
+	
+	if err != nil {
+		return fmt.Errorf("EventBridge API call failed: %w", err)
+	}
+	
+	// Check API response
+	if output == nil {
+		return fmt.Errorf("EventBridge API returned nil response")
+	}
+	
+	// Check for failed entries
+	if output.FailedEntryCount > 0 {
+		if output.Entries != nil {
+			for i, entry := range output.Entries {
+				if entry.ErrorCode != nil {
+					// Could add structured logging here if logger was passed
+					_ = i // Use index if needed for logging
+				}
+			}
+		}
+		return fmt.Errorf("failed to publish %d events to EventBridge", output.FailedEntryCount)
+	}
+	
+	return nil
+}
+
+// createCoreEventEntry creates an EventBridge entry from a core domain event
+func (p *EventBridgePublisher) createCoreEventEntry(event coreEvents.DomainEvent) (types.PutEventsRequestEntry, error) {
+	// Create detail map with all event data
+	detailMap := map[string]interface{}{
+		"eventId":      event.GetEventID(),
+		"eventType":    event.GetEventType(),
+		"aggregateId":  event.GetAggregateID(),
+		"aggregateType": event.GetAggregateType(),
+		"occurredAt":   event.GetOccurredAt().Format(time.RFC3339),
+		"version":      event.GetVersion(),
+		"data":         event.GetData(),
+	}
+	
+	// Add metadata
+	metadata := event.GetMetadata()
+	detailMap["metadata"] = map[string]interface{}{
+		"correlationId": metadata.CorrelationID,
+		"causationId":   metadata.CausationID,
+		"userId":        metadata.UserID,
+		"ipAddress":     metadata.IPAddress,
+		"userAgent":     metadata.UserAgent,
+		"custom":        metadata.Custom,
+	}
+	
+	// Marshal the complete detail map
+	detailJSON, err := json.Marshal(detailMap)
+	if err != nil {
+		return types.PutEventsRequestEntry{}, fmt.Errorf("failed to marshal detail: %w", err)
+	}
+	
+	// Create EventBridge entry
+	entry := types.PutEventsRequestEntry{
+		EventBusName: aws.String(p.eventBus),
+		Source:       aws.String(p.source),
+		DetailType:   aws.String(event.GetEventType()),
+		Detail:       aws.String(string(detailJSON)),
+		Time:         aws.Time(event.GetOccurredAt()),
+		Resources:    []string{event.GetAggregateID()},
 	}
 	
 	return entry, nil

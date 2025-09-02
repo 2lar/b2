@@ -561,18 +561,10 @@ func (c *InfrastructureContainer) initializeStore() error {
 func (c *HandlerContainer) initializeHandlers(services *ServiceContainer, infra *InfrastructureContainer) {
 	// Create cold start provider (simple implementation)
 	coldStartProvider := &simpleColdStartProvider{startTime: time.Now()}
+	_ = coldStartProvider // Will be used when handlers are wired properly
 	
-	// Memory handler (nodes/edges)
-	if services.NodeCommandService != nil && services.NodeQueryService != nil && services.GraphQueryService != nil {
-		c.NodeHandler = v1handlers.NewMemoryHandler(
-			services.NodeCommandService,
-			services.NodeQueryService,
-			services.GraphQueryService,
-			infra.EventBridgeClient,
-			coldStartProvider,
-		)
-		c.Memory = c.NodeHandler // Alias
-	}
+	// Memory handler (nodes/edges) - now handled by wire with CQRS
+	// The new MemoryHandler is created using commandBus and queryBus in providers.go
 	
 	// Category handler
 	if services.CategoryCommandService != nil && services.CategoryQueryService != nil {

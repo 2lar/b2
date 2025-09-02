@@ -17,6 +17,7 @@ import (
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
+	"brain2-backend/internal/core/application/cqrs"
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/features"
@@ -617,16 +618,14 @@ func provideGraphQueryService(
 
 // provideMemoryHandler creates the memory handler.
 func provideMemoryHandler(
-	nodeService *services.NodeService,
-	nodeQueryService *queries.NodeQueryService,
-	graphQueryService *queries.GraphQueryService,
+	commandBus *cqrs.CommandBus,
+	queryBus *cqrs.QueryBus,
 	eventBridgeClient *awsEventbridge.Client,
 	coldStartProvider ColdStartInfoProvider,
 ) *v1handlers.MemoryHandler {
 	return v1handlers.NewMemoryHandler(
-		nodeService,
-		nodeQueryService,
-		graphQueryService,
+		commandBus,
+		queryBus,
 		eventBridgeClient,
 		coldStartProvider,
 	)
@@ -710,6 +709,8 @@ func provideContainer(
 	connectionAnalyzer *domainServices.ConnectionAnalyzer,
 	eventBus shared.EventBus,
 	unitOfWork repository.UnitOfWork,
+	commandBus *cqrs.CommandBus,
+	queryBus *cqrs.QueryBus,
 	memoryHandler *v1handlers.MemoryHandler,
 	categoryHandler *v1handlers.CategoryHandler,
 	healthHandler *v1handlers.HealthHandler,
@@ -759,6 +760,10 @@ func provideContainer(
 		NodeQueryService:     nodeQueryService,
 		CategoryQueryService: categoryQueryService,
 		GraphQueryService:    graphQueryService,
+		
+		// CQRS Buses
+		CommandBus: commandBus,
+		QueryBus:   queryBus,
 		
 		// Domain Services
 		ConnectionAnalyzer: connectionAnalyzer,

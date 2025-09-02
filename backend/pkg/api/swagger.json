@@ -680,6 +680,129 @@
                 }
             }
         },
+        "/nodes/{nodeId}/connections": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Creates a connection between two memory nodes to establish their relationship",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Graph Operations"
+                ],
+                "summary": "Connect two memory nodes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Source memory node ID",
+                        "name": "nodeId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Connection request with target node ID",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/brain2-backend_pkg_api.ConnectNodesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully created connection",
+                        "schema": {
+                            "$ref": "#/definitions/brain2-backend_pkg_api.ConnectionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or nodes",
+                        "schema": {
+                            "$ref": "#/definitions/brain2-backend_pkg_api.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required",
+                        "schema": {
+                            "$ref": "#/definitions/brain2-backend_pkg_api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Node not found",
+                        "schema": {
+                            "$ref": "#/definitions/brain2-backend_pkg_api.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service temporarily unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/brain2-backend_pkg_api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/nodes/{nodeId}/connections/{targetNodeId}": {
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Removes the connection between two memory nodes",
+                "tags": [
+                    "Graph Operations"
+                ],
+                "summary": "Disconnect two memory nodes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Source memory node ID",
+                        "name": "nodeId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Target memory node ID",
+                        "name": "targetNodeId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successfully removed connection"
+                    },
+                    "401": {
+                        "description": "Authentication required",
+                        "schema": {
+                            "$ref": "#/definitions/brain2-backend_pkg_api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Connection not found",
+                        "schema": {
+                            "$ref": "#/definitions/brain2-backend_pkg_api.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service temporarily unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/brain2-backend_pkg_api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/ready": {
             "get": {
                 "description": "Returns the readiness status of the application for load balancer health checks",
@@ -765,6 +888,34 @@
                 "updatedAt": {
                     "type": "string",
                     "example": "2024-01-16T10:30:00Z"
+                }
+            }
+        },
+        "brain2-backend_pkg_api.ConnectNodesRequest": {
+            "type": "object",
+            "required": [
+                "targetNodeId"
+            ],
+            "properties": {
+                "targetNodeId": {
+                    "description": "TargetNodeID is the ID of the node to connect to",
+                    "type": "string",
+                    "example": "node-456"
+                }
+            }
+        },
+        "brain2-backend_pkg_api.ConnectionResponse": {
+            "type": "object",
+            "properties": {
+                "edgeId": {
+                    "description": "EdgeID is the unique identifier for the created edge",
+                    "type": "string",
+                    "example": "node-123-node-456"
+                },
+                "message": {
+                    "description": "Message provides a human-readable confirmation",
+                    "type": "string",
+                    "example": "Nodes connected successfully"
                 }
             }
         },

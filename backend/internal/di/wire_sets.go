@@ -19,6 +19,7 @@ var SuperSet = wire.NewSet(
 	InfrastructureProviders,
 	DomainProviders,
 	ApplicationProviders,
+	CQRSProviders,           // New CQRS providers
 	InterfaceProviders,
 	AdditionalProviders,
 	provideContainer,
@@ -94,6 +95,46 @@ var InterfaceProviders = wire.NewSet(
 	provideRouter,
 )
 
+// CQRSProviders provides CQRS infrastructure and handlers
+var CQRSProviders = wire.NewSet(
+	// Core adapters
+	provideCoreLogger,
+	provideCoreMetrics,
+	provideCoreTracer,
+	provideCoreCache,
+	
+	// Core repositories and services
+	provideCoreNodeRepository,
+	provideCoreEdgeRepository,
+	provideCoreEventBus,
+	provideCoreUnitOfWorkFactory,
+	provideCoreEventStore,
+	provideCoreGraphAnalyzer,
+	provideCoreQueryRepository,
+	provideCoreSearchService,
+	
+	// Command Handlers
+	provideCreateNodeHandler,
+	provideUpdateNodeHandler,
+	provideDeleteNodeHandler,
+	provideConnectNodesHandler,
+	provideDisconnectNodesHandler,
+	provideBulkDeleteNodesHandler,
+	
+	// Query Handlers
+	provideGetNodeByIDHandler,
+	provideGetNodesByUserHandler,
+	provideSearchNodesHandler,
+	provideGetGraphHandler,
+	
+	// Configured buses with handlers registered
+	provideConfiguredCommandBus,
+	provideConfiguredQueryBus,
+	
+	// HTTP Handlers that use CQRS
+	provideMemoryHandler,
+)
+
 // AdditionalProviders provides all additional components not in the main sets.
 var AdditionalProviders = wire.NewSet(
 	// Additional Repositories
@@ -109,7 +150,7 @@ var AdditionalProviders = wire.NewSet(
 	provideGraphQueryService,
 	
 	// Handlers
-	provideMemoryHandler,
+	// provideMemoryHandler is provided by CQRSProviders now
 	provideCategoryHandler,
 	provideHealthHandler,
 	

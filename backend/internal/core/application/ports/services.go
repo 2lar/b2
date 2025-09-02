@@ -313,6 +313,18 @@ const (
 	SpanKindConsumer
 )
 
+// SpanStatusCode represents the status of a span
+type SpanStatusCode int
+
+const (
+	// SpanStatusUnset is the default status
+	SpanStatusUnset SpanStatusCode = iota
+	// SpanStatusOK indicates success
+	SpanStatusOK
+	// SpanStatusError indicates an error
+	SpanStatusError
+)
+
 // Attribute represents a span attribute
 type Attribute struct {
 	Key   string

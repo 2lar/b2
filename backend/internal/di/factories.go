@@ -13,6 +13,7 @@ import (
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
+	"brain2-backend/internal/core/application/cqrs"
 	"brain2-backend/internal/domain/shared"
 	domainServices "brain2-backend/internal/domain/services"
 	v1handlers "brain2-backend/internal/interfaces/http/v1/handlers"
@@ -273,18 +274,12 @@ func NewHandlerFactory(
 }
 
 // CreateMemoryHandler creates the memory handler with all dependencies.
-func (hf *HandlerFactory) CreateMemoryHandler(coldStartProvider ColdStartInfoProvider) *v1handlers.MemoryHandler {
+func (hf *HandlerFactory) CreateMemoryHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus, coldStartProvider ColdStartInfoProvider) *v1handlers.MemoryHandler {
 	hf.logger.Debug("Creating MemoryHandler")
 	
-	// Create CQRS services
-	nodeService := hf.serviceFactory.CreateNodeService()
-	nodeQueryService := hf.serviceFactory.CreateNodeQueryService()
-	graphQueryService := hf.serviceFactory.CreateGraphQueryService()
-	
 	handler := v1handlers.NewMemoryHandler(
-		nodeService,
-		nodeQueryService,
-		graphQueryService,
+		commandBus,
+		queryBus,
 		hf.infrastructure.EventBridgeClient,
 		coldStartProvider,
 	)
@@ -316,15 +311,18 @@ func (hf *HandlerFactory) CreateCategoryHandler() *v1handlers.CategoryHandler {
 // }
 
 // CreateAllHandlers creates all handlers as a convenience method.
-func (hf *HandlerFactory) CreateAllHandlers(
-	coldStartProvider ColdStartInfoProvider,
-	healthChecker HealthChecker,
-) *HandlerContainer {
-	return &HandlerContainer{
-		Memory:   hf.CreateMemoryHandler(coldStartProvider),
-		Category: hf.CreateCategoryHandler(),
-	}
-}
+// Note: This method is not currently used as Wire handles dependency injection
+// func (hf *HandlerFactory) CreateAllHandlers(
+// 	coldStartProvider ColdStartInfoProvider,
+// 	healthChecker HealthChecker,
+// 	commandBus *cqrs.CommandBus,
+// 	queryBus *cqrs.QueryBus,
+// ) *HandlerContainer {
+// 	return &HandlerContainer{
+// 		Memory:   hf.CreateMemoryHandler(commandBus, queryBus, coldStartProvider),
+// 		Category: hf.CreateCategoryHandler(),
+// 	}
+// }
 
 // HandlerContainer is defined in containers_clean.go
 
@@ -598,8 +596,9 @@ func (fb *FactoryBuilder) Build(
 	)
 	
 	// Create all handlers
-	// Note: In real implementation, would pass actual cold start provider and health checker
-	handlers := handlerFactory.CreateAllHandlers(nil, nil)
+	// Note: CreateAllHandlers is commented out as Wire handles dependency injection
+	// handlers := handlerFactory.CreateAllHandlers(nil, nil, commandBus, queryBus)
+	var handlers *HandlerContainer // Placeholder since CreateAllHandlers is not available
 	
 	// Create router factory
 	routerFactory := NewRouterFactory(

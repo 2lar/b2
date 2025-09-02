@@ -101,8 +101,8 @@ func (es *EventStore) SaveEvents(ctx context.Context, aggregateID string, domain
 	return nil
 }
 
-// GetEvents retrieves all events for an aggregate
-func (es *EventStore) GetEvents(ctx context.Context, aggregateID string) ([]events.DomainEvent, error) {
+// LoadEvents retrieves all events for an aggregate
+func (es *EventStore) LoadEvents(ctx context.Context, aggregateID string) ([]events.DomainEvent, error) {
 	// Query all events for the aggregate
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(es.tableName),
@@ -143,8 +143,8 @@ func (es *EventStore) GetEvents(ctx context.Context, aggregateID string) ([]even
 	return domainEvents, nil
 }
 
-// GetEventsAfterVersion retrieves events after a specific version
-func (es *EventStore) GetEventsAfterVersion(ctx context.Context, aggregateID string, version int64) ([]events.DomainEvent, error) {
+// LoadEventsAfterVersion retrieves events after a specific version
+func (es *EventStore) LoadEventsAfterVersion(ctx context.Context, aggregateID string, version int64) ([]events.DomainEvent, error) {
 	// Query events with version greater than specified
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(es.tableName),
@@ -295,7 +295,7 @@ func (es *EventStore) eventToItem(aggregateID string, event events.DomainEvent) 
 		Version:       event.GetVersion(),
 		OccurredAt:    event.GetOccurredAt().Format(time.RFC3339),
 		Data:          string(dataJSON),
-		Metadata:      event.GetMetadata(),
+		Metadata:      metadataToMap(event.GetMetadata()),
 		EntityType:    "EVENT",
 		TTL:           ttl,
 	}
@@ -322,16 +322,63 @@ func (es *EventStore) itemToEvent(item *eventItem) (events.DomainEvent, error) {
 		item.AggregateID,
 		item.AggregateType,
 		item.EventType,
-		data,
 		item.Version,
 	)
 
 	// Set additional fields
 	baseEvent.EventID = item.EventID
-	baseEvent.OccurredAt = occurredAt
-	baseEvent.Metadata = item.Metadata
+	baseEvent.Timestamp = occurredAt
+	baseEvent.Metadata = mapToMetadata(item.Metadata)
 
 	return baseEvent, nil
+}
+
+// metadataToMap converts EventMetadata to map for DynamoDB storage
+func metadataToMap(metadata events.EventMetadata) map[string]interface{} {
+	m := make(map[string]interface{})
+	if metadata.CorrelationID != "" {
+		m["correlation_id"] = metadata.CorrelationID
+	}
+	if metadata.CausationID != "" {
+		m["causation_id"] = metadata.CausationID
+	}
+	if metadata.UserID != "" {
+		m["user_id"] = metadata.UserID
+	}
+	if metadata.IPAddress != "" {
+		m["ip_address"] = metadata.IPAddress
+	}
+	if metadata.UserAgent != "" {
+		m["user_agent"] = metadata.UserAgent
+	}
+	if metadata.Custom != nil {
+		m["custom"] = metadata.Custom
+	}
+	return m
+}
+
+// mapToMetadata converts map from DynamoDB to EventMetadata
+func mapToMetadata(m map[string]interface{}) events.EventMetadata {
+	metadata := events.EventMetadata{}
+	if v, ok := m["correlation_id"].(string); ok {
+		metadata.CorrelationID = v
+	}
+	if v, ok := m["causation_id"].(string); ok {
+		metadata.CausationID = v
+	}
+	if v, ok := m["user_id"].(string); ok {
+		metadata.UserID = v
+	}
+	if v, ok := m["ip_address"].(string); ok {
+		metadata.IPAddress = v
+	}
+	if v, ok := m["user_agent"].(string); ok {
+		metadata.UserAgent = v
+	}
+	if v, ok := m["custom"].(map[string]interface{}); ok {
+		metadata.Custom = v
+	}
+	return metadata
 }
 
 // writeBatch writes a batch of events to DynamoDB

@@ -35,6 +35,15 @@ type DomainEvent interface {
 	// GetMetadata returns event metadata (user, correlation ID, etc.)
 	GetMetadata() EventMetadata
 	
+	// GetCorrelationID returns the correlation ID from metadata
+	GetCorrelationID() string
+	
+	// GetOccurredAt returns when the event occurred (alias for GetTimestamp)
+	GetOccurredAt() time.Time
+	
+	// GetData returns the event data payload
+	GetData() interface{}
+	
 	// Marshal serializes the event for storage
 	Marshal() ([]byte, error)
 }
@@ -58,6 +67,24 @@ type EventMetadata struct {
 	
 	// Custom allows for additional metadata
 	Custom map[string]interface{} `json:"custom,omitempty"`
+}
+
+// AggregateSnapshot represents a snapshot of an aggregate at a specific version
+type AggregateSnapshot struct {
+	// AggregateID is the unique identifier of the aggregate
+	AggregateID string `json:"aggregate_id"`
+	
+	// AggregateType is the type of the aggregate
+	AggregateType string `json:"aggregate_type"`
+	
+	// Version is the version of the aggregate at the time of the snapshot
+	Version int64 `json:"version"`
+	
+	// Data contains the serialized state of the aggregate
+	Data map[string]interface{} `json:"data"`
+	
+	// Timestamp is when the snapshot was taken
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // BaseEvent provides common functionality for all domain events
@@ -122,6 +149,21 @@ func (e *BaseEvent) GetMetadata() EventMetadata {
 // WithMetadata sets the event metadata
 func (e *BaseEvent) WithMetadata(metadata EventMetadata) *BaseEvent {
 	e.Metadata = metadata
+	return e
+}
+
+// GetCorrelationID returns the correlation ID from metadata
+func (e *BaseEvent) GetCorrelationID() string {
+	return e.Metadata.CorrelationID
+}
+
+// GetOccurredAt returns when the event occurred (alias for GetTimestamp)
+func (e *BaseEvent) GetOccurredAt() time.Time {
+	return e.Timestamp
+}
+
+// GetData returns the event data payload
+func (e *BaseEvent) GetData() interface{} {
 	return e
 }
 

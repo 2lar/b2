@@ -63,12 +63,42 @@ func InitializeContainer() (*Container, error) {
 	categoryQueryService := provideCategoryQueryService(categoryRepository, nodeRepository, cache, logger)
 	queriesCache := provideCacheAdapter(cache)
 	graphQueryService := provideGraphQueryService(store, logger, queriesCache)
+	portsLogger := provideCoreLogger(logger)
+	metrics := provideCoreMetrics(portsLogger)
+	tracer := provideCoreTracer()
+	portsNodeRepository := provideCoreNodeRepository(client, config, portsLogger)
+	portsEdgeRepository := provideCoreEdgeRepository(client, config, portsLogger)
+	portsEventStore := provideCoreEventStore(client, config, portsLogger)
+	portsEventBus := provideCoreEventBus(eventbridgeClient, config, portsLogger)
+	portsUnitOfWorkFactory := provideCoreUnitOfWorkFactory(client, portsNodeRepository, portsEdgeRepository, portsEventStore, portsLogger)
+	createNodeHandler := provideCreateNodeHandler(portsNodeRepository, portsEdgeRepository, portsEventStore, portsEventBus, portsUnitOfWorkFactory, portsLogger, metrics)
+	updateNodeHandler := provideUpdateNodeHandler(portsNodeRepository, portsEventStore, portsEventBus, portsUnitOfWorkFactory, portsLogger, metrics)
+	deleteNodeHandler := provideDeleteNodeHandler(portsNodeRepository, portsEdgeRepository, portsEventBus, portsUnitOfWorkFactory, portsLogger, metrics)
+	graphAnalyzer := provideCoreGraphAnalyzer(portsNodeRepository, portsEdgeRepository, portsLogger)
+	connectNodesHandler := provideConnectNodesHandler(portsNodeRepository, portsEdgeRepository, graphAnalyzer, portsEventBus, portsLogger, metrics)
+	disconnectNodesHandler := provideDisconnectNodesHandler(portsEdgeRepository, portsEventBus, portsLogger, metrics)
+	bulkDeleteNodesHandler := provideBulkDeleteNodesHandler(portsNodeRepository, portsEdgeRepository, portsEventBus, portsUnitOfWorkFactory, portsLogger, metrics)
+	commandBus, err := provideConfiguredCommandBus(portsLogger, metrics, tracer, createNodeHandler, updateNodeHandler, deleteNodeHandler, connectNodesHandler, disconnectNodesHandler, bulkDeleteNodesHandler)
+	if err != nil {
+		return nil, err
+	}
+	portsCache := provideCoreCache()
+	getNodeByIDHandler := provideGetNodeByIDHandler(portsNodeRepository, portsCache, portsLogger)
+	queryRepository := provideCoreQueryRepository(client, config, portsLogger)
+	getNodesByUserHandler := provideGetNodesByUserHandler(queryRepository, portsCache, portsLogger)
+	searchService := provideCoreSearchService(portsLogger)
+	searchNodesHandler := provideSearchNodesHandler(searchService, portsLogger)
+	getGraphHandler := provideGetGraphHandler(queryRepository, portsCache, portsLogger)
+	queryBus, err := provideConfiguredQueryBus(portsCache, portsLogger, metrics, tracer, getNodeByIDHandler, getNodesByUserHandler, searchNodesHandler, getGraphHandler)
+	if err != nil {
+		return nil, err
+	}
 	coldStartTracker := ProvideColdStartTracker()
-	memoryHandler := provideMemoryHandler(nodeService, nodeQueryService, graphQueryService, eventbridgeClient, coldStartTracker)
+	memoryHandler := provideMemoryHandler(commandBus, queryBus, eventbridgeClient, coldStartTracker)
 	categoryHandler := provideCategoryHandler(categoryService, categoryQueryService)
 	healthHandler := provideHealthHandler()
 	mux := provideRouter(memoryHandler, categoryHandler, healthHandler, config)
-	container := provideContainer(config, logger, client, eventbridgeClient, nodeRepository, edgeRepository, categoryRepository, keywordRepository, transactionalRepository, graphRepository, repository, idempotencyStore, store, cache, collector, tracerProvider, nodeService, categoryService, cleanupService, nodeQueryService, categoryQueryService, graphQueryService, connectionAnalyzer, eventBus, unitOfWork, memoryHandler, categoryHandler, healthHandler, mux, repositoryFactory, coldStartTracker)
+	container := provideContainer(config, logger, client, eventbridgeClient, nodeRepository, edgeRepository, categoryRepository, keywordRepository, transactionalRepository, graphRepository, repository, idempotencyStore, store, cache, collector, tracerProvider, nodeService, categoryService, cleanupService, nodeQueryService, categoryQueryService, graphQueryService, connectionAnalyzer, eventBus, unitOfWork, commandBus, queryBus, memoryHandler, categoryHandler, healthHandler, mux, repositoryFactory, coldStartTracker)
 	return container, nil
 }
 

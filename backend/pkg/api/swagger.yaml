@@ -46,6 +46,26 @@ definitions:
         example: "2024-01-16T10:30:00Z"
         type: string
     type: object
+  brain2-backend_pkg_api.ConnectNodesRequest:
+    properties:
+      targetNodeId:
+        description: TargetNodeID is the ID of the node to connect to
+        example: node-456
+        type: string
+    required:
+    - targetNodeId
+    type: object
+  brain2-backend_pkg_api.ConnectionResponse:
+    properties:
+      edgeId:
+        description: EdgeID is the unique identifier for the created edge
+        example: node-123-node-456
+        type: string
+      message:
+        description: Message provides a human-readable confirmation
+        example: Nodes connected successfully
+        type: string
+    type: object
   brain2-backend_pkg_api.CreateCategoryRequest:
     properties:
       color:
@@ -608,6 +628,86 @@ paths:
       summary: Update an existing memory node
       tags:
       - Memory Management
+  /nodes/{nodeId}/connections:
+    post:
+      consumes:
+      - application/json
+      description: Creates a connection between two memory nodes to establish their
+        relationship
+      parameters:
+      - description: Source memory node ID
+        in: path
+        name: nodeId
+        required: true
+        type: string
+      - description: Connection request with target node ID
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/brain2-backend_pkg_api.ConnectNodesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully created connection
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ConnectionResponse'
+        "400":
+          description: Invalid request or nodes
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "401":
+          description: Authentication required
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "404":
+          description: Node not found
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Connect two memory nodes
+      tags:
+      - Graph Operations
+  /nodes/{nodeId}/connections/{targetNodeId}:
+    delete:
+      description: Removes the connection between two memory nodes
+      parameters:
+      - description: Source memory node ID
+        in: path
+        name: nodeId
+        required: true
+        type: string
+      - description: Target memory node ID
+        in: path
+        name: targetNodeId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Successfully removed connection
+        "401":
+          description: Authentication required
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "404":
+          description: Connection not found
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+        "503":
+          description: Service temporarily unavailable
+          schema:
+            $ref: '#/definitions/brain2-backend_pkg_api.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Disconnect two memory nodes
+      tags:
+      - Graph Operations
   /nodes/bulk-delete:
     post:
       consumes:

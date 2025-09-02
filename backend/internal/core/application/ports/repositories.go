@@ -114,10 +114,10 @@ type EventStore interface {
 	LoadEventsAfterVersion(ctx context.Context, aggregateID string, version int64) ([]events.DomainEvent, error)
 	
 	// GetSnapshot retrieves the latest snapshot for an aggregate
-	GetSnapshot(ctx context.Context, aggregateID string) (*Snapshot, error)
+	GetSnapshot(ctx context.Context, aggregateID string) (*events.AggregateSnapshot, error)
 	
 	// SaveSnapshot persists a snapshot
-	SaveSnapshot(ctx context.Context, snapshot *Snapshot) error
+	SaveSnapshot(ctx context.Context, snapshot *events.AggregateSnapshot) error
 }
 
 // Snapshot represents a point-in-time state snapshot

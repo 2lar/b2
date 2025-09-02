@@ -3,7 +3,6 @@ package dynamodb
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -112,11 +111,6 @@ func (r *NodeRepository) FindByID(ctx context.Context, id string) (*node.Aggrega
 	// In a real implementation, you might need to query GSI or scan
 	// For now, we'll implement a simplified version
 	
-	// Build the key
-	key := map[string]types.AttributeValue{
-		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", id)},
-	}
-
 	// Query using GSI if we have an index on NodeID
 	// Otherwise, we'd need to scan (not recommended for production)
 	expr, err := expression.NewBuilder().
@@ -199,7 +193,13 @@ func (r *NodeRepository) FindBySpecification(ctx context.Context, spec specifica
 		}
 
 		// Apply specification
-		if spec.IsSatisfiedBy(aggregate) {
+		satisfied, err := spec.IsSatisfiedBy(ctx, aggregate)
+		if err != nil {
+			r.logger.Warn("Failed to check specification",
+				ports.Field{Key: "error", Value: err.Error()})
+			continue
+		}
+		if satisfied {
 			aggregates = append(aggregates, aggregate)
 		}
 	}
@@ -298,7 +298,7 @@ func (r *NodeRepository) aggregateToItem(aggregate *node.Aggregate) *nodeItem {
 // itemToAggregate converts a DynamoDB item to a node aggregate
 func (r *NodeRepository) itemToAggregate(item *nodeItem) (*node.Aggregate, error) {
 	// Create value objects
-	nodeID := valueobjects.NewNodeIDFromString(item.NodeID)
+	nodeID := valueobjects.NewNodeID(item.NodeID)
 	userID := valueobjects.NewUserID(item.UserID)
 	content := valueobjects.NewContent(item.Content)
 	title := valueobjects.NewTitle(item.Title)

@@ -36,6 +36,8 @@ import (
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
+	"brain2-backend/internal/core/application/cqrs"
+	corePorts "brain2-backend/internal/core/application/ports"
 	"brain2-backend/internal/domain/category"
 	"brain2-backend/internal/domain/edge"
 	"brain2-backend/internal/domain/node"
@@ -355,6 +357,20 @@ func (c *Container) initializeTransactionInfrastructure(transactionProvider repo
 
 // initializeApplicationServices sets up application layer services
 func (c *Container) initializeApplicationServices() {
+	// Initialize CQRS buses (minimal setup for container tests)
+	// In production, Wire provides fully configured buses with handlers
+	// Create minimal adapters for the CQRS ports
+	logger := &zapLoggerAdapter{logger: c.Logger}
+	metrics := &simpleMetricsAdapter{}
+	tracer := &noOpTracerAdapter{}
+	var cqrsCache corePorts.Cache
+	if c.Config.Features.EnableCaching {
+		cqrsCache = &coreCacheAdapter{cache: c.Cache}
+	}
+	
+	c.CommandBus = cqrs.NewCommandBus(logger, metrics, tracer)
+	c.QueryBus = cqrs.NewQueryBus(cqrsCache, logger, metrics, tracer)
+	
 	// Initialize cache if enabled
 	var queryCache queries.Cache
 	if c.Config.Features.EnableCaching {
@@ -427,17 +443,16 @@ func (c *Container) initializeServices() {
 // initializeHandlers sets up the handler layer.
 func (c *Container) initializeHandlers() {
 	// Initialize handlers with CQRS services
-	if c.NodeAppService != nil && c.NodeQueryService != nil && c.GraphQueryService != nil {
+	if c.CommandBus != nil && c.QueryBus != nil {
 		c.MemoryHandler = v1handlers.NewMemoryHandler(
-			c.NodeAppService,
-			c.NodeQueryService,
-			c.GraphQueryService,
+			c.CommandBus,
+			c.QueryBus,
 			c.EventBridgeClient,
 			c,
 		)
-		log.Println("MemoryHandler initialized with CQRS services")
+		log.Println("MemoryHandler initialized with CQRS buses")
 	} else {
-		log.Println("ERROR: CQRS services not available for MemoryHandler")
+		log.Println("ERROR: CQRS buses not available for MemoryHandler")
 	}
 
 	if c.CategoryAppService != nil && c.CategoryQueryService != nil {
@@ -1121,6 +1136,173 @@ func (m *InMemoryMetricsCollector) buildKey(name string, tags map[string]string)
 // - repository.TransactionalRepositoryFactory for creating transactional repositories
 
 // Additional mock factory methods removed - using real TransactionalRepositoryFactory
+
+// ============================================================================
+// CQRS PORT ADAPTERS - Minimal adapters for testing
+// ============================================================================
+
+// zapLoggerAdapter adapts zap.Logger to corePorts.Logger
+type zapLoggerAdapter struct {
+	logger *zap.Logger
+}
+
+func (a *zapLoggerAdapter) Debug(msg string, fields ...corePorts.Field) {
+	zapFields := make([]zap.Field, len(fields))
+	for i, f := range fields {
+		zapFields[i] = zap.Any(f.Key, f.Value)
+	}
+	a.logger.Debug(msg, zapFields...)
+}
+
+func (a *zapLoggerAdapter) Info(msg string, fields ...corePorts.Field) {
+	zapFields := make([]zap.Field, len(fields))
+	for i, f := range fields {
+		zapFields[i] = zap.Any(f.Key, f.Value)
+	}
+	a.logger.Info(msg, zapFields...)
+}
+
+func (a *zapLoggerAdapter) Warn(msg string, fields ...corePorts.Field) {
+	zapFields := make([]zap.Field, len(fields))
+	for i, f := range fields {
+		zapFields[i] = zap.Any(f.Key, f.Value)
+	}
+	a.logger.Warn(msg, zapFields...)
+}
+
+func (a *zapLoggerAdapter) Error(msg string, err error, fields ...corePorts.Field) {
+	zapFields := make([]zap.Field, len(fields)+1)
+	zapFields[0] = zap.Error(err)
+	for i, f := range fields {
+		zapFields[i+1] = zap.Any(f.Key, f.Value)
+	}
+	a.logger.Error(msg, zapFields...)
+}
+
+func (a *zapLoggerAdapter) Fatal(msg string, err error, fields ...corePorts.Field) {
+	zapFields := make([]zap.Field, len(fields)+1)
+	zapFields[0] = zap.Error(err)
+	for i, f := range fields {
+		zapFields[i+1] = zap.Any(f.Key, f.Value)
+	}
+	a.logger.Fatal(msg, zapFields...)
+}
+
+func (a *zapLoggerAdapter) WithContext(ctx context.Context) corePorts.Logger {
+	// Return the same logger as we don't use context in this simple adapter
+	return a
+}
+
+func (a *zapLoggerAdapter) WithFields(fields ...corePorts.Field) corePorts.Logger {
+	zapFields := make([]zap.Field, len(fields))
+	for i, f := range fields {
+		zapFields[i] = zap.Any(f.Key, f.Value)
+	}
+	return &zapLoggerAdapter{logger: a.logger.With(zapFields...)}
+}
+
+// simpleMetricsAdapter is a no-op metrics implementation
+type simpleMetricsAdapter struct{}
+
+func (m *simpleMetricsAdapter) IncrementCounter(name string, tags ...corePorts.Tag) {}
+func (m *simpleMetricsAdapter) RecordGauge(name string, value float64, tags ...corePorts.Tag) {}
+func (m *simpleMetricsAdapter) RecordHistogram(name string, value float64, tags ...corePorts.Tag) {}
+func (m *simpleMetricsAdapter) RecordTiming(name string, duration time.Duration, tags ...corePorts.Tag) {}
+func (m *simpleMetricsAdapter) RecordDuration(name string, duration time.Duration, tags ...corePorts.Tag) {}
+func (m *simpleMetricsAdapter) StartTimer(name string, tags ...corePorts.Tag) corePorts.Timer {
+	return &noOpTimer{}
+}
+
+type noOpTimer struct{}
+
+func (t *noOpTimer) Stop() {}
+
+// noOpTracerAdapter is a no-op tracer implementation
+type noOpTracerAdapter struct{}
+
+func (t *noOpTracerAdapter) StartSpan(ctx context.Context, name string, opts ...corePorts.SpanOption) (context.Context, corePorts.Span) {
+	return ctx, &noOpSpan{}
+}
+
+func (t *noOpTracerAdapter) Extract(ctx context.Context, carrier interface{}) context.Context {
+	return ctx
+}
+
+func (t *noOpTracerAdapter) Inject(ctx context.Context, carrier interface{}) error {
+	return nil
+}
+
+type noOpSpan struct{}
+
+func (s *noOpSpan) End() {}
+func (s *noOpSpan) SetTag(key string, value interface{}) {}
+func (s *noOpSpan) SetError(err error) {}
+func (s *noOpSpan) AddEvent(name string, attrs ...corePorts.Attribute) {}
+
+// coreCacheAdapter adapts the existing cache to corePorts.Cache
+type coreCacheAdapter struct {
+	cache cache.Cache
+}
+
+func (c *coreCacheAdapter) Get(ctx context.Context, key string) ([]byte, error) {
+	if c.cache == nil {
+		return nil, fmt.Errorf("cache not available")
+	}
+	data, _, err := c.cache.Get(ctx, key)
+	return data, err
+}
+
+func (c *coreCacheAdapter) Exists(ctx context.Context, key string) (bool, error) {
+	if c.cache == nil {
+		return false, nil
+	}
+	data, _, err := c.cache.Get(ctx, key)
+	if err != nil || data == nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (c *coreCacheAdapter) GetMulti(ctx context.Context, keys []string) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+	if c.cache == nil {
+		return result, nil
+	}
+	for _, key := range keys {
+		if data, _, err := c.cache.Get(ctx, key); err == nil && data != nil {
+			result[key] = data
+		}
+	}
+	return result, nil
+}
+
+func (c *coreCacheAdapter) SetMulti(ctx context.Context, items map[string][]byte, ttl time.Duration) error {
+	if c.cache == nil {
+		return nil
+	}
+	for key, value := range items {
+		if err := c.cache.Set(ctx, key, value, ttl); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *coreCacheAdapter) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	return c.cache.Set(ctx, key, value, ttl)
+}
+
+func (c *coreCacheAdapter) Delete(ctx context.Context, key string) error {
+	return c.cache.Delete(ctx, key)
+}
+
+func (c *coreCacheAdapter) Clear(ctx context.Context) error {
+	if c.cache == nil {
+		return nil
+	}
+	// The cache.Clear expects a pattern
+	return c.cache.Clear(ctx, "*")
+}
 
 // transactionalRepositoryFactory implements repository.TransactionalRepositoryFactory
 // with proper transaction support

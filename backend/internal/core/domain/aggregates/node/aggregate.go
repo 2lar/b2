@@ -342,7 +342,7 @@ func (a *Aggregate) IsArchived() bool {
 
 // GetCategoryIDs returns the node's category IDs
 func (a *Aggregate) GetCategoryIDs() []string {
-	return a.categoryIDs
+	return a.categories
 }
 
 // GetCreatedAt returns when the node was created
@@ -444,19 +444,18 @@ func NewAggregateWithData(
 	metadata map[string]interface{},
 ) *Aggregate {
 	return &Aggregate{
-		BaseAggregate: aggregates.BaseAggregate{
-			ID:        string(id),
+		BaseAggregate: &aggregates.BaseAggregate{
+			ID:        id.String(),
 			Version:   version,
 			CreatedAt: createdAt,
 			UpdatedAt: updatedAt,
 		},
-		id:          id,
 		userID:      userID,
 		content:     content,
 		title:       title,
 		tags:        tags,
 		keywords:    keywords,
-		categoryIDs: categoryIDs,
+		categories:  categoryIDs,
 		archived:    isArchived,
 		metadata:    metadata,
 	}

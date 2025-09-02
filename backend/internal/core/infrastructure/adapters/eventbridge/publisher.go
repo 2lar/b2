@@ -116,9 +116,9 @@ func (p *Publisher) createEventEntry(event events.DomainEvent) (types.PutEventsR
 	}
 
 	// Add metadata if available
-	if metadata := event.GetMetadata(); metadata != nil {
-		detail["metadata"] = metadata
-	}
+	metadata := event.GetMetadata()
+	// Always include metadata, even if empty
+	detail["metadata"] = metadata
 
 	// Marshal to JSON
 	detailJSON, err := json.Marshal(detail)
@@ -159,7 +159,7 @@ func (p *Publisher) publishBatch(ctx context.Context, entries []types.PutEventsR
 	}
 
 	// Check for failed entries
-	if result.FailedEntryCount != nil && *result.FailedEntryCount > 0 {
+	if result.FailedEntryCount > 0 {
 		for i, entry := range result.Entries {
 			if entry.ErrorCode != nil {
 				p.logger.Error("Event entry failed",
@@ -167,7 +167,7 @@ func (p *Publisher) publishBatch(ctx context.Context, entries []types.PutEventsR
 					ports.Field{Key: "entry_index", Value: i})
 			}
 		}
-		return fmt.Errorf("%d events failed to publish", *result.FailedEntryCount)
+		return fmt.Errorf("%d events failed to publish", result.FailedEntryCount)
 	}
 
 	p.logger.Debug("Events published successfully",

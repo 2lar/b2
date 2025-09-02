@@ -97,14 +97,11 @@ func (b *CommandBus) RegisterFunc(commandType string, handler CommandHandlerFunc
 // Send sends a command to its handler
 func (b *CommandBus) Send(ctx context.Context, command Command) error {
 	// Start tracing
-	ctx, span := b.tracer.StartSpan(ctx, "CommandBus.Send",
-		SpanOptionWithKind(ports.SpanKindInternal),
-		SpanOptionWithAttributes(
-			ports.Attribute{Key: "command.type", Value: command.GetCommandName()},
-			ports.Attribute{Key: "correlation.id", Value: command.GetCorrelationID()},
-		),
-	)
+	ctx, span := b.tracer.StartSpan(ctx, "CommandBus.Send")
 	defer span.End()
+	
+	span.SetTag("command.type", command.GetCommandName())
+	span.SetTag("correlation.id", command.GetCorrelationID())
 	
 	// Record metrics
 	timer := b.metrics.StartTimer("command.duration",

@@ -9,6 +9,7 @@ import (
 	"brain2-backend/internal/application/queries"
 	"brain2-backend/internal/application/services"
 	"brain2-backend/internal/config"
+	"brain2-backend/internal/core/application/cqrs"
 	domainServices "brain2-backend/internal/domain/services"
 	"brain2-backend/internal/domain/shared"
 	"brain2-backend/internal/infrastructure/concurrency"
@@ -72,6 +73,10 @@ type Container struct {
 	NodeQueryService     *queries.NodeQueryService
 	CategoryQueryService *queries.CategoryQueryService
 	GraphQueryService    *queries.GraphQueryService
+
+	// CQRS Buses (new architecture)
+	CommandBus *cqrs.CommandBus
+	QueryBus   *cqrs.QueryBus
 
 	// Domain Services
 	ConnectionAnalyzer *domainServices.ConnectionAnalyzer
