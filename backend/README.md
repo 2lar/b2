@@ -73,36 +73,82 @@ The project is structured to follow Clean Architecture principles with clear lay
     -   OpenAPI-generated types for consistency
     -   Cross-cutting concerns and helpers
 
-## Quick Command Reference
+## Testing Infrastructure
 
-For a comprehensive list of all commands, see [📚 Command Master List](../docs/command-masterlist.md)
+The Brain2 backend includes a comprehensive testing infrastructure with multiple test levels and deployment workflows. For detailed documentation, see:
+- **[📚 DEPLOYMENT.md](./DEPLOYMENT.md)** - Complete deployment and testing guide
+- **[🧪 TESTING.md](./TESTING.md)** - Test architecture and writing tests
+- **[📋 Command Master List](../docs/command-masterlist.md)** - All available commands
+
+### Quick Test Commands
+```bash
+# Run different test levels
+make test-unit          # Unit tests only (fast)
+make test-integration   # Integration tests
+make test-all          # All test suites
+make test-coverage     # Generate coverage report
+make test-bench        # Performance benchmarks
+
+# Quick development
+./dev.sh               # Fast build with unit tests
+
+# Full deployment
+./deploy.sh            # Complete deployment with tests
+./deploy.sh --dry-run  # Preview deployment
+```
+
+## Quick Command Reference
 
 ### Most Common Commands
 ```bash
 # Install dependencies
 go mod tidy
-
-# Run tests
-go test ./...
+make deps
 
 # Build for Lambda
-./build.sh
-
-# Quick build (no tests)
-./test_build.sh
+./build.sh                    # Full build with unit tests
+./build.sh --test-level all   # Build with all tests
+./build.sh --quick           # Fast incremental build
 
 # Generate Wire dependencies
-cd internal/di && wire
+make wire
 
 # Run locally
 go run cmd/main/main.go
 
-# Format code
-go fmt ./...
-
-# Run linter
-golangci-lint run
+# Code quality
+make fmt               # Format code
+make lint              # Run linter
+make vet              # Run go vet
+make quality          # All quality checks
 ```
+
+## Deployment
+
+The backend supports multiple deployment scenarios:
+
+### Quick Deployment
+```bash
+# Development deployment
+./deploy.sh --quick
+
+# Production deployment
+./deploy.sh --environment prod
+
+# Dry run (preview changes)
+./deploy.sh --dry-run
+```
+
+For detailed deployment documentation, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+
+## CI/CD Integration
+
+The project includes comprehensive GitHub Actions workflows:
+- **Pull Requests**: Automatic testing and security scanning
+- **Main Branch**: Full test suite, coverage, and deployment to dev
+- **Manual Deployment**: Deploy to any environment via GitHub UI
+
+See [.github/workflows/deploy-backend.yml](../.github/workflows/deploy-backend.yml) for details.
 
 ## Getting Started
 

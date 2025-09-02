@@ -238,6 +238,7 @@ npm run deploy         # Deploy all stacks (via ts-node)
 
 # Build pipeline
 npm run build          # Full pipeline: typecheck → test → synth
+npm run build-lambda   # Build Node.js Lambda functions (authorizer)
 npm run clean          # Remove all generated JS/d.ts files and CDK artifacts
 ```
 
@@ -424,19 +425,22 @@ npm test -- --updateSnapshot
 
 ### Deployment Steps
 
-1. **Build Backend Functions**
+1. **Build Lambda Functions**
    ```bash
+   # Build Node.js Lambda functions (authorizer)
+   npm run build-lambda
+   
+   # Build Go Lambda functions
    cd ../backend
-   # Build Go functions for AWS Lambda
    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/main ./cmd/main
-   cd infra
+   cd ../infra
    ```
 
 2. **Build Frontend Assets**
    ```bash
    cd ../frontend
    npm run build  # Creates dist/ directory
-   cd infra
+   cd ../infra
    ```
 
 3. **Deploy Infrastructure**

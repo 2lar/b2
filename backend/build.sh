@@ -40,6 +40,7 @@ set -e
 SKIP_TESTS=false
 QUICK_BUILD=false
 SPECIFIC_COMPONENT=""
+TEST_LEVEL="unit"  # Default to unit tests for speed
 while [[ $# -gt 0 ]]; do
     case $1 in
         --skip-tests)
@@ -54,18 +55,24 @@ while [[ $# -gt 0 ]]; do
             SPECIFIC_COMPONENT="$2"
             shift 2
             ;;
+        --test-level)
+            TEST_LEVEL="$2"  # unit, integration, all, ci
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
             echo ""
-            echo "Usage: $0 [--skip-tests] [--quick] [--component <name>]"
+            echo "Usage: $0 [--skip-tests] [--quick] [--component <name>] [--test-level <level>]"
             echo ""
             echo "Options:"
             echo "  --skip-tests     Skip running tests"
             echo "  --quick          Skip cache clearing for faster incremental builds"
             echo "  --component      Build only specified component (main, cleanup-handler, etc.)"
+            echo "  --test-level     Test level: unit, integration, all, ci (default: unit)"
             echo ""
             echo "Examples:"
-            echo "  $0                              # Full build with tests"
+            echo "  $0                              # Full build with unit tests"
+            echo "  $0 --test-level all            # Full build with all tests"
             echo "  $0 --quick --skip-tests        # Fast incremental build"
             echo "  $0 --component main --quick     # Quick build of main component only"
             exit 1
@@ -83,6 +90,7 @@ if [ "$QUICK_BUILD" = false ]; then
     echo "🛠️ Installing dependencies..."
     go get github.com/getkin/kin-openapi/openapi3
     go mod tidy
+    go mod vendor  # Ensure vendor directory has all dependencies
 else
     echo "⚡ Quick build mode - preserving caches and doing incremental build"
     # Only clean build directory, keep Go caches
@@ -90,11 +98,46 @@ else
     
     echo "🛠️ Updating dependencies (quick)..."
     go mod tidy
+    go mod vendor  # Update vendor directory even in quick mode
 fi
 
 if [ "$SKIP_TESTS" = false ]; then
-    echo "🧪 Running tests..."
-    go test ./...
+    echo "🧪 Running tests (level: $TEST_LEVEL)..."
+    
+    # Check if Makefile exists and use it for testing
+    if [ -f "Makefile" ]; then
+        case $TEST_LEVEL in
+            unit)
+                make test-unit
+                ;;
+            integration)
+                make test-integration
+                ;;
+            all)
+                make test-all
+                ;;
+            ci)
+                make ci
+                ;;
+            *)
+                echo "⚠️  Unknown test level: $TEST_LEVEL, running unit tests"
+                make test-unit
+                ;;
+        esac
+        
+        if [ $? -ne 0 ]; then
+            echo "❌ Tests failed"
+            exit 1
+        fi
+    else
+        # Fallback to simple go test if Makefile doesn't exist
+        echo "⚠️  Makefile not found, using simple go test"
+        go test ./...
+        if [ $? -ne 0 ]; then
+            echo "❌ Tests failed"
+            exit 1
+        fi
+    fi
 else
     echo "⏭️  Skipping tests (--skip-tests flag provided)"
 fi

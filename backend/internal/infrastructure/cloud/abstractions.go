@@ -89,49 +89,59 @@ type GetItemRequest struct {
 }
 
 type GetItemResponse struct {
-	Item   map[string]interface{}
-	Found  bool
+	Item             map[string]interface{}
+	Found            bool
+	ConsumedCapacity *ConsumedCapacity
 }
 
 type PutItemRequest struct {
-	TableName           string
-	Item                map[string]interface{}
-	ConditionExpression string
-	AttributeNames      map[string]string
-	AttributeValues     map[string]interface{}
+	TableName                 string
+	Item                      map[string]interface{}
+	ConditionExpression       string
+	ExpressionAttributeNames  map[string]string
+	ExpressionAttributeValues map[string]interface{}
+	AttributeNames            map[string]string
+	AttributeValues           map[string]interface{}
 }
 
 type PutItemResponse struct {
 	Success           bool
+	OldItem           map[string]interface{}
 	ConsumedCapacity  *ConsumedCapacity
 }
 
 type UpdateItemRequest struct {
-	TableName           string
-	Key                 map[string]interface{}
-	UpdateExpression    string
-	ConditionExpression string
-	AttributeNames      map[string]string
-	AttributeValues     map[string]interface{}
-	ReturnValues        string
+	TableName                 string
+	Key                       map[string]interface{}
+	UpdateExpression          string
+	ConditionExpression       string
+	ExpressionAttributeNames  map[string]string
+	ExpressionAttributeValues map[string]interface{}
+	AttributeNames            map[string]string
+	AttributeValues           map[string]interface{}
+	ReturnValues              string
 }
 
 type UpdateItemResponse struct {
 	Attributes       map[string]interface{}
+	UpdatedItem      map[string]interface{}
 	ConsumedCapacity *ConsumedCapacity
 }
 
 type DeleteItemRequest struct {
-	TableName           string
-	Key                 map[string]interface{}
-	ConditionExpression string
-	AttributeNames      map[string]string
-	AttributeValues     map[string]interface{}
-	ReturnValues        string
+	TableName                 string
+	Key                       map[string]interface{}
+	ConditionExpression       string
+	ExpressionAttributeNames  map[string]string
+	ExpressionAttributeValues map[string]interface{}
+	AttributeNames            map[string]string
+	AttributeValues           map[string]interface{}
+	ReturnValues              string
 }
 
 type DeleteItemResponse struct {
 	Attributes       map[string]interface{}
+	OldItem          map[string]interface{}
 	ConsumedCapacity *ConsumedCapacity
 }
 
@@ -141,6 +151,8 @@ type QueryRequest struct {
 	KeyConditionExpression    string
 	FilterExpression          string
 	ProjectionExpression      string
+	ExpressionAttributeNames  map[string]string
+	ExpressionAttributeValues map[string]interface{}
 	AttributeNames            map[string]string
 	AttributeValues           map[string]interface{}
 	ScanIndexForward          bool
@@ -158,17 +170,19 @@ type QueryResponse struct {
 }
 
 type ScanRequest struct {
-	TableName            string
-	IndexName            string
-	FilterExpression     string
-	ProjectionExpression string
-	AttributeNames       map[string]string
-	AttributeValues      map[string]interface{}
-	Limit                int32
-	ExclusiveStartKey    map[string]interface{}
-	ConsistentRead       bool
-	Segment              int32
-	TotalSegments        int32
+	TableName                 string
+	IndexName                 string
+	FilterExpression          string
+	ProjectionExpression      string
+	ExpressionAttributeNames  map[string]string
+	ExpressionAttributeValues map[string]interface{}
+	AttributeNames            map[string]string
+	AttributeValues           map[string]interface{}
+	Limit                     int32
+	ExclusiveStartKey         map[string]interface{}
+	ConsistentRead            bool
+	Segment                   int32
+	TotalSegments             int32
 }
 
 type ScanResponse struct {
@@ -297,6 +311,7 @@ type PublishEventResponse struct {
 	Success   bool
 	ErrorCode string
 	ErrorMsg  string
+	RequestID string
 }
 
 type PublishEventsRequest struct {
@@ -304,14 +319,26 @@ type PublishEventsRequest struct {
 }
 
 type PublishEventsResponse struct {
-	Results     []PublishEventResponse
-	FailedCount int
+	Results      []PublishEventResponse
+	EventIDs     []string
+	Failures     []EventFailure
+	FailedCount  int
+	SuccessCount int
+	RequestID    string
+}
+
+type EventFailure struct {
+	EventID      string
+	ErrorCode    string
+	ErrorMsg     string
+	ErrorMessage string
 }
 
 type CreateEventBusRequest struct {
-	Name        string
-	Description string
-	Tags        map[string]string
+	Name            string
+	EventSourceName string
+	Description     string
+	Tags            map[string]string
 }
 
 type CreateEventBusResponse struct {
@@ -330,13 +357,35 @@ type EventBusInfo struct {
 	State       string
 }
 
+type EventBus struct {
+	Name        string
+	Arn         string
+	Description string
+	State       string
+}
+
 // ============================================================================
 // COMMON TYPES
 // ============================================================================
 
 type ConsumedCapacity struct {
-	TableName      string
-	CapacityUnits  float64
+	TableName                string
+	CapacityUnits            float64
+	ReadCapacityUnits        float64
+	WriteCapacityUnits       float64
+	Table                    *TableConsumedCapacity
+	LocalSecondaryIndexes    map[string]*IndexConsumedCapacity
+	GlobalSecondaryIndexes   map[string]*IndexConsumedCapacity
+}
+
+type TableConsumedCapacity struct {
+	CapacityUnits      float64
+	ReadCapacityUnits  float64
+	WriteCapacityUnits float64
+}
+
+type IndexConsumedCapacity struct {
+	CapacityUnits      float64
 	ReadCapacityUnits  float64
 	WriteCapacityUnits float64
 }

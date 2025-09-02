@@ -500,7 +500,40 @@ aws dynamodb import-table \
 
 ---
 
+## Deployment Commands
+
+### Deployment Script
+```bash
+# Full deployment with all tests
+./deploy.sh
+
+# Deployment options
+./deploy.sh --environment dev     # Deploy to dev
+./deploy.sh --environment staging # Deploy to staging
+./deploy.sh --environment prod    # Deploy to production
+
+# Quick deployment (unit tests only)
+./deploy.sh --quick
+
+# Skip tests (not recommended)
+./deploy.sh --skip-tests
+
+# Dry run (preview changes)
+./deploy.sh --dry-run
+./deploy.sh --dry-run --environment prod
+```
+
 ## Code Quality
+
+### Makefile Quality Targets
+```bash
+# Code formatting and quality
+make fmt                # Format code
+make vet               # Run go vet
+make lint              # Run golangci-lint
+make security          # Run security scan
+make quality           # All quality checks
+```
 
 ### Linting
 ```bash
