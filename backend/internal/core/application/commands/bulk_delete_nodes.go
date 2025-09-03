@@ -8,6 +8,7 @@ import (
 	"brain2-backend/internal/core/application/cqrs"
 	"brain2-backend/internal/core/application/ports"
 	"brain2-backend/internal/core/domain/events"
+	"brain2-backend/internal/core/infrastructure/adapters/dynamodb"
 )
 
 // BulkDeleteNodesCommand represents a command to delete multiple nodes
@@ -54,6 +55,7 @@ type BulkDeleteNodesHandler struct {
 	edgeRepo   ports.EdgeRepository
 	eventBus   ports.EventBus
 	uowFactory ports.UnitOfWorkFactory
+	cache      ports.Cache
 	logger     ports.Logger
 	metrics    ports.Metrics
 }
@@ -72,6 +74,7 @@ func NewBulkDeleteNodesHandler(
 		edgeRepo:   edgeRepo,
 		eventBus:   eventBus,
 		uowFactory: uowFactory,
+		cache:      nil, // Cache will be injected if available
 		logger:     logger,
 		metrics:    metrics,
 	}
@@ -101,24 +104,43 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, command cqrs.Comman
 	
 	for _, nodeID := range cmd.NodeIDs {
 		// Get the node to verify it exists and belongs to the user
-		node, err := h.nodeRepo.FindByID(ctx, nodeID)
-		if err != nil {
-			h.logger.Warn("Node not found for bulk delete",
-				ports.Field{Key: "node_id", Value: nodeID},
-				ports.Field{Key: "error", Value: err.Error()})
-			failedNodes = append(failedNodes, nodeID)
+		// Use FindByUserAndID if available to avoid scans
+		var nodeExists bool
+		if repo, ok := h.nodeRepo.(*dynamodb.NodeRepository); ok {
+			_, err := repo.FindByUserAndID(ctx, cmd.UserID, nodeID)
+			nodeExists = err == nil
+			if err != nil {
+				h.logger.Warn("Node not found for bulk delete",
+					ports.Field{Key: "node_id", Value: nodeID},
+					ports.Field{Key: "error", Value: err.Error()})
+				failedNodes = append(failedNodes, nodeID)
+				continue
+			}
+		} else {
+			node, err := h.nodeRepo.FindByID(ctx, nodeID)
+			if err != nil {
+				h.logger.Warn("Node not found for bulk delete",
+					ports.Field{Key: "node_id", Value: nodeID},
+					ports.Field{Key: "error", Value: err.Error()})
+				failedNodes = append(failedNodes, nodeID)
+				continue
+			}
+			
+			if node.GetUserID() != cmd.UserID {
+				h.logger.Warn("Unauthorized bulk delete attempt",
+					ports.Field{Key: "node_id", Value: nodeID},
+					ports.Field{Key: "user_id", Value: cmd.UserID})
+				failedNodes = append(failedNodes, nodeID)
+				continue
+			}
+			nodeExists = true
+		}
+		
+		if !nodeExists {
 			continue
 		}
 		
-		if node.GetUserID() != cmd.UserID {
-			h.logger.Warn("Unauthorized bulk delete attempt",
-				ports.Field{Key: "node_id", Value: nodeID},
-				ports.Field{Key: "user_id", Value: cmd.UserID})
-			failedNodes = append(failedNodes, nodeID)
-			continue
-		}
-		
-		// Delete all edges connected to this node
+		// Delete all edges connected to this node through UoW
 		edges, err := h.edgeRepo.FindEdgesByNode(ctx, nodeID)
 		if err != nil {
 			h.logger.Warn("Failed to find edges for node",
@@ -126,7 +148,8 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, command cqrs.Comman
 				ports.Field{Key: "error", Value: err.Error()})
 		} else {
 			for _, edge := range edges {
-				if err := h.edgeRepo.DeleteEdge(ctx, edge.SourceID, edge.TargetID); err != nil {
+				// Use UoW EdgeRepository for transactional deletion
+				if err := uow.EdgeRepository().DeleteEdge(ctx, edge.SourceID, edge.TargetID); err != nil {
 					h.logger.Warn("Failed to delete edge during bulk delete",
 						ports.Field{Key: "source", Value: edge.SourceID},
 						ports.Field{Key: "target", Value: edge.TargetID},
@@ -135,12 +158,23 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, command cqrs.Comman
 			}
 		}
 		
-		// Delete the node
-		if err := h.nodeRepo.Delete(ctx, nodeID); err != nil {
-			h.logger.Error("Failed to delete node during bulk delete", err,
-				ports.Field{Key: "node_id", Value: nodeID})
-			failedNodes = append(failedNodes, nodeID)
-			continue
+		// Delete the node through UoW for transactional deletion
+		if repo, ok := uow.NodeRepository().(*dynamodb.NodeRepository); ok {
+			// Use DeleteByUserAndID for DynamoDB to properly handle composite keys
+			if err := repo.DeleteByUserAndID(ctx, cmd.UserID, nodeID); err != nil {
+				h.logger.Error("Failed to delete node during bulk delete", err,
+					ports.Field{Key: "node_id", Value: nodeID})
+				failedNodes = append(failedNodes, nodeID)
+				continue
+			}
+		} else {
+			// Fallback to regular Delete for other implementations through UoW
+			if err := uow.NodeRepository().Delete(ctx, nodeID); err != nil {
+				h.logger.Error("Failed to delete node during bulk delete", err,
+					ports.Field{Key: "node_id", Value: nodeID})
+				failedNodes = append(failedNodes, nodeID)
+				continue
+			}
 		}
 		
 		deletedNodes = append(deletedNodes, nodeID)
@@ -171,6 +205,11 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, command cqrs.Comman
 		}
 	}
 	
+	// Invalidate cache for user's data
+	if h.cache != nil {
+		go h.invalidateUserCache(context.Background(), cmd.UserID)
+	}
+	
 	// Log results
 	h.logger.Info("Bulk delete completed",
 		ports.Field{Key: "deleted_count", Value: len(deletedNodes)},
@@ -194,4 +233,35 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, command cqrs.Comman
 func (h *BulkDeleteNodesHandler) CanHandle(command cqrs.Command) bool {
 	_, ok := command.(*BulkDeleteNodesCommand)
 	return ok
+}
+
+// SetCache sets the cache instance for the handler
+func (h *BulkDeleteNodesHandler) SetCache(cache ports.Cache) {
+	h.cache = cache
+}
+
+// invalidateUserCache invalidates cached data for a user
+func (h *BulkDeleteNodesHandler) invalidateUserCache(ctx context.Context, userID string) {
+	// Clear ALL cache patterns for the user to ensure consistency
+	patterns := []string{
+		fmt.Sprintf("nodes:user:%s:*", userID),
+		fmt.Sprintf("graph:user:%s:*", userID),
+		fmt.Sprintf("node:%s:*", userID),
+		fmt.Sprintf("user:%s:*", userID),
+		fmt.Sprintf("*:%s:*", userID),
+	}
+	
+	for _, pattern := range patterns {
+		if err := h.cache.Delete(ctx, pattern); err != nil {
+			h.logger.Debug("Failed to invalidate cache",
+				ports.Field{Key: "pattern", Value: pattern},
+				ports.Field{Key: "error", Value: err.Error()})
+		}
+	}
+	
+	// Also try to clear the entire cache
+	if err := h.cache.Delete(ctx, "*"); err != nil {
+		h.logger.Debug("Failed to clear all cache",
+			ports.Field{Key: "error", Value: err.Error()})
+	}
 }

@@ -195,14 +195,16 @@ func provideCategoryRepository(
 
 // provideCache creates a cache implementation based on configuration.
 func provideCache(cfg *config.Config, logger *zap.Logger) cache.Cache {
-	// Create cache based on configuration
-	if !cfg.Features.EnableCaching {
-		return NewNoOpCache()
-	}
+	// IMPORTANT: Always return NoOpCache in Lambda environment
+	// In-memory cache causes stale data to persist between invocations
+	// This is a critical fix for data consistency issues
+	return NewNoOpCache()
 	
-	// Use in-memory cache for now
-	// In production, this could be Redis, Memcached, etc.
-	return NewInMemoryCache(1000, 5*time.Minute)
+	// Original logic disabled - DO NOT USE in Lambda:
+	// if !cfg.Features.EnableCaching {
+	//     return NewNoOpCache()
+	// }
+	// return NewInMemoryCache(1000, 5*time.Minute)
 }
 
 // provideCacheAdapter returns the cache directly since interfaces are unified.
@@ -254,12 +256,12 @@ func provideEventBus(cfg *config.Config, eventBridgeClient *awsEventbridge.Clien
 	// Log configuration at Info level for production visibility
 	logger.Info("EventBridge configuration",
 		zap.String("eventBusName", eventBusName),
-		zap.String("source", "brain2-backend"),
+		zap.String("source", "brain2.api"),
 		zap.Bool("usingEnvironmentVariable", os.Getenv("EVENT_BUS_NAME") != ""),
 	)
 	
 	// Create EventBridge publisher
-	eventPublisher := messaging.NewEventBridgePublisher(eventBridgeClient, eventBusName, "brain2-backend")
+	eventPublisher := messaging.NewEventBridgePublisher(eventBridgeClient, eventBusName, "brain2.api")
 	if eventPublisher == nil {
 		logger.Error("Failed to create EventBridge publisher")
 		return shared.NewMockEventBus()

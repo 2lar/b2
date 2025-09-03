@@ -3,9 +3,7 @@ package queries
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"time"
 	
 	"brain2-backend/internal/core/application/cqrs"
 	"brain2-backend/internal/core/application/ports"
@@ -98,21 +96,8 @@ func (h *GetGraphHandler) Handle(ctx context.Context, query cqrs.Query) (cqrs.Qu
 		q.Depth = 2 // Default depth for subgraph
 	}
 	
-	// Check cache first
-	if h.cache != nil {
-		cacheKey := q.GetCacheKey()
-		if cacheKey != "" {
-			if data, err := h.cache.Get(ctx, cacheKey); err == nil {
-				var result GetGraphResult
-				if err := json.Unmarshal(data, &result); err == nil {
-					h.logger.Debug("Cache hit for graph",
-						ports.Field{Key: "user_id", Value: q.UserID},
-						ports.Field{Key: "node_id", Value: q.NodeID})
-					return &result, nil
-				}
-			}
-		}
-	}
+	// IMPORTANT: Cache disabled in Lambda environment to prevent stale data
+	// NoOpCache is used but we skip cache checks entirely for performance
 	
 	var graphView *ports.GraphView
 	var err error
@@ -151,22 +136,7 @@ func (h *GetGraphHandler) Handle(ctx context.Context, query cqrs.Query) (cqrs.Qu
 		Stats: stats,
 	}
 	
-	// Cache the result
-	if h.cache != nil && q.GetCacheKey() != "" {
-		if data, err := json.Marshal(result); err == nil {
-			cacheKey := q.GetCacheKey()
-			cacheDuration := 2 * time.Minute
-			if q.NodeID == "" {
-				// Cache full graph for shorter time
-				cacheDuration = 30 * time.Second
-			}
-			if err := h.cache.Set(ctx, cacheKey, data, cacheDuration); err != nil {
-				h.logger.Warn("Failed to cache graph",
-					ports.Field{Key: "user_id", Value: q.UserID},
-					ports.Field{Key: "error", Value: err.Error()})
-			}
-		}
-	}
+	// Cache disabled - no caching in Lambda environment
 	
 	h.logger.Debug("Retrieved graph",
 		ports.Field{Key: "user_id", Value: q.UserID},

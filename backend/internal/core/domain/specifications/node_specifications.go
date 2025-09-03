@@ -50,6 +50,11 @@ func NewUserOwnedNodeSpecification(userID string) *UserOwnedNodeSpecification {
 	return spec
 }
 
+// GetUserID returns the userID for this specification
+func (s *UserOwnedNodeSpecification) GetUserID() string {
+	return s.userID
+}
+
 // ContentContainsSpecification checks if node content contains specific text
 type ContentContainsSpecification struct {
 	BaseSpecification[*node.Aggregate]

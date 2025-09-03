@@ -105,27 +105,62 @@ func (r *NodeRepository) Save(ctx context.Context, aggregate *node.Aggregate) er
 	return nil
 }
 
+// FindByUserAndID retrieves a node by UserID and NodeID using direct GetItem
+func (r *NodeRepository) FindByUserAndID(ctx context.Context, userID, nodeID string) (*node.Aggregate, error) {
+	// Direct GetItem using composite key
+	pk := fmt.Sprintf("USER#%s", userID)
+	sk := fmt.Sprintf("NODE#%s", nodeID)
+	
+	result, err := r.client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(r.tableName),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: pk},
+			"SK": &types.AttributeValueMemberS{Value: sk},
+		},
+	})
+	
+	if err != nil {
+		r.logger.Error("Failed to get node by UserID and NodeID", err,
+			ports.Field{Key: "user_id", Value: userID},
+			ports.Field{Key: "node_id", Value: nodeID})
+		return nil, fmt.Errorf("failed to get node: %w", err)
+	}
+	
+	if result.Item == nil {
+		return nil, fmt.Errorf("node not found: %s", nodeID)
+	}
+	
+	// Unmarshal the item
+	var item nodeItem
+	if err := attributevalue.UnmarshalMap(result.Item, &item); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal node: %w", err)
+	}
+	
+	// Convert to aggregate
+	return r.itemToAggregate(&item)
+}
+
 // FindByID retrieves a node by its ID
 func (r *NodeRepository) FindByID(ctx context.Context, id string) (*node.Aggregate, error) {
-	// For this implementation, we need to know the user ID
-	// In a real implementation, you might need to query GSI or scan
-	// For now, we'll implement a simplified version
+	// Check if we have UserID in context (if we add this feature later)
+	// For now, we'll need to scan the GSI which is not ideal
+	// The proper solution is to use FindByUserAndID when UserID is available
 	
-	// Query using GSI if we have an index on NodeID
-	// Otherwise, we'd need to scan (not recommended for production)
+	// Query GSI1 with a filter on NodeID
+	// This is more efficient than scanning the main table
 	expr, err := expression.NewBuilder().
-		WithKeyCondition(expression.Key("NodeID").Equal(expression.Value(id))).
+		WithFilter(expression.Name("NodeID").Equal(expression.Value(id))).
 		Build()
 	
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query expression: %w", err)
 	}
 
-	// Query the GSI
-	result, err := r.client.Query(ctx, &dynamodb.QueryInput{
+	// Scan the GSI1 index
+	result, err := r.client.Scan(ctx, &dynamodb.ScanInput{
 		TableName:                 aws.String(r.tableName),
-		IndexName:                 aws.String("NodeIDIndex"), // Assuming we have this GSI
-		KeyConditionExpression:    expr.KeyCondition(),
+		IndexName:                 aws.String(r.indexName), // Use GSI1 index
+		FilterExpression:          expr.Filter(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		Limit:                     aws.Int32(1),
@@ -158,16 +193,89 @@ func (r *NodeRepository) GetByID(ctx context.Context, id string) (*node.Aggregat
 
 // FindBySpecification retrieves nodes matching a specification
 func (r *NodeRepository) FindBySpecification(ctx context.Context, spec specifications.Specification[*node.Aggregate]) ([]*node.Aggregate, error) {
-	// This is a simplified implementation
-	// In a real implementation, you'd translate specifications to DynamoDB queries
+	// Optimize for UserOwnedNodeSpecification which is the most common case
+	// Check if spec has a GetUserID method to extract user context
+	var userID string
+	if userSpec, ok := spec.(interface{ GetUserID() string }); ok {
+		userID = userSpec.GetUserID()
+	}
 	
-	// For now, we'll scan and filter in memory (not recommended for production)
+	if userID != "" {
+		// Use GSI1 to query all nodes for a specific user
+		// This avoids a full table scan
+		expr, err := expression.NewBuilder().
+			WithKeyCondition(
+				expression.Key("GSI1PK").Equal(expression.Value(fmt.Sprintf("USER#%s", userID))),
+			).
+			Build()
+		
+		if err != nil {
+			return nil, fmt.Errorf("failed to build query expression: %w", err)
+		}
+		
+		queryInput := &dynamodb.QueryInput{
+			TableName:                 aws.String(r.tableName),
+			IndexName:                 aws.String(r.indexName), // GSI1
+			KeyConditionExpression:    expr.KeyCondition(),
+			ExpressionAttributeNames:  expr.Names(),
+			ExpressionAttributeValues: expr.Values(),
+			Limit:                     aws.Int32(100), // Reasonable limit for related nodes
+		}
+		
+		result, err := r.client.Query(ctx, queryInput)
+		if err != nil {
+			r.logger.Error("Failed to query nodes for user", err,
+				ports.Field{Key: "user_id", Value: userID})
+			return nil, fmt.Errorf("failed to find nodes: %w", err)
+		}
+		
+		var aggregates []*node.Aggregate
+		for _, item := range result.Items {
+			var nodeItem nodeItem
+			if err := attributevalue.UnmarshalMap(item, &nodeItem); err != nil {
+				r.logger.Warn("Failed to unmarshal node item",
+					ports.Field{Key: "error", Value: err.Error()})
+				continue
+			}
+			
+			aggregate, err := r.itemToAggregate(&nodeItem)
+			if err != nil {
+				r.logger.Warn("Failed to convert item to aggregate",
+					ports.Field{Key: "error", Value: err.Error()})
+				continue
+			}
+			
+			// Apply specification filter for additional criteria
+			satisfied, err := spec.IsSatisfiedBy(ctx, aggregate)
+			if err != nil {
+				r.logger.Warn("Failed to check specification",
+					ports.Field{Key: "error", Value: err.Error()})
+				continue
+			}
+			if satisfied {
+				aggregates = append(aggregates, aggregate)
+			}
+		}
+		
+		r.logger.Debug("Queried nodes using GSI for user",
+			ports.Field{Key: "user_id", Value: userID},
+			ports.Field{Key: "count", Value: len(aggregates)})
+		
+		return aggregates, nil
+	}
+	
+	// Fallback to scan for other specification types
+	// This should be rare and we should log a warning
+	r.logger.Warn("Using scan for non-user specification - consider optimizing",
+		ports.Field{Key: "spec_type", Value: fmt.Sprintf("%T", spec)})
+	
 	scanInput := &dynamodb.ScanInput{
 		TableName: aws.String(r.tableName),
 		FilterExpression: aws.String("EntityType = :entity_type"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":entity_type": &types.AttributeValueMemberS{Value: "NODE"},
 		},
+		Limit: aws.Int32(50), // Reduce limit to minimize scan impact
 	}
 
 	result, err := r.client.Scan(ctx, scanInput)
@@ -209,11 +317,20 @@ func (r *NodeRepository) FindBySpecification(ctx context.Context, spec specifica
 
 // Delete removes a node from DynamoDB
 func (r *NodeRepository) Delete(ctx context.Context, id string) error {
-	// Similar to FindByID, we need to construct the proper key
-	// This is simplified - in production you'd need the full composite key
+	// We need both PK and SK to delete - this requires UserID
+	// This method should be called with UserID context
+	return fmt.Errorf("Delete requires UserID - use DeleteByUserAndID instead")
+}
+
+// DeleteByUserAndID removes a node from DynamoDB using both UserID and NodeID
+func (r *NodeRepository) DeleteByUserAndID(ctx context.Context, userID, nodeID string) error {
+	// Construct the composite key
+	pk := fmt.Sprintf("USER#%s", userID)
+	sk := fmt.Sprintf("NODE#%s", nodeID)
 	
 	key := map[string]types.AttributeValue{
-		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", id)},
+		"PK": &types.AttributeValueMemberS{Value: pk},
+		"SK": &types.AttributeValueMemberS{Value: sk},
 	}
 
 	_, err := r.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
@@ -223,9 +340,14 @@ func (r *NodeRepository) Delete(ctx context.Context, id string) error {
 
 	if err != nil {
 		r.logger.Error("Failed to delete node", err,
-			ports.Field{Key: "node_id", Value: id})
+			ports.Field{Key: "user_id", Value: userID},
+			ports.Field{Key: "node_id", Value: nodeID})
 		return fmt.Errorf("failed to delete node: %w", err)
 	}
+
+	r.logger.Info("Node deleted successfully",
+		ports.Field{Key: "user_id", Value: userID},
+		ports.Field{Key: "node_id", Value: nodeID})
 
 	return nil
 }
@@ -265,7 +387,7 @@ func (r *NodeRepository) aggregateToItem(aggregate *node.Aggregate) *nodeItem {
 	sk := fmt.Sprintf("NODE#%s", nodeID)
 	
 	// For GSI (if needed for queries)
-	gsi1pk := "NODE"
+	gsi1pk := fmt.Sprintf("USER#%s", userID)
 	gsi1sk := fmt.Sprintf("%s#%s", now, nodeID)
 
 	item := &nodeItem{

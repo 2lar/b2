@@ -3,9 +3,7 @@ package queries
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"time"
 	
 	"brain2-backend/internal/core/application/cqrs"
 	"brain2-backend/internal/core/application/ports"
@@ -103,18 +101,8 @@ func (h *GetNodesByUserHandler) Handle(ctx context.Context, query cqrs.Query) (c
 		q.SortBy = "created_at"
 	}
 	
-	// Check cache first
-	if h.cache != nil {
-		cacheKey := q.GetCacheKey()
-		if data, err := h.cache.Get(ctx, cacheKey); err == nil {
-			var result GetNodesByUserResult
-			if err := json.Unmarshal(data, &result); err == nil {
-				h.logger.Debug("Cache hit for user nodes",
-					ports.Field{Key: "user_id", Value: q.UserID})
-				return &result, nil
-			}
-		}
-	}
+	// IMPORTANT: Cache disabled in Lambda environment to prevent stale data
+	// NoOpCache is used but we skip cache checks entirely for performance
 	
 	// Build query options
 	options := ports.QueryOptions{
@@ -137,17 +125,7 @@ func (h *GetNodesByUserHandler) Handle(ctx context.Context, query cqrs.Query) (c
 		HasMore:    queryResult.HasMore,
 	}
 	
-	// Cache the result for a shorter time since lists change frequently
-	if h.cache != nil {
-		if data, err := json.Marshal(result); err == nil {
-			cacheKey := q.GetCacheKey()
-			if err := h.cache.Set(ctx, cacheKey, data, 1*time.Minute); err != nil {
-				h.logger.Warn("Failed to cache user nodes",
-					ports.Field{Key: "user_id", Value: q.UserID},
-					ports.Field{Key: "error", Value: err.Error()})
-			}
-		}
-	}
+	// Cache disabled - no caching in Lambda environment
 	
 	h.logger.Debug("Retrieved nodes for user",
 		ports.Field{Key: "user_id", Value: q.UserID},

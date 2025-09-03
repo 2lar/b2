@@ -29,7 +29,7 @@ func NewEventBridgePublisher(client *eventbridge.Client, eventBus, source string
 		eventBus = "default"
 	}
 	if source == "" {
-		source = "brain2-backend"
+		source = "brain2.api"
 	}
 	
 	publisher := &EventBridgePublisher{
@@ -131,6 +131,30 @@ func (p *EventBridgePublisher) createEventEntry(event shared.DomainEvent) (types
 	detailMap["event_type"] = event.EventType()
 	detailMap["occurred_at"] = time.Now().Format(time.RFC3339)
 	detailMap["version"] = event.Version()
+	
+	// Add camelCase versions for connect-node Lambda compatibility
+	// IMPORTANT: These must be set AFTER unmarshaling to avoid being overwritten
+	detailMap["nodeId"] = event.AggregateID()  // Expected by connect-node Lambda
+	detailMap["userId"] = event.UserID()       // Expected by connect-node Lambda
+	
+	// For NodeCreated events, ensure keywords are available in the expected format
+	// The connect-node Lambda expects "keywords" field to be present
+	if event.EventType() == "NodeCreated" {
+		// Check if keywords exist in the unmarshaled data
+		// The shared.NodeCreatedEvent has a Keywords field (capital K)
+		if keywords, ok := detailMap["Keywords"]; ok {
+			// Copy to lowercase for Lambda compatibility
+			detailMap["keywords"] = keywords
+		} else if _, ok := detailMap["keywords"]; !ok {
+			// If no keywords at all, create empty array
+			detailMap["keywords"] = []string{}
+		}
+		
+		// Also ensure content is available if needed
+		if content, ok := detailMap["Content"]; ok {
+			detailMap["content"] = content
+		}
+	}
 	
 	// Also keep metadata for backward compatibility
 	metadata := map[string]interface{}{
@@ -247,7 +271,45 @@ func (p *EventBridgePublisher) createCoreEventEntry(event coreEvents.DomainEvent
 		"aggregateType": event.GetAggregateType(),
 		"occurredAt":   event.GetOccurredAt().Format(time.RFC3339),
 		"version":      event.GetVersion(),
-		"data":         event.GetData(),
+	}
+	
+	// For NodeCreated events, extract the fields and put them at the top level
+	// This is required for the connect-node Lambda to properly receive the data
+	if event.GetEventType() == "NodeCreated" {
+		// Marshal the event data to extract fields
+		eventData := event.GetData()
+		eventJSON, err := json.Marshal(eventData)
+		if err != nil {
+			return types.PutEventsRequestEntry{}, fmt.Errorf("failed to marshal NodeCreated event: %w", err)
+		}
+		
+		// Unmarshal into a map to extract fields
+		var nodeCreatedData map[string]interface{}
+		if err := json.Unmarshal(eventJSON, &nodeCreatedData); err != nil {
+			return types.PutEventsRequestEntry{}, fmt.Errorf("failed to unmarshal NodeCreated data: %w", err)
+		}
+		
+		// Extract and add fields at the top level with both snake_case and camelCase
+		// The connect-node Lambda expects camelCase fields
+		if userID, ok := nodeCreatedData["user_id"]; ok {
+			detailMap["user_id"] = userID
+			detailMap["userId"] = userID  // camelCase for Lambda
+		}
+		
+		if keywords, ok := nodeCreatedData["keywords"]; ok {
+			detailMap["keywords"] = keywords
+		} else {
+			detailMap["keywords"] = []string{}  // Default empty array
+		}
+		
+		// Also add nodeId in camelCase for Lambda (same as aggregateId)
+		detailMap["nodeId"] = event.GetAggregateID()
+		
+		// Keep the full data for backward compatibility
+		detailMap["data"] = eventData
+	} else {
+		// For other events, keep the original structure
+		detailMap["data"] = event.GetData()
 	}
 	
 	// Add metadata
@@ -259,6 +321,14 @@ func (p *EventBridgePublisher) createCoreEventEntry(event coreEvents.DomainEvent
 		"ipAddress":     metadata.IPAddress,
 		"userAgent":     metadata.UserAgent,
 		"custom":        metadata.Custom,
+	}
+	
+	// For NodeCreated, also ensure userId is set from metadata if not already present
+	if event.GetEventType() == "NodeCreated" && metadata.UserID != "" {
+		if _, hasUserId := detailMap["userId"]; !hasUserId {
+			detailMap["userId"] = metadata.UserID
+			detailMap["user_id"] = metadata.UserID
+		}
 	}
 	
 	// Marshal the complete detail map

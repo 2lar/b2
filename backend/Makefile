@@ -20,7 +20,7 @@ INTERNAL_DIR := ./internal/...
 CMD_DIR := ./cmd/...
 
 # Build variables
-LAMBDA_FUNCS := memory category health
+LAMBDA_FUNCS := main
 BUILD_DIR := bin
 COVERAGE_FILE := coverage.out
 COVERAGE_HTML := coverage.html

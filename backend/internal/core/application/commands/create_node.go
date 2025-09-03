@@ -4,6 +4,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 	
 	"brain2-backend/internal/core/application/cqrs"
@@ -63,6 +64,7 @@ type CreateNodeHandler struct {
 	eventStore    ports.EventStore
 	eventBus      ports.EventBus
 	uowFactory    ports.UnitOfWorkFactory
+	cache         ports.Cache
 	logger        ports.Logger
 	metrics       ports.Metrics
 }
@@ -81,6 +83,7 @@ func NewCreateNodeHandler(
 		eventStore: eventStore,
 		eventBus:   eventBus,
 		uowFactory: uowFactory,
+		cache:      nil, // Cache will be injected if available
 		logger:     logger,
 		metrics:    metrics,
 	}
@@ -138,10 +141,10 @@ func (h *CreateNodeHandler) Handle(ctx context.Context, cmd cqrs.Command) error 
 	}
 	
 	// Get uncommitted events
-	events := aggregate.GetUncommittedEvents()
+	domainEvents := aggregate.GetUncommittedEvents()
 	
 	// Save to event store
-	if err := h.eventStore.SaveEvents(ctx, aggregate.GetID(), events, 0); err != nil {
+	if err := h.eventStore.SaveEvents(ctx, aggregate.GetID(), domainEvents, 0); err != nil {
 		h.metrics.IncrementCounter("node.creation.failed",
 			ports.Tag{Key: "reason", Value: "event_store"})
 		return fmt.Errorf("failed to save events: %w", err)
@@ -162,8 +165,35 @@ func (h *CreateNodeHandler) Handle(ctx context.Context, cmd cqrs.Command) error 
 	// Mark events as committed
 	aggregate.MarkEventsAsCommitted()
 	
-	// Publish events asynchronously
-	go h.publishEvents(context.Background(), events)
+	// Edge creation is handled asynchronously via EventBridge/connect-node Lambda
+	// This provides better scalability for users with thousands of memories
+	
+	// Invalidate cache for user's nodes and graph (synchronous to ensure consistency)
+	if h.cache != nil {
+		h.invalidateUserCache(ctx, command.UserID)
+	}
+	
+	// Publish events synchronously to ensure NodeCreated event triggers edge creation
+	// Extract keywords for the event
+	keywords := h.extractKeywords(aggregate.GetContent(), aggregate.GetTags())
+	
+	// Create NodeCreated event with keywords
+	nodeCreatedEvent := events.NewNodeCreatedEvent(
+		aggregate.GetID(),
+		command.UserID,
+		aggregate.GetContent(),
+		aggregate.GetTitle(),
+	)
+	nodeCreatedEvent.Keywords = keywords
+	
+	// Publish the NodeCreated event to trigger connect-node Lambda
+	if err := h.eventBus.Publish(ctx, nodeCreatedEvent); err != nil {
+		h.logger.Error("Failed to publish NodeCreated event", err,
+			ports.Field{Key: "node_id", Value: aggregate.GetID()})
+	}
+	
+	// Publish other domain events asynchronously
+	go h.publishEvents(context.Background(), domainEvents)
 	
 	// Record metrics
 	h.metrics.IncrementCounter("node.created",
@@ -188,6 +218,132 @@ func (h *CreateNodeHandler) checkIdempotency(ctx context.Context, key string) (b
 	// Implementation would check an idempotency store
 	// For now, return false to indicate not processed
 	return false, nil
+}
+
+// extractKeywords extracts relevant keywords from content and tags for edge creation
+func (h *CreateNodeHandler) extractKeywords(content string, tags []string) []string {
+	keywordMap := make(map[string]bool)
+	
+	// Priority 1: Add all user-provided tags (highest relevance)
+	for _, tag := range tags {
+		normalized := strings.ToLower(strings.TrimSpace(tag))
+		if normalized != "" {
+			keywordMap[normalized] = true
+		}
+	}
+	
+	// Priority 2: Extract meaningful words from content
+	// Convert to lowercase and split by spaces and punctuation
+	content = strings.ToLower(content)
+	// Replace common punctuation with spaces for better word extraction
+	for _, punct := range []string{".", ",", "!", "?", ";", ":", "\"", "'", "(", ")", "[", "]", "{", "}"} {
+		content = strings.ReplaceAll(content, punct, " ")
+	}
+	
+	// Common stop words to filter out
+	stopWords := map[string]bool{
+		"the": true, "and": true, "is": true, "it": true, "to": true,
+		"of": true, "in": true, "for": true, "on": true, "at": true,
+		"with": true, "by": true, "from": true, "an": true, "as": true,
+		"or": true, "but": true, "not": true, "this": true, "that": true,
+		"was": true, "will": true, "are": true, "been": true, "have": true,
+		"had": true, "were": true, "said": true, "each": true, "which": true,
+		"she": true, "their": true, "would": true, "there": true, "could": true,
+		"only": true, "other": true, "than": true, "when": true,
+		"make": true, "made": true, "after": true, "also": true, "before": true,
+	}
+	
+	// Extract words and count frequency
+	wordFreq := make(map[string]int)
+	words := strings.Fields(content)
+	for _, word := range words {
+		word = strings.TrimSpace(word)
+		// Keep words that are 4+ characters and not stop words
+		if len(word) >= 4 && !stopWords[word] {
+			wordFreq[word]++
+		}
+	}
+	
+	// Sort words by frequency and take top keywords
+	type wordCount struct {
+		word  string
+		count int
+	}
+	var sortedWords []wordCount
+	for word, count := range wordFreq {
+		sortedWords = append(sortedWords, wordCount{word, count})
+	}
+	
+	// Sort by count (descending)
+	for i := 0; i < len(sortedWords); i++ {
+		for j := i + 1; j < len(sortedWords); j++ {
+			if sortedWords[j].count > sortedWords[i].count {
+				sortedWords[i], sortedWords[j] = sortedWords[j], sortedWords[i]
+			}
+		}
+	}
+	
+	// Add top frequent words to keywords (limit to avoid too many)
+	maxContentKeywords := 10 - len(tags) // Reserve space for tags
+	if maxContentKeywords < 5 {
+		maxContentKeywords = 5
+	}
+	
+	for i, wc := range sortedWords {
+		if i >= maxContentKeywords {
+			break
+		}
+		// Only add words that appear more than once or are particularly long (likely important)
+		if wc.count > 1 || len(wc.word) >= 7 {
+			keywordMap[wc.word] = true
+		}
+	}
+	
+	// Convert map to slice
+	var keywords []string
+	for keyword := range keywordMap {
+		keywords = append(keywords, keyword)
+	}
+	
+	// Limit total keywords to 15 for efficiency
+	if len(keywords) > 15 {
+		keywords = keywords[:15]
+	}
+	
+	return keywords
+}
+
+// SetCache sets the cache instance for the handler
+func (h *CreateNodeHandler) SetCache(cache ports.Cache) {
+	h.cache = cache
+}
+
+// invalidateUserCache invalidates cached data for a user
+func (h *CreateNodeHandler) invalidateUserCache(ctx context.Context, userID string) {
+	// Clear ALL cache patterns for the user to ensure consistency
+	patterns := []string{
+		fmt.Sprintf("nodes:user:%s:*", userID),    // User's nodes list
+		fmt.Sprintf("graph:user:%s:*", userID),      // User's graph data  
+		fmt.Sprintf("node:%s:*", userID),           // Individual nodes
+		fmt.Sprintf("user:%s:*", userID),           // Any user-specific cache
+		fmt.Sprintf("*:%s:*", userID),              // Any cache with userID
+		fmt.Sprintf("*%s*", userID),                // Catch-all for userID anywhere
+	}
+	
+	for _, pattern := range patterns {
+		if err := h.cache.Delete(ctx, pattern); err != nil {
+			h.logger.Debug("Failed to invalidate cache",
+				ports.Field{Key: "pattern", Value: pattern},
+				ports.Field{Key: "error", Value: err.Error()})
+		}
+	}
+	
+	// For Lambda environments, also try to clear the entire cache
+	// This ensures no stale data persists between invocations
+	if err := h.cache.Delete(ctx, "*"); err != nil {
+		h.logger.Debug("Failed to clear all cache",
+			ports.Field{Key: "error", Value: err.Error()})
+	}
 }
 
 // publishEvents publishes events to the event bus

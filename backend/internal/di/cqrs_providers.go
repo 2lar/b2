@@ -82,7 +82,7 @@ func provideCoreEventBus(
 	return eventbridge.NewEventBridgePublisher(
 		client,
 		cfg.Events.EventBusName,
-		"brain2-backend",
+		"brain2.api",
 		logger,
 	)
 }

@@ -8,6 +8,7 @@ import (
 	"brain2-backend/internal/core/application/cqrs"
 	"brain2-backend/internal/core/application/ports"
 	"brain2-backend/internal/core/domain/events"
+	"brain2-backend/internal/core/infrastructure/adapters/dynamodb"
 )
 
 // DeleteNodeCommand represents a command to delete a node
@@ -38,6 +39,7 @@ type DeleteNodeHandler struct {
 	edgeRepo   ports.EdgeRepository
 	eventBus   ports.EventBus
 	uowFactory ports.UnitOfWorkFactory
+	cache      ports.Cache
 	logger     ports.Logger
 	metrics    ports.Metrics
 }
@@ -56,6 +58,7 @@ func NewDeleteNodeHandler(
 		edgeRepo:   edgeRepo,
 		eventBus:   eventBus,
 		uowFactory: uowFactory,
+		cache:      nil, // Cache will be injected if available
 		logger:     logger,
 		metrics:    metrics,
 	}
@@ -80,15 +83,24 @@ func (h *DeleteNodeHandler) Handle(ctx context.Context, command cqrs.Command) er
 	defer uow.Rollback()
 	
 	// Get the node to verify it exists and belongs to the user
-	node, err := h.nodeRepo.FindByID(ctx, cmd.NodeID)
-	if err != nil {
-		h.metrics.IncrementCounter("command.delete_node.not_found")
-		return fmt.Errorf("node not found: %w", err)
-	}
-	
-	if node.GetUserID() != cmd.UserID {
-		h.metrics.IncrementCounter("command.delete_node.unauthorized")
-		return fmt.Errorf("unauthorized: node does not belong to user")
+	// Use FindByUserAndID if available to avoid scans
+	if repo, ok := h.nodeRepo.(*dynamodb.NodeRepository); ok {
+		_, err = repo.FindByUserAndID(ctx, cmd.UserID, cmd.NodeID)
+		if err != nil {
+			h.metrics.IncrementCounter("command.delete_node.not_found")
+			return fmt.Errorf("node not found: %w", err)
+		}
+	} else {
+		node, err := h.nodeRepo.FindByID(ctx, cmd.NodeID)
+		if err != nil {
+			h.metrics.IncrementCounter("command.delete_node.not_found")
+			return fmt.Errorf("node not found: %w", err)
+		}
+		
+		if node.GetUserID() != cmd.UserID {
+			h.metrics.IncrementCounter("command.delete_node.unauthorized")
+			return fmt.Errorf("unauthorized: node does not belong to user")
+		}
 	}
 	
 	// Delete all edges connected to this node
@@ -106,9 +118,17 @@ func (h *DeleteNodeHandler) Handle(ctx context.Context, command cqrs.Command) er
 		}
 	}
 	
-	// Delete the node
-	if err := h.nodeRepo.Delete(ctx, cmd.NodeID); err != nil {
-		return fmt.Errorf("failed to delete node: %w", err)
+	// Delete the node using the proper method
+	if repo, ok := h.nodeRepo.(*dynamodb.NodeRepository); ok {
+		// Use DeleteByUserAndID for DynamoDB to properly handle composite keys
+		if err := repo.DeleteByUserAndID(ctx, cmd.UserID, cmd.NodeID); err != nil {
+			return fmt.Errorf("failed to delete node: %w", err)
+		}
+	} else {
+		// Fallback to regular Delete for other implementations
+		if err := h.nodeRepo.Delete(ctx, cmd.NodeID); err != nil {
+			return fmt.Errorf("failed to delete node: %w", err)
+		}
 	}
 	
 	// Commit the transaction
@@ -128,6 +148,11 @@ func (h *DeleteNodeHandler) Handle(ctx context.Context, command cqrs.Command) er
 			ports.Field{Key: "node_id", Value: cmd.NodeID})
 	}
 	
+	// Invalidate cache for user's data
+	if h.cache != nil {
+		go h.invalidateUserCache(context.Background(), cmd.UserID)
+	}
+	
 	h.metrics.IncrementCounter("command.delete_node.success")
 	h.logger.Info("Node deleted successfully",
 		ports.Field{Key: "node_id", Value: cmd.NodeID},
@@ -140,4 +165,36 @@ func (h *DeleteNodeHandler) Handle(ctx context.Context, command cqrs.Command) er
 func (h *DeleteNodeHandler) CanHandle(command cqrs.Command) bool {
 	_, ok := command.(*DeleteNodeCommand)
 	return ok
+}
+
+// SetCache sets the cache instance for the handler
+func (h *DeleteNodeHandler) SetCache(cache ports.Cache) {
+	h.cache = cache
+}
+
+// invalidateUserCache invalidates cached data for a user
+func (h *DeleteNodeHandler) invalidateUserCache(ctx context.Context, userID string) {
+	// Clear ALL cache patterns for the user to ensure consistency
+	patterns := []string{
+		fmt.Sprintf("nodes:user:%s:*", userID),    // User's nodes list
+		fmt.Sprintf("graph:user:%s:*", userID),      // User's graph data
+		fmt.Sprintf("node:%s:*", userID),           // Individual nodes
+		fmt.Sprintf("user:%s:*", userID),           // Any user-specific cache
+		fmt.Sprintf("*:%s:*", userID),              // Any cache with userID
+	}
+	
+	for _, pattern := range patterns {
+		if err := h.cache.Delete(ctx, pattern); err != nil {
+			h.logger.Debug("Failed to invalidate cache",
+				ports.Field{Key: "pattern", Value: pattern},
+				ports.Field{Key: "error", Value: err.Error()})
+		}
+	}
+	
+	// Also try to clear the entire cache if pattern matching is not supported
+	// This is a more aggressive approach but ensures consistency
+	if err := h.cache.Delete(ctx, "*"); err != nil {
+		h.logger.Debug("Failed to clear all cache",
+			ports.Field{Key: "error", Value: err.Error()})
+	}
 }

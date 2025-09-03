@@ -109,44 +109,20 @@ func (r *EdgeRepository) DeleteEdge(ctx context.Context, sourceID, targetID stri
 func (r *EdgeRepository) FindEdgesByNode(ctx context.Context, nodeID string) ([]ports.Edge, error) {
 	var edges []ports.Edge
 	
-	// Query edges where node is the source
-	sourceInput := &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		IndexName:              aws.String("GSI1"),
-		KeyConditionExpression: aws.String("GSI1PK = :pk"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", nodeID)},
-		},
-	}
-	
-	sourceResult, err := r.client.Query(ctx, sourceInput)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query source edges: %w", err)
-	}
-	
-	for _, item := range sourceResult.Items {
-		var edge ports.Edge
-		if err := attributevalue.UnmarshalMap(item, &edge); err != nil {
-			r.logger.Warn("Failed to unmarshal edge",
-				ports.Field{Key: "error", Value: err.Error()})
-			continue
-		}
-		edges = append(edges, edge)
-	}
-	
-	// Query edges where node is the target
-	// This requires a separate GSI or scan - for simplicity, we'll scan with filter
+	// Since we don't have the GSI1 index yet, we need to use scan with filters
+	// This is less efficient but works without the index
+	// Scan for edges where node is either source or target
 	scanInput := &dynamodb.ScanInput{
 		TableName:        aws.String(r.tableName),
-		FilterExpression: aws.String("TargetID = :target"),
+		FilterExpression: aws.String("SourceID = :nodeId OR TargetID = :nodeId"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":target": &types.AttributeValueMemberS{Value: nodeID},
+			":nodeId": &types.AttributeValueMemberS{Value: nodeID},
 		},
 	}
 	
 	scanResult, err := r.client.Scan(ctx, scanInput)
 	if err != nil {
-		return nil, fmt.Errorf("failed to scan target edges: %w", err)
+		return nil, fmt.Errorf("failed to scan edges: %w", err)
 	}
 	
 	for _, item := range scanResult.Items {
@@ -156,17 +132,7 @@ func (r *EdgeRepository) FindEdgesByNode(ctx context.Context, nodeID string) ([]
 				ports.Field{Key: "error", Value: err.Error()})
 			continue
 		}
-		// Avoid duplicates
-		isDuplicate := false
-		for _, e := range edges {
-			if e.ID == edge.ID {
-				isDuplicate = true
-				break
-			}
-		}
-		if !isDuplicate {
-			edges = append(edges, edge)
-		}
+		edges = append(edges, edge)
 	}
 	
 	return edges, nil

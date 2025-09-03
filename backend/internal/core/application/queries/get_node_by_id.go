@@ -3,13 +3,12 @@ package queries
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"time"
 	
 	"brain2-backend/internal/core/application/cqrs"
 	"brain2-backend/internal/core/application/ports"
 	"brain2-backend/internal/core/domain/aggregates/node"
+	"brain2-backend/internal/core/infrastructure/adapters/dynamodb"
 )
 
 // GetNodeByIDQuery represents a query to get a node by ID
@@ -77,45 +76,39 @@ func (h *GetNodeByIDHandler) Handle(ctx context.Context, query cqrs.Query) (cqrs
 		return nil, fmt.Errorf("invalid query type")
 	}
 	
-	// Check cache first
-	if h.cache != nil {
-		cacheKey := q.GetCacheKey()
-		if data, err := h.cache.Get(ctx, cacheKey); err == nil {
-			var result GetNodeByIDResult
-			if err := json.Unmarshal(data, &result); err == nil {
-				h.logger.Debug("Cache hit for node",
-					ports.Field{Key: "node_id", Value: q.NodeID})
-				return &result, nil
-			}
+	// IMPORTANT: Cache disabled in Lambda environment to prevent stale data
+	// NoOpCache is used but we skip cache checks entirely for performance
+	
+	// Get node from repository using both UserID and NodeID for efficient query
+	// Try to use FindByUserAndID if available, otherwise fall back to FindByID
+	var nodeAgg *node.Aggregate
+	var err error
+	
+	// Check if the repository has the FindByUserAndID method
+	if repo, ok := h.nodeRepo.(*dynamodb.NodeRepository); ok {
+		// Use the efficient GetItem query
+		nodeAgg, err = repo.FindByUserAndID(ctx, q.UserID, q.NodeID)
+		if err != nil {
+			return nil, fmt.Errorf("node not found: %w", err)
 		}
-	}
-	
-	// Get node from repository
-	nodeAgg, err := h.nodeRepo.FindByID(ctx, q.NodeID)
-	if err != nil {
-		return nil, fmt.Errorf("node not found: %w", err)
-	}
-	
-	// Verify the node belongs to the user
-	if nodeAgg.GetUserID() != q.UserID {
-		return nil, fmt.Errorf("unauthorized: node does not belong to user")
+	} else {
+		// Fall back to FindByID and verify ownership
+		nodeAgg, err = h.nodeRepo.FindByID(ctx, q.NodeID)
+		if err != nil {
+			return nil, fmt.Errorf("node not found: %w", err)
+		}
+		
+		// Verify the node belongs to the user
+		if nodeAgg.GetUserID() != q.UserID {
+			return nil, fmt.Errorf("unauthorized: node does not belong to user")
+		}
 	}
 	
 	result := &GetNodeByIDResult{
 		Node: nodeAgg,
 	}
 	
-	// Cache the result
-	if h.cache != nil {
-		if data, err := json.Marshal(result); err == nil {
-			cacheKey := q.GetCacheKey()
-			if err := h.cache.Set(ctx, cacheKey, data, 5*time.Minute); err != nil {
-				h.logger.Warn("Failed to cache node",
-					ports.Field{Key: "node_id", Value: q.NodeID},
-					ports.Field{Key: "error", Value: err.Error()})
-			}
-		}
-	}
+	// Cache disabled - no caching in Lambda environment
 	
 	return result, nil
 }

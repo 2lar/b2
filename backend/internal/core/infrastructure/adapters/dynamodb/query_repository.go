@@ -61,7 +61,7 @@ func (r *QueryRepository) FindNodesByUser(ctx context.Context, userID string, op
 		// Extract node data
 		nodeView := ports.NodeView{}
 		
-		if v, ok := item["ID"]; ok {
+		if v, ok := item["NodeID"]; ok {
 			if s, ok := v.(*types.AttributeValueMemberS); ok {
 				nodeView.ID = s.Value
 			}
@@ -92,18 +92,20 @@ func (r *QueryRepository) FindNodesByUser(ctx context.Context, userID string, op
 		}
 		
 		if v, ok := item["CreatedAt"]; ok {
-			if n, ok := v.(*types.AttributeValueMemberN); ok {
-				var ts int64
-				fmt.Sscanf(n.Value, "%d", &ts)
-				nodeView.CreatedAt = ts
+			if s, ok := v.(*types.AttributeValueMemberS); ok {
+				// Parse RFC3339 timestamp string to Unix timestamp
+				if t, err := time.Parse(time.RFC3339, s.Value); err == nil {
+					nodeView.CreatedAt = t.Unix()
+				}
 			}
 		}
 		
 		if v, ok := item["UpdatedAt"]; ok {
-			if n, ok := v.(*types.AttributeValueMemberN); ok {
-				var ts int64
-				fmt.Sscanf(n.Value, "%d", &ts)
-				nodeView.UpdatedAt = ts
+			if s, ok := v.(*types.AttributeValueMemberS); ok {
+				// Parse RFC3339 timestamp string to Unix timestamp
+				if t, err := time.Parse(time.RFC3339, s.Value); err == nil {
+					nodeView.UpdatedAt = t.Unix()
+				}
 			}
 		}
 		
