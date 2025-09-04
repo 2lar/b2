@@ -20,8 +20,12 @@ type NodeCreatedEvent struct {
 
 // NewNodeCreatedEvent creates a new node created event
 func NewNodeCreatedEvent(nodeID, userID, content, title string) *NodeCreatedEvent {
+	baseEvent := NewBaseEvent(nodeID, "Node", "NodeCreated", 1)
+	// IMPORTANT: Set UserID in metadata for EventBridge handlers
+	baseEvent.Metadata.UserID = userID
+	
 	return &NodeCreatedEvent{
-		BaseEvent: *NewBaseEvent(nodeID, "Node", "NodeCreated", 1),
+		BaseEvent: *baseEvent,
 		UserID:    userID,
 		Content:   content,
 		Title:     title,
@@ -194,6 +198,20 @@ var (
 	_ DomainEvent = (*NodeTaggedEvent)(nil)
 	_ DomainEvent = (*NodeKeywordsExtractedEvent)(nil)
 )
+
+// GetData implementations for proper event data serialization
+
+func (e *NodeCreatedEvent) GetData() interface{} {
+	// Return the full NodeCreatedEvent struct so keywords are included
+	return map[string]interface{}{
+		"user_id":      e.UserID,
+		"content":      e.Content,
+		"title":        e.Title,
+		"tags":         e.Tags,
+		"keywords":     e.Keywords,
+		"category_ids": e.CategoryIDs,
+	}
+}
 
 // Marshal implementations for each event type
 

@@ -174,8 +174,8 @@ func (h *CreateNodeHandler) Handle(ctx context.Context, cmd cqrs.Command) error 
 	}
 	
 	// Publish events synchronously to ensure NodeCreated event triggers edge creation
-	// Extract keywords for the event
-	keywords := h.extractKeywords(aggregate.GetContent(), aggregate.GetTags())
+	// Use keywords from the aggregate - these are already properly extracted
+	aggregateKeywords := aggregate.GetKeywords()
 	
 	// Create NodeCreated event with keywords
 	nodeCreatedEvent := events.NewNodeCreatedEvent(
@@ -184,7 +184,7 @@ func (h *CreateNodeHandler) Handle(ctx context.Context, cmd cqrs.Command) error 
 		aggregate.GetContent(),
 		aggregate.GetTitle(),
 	)
-	nodeCreatedEvent.Keywords = keywords
+	nodeCreatedEvent.Keywords = aggregateKeywords
 	
 	// Publish the NodeCreated event to trigger connect-node Lambda
 	if err := h.eventBus.Publish(ctx, nodeCreatedEvent); err != nil {
@@ -293,8 +293,9 @@ func (h *CreateNodeHandler) extractKeywords(content string, tags []string) []str
 		if i >= maxContentKeywords {
 			break
 		}
-		// Only add words that appear more than once or are particularly long (likely important)
-		if wc.count > 1 || len(wc.word) >= 7 {
+		// Add meaningful words - relaxed criteria for better edge creation
+		// Include words that are 5+ chars (even if they appear once)
+		if wc.count > 1 || len(wc.word) >= 5 {
 			keywordMap[wc.word] = true
 		}
 	}

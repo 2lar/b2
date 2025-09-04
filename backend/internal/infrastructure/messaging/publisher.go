@@ -25,6 +25,12 @@ type EventBridgePublisher struct {
 
 // NewEventBridgePublisher creates a new EventBridge publisher
 func NewEventBridgePublisher(client *eventbridge.Client, eventBus, source string) repository.EventPublisher {
+	return NewConcreteEventBridgePublisher(client, eventBus, source)
+}
+
+// NewConcreteEventBridgePublisher creates a new EventBridge publisher and returns the concrete type
+// This is useful for adapters that need the concrete type
+func NewConcreteEventBridgePublisher(client *eventbridge.Client, eventBus, source string) *EventBridgePublisher {
 	if eventBus == "" {
 		eventBus = "default"
 	}

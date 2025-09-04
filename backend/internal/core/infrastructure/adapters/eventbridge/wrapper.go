@@ -24,17 +24,12 @@ func NewEventBridgePublisher(
 	source string,
 	logger ports.Logger,
 ) ports.EventBus {
-	publisher := messaging.NewEventBridgePublisher(client, eventBusName, source)
-	
-	// Type assert to get the concrete type
-	ebPublisher, ok := publisher.(*messaging.EventBridgePublisher)
-	if !ok {
-		// Fallback to a simple implementation
-		return &SimpleEventBus{logger: logger}
-	}
+	// Create the EventBridge publisher using the concrete constructor
+	// This ensures we get the concrete type directly
+	publisher := messaging.NewConcreteEventBridgePublisher(client, eventBusName, source)
 	
 	return &EventBusAdapter{
-		publisher: ebPublisher,
+		publisher: publisher,
 		logger:    logger,
 	}
 }
