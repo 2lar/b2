@@ -185,20 +185,19 @@ Navigate to the `frontend/` directory to run these commands.
 *   `npm test`: Runs TypeScript type checking (`tsc --noEmit`) to catch type-related errors. (Note: This project currently lacks comprehensive unit/integration tests for the frontend beyond type checking.)
 *   `npm run clean`: Removes `node_modules` and `dist` directories.
 
-#### Backend (`backend/` directory)
+#### Backend (`backend2/` directory)
 
-Navigate to the `backend/` directory to run these commands.
+Navigate to the `backend2/` directory to run these commands.
 
-*   `./build.sh`: This script cleans, installs dependencies, runs tests, generates dependency injection code, and builds all Go Lambda functions.
+*   `./build.sh`: Builds all Lambda functions for deployment to AWS, creating binaries in the `build/` directory.
+*   `./run-local.sh`: Runs the backend API server locally on port 8080 for development and debugging.
 *   **Wire (Dependency Injection) Commands:**
     *   `go install github.com/google/wire/cmd/wire@latest`: Installs the Wire code generation tool.
-    *   `go generate ./internal/di`: Generates dependency injection code based on `wire` directives. This is also run by `./build.sh`.
-*   **OpenAPI Code Generation (Inferred):**
-    *   `oapi-codegen -package api -generate types,server -o pkg/api/api.gen.go ../openapi.yaml`: This command is inferred for generating Go server-side API code from `openapi.yaml`. Its explicit usage is not found in existing scripts, but it's a common pattern for `oapi-codegen`.
+    *   `go generate ./infrastructure/di`: Generates dependency injection code based on `wire` directives.
 *   `go mod tidy`: Cleans up unused dependencies and adds missing ones in `go.mod` and `go.sum`.
-*   `go build ./cmd/main`: Compiles the main backend Lambda function executable. You might need to specify `GOOS=linux GOARCH=amd64` for AWS Lambda compatibility.
-*   `go test ./...`: Runs all unit and integration tests within the backend project.
-*   `go run ./cmd/main`: Runs the main backend application locally (useful for local development and debugging outside of a Lambda environment).
+*   `go test ./...`: Runs all tests within the backend project.
+*   `go fmt ./...`: Formats all Go code to match the standard Go formatting conventions.
+*   `go vet ./...`: Runs Go's built-in static analyzer to find potential issues in the code.
 
 #### Infrastructure (`infra/` directory)
 

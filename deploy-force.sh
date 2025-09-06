@@ -10,15 +10,15 @@ echo "=========================================="
 # Step 1: Force rebuild backend
 echo ""
 echo "📦 Step 1/4: Force rebuilding backend..."
-cd /home/wsl/b2/backend
-chmod +x build-force.sh
-./build-force.sh
+cd /home/wsl/b2/backend2
+chmod +x build.sh
+./build.sh
 
-# Verify main binary was updated
-if [ -f "build/main/bootstrap" ]; then
-    echo "✅ Main Lambda binary updated: $(date -r build/main/bootstrap)"
+# Verify Lambda binaries were created
+if [ -d "build/lambda" ] || [ -d "build/api" ]; then
+    echo "✅ Lambda binaries built successfully"
 else
-    echo "❌ Main Lambda binary not found!"
+    echo "❌ Lambda build directories not found!"
     exit 1
 fi
 
@@ -86,5 +86,5 @@ echo "   - 'DEBUG HANDLER: Decoded request'"
 echo "   - 'DEBUG HANDLER: Created command'"
 echo ""
 echo "If debug logs don't appear, try:"
-echo "  aws lambda update-function-code --function-name <your-function> --zip-file fileb://backend/build/main/bootstrap.zip"
+echo "  aws lambda update-function-code --function-name <your-function> --zip-file fileb://backend2/build/lambda/bootstrap.zip"
 echo "=========================================="

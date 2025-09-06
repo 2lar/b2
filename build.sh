@@ -89,11 +89,11 @@ print_status "=================================================="
 
 print_status "Step 1/4: Building Backend Go Lambda..."
 
-cd backend
+cd backend2
 
 if [ ! -f "build.sh" ]; then
     print_error "Backend build script not found!"
-    print_error "Expected: backend/build.sh"
+    print_error "Expected: backend2/build.sh"
     print_error "Current directory: $(pwd)"
     exit 1
 fi
@@ -105,9 +105,10 @@ chmod +x build.sh
 print_status "Building backend with environment: ${PROJECT_ENV:-default}"
 ./build.sh
 
-if [ ! -f "build/function.zip" ]; then
-    print_error "Backend build failed - function.zip not created"
-    print_error "Expected artifact: backend/build/function.zip"
+# Check if any of the Lambda build directories exist
+if [ ! -d "build/lambda" ] && [ ! -d "build/api" ]; then
+    print_error "Backend build failed - no build directories created"
+    print_error "Expected artifacts in: backend2/build/"
     print_error "Check backend build logs for compilation errors"
     exit 1
 fi
@@ -222,7 +223,7 @@ print_success "Build Complete! 🎉"
 print_status "=================================================="
 
 print_status "Build Summary:"
-print_status "  ✅ Backend (Go Lambda): backend/build/"
+print_status "  ✅ Backend (Go Lambda): backend2/build/"
 print_status "  ✅ Lambda Authorizer: infra/lambda/authorizer/index.js"
 print_status "  ✅ Frontend: frontend/dist/"
 print_status "  ✅ Infrastructure: infra/cdk.out"
@@ -234,7 +235,7 @@ print_status ""
 print_status "Next steps:"
 print_status "  1. Deploy infrastructure: cd infra && npx cdk deploy"
 print_status "  2. Or run individual components for development"
-print_status "    - Backend: cd backend && go run ./cmd/main"
+print_status "    - Backend: cd backend2 && ./run-local.sh"
 print_status "    - Frontend: cd frontend && npm run dev"
 print_status "  3. Monitor deployment: Check AWS console for resource status"
 print_status "=================================================="
