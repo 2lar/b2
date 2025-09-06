@@ -56,42 +56,51 @@ export class ComputeStack extends Stack {
     // Main Backend Lambda (Go) - Match original b2-stack pattern
     this.backendLambda = new lambda.Function(this, 'BackendLambda', {
       runtime: lambda.Runtime.PROVIDED_AL2,
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/main')),
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/lambda')),
       handler: 'bootstrap',
       memorySize: 128,
       timeout: Duration.seconds(30),
       environment: {
         TABLE_NAME: memoryTable.tableName,
+        DYNAMODB_TABLE: memoryTable.tableName,  // Fallback env var
         INDEX_NAME: 'KeywordIndex',
         EVENT_BUS_NAME: this.eventBus.eventBusName,
+        IS_LAMBDA: 'true',
+        ENVIRONMENT: 'development',
       },
     });
 
     // Node Connection Discovery Lambda (Go) - Match original b2-stack pattern
     this.connectNodeLambda = new lambda.Function(this, 'ConnectNodeLambda', {
       runtime: lambda.Runtime.PROVIDED_AL2,
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/connect-node')),
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/connect-node')),
       handler: 'bootstrap',
       memorySize: 128,
       timeout: Duration.seconds(30),
       environment: {
         TABLE_NAME: memoryTable.tableName,
+        DYNAMODB_TABLE: memoryTable.tableName,  // Fallback env var
         INDEX_NAME: 'KeywordIndex',
         EVENT_BUS_NAME: this.eventBus.eventBusName,
+        IS_LAMBDA: 'true',
+        ENVIRONMENT: 'development',
       },
     });
 
     // Cleanup Lambda (Go) - Async cleanup of node residuals
     this.cleanupLambda = new lambda.Function(this, 'CleanupLambda', {
       runtime: lambda.Runtime.PROVIDED_AL2,
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/cleanup-handler')),
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/cleanup-handler')),
       handler: 'bootstrap',
       memorySize: 256,  // More memory for batch operations
       timeout: Duration.seconds(60),  // Longer timeout for cleanup operations
       environment: {
         TABLE_NAME: memoryTable.tableName,
+        DYNAMODB_TABLE: memoryTable.tableName,  // Fallback env var
         INDEX_NAME: 'EdgeIndex',  // Use EdgeIndex for edge queries
         EVENT_BUS_NAME: this.eventBus.eventBusName,
+        IS_LAMBDA: 'true',
+        ENVIRONMENT: 'development',
       },
       // Note: No reserved concurrency - Lambda will auto-scale as needed
       // DynamoDB's built-in throttling will naturally limit request rate
@@ -100,7 +109,7 @@ export class ComputeStack extends Stack {
     // WebSocket Connect Lambda (Go) - Match original b2-stack pattern
     this.wsConnectLambda = new lambda.Function(this, 'wsConnectLambda', {
         runtime: lambda.Runtime.PROVIDED_AL2,
-        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/ws-connect')),
+        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/ws-connect')),
         handler: 'bootstrap',
         memorySize: 128,
         timeout: Duration.seconds(10),
@@ -114,7 +123,7 @@ export class ComputeStack extends Stack {
     // WebSocket Disconnect Lambda (Go) - Match original b2-stack pattern
     this.wsDisconnectLambda = new lambda.Function(this, 'wsDisconnectLambda', {
         runtime: lambda.Runtime.PROVIDED_AL2,
-        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/ws-disconnect')),
+        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/ws-disconnect')),
         handler: 'bootstrap',
         memorySize: 128,
         timeout: Duration.seconds(10),
@@ -127,7 +136,7 @@ export class ComputeStack extends Stack {
     // WebSocket Send Message Lambda (Go) - Match original b2-stack pattern
     this.wsSendMessageLambda = new lambda.Function(this, 'wsSendMessageLambda', {
         runtime: lambda.Runtime.PROVIDED_AL2,
-        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/ws-send-message')),
+        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/ws-send-message')),
         handler: 'bootstrap',
         memorySize: 128,
         timeout: Duration.seconds(10),

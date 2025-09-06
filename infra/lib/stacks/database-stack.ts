@@ -70,6 +70,20 @@ export class DatabaseStack extends Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // Global Secondary Index for graph lookups by ID - Required for graph retrieval
+    this.memoryTable.addGlobalSecondaryIndex({
+      indexName: 'GSI1',
+      partitionKey: { 
+        name: DYNAMODB_CONFIG.GSI1_PARTITION_KEY, 
+        type: dynamodb.AttributeType.STRING 
+      }, // GSI1PK: GRAPHID#{graphId}
+      sortKey: { 
+        name: DYNAMODB_CONFIG.GSI1_SORT_KEY, 
+        type: dynamodb.AttributeType.STRING 
+      }, // GSI1SK: METADATA
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // DynamoDB table for tracking WebSocket connections - Match original b2-stack
     this.connectionsTable = new dynamodb.Table(this, 'ConnectionsTable', {
       tableName: 'B2-Connections',

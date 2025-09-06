@@ -140,14 +140,41 @@ export const useGraphStore = create<GraphState>()(
           }));
 
           try {
-            const graphData = await api.getGraphData();
+            const graphData = await api.getGraphData() as any;
             
             // Convert to Maps for better performance
             const nodesMap = new Map();
             const edgesMap = new Map();
             
-            // Process elements to separate nodes and edges
-            if (graphData.elements) {
+            // Process nodes from the new API response format
+            if (graphData.nodes) {
+              graphData.nodes.forEach((node: any) => {
+                nodesMap.set(node.id, {
+                  nodeId: node.id,
+                  content: node.content || node.title || '',
+                  title: node.title,
+                  tags: node.tags || [],
+                  timestamp: node.metadata?.created_at || node.metadata?.updated_at || new Date().toISOString(),
+                  version: 0,
+                });
+              });
+            }
+            
+            // Process edges from the new API response format
+            if (graphData.edges) {
+              graphData.edges.forEach((edge: any) => {
+                const edgeId = `${edge.source}-${edge.target}`;
+                edgesMap.set(edgeId, {
+                  source: edge.source,
+                  target: edge.target,
+                  weight: edge.weight,
+                  type: edge.type,
+                });
+              });
+            }
+            
+            // Fallback to old format if needed (for backward compatibility)
+            if (!graphData.nodes && !graphData.edges && graphData.elements) {
               graphData.elements.forEach((element: any) => {
                 if (element.data && element.data.id && element.data.label) {
                   // This is a node

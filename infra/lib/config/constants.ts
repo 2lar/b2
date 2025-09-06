@@ -37,11 +37,12 @@ export const LAMBDA_CONFIG = {
   DEFAULT_TIMEOUT: 30,
   
   // Go Lambda specific paths
-  BACKEND_PATH: '../../backend/build/main',
-  CONNECT_NODE_PATH: '../../backend/build/connect-node',
-  WS_CONNECT_PATH: '../../backend/build/ws-connect',
-  WS_DISCONNECT_PATH: '../../backend/build/ws-disconnect',
-  WS_SEND_MESSAGE_PATH: '../../backend/build/ws-send-message',
+  BACKEND_PATH: '../../backend2/build/lambda',
+  CONNECT_NODE_PATH: '../../backend2/build/connect-node',
+  WS_CONNECT_PATH: '../../backend2/build/ws-connect',
+  WS_DISCONNECT_PATH: '../../backend2/build/ws-disconnect',
+  WS_SEND_MESSAGE_PATH: '../../backend2/build/ws-send-message',
+  CLEANUP_HANDLER_PATH: '../../backend2/build/cleanup-handler',
   
   // Node.js Lambda paths  
   AUTHORIZER_PATH: '../../lambda/authorizer',

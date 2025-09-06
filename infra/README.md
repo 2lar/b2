@@ -419,7 +419,7 @@ npm test -- --updateSnapshot
 
 - [ ] AWS credentials configured
 - [ ] Environment variables set
-- [ ] Backend Lambda functions built (`../backend/build/`)
+- [ ] Backend Lambda functions built (`../backend2/build/`)
 - [ ] Frontend assets built (`../frontend/dist/`)
 - [ ] Tests passing (`npm test`)
 
@@ -431,8 +431,8 @@ npm test -- --updateSnapshot
    npm run build-lambda
    
    # Build Go Lambda functions
-   cd ../backend
-   GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/main ./cmd/main
+   cd ../backend2
+   ./build.sh
    cd ../infra
    ```
 

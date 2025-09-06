@@ -68,6 +68,10 @@
 //
 // @tag.name System
 // @tag.description System health checks and operational endpoints
+// DEPRECATED: This backend is deprecated and replaced by backend2
+// DO NOT USE THIS FOR NEW DEVELOPMENT
+// See /backend2 for the new implementation
+
 package main
 
 import (
