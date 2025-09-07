@@ -529,8 +529,48 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         if (!cyRef.current) return;
         
         try {
-            const graphData = await nodesApi.getGraphData();
-            const elements = graphData.elements || [];
+            const graphData = await nodesApi.getGraphData() as any;
+            
+            // Convert new API format to Cytoscape elements format
+            const elements: any[] = [];
+            
+            // Add nodes
+            if (graphData.nodes) {
+                graphData.nodes.forEach((node: any) => {
+                    elements.push({
+                        data: {
+                            id: node.id,
+                            label: node.title || node.content || 'Untitled',
+                            content: node.content,
+                            title: node.title,
+                            timestamp: node.metadata?.created_at || node.metadata?.updated_at,
+                            tags: node.tags || []
+                        },
+                        position: node.position || { x: Math.random() * 500, y: Math.random() * 500 }
+                    });
+                });
+            }
+            
+            // Add edges
+            if (graphData.edges) {
+                graphData.edges.forEach((edge: any) => {
+                    elements.push({
+                        data: {
+                            id: edge.id || `${edge.source}-${edge.target}`,
+                            source: edge.source,
+                            target: edge.target,
+                            weight: edge.weight || 1,
+                            type: edge.type
+                        }
+                    });
+                });
+            }
+            
+            // Fallback to old format if needed
+            if (!graphData.nodes && !graphData.edges && graphData.elements) {
+                elements.push(...(graphData.elements || []));
+            }
+            
             const cy = cyRef.current;
             
             // Check if we actually need to update

@@ -12,6 +12,7 @@
     "precompile": "npm run clean",
     "build": "npm run typecheck && npm test && npm run synth",
     "build:with-env": "source ../scripts/load-env.sh infra && npm run build",
+    "build-lambda": "./build-lambda.sh",
     "watch": "npm run test:watch",
     "test": "jest",
     "test:unit": "jest --testPathPattern=test/unit",

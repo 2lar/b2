@@ -4,17 +4,44 @@ on:
   push:
     branches: [main]
     paths:
-      - 'backend/**'
+      - 'backend2/**'
       - 'infra/**'
       - '.github/workflows/deploy-backend.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend2/**'
+      - 'infra/**'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      test_level:
+        description: 'Test level to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - unit
+          - integration
+          - all
+          - skip
 
 permissions:
   id-token: write
   contents: read
+  pull-requests: write
 
 jobs:
-  deploy:
+  test:
+    name: Test Backend
     runs-on: ubuntu-latest
     
     steps:
@@ -24,24 +51,132 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: '1.21'
+        cache: true
+        cache-dependency-path: backend2/go.sum
     
-    - name: Build Lambda function
-      working-directory: ./backend
+    - name: Install dependencies
+      working-directory: ./backend2
       run: |
-        GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bootstrap main.go node_operations.go graph_operations.go
-        mkdir -p build
-        zip build/function.zip bootstrap
+        go mod download
+        go mod tidy
+    
+    - name: Install Wire
+      run: go install github.com/google/wire/cmd/wire@latest
+    
+    - name: Generate Wire code
+      working-directory: ./backend2/infrastructure/di
+      run: wire
+    
+    - name: Run unit tests
+      if: github.event_name == 'pull_request' || github.event.inputs.test_level == 'unit'
+      working-directory: ./backend2
+      run: go test ./tests/unit/...
+    
+    - name: Run all tests
+      if: github.event_name == 'push' || github.event.inputs.test_level == 'all'
+      working-directory: ./backend2
+      run: go test ./...
+    
+    - name: Generate test coverage
+      if: github.event_name == 'push'
+      working-directory: ./backend2
+      run: |
+        go test -coverprofile=coverage.out ./...
+        go tool cover -func=coverage.out | grep total | awk '{print "Total Coverage: " $3}'
+    
+    - name: Upload coverage reports
+      if: github.event_name == 'push'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./backend2/coverage.out
+        flags: backend2
+        name: backend2-coverage
+    
+    - name: Run code quality checks
+      working-directory: ./backend2
+      run: |
+        go fmt ./...
+        go vet ./...
+        
+        # Check if any files were modified by fmt
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "Code formatting issues detected. Please run 'go fmt ./...' locally."
+          exit 1
+        fi
+    
+    - name: Run security scan
+      working-directory: ./backend2
+      run: |
+        go install github.com/securego/gosec/v2/cmd/gosec@latest
+        gosec -fmt json -out security-report.json ./... || true
+        
+        # Check for critical issues
+        if [ -f security-report.json ]; then
+          critical=$(jq '.Issues | map(select(.severity == "HIGH" or .severity == "CRITICAL")) | length' security-report.json)
+          if [ "$critical" -gt 0 ]; then
+            echo "Critical security issues found!"
+            jq '.Issues | map(select(.severity == "HIGH" or .severity == "CRITICAL"))' security-report.json
+            exit 1
+          fi
+        fi
+
+  build:
+    name: Build Lambda Functions
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache: true
+        cache-dependency-path: backend2/go.sum
+    
+    - name: Build Lambda functions
+      working-directory: ./backend2
+      run: |
+        # Build all Lambda functions
+        ./build.sh
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: lambda-functions
+        path: backend2/build/
+        retention-days: 7
+
+  deploy:
+    name: Deploy to AWS
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
+      url: ${{ steps.deploy.outputs.app_url }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: lambda-functions
+        path: backend2/build/
     
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: infra/package-lock.json
     
     - name: Install CDK dependencies
       working-directory: ./infra
       run: npm ci
     
-    # NEW: Build frontend before CDK deploy
     - name: Build Frontend
       working-directory: ./frontend
       run: |
@@ -53,27 +188,104 @@ jobs:
       with:
         role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
         aws-region: ${{ secrets.AWS_REGION }}
-        
-    - name: Extract outputs
-      working-directory: ./infra
-      run: |
-        echo "API_URL=$(jq -r '.MemorybookStack.ApiUrl' outputs.json)" >> $GITHUB_ENV
-        echo "CLOUDFRONT_URL=$(jq -r '.MemorybookStack.CloudFrontUrl' outputs.json)" >> $GITHUB_ENV
     
-    - name: Display deployment info
-      run: |
-        echo "🚀 Backend deployed successfully!"
-        echo "API URL: ${{ env.API_URL }}"
-        echo "CloudFront URL: https://${{ env.CLOUDFRONT_URL }}"
-
     - name: Deploy with CDK
+      id: deploy
       working-directory: ./infra
       env:
         VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
-        # Add any other required secrets for the CDK here
-        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }} 
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
       run: |
         npm run build
-        npx cdk deploy --require-approval never --outputs-file outputs.json
+        npx cdk deploy --all --require-approval never --outputs-file outputs.json
+        
+        # Extract deployment URLs
+        API_URL=$(jq -r '.Brain2Stack.HttpApiUrl // empty' outputs.json)
+        WS_URL=$(jq -r '.Brain2Stack.WebSocketApiUrl // empty' outputs.json)
+        CF_URL=$(jq -r '.Brain2Stack.CloudFrontUrl // empty' outputs.json)
+        
+        # Set outputs
+        echo "app_url=https://${CF_URL}" >> $GITHUB_OUTPUT
+        echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
+        echo "ws_url=${WS_URL}" >> $GITHUB_OUTPUT
+    
+    - name: Validate deployment
+      run: |
+        API_URL="${{ steps.deploy.outputs.api_url }}"
+        
+        if [ -n "$API_URL" ]; then
+          echo "Testing API health endpoint..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" "${API_URL}/health" || echo "000")
+          
+          if [ "$response" = "200" ]; then
+            echo "✅ API health check passed"
+          else
+            echo "⚠️ API health check returned: ${response}"
+          fi
+        fi
+    
+    - name: Display deployment info
+      run: |
+        echo "🚀 Backend deployed successfully!"
+        echo "Environment: ${{ github.event.inputs.environment || 'dev' }}"
+        echo "Application URL: ${{ steps.deploy.outputs.app_url }}"
+        echo "API URL: ${{ steps.deploy.outputs.api_url }}"
+        echo "WebSocket URL: ${{ steps.deploy.outputs.ws_url }}"
+    
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const output = `### 🚀 Deployment Preview
+          
+          **Environment:** ${{ github.event.inputs.environment || 'dev' }}
+          **Application:** ${{ steps.deploy.outputs.app_url }}
+          **API:** ${{ steps.deploy.outputs.api_url }}
+          **WebSocket:** ${{ steps.deploy.outputs.ws_url }}
+          
+          ✅ All tests passed
+          ✅ Security scan passed
+          ✅ Deployment successful`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          });
+
+  performance:
+    name: Performance Benchmarks
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache: true
+        cache-dependency-path: backend2/go.sum
+    
+    - name: Run benchmarks
+      working-directory: ./backend2
+      run: |
+        go test -bench=. ./... > benchmark-results.txt
+        
+        # Display results
+        echo "### Performance Benchmark Results"
+        cat benchmark-results.txt
+    
+    - name: Store benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: backend2/benchmark-results.txt
+        retention-days: 30

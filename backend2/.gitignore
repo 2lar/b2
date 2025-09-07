@@ -1,0 +1,205 @@
+# Compiled binaries
+/cleanup-handler
+/connect-node
+/ws-connect
+/ws-disconnect
+/ws-send-message
+/api
+/lambda
+/migrate
+/worker
+/main
+/cmd/api/api
+/cmd/cleanup-handler/cleanup-handler
+/cmd/connect-node/connect-node
+/cmd/lambda/lambda
+/cmd/ws-connect/ws-connect
+/cmd/ws-disconnect/ws-disconnect
+/cmd/ws-send-message/ws-send-message
+
+# Build directories and artifacts
+/build/
+/dist/
+/coverage/
+/tmp/
+/temp/
+*.out
+*.test
+*.prof
+*.cov
+*.cover
+coverage.txt
+coverage.html
+coverage.xml
+c.out
+
+# Go specific
+vendor/
+go.work
+go.work.sum
+# Wire generated files (keep these as they're needed)
+!wire_gen.go
+# Go module cache
+/pkg/mod/
+# Go build cache
+/.cache/
+
+# Environment files
+.env
+.env.*
+*.local
+!.env.example
+!.env.sample
+
+# AWS Lambda packages
+*.zip
+deployment-package.zip
+function.zip
+
+# IDE and Editor files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+*.logs
+
+# Debug files
+debug
+debug.test
+*.pprof
+
+# Terraform (if using IaC)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+
+# Docker (if adding later)
+.dockerignore
+docker-compose.override.yml
+
+# Testing
+testdata/tmp/
+*.bench
+*.benchmem
+/tests/coverage/
+/tests/results/
+*.test.json
+
+# Documentation build
+docs/_build/
+docs/site/
+
+# Python (for AWS CDK if used)
+*.pyc
+__pycache__/
+.Python
+venv/
+.venv/
+
+# Node (for frontend tooling if needed)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Secrets and certificates
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+secrets/
+credentials/
+
+# Database dumps
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Generated files
+generated/
+gen/
+*.generated.go
+# Mock files
+*_mock.go
+mocks/
+# Protobuf generated files (if using gRPC)
+*.pb.go
+*.pb.gw.go
+
+# Dependency lock files we want to keep
+!go.mod
+!go.sum
+
+# Keep important shell scripts
+!*.sh
+
+# Keep important config files
+!*.yaml
+!*.yml
+!*.json
+!*.toml
+
+# But ignore local config overrides
+*.local.yaml
+*.local.yml
+*.local.json
+*.local.toml
+
+# Air live reload temp files (if using air for development)
+/tmp/
+.air.toml
+
+# DynamoDB local data (if using for local testing)
+.dynamodb/
+dynamodb_local_latest/
+
+# AWS SAM/CDK artifacts
+.aws-sam/
+.cdk.staging/
+.cdk.out/
+cdk.out/
+samconfig.toml
+
+# Delve debugger
+__debug_bin
+dlv
+
+# Go workspace files
+gopls.log
+
+# Performance profiles
+*.mprof
+*.alloc
+*.heap
+*.mutex
+
+# Local scripts that shouldn't be committed
+local-*.sh
+personal-*.sh

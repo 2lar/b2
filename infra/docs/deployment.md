@@ -164,15 +164,11 @@ The CDK automatically manages stack dependencies, but the logical order is:
 
 ### Go Lambda Functions
 ```bash
-# Navigate to backend directory
-cd ../backend
+# Navigate to backend2 directory
+cd ../backend2
 
-# Build for AWS Lambda
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/main ./cmd/main
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/connect-node ./cmd/connect-node
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/ws-connect ./cmd/ws-connect
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/ws-disconnect ./cmd/ws-disconnect
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/ws-send-message ./cmd/ws-send-message
+# Build all Lambda functions for AWS
+./build.sh
 
 # Return to infrastructure directory
 cd infra

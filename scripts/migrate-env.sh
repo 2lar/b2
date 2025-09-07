@@ -49,7 +49,7 @@ BACKUP_DIR="env-migration-backup-$(date +%Y%m%d-%H%M%S)"
 declare -A COMPONENT_FILES=(
     ["frontend"]="frontend/.env"
     ["infra"]="infra/.env"
-    ["backend"]="backend/.env"
+    ["backend2"]="backend2/.env"
 )
 
 # Display banner
