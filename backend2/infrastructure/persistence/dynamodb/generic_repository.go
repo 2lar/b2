@@ -256,6 +256,9 @@ func (r *GenericRepository[T]) BatchSave(ctx context.Context, entities []T) erro
 
 	// DynamoDB limits batch writes to 25 items
 	const batchSize = 25
+	const maxRetries = 3
+	
+	totalProcessed := 0
 	
 	for i := 0; i < len(entities); i += batchSize {
 		end := i + batchSize
@@ -279,21 +282,68 @@ func (r *GenericRepository[T]) BatchSave(ctx context.Context, entities []T) erro
 			})
 		}
 		
-		input := &dynamodb.BatchWriteItemInput{
-			RequestItems: map[string][]types.WriteRequest{
-				r.tableName: requests,
-			},
+		// Retry logic for unprocessed items
+		unprocessedRequests := requests
+		for retry := 0; retry < maxRetries && len(unprocessedRequests) > 0; retry++ {
+			input := &dynamodb.BatchWriteItemInput{
+				RequestItems: map[string][]types.WriteRequest{
+					r.tableName: unprocessedRequests,
+				},
+			}
+			
+			result, err := r.client.BatchWriteItem(ctx, input)
+			if err != nil {
+				// Exponential backoff for retries
+				backoffDuration := time.Duration(retry*retry+1) * time.Millisecond * 100
+				r.logger.Warn("Batch write failed, retrying",
+					zap.Error(err),
+					zap.Int("retry", retry+1),
+					zap.Duration("backoff", backoffDuration),
+				)
+				
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(backoffDuration):
+					// Continue with retry
+				}
+				continue
+			}
+			
+			// Check for unprocessed items
+			if unprocessedItems, exists := result.UnprocessedItems[r.tableName]; exists && len(unprocessedItems) > 0 {
+				unprocessedRequests = unprocessedItems
+				r.logger.Debug("Found unprocessed items, retrying",
+					zap.Int("unprocessedCount", len(unprocessedItems)),
+					zap.Int("retry", retry+1),
+				)
+				
+				// Exponential backoff for unprocessed items
+				backoffDuration := time.Duration(retry*retry+1) * time.Millisecond * 100
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(backoffDuration):
+					// Continue with retry
+				}
+			} else {
+				// All items processed successfully
+				unprocessedRequests = nil
+				break
+			}
 		}
 		
-		_, err := r.client.BatchWriteItem(ctx, input)
-		if err != nil {
-			return fmt.Errorf("failed to batch write items: %w", err)
+		if len(unprocessedRequests) > 0 {
+			return fmt.Errorf("failed to process %d items after %d retries", len(unprocessedRequests), maxRetries)
 		}
+		
+		totalProcessed += len(batch)
 	}
 	
-	r.logger.Debug("Batch saved entities",
+	r.logger.Debug("Batch saved entities successfully",
 		zap.String("entityType", r.config.GetEntityType()),
-		zap.Int("count", len(entities)),
+		zap.Int("totalCount", len(entities)),
+		zap.Int("processedCount", totalProcessed),
 	)
 	
 	return nil
@@ -369,4 +419,100 @@ func (r *GenericRepository[T]) Exists(ctx context.Context, userID, entityID stri
 	}
 	
 	return result.Item != nil, nil
+}
+
+// BatchDelete deletes multiple entities by their keys
+func (r *GenericRepository[T]) BatchDelete(ctx context.Context, keys []map[string]types.AttributeValue) error {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	// DynamoDB limits batch writes to 25 items
+	const batchSize = 25
+	const maxRetries = 3
+	
+	totalProcessed := 0
+	
+	for i := 0; i < len(keys); i += batchSize {
+		end := i + batchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+		
+		batch := keys[i:end]
+		requests := make([]types.WriteRequest, 0, len(batch))
+		
+		for _, key := range batch {
+			requests = append(requests, types.WriteRequest{
+				DeleteRequest: &types.DeleteRequest{
+					Key: key,
+				},
+			})
+		}
+		
+		// Retry logic for unprocessed items
+		unprocessedRequests := requests
+		for retry := 0; retry < maxRetries && len(unprocessedRequests) > 0; retry++ {
+			input := &dynamodb.BatchWriteItemInput{
+				RequestItems: map[string][]types.WriteRequest{
+					r.tableName: unprocessedRequests,
+				},
+			}
+			
+			result, err := r.client.BatchWriteItem(ctx, input)
+			if err != nil {
+				// Exponential backoff for retries
+				backoffDuration := time.Duration(retry*retry+1) * time.Millisecond * 100
+				r.logger.Warn("Batch delete failed, retrying",
+					zap.Error(err),
+					zap.Int("retry", retry+1),
+					zap.Duration("backoff", backoffDuration),
+				)
+				
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(backoffDuration):
+					// Continue with retry
+				}
+				continue
+			}
+			
+			// Check for unprocessed items
+			if unprocessedItems, exists := result.UnprocessedItems[r.tableName]; exists && len(unprocessedItems) > 0 {
+				unprocessedRequests = unprocessedItems
+				r.logger.Debug("Found unprocessed delete requests, retrying",
+					zap.Int("unprocessedCount", len(unprocessedItems)),
+					zap.Int("retry", retry+1),
+				)
+				
+				// Exponential backoff for unprocessed items
+				backoffDuration := time.Duration(retry*retry+1) * time.Millisecond * 100
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(backoffDuration):
+					// Continue with retry
+				}
+			} else {
+				// All items processed successfully
+				unprocessedRequests = nil
+				break
+			}
+		}
+		
+		if len(unprocessedRequests) > 0 {
+			return fmt.Errorf("failed to delete %d items after %d retries", len(unprocessedRequests), maxRetries)
+		}
+		
+		totalProcessed += len(batch)
+	}
+	
+	r.logger.Debug("Batch deleted items successfully",
+		zap.String("entityType", r.config.GetEntityType()),
+		zap.Int("totalCount", len(keys)),
+		zap.Int("processedCount", totalProcessed),
+	)
+	
+	return nil
 }

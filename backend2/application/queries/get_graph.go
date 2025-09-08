@@ -95,13 +95,19 @@ func (h *GetGraphHandler) Handle(ctx context.Context, query GetGraphQuery) (*Get
 		return nil, errors.New("access denied")
 	}
 	
+	// Get nodes safely
+	nodes, err := graph.GetNodes()
+	if err != nil {
+		return nil, err
+	}
+
 	// Convert to DTOs
 	result := &GetGraphResult{
 		Graph: graph,
 		Nodes: make([]NodeDTO, 0),
 		Edges: make([]EdgeDTO, 0),
 		Metadata: GraphMetadataDTO{
-			NodeCount: len(graph.GetNodes()),
+			NodeCount: len(nodes),
 			EdgeCount: len(graph.GetEdges()),
 			IsPublic:  false, // TODO: Get from graph metadata
 			Tags:      []string{},
@@ -109,7 +115,7 @@ func (h *GetGraphHandler) Handle(ctx context.Context, query GetGraphQuery) (*Get
 	}
 	
 	// Convert nodes to DTOs
-	for _, node := range graph.GetNodes() {
+	for _, node := range nodes {
 		dto := NodeDTO{
 			ID:      node.ID().String(),
 			Title:   node.Content().Title(),

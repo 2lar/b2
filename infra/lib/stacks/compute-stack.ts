@@ -64,6 +64,7 @@ export class ComputeStack extends Stack {
         TABLE_NAME: memoryTable.tableName,
         DYNAMODB_TABLE: memoryTable.tableName,  // Fallback env var
         INDEX_NAME: 'KeywordIndex',
+        GSI2_INDEX_NAME: 'EdgeIndex',  // GSI2 for node and edge lookups
         EVENT_BUS_NAME: this.eventBus.eventBusName,
         IS_LAMBDA: 'true',
         ENVIRONMENT: 'development',
@@ -81,6 +82,7 @@ export class ComputeStack extends Stack {
         TABLE_NAME: memoryTable.tableName,
         DYNAMODB_TABLE: memoryTable.tableName,  // Fallback env var
         INDEX_NAME: 'KeywordIndex',
+        GSI2_INDEX_NAME: 'EdgeIndex',  // GSI2 for node and edge lookups
         EVENT_BUS_NAME: this.eventBus.eventBusName,
         IS_LAMBDA: 'true',
         ENVIRONMENT: 'development',
@@ -169,12 +171,12 @@ export class ComputeStack extends Stack {
     this.eventBus.grantPutEventsTo(this.connectNodeLambda);
     this.eventBus.grantPutEventsTo(this.cleanupLambda);  // Cleanup might publish events
 
-    // EventBridge rule for NodeCreated events - Match original b2-stack pattern
+    // EventBridge rule for NodeCreated events - Match backend2 event source
     new events.Rule(this, 'NodeCreatedRule', {
         eventBus: this.eventBus,
         eventPattern: {
-            source: ['brain2.api'],
-            detailType: ['NodeCreated'],
+            source: ['brain2.backend2'],  // Updated to match actual backend source
+            detailType: ['node.created'],  // Updated to match the actual event type from domain events
         },
         targets: [new targets.LambdaFunction(this.connectNodeLambda)],
     });
@@ -193,8 +195,8 @@ export class ComputeStack extends Stack {
     new events.Rule(this, 'NodeDeletedRule', {
         eventBus: this.eventBus,
         eventPattern: {
-            source: ['brain2-backend'],  // Matches the source used in EventBridgePublisher
-            detailType: ['NodeDeleted'],
+            source: ['brain2.backend2'],  // Updated to match actual backend source
+            detailType: ['node.deleted'],  // Updated to match the actual event type from domain events
         },
         targets: [
             new targets.LambdaFunction(this.cleanupLambda, {

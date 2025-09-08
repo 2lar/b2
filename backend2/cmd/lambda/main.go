@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"log"
-	"strings"
 	"time"
 
+	"backend2/domain/core/valueobjects"
 	"backend2/infrastructure/config"
 	"backend2/infrastructure/di"
 	"backend2/interfaces/http/rest"
@@ -37,8 +37,9 @@ func init() {
 	coldStartTime = time.Now()
 	log.Println("Lambda cold start initiated")
 	
-	// Initialize context
-	ctx := context.Background()
+	// Initialize context with timeout to prevent hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	
 	// Load configuration
 	cfg, err := config.LoadConfig()
@@ -50,6 +51,17 @@ func init() {
 	container, err = di.InitializeContainer(ctx, cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize container: %v", err)
+	}
+	
+	// Pre-warm DynamoDB connection by executing a simple query
+	// This reduces latency on first real request
+	if container != nil && container.NodeRepo != nil {
+		go func() {
+			warmCtx, warmCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer warmCancel()
+			// Simple ping to establish connection pool
+			_, _ = container.NodeRepo.GetByID(warmCtx, valueobjects.NewNodeID())
+		}()
 	}
 	
 	// Create router
@@ -76,13 +88,14 @@ func init() {
 
 // Handler is the Lambda function handler
 func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
-	// Log ALL headers for debugging
+	// Log ALL headers and authorizer context for debugging
 	if container != nil && container.Logger != nil {
 		container.Logger.Info("Lambda received request",
 			zap.String("path", req.RequestContext.HTTP.Path),
 			zap.String("method", req.RequestContext.HTTP.Method),
 			zap.Any("headers", req.Headers),
 			zap.String("request_id", req.RequestContext.RequestID),
+			zap.Any("authorizer", req.RequestContext.Authorizer),
 		)
 	}
 	
@@ -109,44 +122,45 @@ func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 			)
 		}
 		
-		// Check if this request came through API Gateway (has x-amzn headers)
-		_, hasAmznTrace := req.Headers["x-amzn-trace-id"]
-		
-		// If request has Authorization header AND came through API Gateway,
-		// it means API Gateway JWT authorizer already validated it
-		if hasAuth && hasAmznTrace && strings.HasPrefix(authHeader, "Bearer ") {
-			// This is a Supabase JWT that was already validated by API Gateway
-			// Remove the original header and add bypass token to skip Lambda validation
+		// Extract user context from API Gateway authorizer
+		// The authorizer context is available at req.RequestContext.Authorizer
+		if req.RequestContext.Authorizer != nil && req.RequestContext.Authorizer.Lambda != nil {
+			// Extract user information from Lambda authorizer context
+			// The JWT authorizer returns: sub (user ID), email, and role
+			lambdaClaims := req.RequestContext.Authorizer.Lambda
+			
+			if userID, ok := lambdaClaims["sub"].(string); ok && userID != "" {
+				req.Headers["X-User-ID"] = userID
+			}
+			if email, ok := lambdaClaims["email"].(string); ok && email != "" {
+				req.Headers["X-User-Email"] = email
+			}
+			if role, ok := lambdaClaims["role"].(string); ok && role != "" {
+				req.Headers["X-User-Roles"] = role
+			}
+			
+			// Set bypass headers to indicate pre-authorized request
 			delete(req.Headers, "authorization")
 			delete(req.Headers, "Authorization")
 			req.Headers["Authorization"] = "Bearer api-gateway-validated"
 			req.Headers["X-API-Gateway-Authorized"] = "true"
 			
 			if container != nil && container.Logger != nil {
-				container.Logger.Info("API Gateway pre-validated request - bypassing Lambda JWT validation",
+				container.Logger.Info("Extracted user context from API Gateway authorizer",
+					zap.String("user_id", req.Headers["X-User-ID"]),
+					zap.String("email", req.Headers["X-User-Email"]),
+					zap.String("roles", req.Headers["X-User-Roles"]),
 					zap.String("path", req.RequestContext.HTTP.Path),
+					zap.Any("authorizer_context", req.RequestContext.Authorizer.Lambda),
 				)
 			}
-		} else if !hasAuth {
-			// No Authorization header at all - was stripped by API Gateway after successful validation
-			req.Headers["Authorization"] = "Bearer api-gateway-validated"
-			req.Headers["X-API-Gateway-Authorized"] = "true"
-			
+		} else {
+			// No authorizer context - this shouldn't happen with API Gateway JWT authorizer
 			if container != nil && container.Logger != nil {
-				container.Logger.Info("No auth header found - request was pre-authorized by API Gateway",
+				container.Logger.Warn("No authorizer context found in request",
 					zap.String("path", req.RequestContext.HTTP.Path),
-				)
-			}
-		} else if authHeader != "" && !strings.HasPrefix(authHeader, "Bearer ") {
-			// Has an auth header but wrong format - also add bypass
-			req.Headers["Authorization"] = "Bearer api-gateway-validated"
-			req.Headers["X-API-Gateway-Authorized"] = "true"
-			req.Headers["X-Original-Auth"] = authHeader
-			
-			if container != nil && container.Logger != nil {
-				container.Logger.Info("Invalid auth header format - adding bypass token",
-					zap.String("original_auth", authHeader),
-					zap.String("path", req.RequestContext.HTTP.Path),
+					zap.Bool("has_auth_header", hasAuth),
+					zap.Any("authorizer", req.RequestContext.Authorizer),
 				)
 			}
 		}

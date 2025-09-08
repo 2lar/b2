@@ -2,6 +2,7 @@ package rest
 
 import (
 	"net/http"
+	"strings"
 
 	"backend2/application/commands/bus"
 	querybus "backend2/application/queries/bus"
@@ -43,6 +44,7 @@ func (rt *Router) Setup() http.Handler {
 	router.Use(chimiddleware.RealIP)
 	router.Use(chimiddleware.Recoverer)
 	router.Use(middleware.Logger(rt.logger))
+	router.Use(versionMiddleware)
 	
 	// CORS configuration
 	router.Use(cors.Handler(cors.Options{
@@ -58,7 +60,15 @@ func (rt *Router) Setup() http.Handler {
 	router.Get("/health", rt.healthCheck)
 	router.Get("/ready", rt.readinessCheck)
 	
-	// API v2 routes
+	// API v1 routes (legacy - redirects to v2)
+	router.Route("/api/v1", func(r chi.Router) {
+		r.HandleFunc("/*", func(w http.ResponseWriter, req *http.Request) {
+			// Redirect v1 requests to v2
+			http.Redirect(w, req, strings.Replace(req.URL.Path, "/api/v1", "/api/v2", 1), http.StatusPermanentRedirect)
+		})
+	})
+
+	// API v2 routes (current)
 	router.Route("/api/v2", func(r chi.Router) {
 		// Apply authentication middleware for API routes
 		r.Use(middleware.Authenticate())
@@ -125,4 +135,31 @@ func (rt *Router) readinessCheck(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"ready"}`))
+}
+
+// versionMiddleware adds API version headers to all responses
+func versionMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Determine API version from path
+		version := "v2" // default
+		if strings.Contains(r.URL.Path, "/api/v1") {
+			version = "v1"
+		} else if strings.Contains(r.URL.Path, "/api/v2") {
+			version = "v2"
+		}
+		
+		// Add version headers
+		w.Header().Set("X-API-Version", version)
+		w.Header().Set("X-API-Latest", "v2")
+		w.Header().Set("X-API-Deprecated", "false")
+		
+		// For v1, add deprecation notice
+		if version == "v1" {
+			w.Header().Set("X-API-Deprecated", "true")
+			w.Header().Set("X-API-Deprecation-Date", "2024-06-01")
+			w.Header().Set("X-API-Sunset-Date", "2024-12-01")
+		}
+		
+		next.ServeHTTP(w, r)
+	})
 }

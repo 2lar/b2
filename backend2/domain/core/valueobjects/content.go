@@ -1,14 +1,12 @@
 package valueobjects
 
 import (
-	"errors"
+	"fmt"
 	"strings"
 	"unicode/utf8"
-)
 
-const (
-	MaxTitleLength   = 200
-	MaxContentLength = 50000
+	"backend2/domain/config"
+	pkgerrors "backend2/pkg/errors"
 )
 
 // ContentFormat represents the format of the content
@@ -28,25 +26,39 @@ type NodeContent struct {
 	format ContentFormat
 }
 
-// NewNodeContent creates content with validation
+// NewNodeContent creates content with validation using default configuration
 func NewNodeContent(title, body string, format ContentFormat) (NodeContent, error) {
+	return NewNodeContentWithConfig(title, body, format, config.DefaultDomainConfig())
+}
+
+// NewNodeContentWithConfig creates content with validation and configuration
+func NewNodeContentWithConfig(title, body string, format ContentFormat, cfg *config.DomainConfig) (NodeContent, error) {
+	if cfg == nil {
+		cfg = config.DefaultDomainConfig()
+	}
+	
 	title = strings.TrimSpace(title)
 	body = strings.TrimSpace(body)
 
-	if title == "" {
-		return NodeContent{}, errors.New("title cannot be empty")
+	if title == "" && !cfg.AllowEmptyContent {
+		return NodeContent{}, pkgerrors.NewValidationError("title cannot be empty")
 	}
 	
-	if utf8.RuneCountInString(title) > MaxTitleLength {
-		return NodeContent{}, errors.New("title exceeds maximum length")
+	titleLength := utf8.RuneCountInString(title)
+	if titleLength < cfg.MinTitleLength {
+		return NodeContent{}, fmt.Errorf("title too short: minimum %d characters required", cfg.MinTitleLength)
 	}
 	
-	if utf8.RuneCountInString(body) > MaxContentLength {
-		return NodeContent{}, errors.New("content body exceeds maximum length")
+	if titleLength > cfg.MaxTitleLength {
+		return NodeContent{}, fmt.Errorf("title exceeds maximum length of %d characters", cfg.MaxTitleLength)
+	}
+	
+	if utf8.RuneCountInString(body) > cfg.MaxContentLength {
+		return NodeContent{}, fmt.Errorf("content body exceeds maximum length of %d characters", cfg.MaxContentLength)
 	}
 	
 	if !isValidFormat(format) {
-		return NodeContent{}, errors.New("invalid content format")
+		return NodeContent{}, pkgerrors.NewValidationError("invalid content format")
 	}
 	
 	return NodeContent{

@@ -15,6 +15,7 @@ import (
 type CreateEdgeCommand struct {
 	EdgeID   string                 `json:"edge_id"`
 	UserID   string                 `json:"user_id"`
+	GraphID  string                 `json:"graph_id"`
 	SourceID string                 `json:"source_id"`
 	TargetID string                 `json:"target_id"`
 	Type     string                 `json:"type"`

@@ -32,12 +32,17 @@ func (e BaseEvent) GetVersion() int        { return e.Version }
 // NodeCreated is raised when a new node is created
 type NodeCreated struct {
 	BaseEvent
-	NodeID   valueobjects.NodeID `json:"node_id"`
-	UserID   string              `json:"user_id"`
+	NodeID   valueobjects.NodeID    `json:"node_id"`
+	UserID   string                 `json:"user_id"`
+	GraphID  string                 `json:"graph_id"`
+	Title    string                 `json:"title"`
+	Content  string                 `json:"content"`
+	Keywords []string               `json:"keywords"`
+	Tags     []string               `json:"tags"`
 }
 
 // NewNodeCreated creates a NodeCreated event
-func NewNodeCreated(nodeID valueobjects.NodeID, userID string, timestamp time.Time) NodeCreated {
+func NewNodeCreated(nodeID valueobjects.NodeID, userID, graphID, title, content string, keywords, tags []string, timestamp time.Time) NodeCreated {
 	return NodeCreated{
 		BaseEvent: BaseEvent{
 			AggregateID: nodeID.String(),
@@ -45,8 +50,13 @@ func NewNodeCreated(nodeID valueobjects.NodeID, userID string, timestamp time.Ti
 			Timestamp:   timestamp,
 			Version:     1,
 		},
-		NodeID: nodeID,
-		UserID: userID,
+		NodeID:   nodeID,
+		UserID:   userID,
+		GraphID:  graphID,
+		Title:    title,
+		Content:  content,
+		Keywords: keywords,
+		Tags:     tags,
 	}
 }
 

@@ -11,20 +11,26 @@ import (
 	"backend2/application/ports"
 	querybus "backend2/application/queries/bus"
 	"backend2/infrastructure/config"
+	"backend2/pkg/auth"
+	"backend2/pkg/observability"
 	"go.uber.org/zap"
 )
 
 // Container holds all application dependencies
 type Container struct {
-	Config      *config.Config
-	Logger      *zap.Logger
-	NodeRepo    ports.NodeRepository
-	GraphRepo   ports.GraphRepository
-	EdgeRepo    ports.EdgeRepository
-	EventBus    ports.EventBus
-	CommandBus  *bus.CommandBus
-	QueryBus    *querybus.QueryBus
-	Cache       ports.Cache
+	Config       *config.Config
+	Logger       *zap.Logger
+	NodeRepo     ports.NodeRepository
+	GraphRepo    ports.GraphRepository
+	EdgeRepo     ports.EdgeRepository
+	EventBus     ports.EventBus
+	EventStore   ports.EventStore
+	UnitOfWork   ports.UnitOfWork
+	CommandBus   *bus.CommandBus
+	QueryBus     *querybus.QueryBus
+	Cache        ports.Cache
+	Metrics      *observability.Metrics
+	RateLimiter  *auth.DistributedRateLimiter
 }
 
 // SuperSet is the main provider set containing all providers
@@ -33,10 +39,17 @@ var SuperSet = wire.NewSet(
 	ProvideAWSConfig,
 	ProvideDynamoDBClient,
 	ProvideEventBridgeClient,
+	ProvideCloudWatchClient,
 	ProvideNodeRepository,
 	ProvideGraphRepository,
 	ProvideEdgeRepository,
 	ProvideEventBus,
+	ProvideEventPublisher,
+	ProvideEventStore,
+	ProvideUnitOfWork,
+	ProvideMetrics,
+	ProvideDistributedRateLimiter,
+	ProvideDistributedLock,
 	ProvideCommandBus,
 	ProvideQueryBus,
 	ProvideInMemoryCache,

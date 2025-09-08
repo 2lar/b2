@@ -3,10 +3,12 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"backend2/application/ports"
 	"backend2/domain/core/aggregates"
+	"backend2/domain/core/entities"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -70,10 +72,20 @@ func (r *GraphRepository) Save(ctx context.Context, graph *aggregates.Graph) err
 	// Get the edges from the graph
 	edges := graph.GetEdges()
 	
+	// Get node count safely for logging
+	nodes, err := graph.Nodes()
+	nodeCount := 0
+	if err != nil {
+		r.logger.Warn("Large graph detected during save", zap.Error(err))
+		nodeCount = -1 // Indicate large graph
+	} else {
+		nodeCount = len(nodes)
+	}
+	
 	r.logger.Info("Saving graph to DynamoDB",
 		zap.String("graphID", graph.ID().String()),
 		zap.String("userID", graph.UserID()),
-		zap.Int("nodeCount", len(graph.Nodes())),
+		zap.Int("nodeCount", nodeCount),
 		zap.Int("edgeCount", len(edges)),
 	)
 	
@@ -108,8 +120,8 @@ func (r *GraphRepository) Save(ctx context.Context, graph *aggregates.Graph) err
 		UserID:      graph.UserID(),
 		Name:        graph.Name(),
 		Description: graph.Description(),
-		NodeCount:   len(graph.Nodes()),
-		EdgeCount:   len(edges),
+		NodeCount:   graph.NodeCount(),
+		EdgeCount:   graph.EdgeCount(),
 		IsDefault:   graph.IsDefault(),
 		Metadata:    graph.Metadata(),
 		CreatedAt:   graph.CreatedAt().Format(time.RFC3339),
@@ -143,6 +155,68 @@ func (r *GraphRepository) Save(ctx context.Context, graph *aggregates.Graph) err
 		zap.Int("edgesSaved", len(edges)),
 	)
 
+	return nil
+}
+
+// SaveWithUoW saves a graph within a unit of work transaction
+func (r *GraphRepository) SaveWithUoW(ctx context.Context, graph *aggregates.Graph, uow interface{}) error {
+	// Type assert to DynamoDBUnitOfWork
+	dynamoUoW, ok := uow.(*DynamoDBUnitOfWork)
+	if !ok {
+		return fmt.Errorf("invalid unit of work type")
+	}
+	
+	// Build the graph item
+	item := graphItem{
+		PK:          fmt.Sprintf("USER#%s", graph.UserID()),
+		SK:          fmt.Sprintf("GRAPH#%s", graph.ID().String()),
+		GSI1PK:      fmt.Sprintf("GRAPHID#%s", graph.ID().String()),
+		GSI1SK:      "METADATA",
+		EntityType:  "GRAPH",
+		GraphID:     graph.ID().String(),
+		UserID:      graph.UserID(),
+		Name:        graph.Name(),
+		Description: graph.Description(),
+		NodeCount:   graph.NodeCount(),
+		EdgeCount:   graph.EdgeCount(),
+		IsDefault:   graph.IsDefault(),
+		Metadata:    graph.Metadata(),
+		CreatedAt:   graph.CreatedAt().Format(time.RFC3339),
+		UpdatedAt:   graph.UpdatedAt().Format(time.RFC3339),
+		Version:     graph.Version(),
+	}
+	
+	av, err := attributevalue.MarshalMap(item)
+	if err != nil {
+		return fmt.Errorf("failed to marshal graph: %w", err)
+	}
+	
+	// Register the save operation with the unit of work
+	transactItem := types.TransactWriteItem{
+		Put: &types.Put{
+			TableName: aws.String(r.tableName),
+			Item:      av,
+		},
+	}
+	
+	if err := dynamoUoW.RegisterSave(transactItem); err != nil {
+		return fmt.Errorf("failed to register graph save: %w", err)
+	}
+	
+	// Register any uncommitted events from the graph
+	for _, event := range graph.GetUncommittedEvents() {
+		if err := dynamoUoW.RegisterEvent(event); err != nil {
+			return fmt.Errorf("failed to register graph event: %w", err)
+		}
+	}
+	
+	r.logger.Debug("Graph registered for transactional save",
+		zap.String("graphID", graph.ID().String()),
+		zap.String("userID", graph.UserID()),
+		zap.Int("nodeCount", graph.NodeCount()),
+		zap.Int("edgeCount", graph.EdgeCount()),
+	)
+	
 	return nil
 }
 
@@ -195,29 +269,80 @@ func (r *GraphRepository) GetByID(ctx context.Context, id aggregates.GraphID) (*
 		return nil, fmt.Errorf("failed to reconstruct graph: %w", err)
 	}
 	
-	// CRITICAL: Load all nodes for this graph so edge creation can work
-	if r.nodeRepo != nil {
-		nodes, err := r.nodeRepo.GetByGraphID(ctx, id.String())
-		if err != nil {
-			r.logger.Warn("Failed to load nodes for graph",
-				zap.String("graphID", id.String()),
-				zap.Error(err),
-			)
-		} else {
-			// Add all nodes to the graph aggregate
-			for _, node := range nodes {
-				if err := graph.AddNode(node); err != nil {
-					r.logger.Debug("Node already in graph or failed to add",
-						zap.String("nodeID", node.ID().String()),
-						zap.Error(err),
-					)
-				}
-			}
-			r.logger.Debug("Loaded nodes into graph",
-				zap.String("graphID", id.String()),
-				zap.Int("nodeCount", len(nodes)),
-			)
+	// CRITICAL: Load nodes and edges in parallel for performance
+	var nodes []*entities.Node
+	var edges []*aggregates.Edge
+	var nodeErr, edgeErr error
+	
+	// Use goroutines for parallel loading
+	var wg sync.WaitGroup
+	wg.Add(2)
+	
+	// Load nodes in parallel
+	go func() {
+		defer wg.Done()
+		if r.nodeRepo != nil {
+			nodes, nodeErr = r.nodeRepo.GetByGraphID(ctx, id.String())
 		}
+	}()
+	
+	// Load edges in parallel
+	go func() {
+		defer wg.Done()
+		if r.edgeRepo != nil {
+			edges, edgeErr = r.edgeRepo.GetByGraphID(ctx, id.String())
+		}
+	}()
+	
+	// Wait for both operations to complete
+	wg.Wait()
+	
+	// Process nodes first (edges depend on nodes)
+	if nodeErr != nil {
+		r.logger.Warn("Failed to load nodes for graph",
+			zap.String("graphID", id.String()),
+			zap.Error(nodeErr),
+		)
+	} else if nodes != nil {
+		// Add all nodes to the graph aggregate
+		for _, node := range nodes {
+			if err := graph.AddNode(node); err != nil {
+				r.logger.Debug("Node already in graph or failed to add",
+					zap.String("nodeID", node.ID().String()),
+					zap.Error(err),
+				)
+			}
+		}
+		r.logger.Debug("Loaded nodes into graph",
+			zap.String("graphID", id.String()),
+			zap.Int("nodeCount", len(nodes)),
+		)
+	}
+	
+	// Process edges after nodes are loaded
+	if edgeErr != nil {
+		r.logger.Warn("Failed to load edges for graph",
+			zap.String("graphID", id.String()),
+			zap.Error(edgeErr),
+		)
+	} else if edges != nil {
+		// Add all edges to the graph aggregate
+		successfulEdges := 0
+		for _, edge := range edges {
+			if err := graph.LoadEdge(edge); err != nil {
+				r.logger.Debug("Edge failed to load",
+					zap.String("edgeID", edge.ID),
+					zap.Error(err),
+				)
+			} else {
+				successfulEdges++
+			}
+		}
+		r.logger.Debug("Loaded edges into graph",
+			zap.String("graphID", id.String()),
+			zap.Int("edgeCount", successfulEdges),
+			zap.Int("totalEdges", len(edges)),
+		)
 	}
 
 	return graph, nil

@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"time"
+
+	"backend2/application/ports"
+	"backend2/pkg/observability"
 )
 
 // Command represents a command that changes state
@@ -22,12 +26,24 @@ type CommandHandler interface {
 type CommandBus struct {
 	handlers map[reflect.Type]CommandHandler
 	mu       sync.RWMutex
+	// Optional dependencies for advanced features
+	uow     ports.UnitOfWork
+	metrics *observability.Metrics
 }
 
 // NewCommandBus creates a new command bus
 func NewCommandBus() *CommandBus {
 	return &CommandBus{
 		handlers: make(map[reflect.Type]CommandHandler),
+	}
+}
+
+// NewCommandBusWithDependencies creates a command bus with UoW and metrics
+func NewCommandBusWithDependencies(uow ports.UnitOfWork, metrics *observability.Metrics) *CommandBus {
+	return &CommandBus{
+		handlers: make(map[reflect.Type]CommandHandler),
+		uow:      uow,
+		metrics:  metrics,
 	}
 }
 
@@ -60,9 +76,58 @@ func (b *CommandBus) Send(ctx context.Context, cmd Command) error {
 		return fmt.Errorf("no handler registered for command type %T", cmd)
 	}
 	
+	// Track metrics if available
+	var start time.Time
+	if b.metrics != nil {
+		start = time.Now()
+	}
+	
 	// Execute handler
-	if err := handler.Handle(ctx, cmd); err != nil {
+	err := handler.Handle(ctx, cmd)
+	
+	// Record metrics if available
+	if b.metrics != nil {
+		cmdName := reflect.TypeOf(cmd).Name()
+		b.metrics.RecordCommandExecution(ctx, cmdName, time.Since(start), err)
+	}
+	
+	if err != nil {
 		return fmt.Errorf("command handler failed: %w", err)
+	}
+	
+	return nil
+}
+
+// SendWithTransaction executes a command within a transaction
+func (b *CommandBus) SendWithTransaction(ctx context.Context, cmd Command) error {
+	if b.uow == nil {
+		// Fallback to regular send if no UoW configured
+		return b.Send(ctx, cmd)
+	}
+	
+	// Begin transaction
+	if err := b.uow.Begin(ctx); err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	
+	// Ensure rollback on error
+	defer func() {
+		if r := recover(); r != nil {
+			b.uow.Rollback()
+			panic(r)
+		}
+	}()
+	
+	// Execute command
+	if err := b.Send(ctx, cmd); err != nil {
+		b.uow.Rollback()
+		return err
+	}
+	
+	// Commit transaction
+	if err := b.uow.Commit(ctx); err != nil {
+		b.uow.Rollback()
+		return fmt.Errorf("failed to commit: %w", err)
 	}
 	
 	return nil

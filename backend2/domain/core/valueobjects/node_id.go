@@ -1,8 +1,8 @@
 package valueobjects
 
 import (
-	"errors"
 	"github.com/google/uuid"
+	pkgerrors "backend2/pkg/errors"
 )
 
 // NodeID is a value object representing a unique node identifier
@@ -19,10 +19,10 @@ func NewNodeID() NodeID {
 // NewNodeIDFromString creates a NodeID from an existing string
 func NewNodeIDFromString(id string) (NodeID, error) {
 	if id == "" {
-		return NodeID{}, errors.New("node ID cannot be empty")
+		return NodeID{}, pkgerrors.NewValidationError("node ID cannot be empty")
 	}
 	if !isValidUUID(id) {
-		return NodeID{}, errors.New("node ID must be a valid UUID")
+		return NodeID{}, pkgerrors.NewValidationError("node ID must be a valid UUID")
 	}
 	return NodeID{value: id}, nil
 }
@@ -53,7 +53,7 @@ func (id *NodeID) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
-		return errors.New("NodeID must be a string")
+		return pkgerrors.NewValidationError("NodeID must be a string")
 	}
 	id.value = string(data[1 : len(data)-1])
 	return nil

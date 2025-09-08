@@ -1,8 +1,8 @@
 package valueobjects
 
 import (
-	"errors"
 	"math"
+	pkgerrors "backend2/pkg/errors"
 )
 
 // Position is a value object representing node coordinates in 2D/3D space
@@ -20,7 +20,7 @@ func NewPosition2D(x, y float64) (Position, error) {
 // NewPosition3D creates a 3D position with validation
 func NewPosition3D(x, y, z float64) (Position, error) {
 	if !isValidCoordinate(x) || !isValidCoordinate(y) || !isValidCoordinate(z) {
-		return Position{}, errors.New("invalid coordinates: must be finite numbers")
+		return Position{}, pkgerrors.NewValidationError("invalid coordinates: must be finite numbers")
 	}
 	return Position{x: x, y: y, z: z}, nil
 }

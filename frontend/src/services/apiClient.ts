@@ -245,6 +245,34 @@ class ApiClient {
     }
 
     /**
+     * Create an edge between two nodes
+     * @param sourceId Source node ID
+     * @param targetId Target node ID
+     * @param type Edge type (optional, defaults to 'similar')
+     * @param weight Edge weight (optional, defaults to 1.0)
+     * @returns Promise resolving to created edge
+     */
+    public async createEdge(sourceId: string, targetId: string, type?: string, weight?: number): Promise<any> {
+        const body = {
+            source_id: sourceId,
+            target_id: targetId,
+            type: type || 'similar',
+            weight: weight ?? 1.0
+        };
+        console.log('DEBUG apiClient.createEdge - body:', JSON.stringify(body));
+        return this.request<any>('POST', '/api/v2/edges', body);
+    }
+
+    /**
+     * Delete an edge between two nodes
+     * @param edgeId Edge ID to delete
+     * @returns Promise resolving when edge is deleted
+     */
+    public async deleteEdge(edgeId: string): Promise<void> {
+        return this.request<void>('DELETE', `/api/v2/edges/${edgeId}`);
+    }
+
+    /**
      * List user's memory nodes with pagination
      * @param limit Number of nodes per page (default: 20, max: 100)
      * @param nextToken Token for next page (for pagination)

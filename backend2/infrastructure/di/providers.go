@@ -3,6 +3,7 @@ package di
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"backend2/application/commands"
 	commands_handlers "backend2/application/commands/handlers"
@@ -11,12 +12,16 @@ import (
 	"backend2/application/queries"
 	queries_handlers "backend2/application/queries/handlers"
 	querybus "backend2/application/queries/bus"
+	"backend2/domain/events"
 	"backend2/infrastructure/config"
 	"backend2/infrastructure/messaging/eventbridge"
 	"backend2/infrastructure/persistence/dynamodb"
+	"backend2/pkg/auth"
+	"backend2/pkg/observability"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	awscloudwatch "github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	awsdynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	awseventbridge "github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"go.uber.org/zap"
@@ -62,7 +67,8 @@ func ProvideNodeRepository(client *awsdynamodb.Client, cfg *config.Config, logge
 	return dynamodb.NewNodeRepository(
 		client,
 		cfg.DynamoDBTable,
-		cfg.IndexName,
+		cfg.IndexName,     // GSI1 for user-level queries
+		cfg.GSI2IndexName, // GSI2 for direct NodeID lookups
 		logger,
 	)
 }
@@ -112,6 +118,26 @@ func ProvideEventBus(client *awseventbridge.Client, cfg *config.Config, logger *
 	)
 }
 
+// ProvideEventPublisher creates an event publisher (adapter for EventBus)
+func ProvideEventPublisher(eventBus ports.EventBus) ports.EventPublisher {
+	return &eventPublisherAdapter{eventBus: eventBus}
+}
+
+// eventPublisherAdapter adapts EventBus to EventPublisher interface
+type eventPublisherAdapter struct {
+	eventBus ports.EventBus
+}
+
+func (a *eventPublisherAdapter) Publish(ctx context.Context, event events.DomainEvent) error {
+	// EventBus expects interface{}, so we can pass DomainEvent directly
+	return a.eventBus.Publish(ctx, event)
+}
+
+func (a *eventPublisherAdapter) PublishBatch(ctx context.Context, events []events.DomainEvent) error {
+	// EventBus already expects []events.DomainEvent, so pass through directly
+	return a.eventBus.PublishBatch(ctx, events)
+}
+
 // CommandHandlerAdapter adapts specific command handlers to the generic interface
 type CommandHandlerAdapter struct {
 	handler func(context.Context, bus.Command) error
@@ -121,25 +147,94 @@ func (a *CommandHandlerAdapter) Handle(ctx context.Context, cmd bus.Command) err
 	return a.handler(ctx, cmd)
 }
 
+// ProvideUnitOfWork creates a unit of work for transactions
+func ProvideUnitOfWork(
+	client *awsdynamodb.Client,
+	nodeRepo ports.NodeRepository,
+	edgeRepo ports.EdgeRepository,
+	graphRepo ports.GraphRepository,
+	eventStore ports.EventStore,
+	eventPublisher ports.EventPublisher,
+) ports.UnitOfWork {
+	return dynamodb.NewDynamoDBUnitOfWork(
+		client,
+		nodeRepo,
+		edgeRepo,
+		graphRepo,
+		eventStore,
+		eventPublisher,
+	)
+}
+
+// ProvideEventStore creates an event store
+func ProvideEventStore(client *awsdynamodb.Client, cfg *config.Config) ports.EventStore {
+	// Use a separate table for events or the same table with different keys
+	return dynamodb.NewDynamoDBEventStore(client, cfg.DynamoDBTable)
+}
+
+// ProvideCloudWatchClient creates a CloudWatch client
+func ProvideCloudWatchClient(awsCfg aws.Config) *awscloudwatch.Client {
+	return awscloudwatch.NewFromConfig(awsCfg)
+}
+
+// ProvideMetrics creates metrics instance
+func ProvideMetrics(client *awscloudwatch.Client, cfg *config.Config) *observability.Metrics {
+	namespace := fmt.Sprintf("Brain2/%s", cfg.Environment)
+	return observability.NewMetrics(namespace, client)
+}
+
+// ProvideDistributedRateLimiter creates a distributed rate limiter
+func ProvideDistributedRateLimiter(client *awsdynamodb.Client, cfg *config.Config) *auth.DistributedRateLimiter {
+	// Use a separate table for rate limits or the same table with different keys
+	tableName := cfg.DynamoDBTable // Could be a separate rate limit table
+	return auth.NewDistributedRateLimiter(
+		client,
+		tableName,
+		100,                    // 100 requests
+		1*time.Minute,          // per minute
+		"API",                  // key prefix for API rate limiting
+	)
+}
+
+// ProvideDistributedLock creates a distributed lock instance
+func ProvideDistributedLock(client *awsdynamodb.Client, cfg *config.Config, logger *zap.Logger) *dynamodb.DistributedLock {
+	return dynamodb.NewDistributedLock(client, cfg.DynamoDBTable, logger)
+}
+
 // ProvideCommandBus creates a command bus with registered handlers
 func ProvideCommandBus(
+	uow ports.UnitOfWork,
 	nodeRepo ports.NodeRepository,
 	edgeRepo ports.EdgeRepository,
 	graphRepo ports.GraphRepository,
 	eventBus ports.EventBus,
+	eventPublisher ports.EventPublisher,
+	distributedLock *dynamodb.DistributedLock,
+	metrics *observability.Metrics,
 	logger *zap.Logger,
 ) *bus.CommandBus {
-	commandBus := bus.NewCommandBus()
+	// Create command bus with dependencies
+	commandBus := bus.NewCommandBusWithDependencies(uow, metrics)
 	
-	// Register CreateNodeCommand handler
-	createNodeHandler := commands.NewCreateNodeHandler(nodeRepo, graphRepo, eventBus, logger)
+	// Create orchestrator for complex commands
+	orchestrator := commands_handlers.NewCreateNodeOrchestrator(
+		uow,
+		nodeRepo,
+		graphRepo,
+		edgeRepo,
+		eventPublisher,
+		distributedLock,
+		&zapLoggerAdapter{logger},
+	)
+	
+	// Register CreateNodeCommand with orchestrator
 	commandBus.Register(commands.CreateNodeCommand{}, &CommandHandlerAdapter{
 		handler: func(ctx context.Context, cmd bus.Command) error {
 			createCmd, ok := cmd.(commands.CreateNodeCommand)
 			if !ok {
 				return fmt.Errorf("invalid command type")
 			}
-			_, err := createNodeHandler.Handle(ctx, createCmd)
+			_, err := orchestrator.Handle(ctx, createCmd)
 			return err
 		},
 	})
@@ -171,7 +266,7 @@ func ProvideCommandBus(
 	})
 	
 	// Register BulkDeleteNodesCommand handler
-	bulkDeleteHandler := commands_handlers.NewBulkDeleteNodesHandler(nodeRepo, edgeRepo, graphRepo, eventBus, logger)
+	bulkDeleteHandler := commands_handlers.NewBulkDeleteNodesHandler(uow, nodeRepo, edgeRepo, graphRepo, eventBus, logger)
 	commandBus.Register(commands.BulkDeleteNodesCommand{}, &CommandHandlerAdapter{
 		handler: func(ctx context.Context, cmd bus.Command) error {
 			bulkCmd, ok := cmd.(commands.BulkDeleteNodesCommand)
@@ -191,7 +286,19 @@ func ProvideCommandBus(
 			if !ok {
 				return fmt.Errorf("invalid command type")
 			}
-			return createEdgeHandler.Handle(ctx, edgeCmd)
+			return createEdgeHandler.Handle(ctx, &edgeCmd)
+		},
+	})
+	
+	// Register CleanupNodeResourcesCommand handler
+	cleanupHandler := commands.NewCleanupNodeResourcesHandler()
+	commandBus.Register(&commands.CleanupNodeResourcesCommand{}, &CommandHandlerAdapter{
+		handler: func(ctx context.Context, cmd bus.Command) error {
+			cleanupCmd, ok := cmd.(*commands.CleanupNodeResourcesCommand)
+			if !ok {
+				return fmt.Errorf("invalid command type")
+			}
+			return cleanupHandler.Handle(ctx, cleanupCmd)
 		},
 	})
 	
@@ -289,6 +396,18 @@ func ProvideQueryBus(
 		},
 	})
 	
+	// Register FindSimilarNodesQuery handler
+	findSimilarHandler := queries.NewFindSimilarNodesHandler(nodeRepo)
+	queryBus.Register(&queries.FindSimilarNodesQuery{}, &QueryHandlerAdapter{
+		handler: func(ctx context.Context, query querybus.Query) (interface{}, error) {
+			findQuery, ok := query.(*queries.FindSimilarNodesQuery)
+			if !ok {
+				return nil, fmt.Errorf("invalid query type")
+			}
+			return findSimilarHandler.Handle(ctx, findQuery)
+		},
+	})
+	
 	return queryBus
 }
 
@@ -296,4 +415,32 @@ func ProvideQueryBus(
 // In production, this would be Redis or similar
 func ProvideInMemoryCache() ports.Cache {
 	return NewInMemoryCache()
+}
+
+// zapLoggerAdapter adapts zap.Logger to the handlers.Logger interface
+type zapLoggerAdapter struct {
+	logger *zap.Logger
+}
+
+func (a *zapLoggerAdapter) Debug(msg string, fields ...interface{}) {
+	a.logger.Debug(msg, a.fieldsToZap(fields...)...)
+}
+
+func (a *zapLoggerAdapter) Info(msg string, fields ...interface{}) {
+	a.logger.Info(msg, a.fieldsToZap(fields...)...)
+}
+
+func (a *zapLoggerAdapter) Error(msg string, fields ...interface{}) {
+	a.logger.Error(msg, a.fieldsToZap(fields...)...)
+}
+
+func (a *zapLoggerAdapter) fieldsToZap(fields ...interface{}) []zap.Field {
+	var zapFields []zap.Field
+	for i := 0; i < len(fields); i += 2 {
+		if i+1 < len(fields) {
+			key, _ := fields[i].(string)
+			zapFields = append(zapFields, zap.Any(key, fields[i+1]))
+		}
+	}
+	return zapFields
 }

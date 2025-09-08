@@ -32,6 +32,9 @@ type NodeRepository interface {
 	
 	// BulkSave saves multiple nodes in a transaction
 	BulkSave(ctx context.Context, nodes []*entities.Node) error
+	
+	// DeleteBatch removes multiple nodes in a batch operation
+	DeleteBatch(ctx context.Context, nodeIDs []valueobjects.NodeID) error
 }
 
 // EdgeRepository defines the interface for edge persistence
@@ -50,6 +53,9 @@ type EdgeRepository interface {
 	
 	// DeleteByNodeID removes all edges connected to a node
 	DeleteByNodeID(ctx context.Context, graphID string, nodeID string) error
+	
+	// DeleteByNodeIDs removes all edges connected to multiple nodes
+	DeleteByNodeIDs(ctx context.Context, graphID string, nodeIDs []string) error
 }
 
 // GraphRepository defines the interface for graph persistence
@@ -103,16 +109,16 @@ type UnitOfWork interface {
 	Commit(ctx context.Context) error
 	
 	// Rollback rolls back the transaction
-	Rollback(ctx context.Context) error
+	Rollback() error
 	
 	// NodeRepository returns the node repository for this transaction
 	NodeRepository() NodeRepository
 	
+	// EdgeRepository returns the edge repository for this transaction
+	EdgeRepository() EdgeRepository
+	
 	// GraphRepository returns the graph repository for this transaction
 	GraphRepository() GraphRepository
-	
-	// EventStore returns the event store for this transaction
-	EventStore() EventStore
 }
 
 // SearchCriteria defines search parameters
@@ -127,13 +133,18 @@ type SearchCriteria struct {
 	OrderDesc   bool
 }
 
-// EventBus defines the interface for publishing domain events
-type EventBus interface {
+// EventPublisher defines the interface for publishing domain events
+type EventPublisher interface {
 	// Publish sends a single event
 	Publish(ctx context.Context, event events.DomainEvent) error
 	
 	// PublishBatch sends multiple events
 	PublishBatch(ctx context.Context, events []events.DomainEvent) error
+}
+
+// EventBus defines the interface for publishing domain events
+type EventBus interface {
+	EventPublisher
 	
 	// Subscribe registers a handler for an event type
 	Subscribe(eventType string, handler EventHandler) error

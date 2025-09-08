@@ -1,11 +1,14 @@
 package entities
 
 import (
-	"errors"
+	"fmt"
+	"strings"
 	"time"
 
+	"backend2/domain/config"
 	"backend2/domain/core/valueobjects"
 	"backend2/domain/events"
+	pkgerrors "backend2/pkg/errors"
 )
 
 // NodeStatus represents the state of a node
@@ -67,11 +70,11 @@ type Metadata struct {
 // NewNode creates a new node with full business rule validation
 func NewNode(userID string, content valueobjects.NodeContent, position valueobjects.Position) (*Node, error) {
 	if userID == "" {
-		return nil, errors.New("userID cannot be empty")
+		return nil, pkgerrors.NewValidationError("userID cannot be empty")
 	}
 	
 	if content.IsEmpty() {
-		return nil, errors.New("content cannot be empty")
+		return nil, pkgerrors.NewValidationError("content cannot be empty")
 	}
 	
 	now := time.Now()
@@ -89,7 +92,21 @@ func NewNode(userID string, content valueobjects.NodeContent, position valueobje
 		events:    []events.DomainEvent{},
 	}
 	
-	node.addEvent(events.NewNodeCreated(node.id, userID, now))
+	// Extract keywords for the event (will be used by connect-node Lambda)
+	keywords := extractKeywords(content.Title() + " " + content.Body())
+	
+	// Note: graphID will be set later when node is added to a graph
+	// Tags will be populated when AddTag is called
+	node.addEvent(events.NewNodeCreated(
+		node.id, 
+		userID, 
+		"", // graphID will be set when SetGraphID is called
+		content.Title(),
+		content.Body(),
+		keywords,
+		[]string{}, // tags will be populated when AddTag is called
+		now,
+	))
 	
 	return node, nil
 }
@@ -105,11 +122,11 @@ func ReconstructNode(
 	status NodeStatus,
 ) (*Node, error) {
 	if userID == "" {
-		return nil, errors.New("userID cannot be empty")
+		return nil, pkgerrors.NewValidationError("userID cannot be empty")
 	}
 	
 	if content.IsEmpty() {
-		return nil, errors.New("content cannot be empty")
+		return nil, pkgerrors.NewValidationError("content cannot be empty")
 	}
 	
 	node := &Node{
@@ -169,16 +186,28 @@ func (n *Node) GraphID() string {
 func (n *Node) SetGraphID(graphID string) {
 	n.graphID = graphID
 	n.updatedAt = time.Now()
+	
+	// Update the NodeCreated event with the graph ID
+	// This is important for the connect-node Lambda to know which graph to work with
+	for i, event := range n.events {
+		if nodeCreated, ok := event.(events.NodeCreated); ok {
+			// Update the event with the graph ID
+			nodeCreated.GraphID = graphID
+			nodeCreated.Tags = n.GetTags() // Also update tags in case they were added
+			n.events[i] = nodeCreated
+			break
+		}
+	}
 }
 
 // UpdateContent updates the node's content with validation
 func (n *Node) UpdateContent(content valueobjects.NodeContent) error {
 	if n.status == StatusArchived {
-		return errors.New("cannot update archived node")
+		return pkgerrors.NewValidationError("cannot update archived node")
 	}
 	
 	if content.IsEmpty() {
-		return errors.New("content cannot be empty")
+		return pkgerrors.NewValidationError("content cannot be empty")
 	}
 	
 	if content.Equals(n.content) {
@@ -198,7 +227,7 @@ func (n *Node) UpdateContent(content valueobjects.NodeContent) error {
 // MoveTo moves the node to a new position
 func (n *Node) MoveTo(position valueobjects.Position) error {
 	if n.status == StatusArchived {
-		return errors.New("cannot move archived node")
+		return pkgerrors.NewValidationError("cannot move archived node")
 	}
 	
 	if position.Equals(n.position) {
@@ -216,22 +245,32 @@ func (n *Node) MoveTo(position valueobjects.Position) error {
 
 // ConnectTo creates a connection to another node
 func (n *Node) ConnectTo(targetID valueobjects.NodeID, edgeType EdgeType) error {
+	return n.ConnectToWithConfig(targetID, edgeType, config.DefaultDomainConfig())
+}
+
+// ConnectToWithConfig creates a connection to another node with configuration
+func (n *Node) ConnectToWithConfig(targetID valueobjects.NodeID, edgeType EdgeType, cfg *config.DomainConfig) error {
+	if cfg == nil {
+		cfg = config.DefaultDomainConfig()
+	}
+	
 	// Check for self-reference
-	if n.id.Equals(targetID) {
-		return errors.New("cannot connect node to itself")
+	if !cfg.AllowSelfConnections && n.id.Equals(targetID) {
+		return pkgerrors.NewValidationError("cannot connect node to itself")
 	}
 	
 	// Check for duplicate connection
-	for _, edge := range n.edges {
-		if edge.TargetID.Equals(targetID) && edge.Type == edgeType {
-			return errors.New("connection already exists")
+	if !cfg.AllowDuplicateEdges {
+		for _, edge := range n.edges {
+			if edge.TargetID.Equals(targetID) && edge.Type == edgeType {
+				return pkgerrors.NewConflictError("connection already exists")
+			}
 		}
 	}
 	
 	// Check connection limit (business rule)
-	const maxConnections = 50
-	if len(n.edges) >= maxConnections {
-		return errors.New("maximum connections reached")
+	if len(n.edges) >= cfg.MaxConnectionsPerNode {
+		return fmt.Errorf("maximum connections reached: %d", cfg.MaxConnectionsPerNode)
 	}
 	
 	edgeRef := EdgeReference{
@@ -262,7 +301,7 @@ func (n *Node) Disconnect(targetID valueobjects.NodeID) error {
 	}
 	
 	if !found {
-		return errors.New("connection not found")
+		return pkgerrors.NewNotFoundError("connection")
 	}
 	
 	n.edges = newEdges
@@ -276,7 +315,7 @@ func (n *Node) Disconnect(targetID valueobjects.NodeID) error {
 // Publish changes the node status to published
 func (n *Node) Publish() error {
 	if n.status == StatusArchived {
-		return errors.New("cannot publish archived node")
+		return pkgerrors.NewValidationError("cannot publish archived node")
 	}
 	
 	if n.status == StatusPublished {
@@ -312,8 +351,17 @@ func (n *Node) Archive() error {
 
 // AddTag adds a tag to the node
 func (n *Node) AddTag(tag string) error {
+	return n.AddTagWithConfig(tag, config.DefaultDomainConfig())
+}
+
+// AddTagWithConfig adds a tag to the node with configuration
+func (n *Node) AddTagWithConfig(tag string, cfg *config.DomainConfig) error {
+	if cfg == nil {
+		cfg = config.DefaultDomainConfig()
+	}
+	
 	if tag == "" {
-		return errors.New("tag cannot be empty")
+		return pkgerrors.NewValidationError("tag cannot be empty")
 	}
 	
 	// Check for duplicate
@@ -324,13 +372,21 @@ func (n *Node) AddTag(tag string) error {
 	}
 	
 	// Check tag limit
-	const maxTags = 20
-	if len(n.metadata.Tags) >= maxTags {
-		return errors.New("maximum tags reached")
+	if len(n.metadata.Tags) >= cfg.MaxTagsPerNode {
+		return fmt.Errorf("maximum tags reached: %d", cfg.MaxTagsPerNode)
 	}
 	
 	n.metadata.Tags = append(n.metadata.Tags, tag)
 	n.updatedAt = time.Now()
+	
+	// Update the NodeCreated event with the new tags
+	for i, event := range n.events {
+		if nodeCreated, ok := event.(events.NodeCreated); ok {
+			nodeCreated.Tags = n.GetTags()
+			n.events[i] = nodeCreated
+			break
+		}
+	}
 	
 	return nil
 }
@@ -349,7 +405,7 @@ func (n *Node) RemoveTag(tag string) error {
 	}
 	
 	if !found {
-		return errors.New("tag not found")
+		return pkgerrors.NewNotFoundError("tag")
 	}
 	
 	n.metadata.Tags = newTags
@@ -402,4 +458,34 @@ func (n *Node) addEvent(event events.DomainEvent) {
 // generateEdgeID generates a unique edge ID
 func generateEdgeID() string {
 	return valueobjects.NewNodeID().String() // Reuse UUID generation
+}
+
+// extractKeywords extracts significant words from text for similarity matching
+func extractKeywords(text string) []string {
+	// Simple keyword extraction - in production, use NLP
+	words := strings.Fields(strings.ToLower(text))
+	keywords := []string{}
+	
+	stopWords := map[string]bool{
+		"the": true, "a": true, "an": true, "and": true, "or": true,
+		"but": true, "in": true, "on": true, "at": true, "to": true,
+		"for": true, "of": true, "with": true, "is": true, "are": true,
+		"was": true, "were": true, "be": true, "been": true, "being": true,
+		"have": true, "has": true, "had": true, "do": true, "does": true,
+		"did": true, "will": true, "would": true, "could": true, "should": true,
+	}
+	
+	seen := make(map[string]bool)
+	for _, word := range words {
+		// Clean punctuation
+		word = strings.Trim(word, ".,!?;:\"'()[]{}")
+		
+		// Skip short words, stop words, and duplicates
+		if len(word) > 3 && !stopWords[word] && !seen[word] {
+			keywords = append(keywords, word)
+			seen[word] = true
+		}
+	}
+	
+	return keywords
 }

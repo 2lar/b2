@@ -4,29 +4,44 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
+	"backend2/infrastructure/config"
 	"backend2/pkg/auth"
 	"go.uber.org/zap"
 )
 
-var (
-	// Default JWT configuration for development
-	// In production, these should come from secure configuration
-	defaultJWTSecret = "development-secret-change-in-production"
-	defaultIssuer    = "brain2-backend"
-	defaultAudience  = []string{"brain2-api"}
-)
-
 // Authenticate creates an authentication middleware with proper JWT validation
 func Authenticate() func(next http.Handler) http.Handler {
-	// Create a default JWT validator for backwards compatibility
+	// Check if running in Lambda environment
+	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" {
+		// In Lambda, API Gateway handles JWT validation
+		// We just need to extract the user context from headers
+		return AuthenticateForLambda()
+	}
+	
+	// Load configuration for non-Lambda environments
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		// Fall back to environment variable if config fails
+		jwtSecret := os.Getenv("JWT_SECRET")
+		if jwtSecret == "" {
+			jwtSecret = "development-secret-change-in-production"
+		}
+		cfg = &config.Config{
+			JWTSecret: jwtSecret,
+			JWTIssuer: "brain2-backend",
+		}
+	}
+
+	// Create JWT validator with configuration
 	jwtConfig := auth.JWTConfig{
 		SigningMethod: "HS256",
-		SecretKey:     defaultJWTSecret,
-		Issuer:        defaultIssuer,
-		Audience:      defaultAudience,
+		SecretKey:     cfg.JWTSecret,
+		Issuer:        cfg.JWTIssuer,
+		Audience:      []string{"brain2-api"},
 	}
 
 	validator, err := auth.NewJWTValidator(jwtConfig)
@@ -79,13 +94,32 @@ func Authenticate() func(next http.Handler) http.Handler {
 			var claims *auth.Claims
 			if token == "api-gateway-validated" && r.Header.Get("X-API-Gateway-Authorized") == "true" {
 				// This request was already validated by API Gateway JWT authorizer
-				// Create a default authenticated user context
-				// In production, you might want to extract user info from other headers
-				// or use a different authorization flow
+				// Extract user info from API Gateway context headers
+				userID := r.Header.Get("X-User-ID")
+				if userID == "" {
+					// Try to extract from requestContext if available
+					userID = r.Header.Get("X-Amzn-Requestid")
+					if userID == "" {
+						respondUnauthorized(w, "Missing user context from API Gateway")
+						return
+					}
+				}
+				
+				userEmail := r.Header.Get("X-User-Email")
+				if userEmail == "" {
+					userEmail = "user@api-gateway.com" // Default email for API Gateway auth
+				}
+				
+				userRoles := r.Header.Get("X-User-Roles")
+				roles := []string{"authenticated"}
+				if userRoles != "" {
+					roles = strings.Split(userRoles, ",")
+				}
+				
 				claims = &auth.Claims{
-					UserID: "125deabf-b32e-4313-b893-4a3ddb416cc2", // TODO: Extract from API Gateway context
-					Email:  "admin@test.com",
-					Roles:  []string{"authenticated"},
+					UserID: userID,
+					Email:  userEmail,
+					Roles:  roles,
 				}
 			} else if strings.HasPrefix(token, "lambda-authorized:") {
 				// Extract user ID from Lambda-authorized token
@@ -143,6 +177,71 @@ func Authenticate() func(next http.Handler) http.Handler {
 			ctx = context.WithValue(ctx, "userID", claims.UserID)
 			
 			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// AuthenticateForLambda creates authentication middleware for Lambda environment
+// where API Gateway has already validated the JWT token
+func AuthenticateForLambda() func(next http.Handler) http.Handler {
+	// Create rate limiters
+	ipLimiter := auth.NewIPRateLimiter(100)     // 100 requests per minute per IP
+	userLimiter := auth.NewUserRateLimiter(200) // 200 requests per minute per user
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Extract client IP for rate limiting
+			clientIP := getClientIP(r)
+			
+			// Apply IP rate limiting
+			allowed, _ := ipLimiter.Allow(r.Context(), clientIP)
+			if !allowed {
+				respondWithError(w, http.StatusTooManyRequests, "Rate limit exceeded")
+				return
+			}
+
+			// In Lambda, the handler sets these headers after extracting from API Gateway context
+			if r.Header.Get("X-API-Gateway-Authorized") == "true" {
+				// Extract user context from headers set by Lambda handler
+				userID := r.Header.Get("X-User-ID")
+				userEmail := r.Header.Get("X-User-Email")
+				userRoles := r.Header.Get("X-User-Roles")
+				
+				if userID == "" {
+					respondUnauthorized(w, "Missing user context from API Gateway")
+					return
+				}
+				
+				// Apply user rate limiting
+				allowed, _ = userLimiter.Allow(r.Context(), userID)
+				if !allowed {
+					respondWithError(w, http.StatusTooManyRequests, "User rate limit exceeded")
+					return
+				}
+				
+				// Create user context
+				roles := []string{"authenticated"}
+				if userRoles != "" {
+					roles = strings.Split(userRoles, ",")
+				}
+				
+				userCtx := &auth.UserContext{
+					UserID: userID,
+					Email:  userEmail,
+					Roles:  roles,
+				}
+				
+				// Add user context to request
+				ctx := auth.SetUserInContext(r.Context(), userCtx)
+				
+				// Also add userID for backwards compatibility
+				ctx = context.WithValue(ctx, "userID", userID)
+				
+				next.ServeHTTP(w, r.WithContext(ctx))
+			} else {
+				// Request wasn't pre-authorized by API Gateway
+				respondUnauthorized(w, "Request not authorized by API Gateway")
+			}
 		})
 	}
 }
@@ -335,6 +434,13 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// Default JWT configuration values
+const (
+	defaultIssuer = "brain2-backend"
+)
+
+var defaultAudience = []string{"brain2-api"}
 
 // TokenRefreshMiddleware handles token refresh
 type TokenRefreshMiddleware struct {

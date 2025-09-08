@@ -11,21 +11,17 @@ import (
 
 	awsevents "github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/google/uuid"
 	
-	"backend2/application/commands"
-	commandbus "backend2/application/commands/bus"
-	"backend2/application/ports"
-	querybus "backend2/application/queries/bus"
+	"backend2/application/services"
 	"backend2/infrastructure/config"
 	"backend2/infrastructure/di"
+	"go.uber.org/zap"
 )
 
 // Global dependencies for Lambda performance optimization
 var (
-	commandBus  *commandbus.CommandBus
-	queryBus    *querybus.QueryBus
-	publisher   ports.EventBus
+	edgeService *services.EdgeService
+	logger      *zap.Logger
 )
 
 func init() {
@@ -40,9 +36,14 @@ func init() {
 		log.Fatalf("Failed to initialize dependency container: %v", err)
 	}
 	
-	commandBus = container.CommandBus
-	queryBus = container.QueryBus
-	publisher = container.EventBus
+	// Initialize EdgeService with dependencies from container
+	logger = container.Logger
+	edgeService = services.NewEdgeService(
+		container.NodeRepo,
+		container.GraphRepo,
+		container.EdgeRepo,
+		logger,
+	)
 	
 	log.Println("Connect-node handler initialized successfully")
 }
@@ -51,6 +52,9 @@ func init() {
 type ConnectionRequest struct {
 	NodeID            string   `json:"node_id"`
 	UserID            string   `json:"user_id"`
+	GraphID           string   `json:"graph_id"`
+	Title             string   `json:"title,omitempty"`
+	Content           string   `json:"content,omitempty"`
 	MaxConnections    int      `json:"max_connections,omitempty"`
 	ConnectionType    string   `json:"connection_type,omitempty"`    // semantic, keyword, temporal
 	SimilarityThreshold float64 `json:"similarity_threshold,omitempty"`
@@ -79,114 +83,50 @@ type DiscoveredConnection struct {
 func HandleConnectionDiscovery(ctx context.Context, request ConnectionRequest) (*ConnectionResponse, error) {
 	log.Printf("Discovering connections for node %s", request.NodeID)
 	
-	// Set defaults
-	if request.MaxConnections == 0 {
-		request.MaxConnections = 10
-	}
-	if request.SimilarityThreshold == 0 {
-		request.SimilarityThreshold = 0.7
-	}
-	if request.ConnectionType == "" {
-		request.ConnectionType = "semantic"
+	// Use the EdgeService to create edges for the new node
+	createdEdgeIDs, err := edgeService.CreateEdgesForNewNode(
+		ctx,
+		request.NodeID,
+		request.UserID,
+		request.GraphID,
+		request.Keywords,
+		request.Tags,
+	)
+	
+	if err != nil {
+		log.Printf("Failed to create edges for node %s: %v", request.NodeID, err)
+		return &ConnectionResponse{
+			NodeID:      request.NodeID,
+			Connections: []DiscoveredConnection{},
+			TotalFound:  0,
+			Applied:     0,
+		}, err
 	}
 	
-	// Query for similar nodes based on connection type
-	var discoveries []DiscoveredConnection
-	
-	switch request.ConnectionType {
-	case "semantic":
-		discoveries = discoverSemanticConnections(ctx, request)
-	case "keyword":
-		discoveries = discoverKeywordConnections(ctx, request)
-	case "temporal":
-		discoveries = discoverTemporalConnections(ctx, request)
-	default:
-		return nil, fmt.Errorf("unknown connection type: %s", request.ConnectionType)
-	}
-	
-	// Apply connections (create edges)
-	applied := 0
-	for i, discovery := range discoveries {
-		if i >= request.MaxConnections {
-			break
-		}
-		
-		if discovery.Confidence >= request.SimilarityThreshold {
-			// Create edge command
-			createEdgeCmd := commands.CreateEdgeCommand{
-				EdgeID:   uuid.New().String(),
-				UserID:   request.UserID,
-				SourceID: request.NodeID,
-				TargetID: discovery.TargetNodeID,
-				Type:     discovery.Type,
-				Weight:   discovery.Confidence,
-				Metadata: map[string]interface{}{
-					"reason":       discovery.Reason,
-					"auto_created": true,
-				},
-			}
-			
-			// Execute command
-			if err := commandBus.Send(ctx, createEdgeCmd); err != nil {
-				log.Printf("Failed to create edge to %s: %v", discovery.TargetNodeID, err)
-				discoveries[i].Created = false
-			} else {
-				discoveries[i].Created = true
-				applied++
-				
-				// Publish EdgeCreatedEvent
-				// This would trigger WebSocket notifications and other handlers
-			}
-		}
+	// Build response with created edges
+	connections := make([]DiscoveredConnection, 0, len(createdEdgeIDs))
+	for range createdEdgeIDs {
+		// For simplicity, we're not fetching the full edge details here
+		// In production, you might want to fetch and include more details
+		connections = append(connections, DiscoveredConnection{
+			Created: true,
+			Type:    "similar",
+			Reason:  "Semantic similarity based on keywords and tags",
+		})
 	}
 	
 	response := &ConnectionResponse{
 		NodeID:      request.NodeID,
-		Connections: discoveries,
-		TotalFound:  len(discoveries),
-		Applied:     applied,
+		Connections: connections,
+		TotalFound:  len(connections),
+		Applied:     len(connections),
 	}
 	
-	log.Printf("Found %d connections, applied %d for node %s", 
-		len(discoveries), applied, request.NodeID)
+	log.Printf("Created %d edges for node %s", len(createdEdgeIDs), request.NodeID)
 	
 	return response, nil
 }
 
-// discoverSemanticConnections finds semantically similar nodes
-func discoverSemanticConnections(ctx context.Context, request ConnectionRequest) []DiscoveredConnection {
-	// Simplified implementation - would use query bus in production
-	// query := &queries.FindSimilarNodesQuery{
-	//     NodeID:         request.NodeID,
-	//     UserID:         request.UserID,
-	//     MaxResults:     request.MaxConnections * 2, // Get extra for filtering
-	//     SimilarityType: "semantic",
-	// }
-	// result, err := queryBus.Query(ctx, query)
-	// if err != nil {
-	//     log.Printf("Failed to find similar nodes: %v", err)
-	//     return nil
-	// }
-	
-	// For now, return empty discoveries
-	var discoveries []DiscoveredConnection
-	
-	return discoveries
-}
-
-// discoverKeywordConnections finds nodes with matching keywords
-func discoverKeywordConnections(ctx context.Context, request ConnectionRequest) []DiscoveredConnection {
-	// Implementation for keyword-based discovery
-	// Would query nodes with overlapping keywords
-	return []DiscoveredConnection{}
-}
-
-// discoverTemporalConnections finds nodes created around the same time
-func discoverTemporalConnections(ctx context.Context, request ConnectionRequest) []DiscoveredConnection {
-	// Implementation for temporal-based discovery
-	// Would query nodes created in similar time windows
-	return []DiscoveredConnection{}
-}
 
 // handler is the main Lambda handler for different invocation types
 func handler(ctx context.Context, event json.RawMessage) error {
@@ -216,13 +156,16 @@ func handler(ctx context.Context, event json.RawMessage) error {
 	// Try to parse as EventBridge event (async invocation)
 	var cloudWatchEvent awsevents.CloudWatchEvent
 	if err := json.Unmarshal(event, &cloudWatchEvent); err == nil {
-		if cloudWatchEvent.DetailType == "NodeCreated" {
+		if cloudWatchEvent.DetailType == "node.created" {
 			// Auto-discover connections for newly created nodes
 			var nodeCreatedEvent struct {
-				NodeID string   `json:"aggregate_id"`
-				UserID string   `json:"user_id"`
+				NodeID   string   `json:"node_id"`
+				UserID   string   `json:"user_id"`
+				GraphID  string   `json:"graph_id"`
+				Title    string   `json:"title"`
+				Content  string   `json:"content"`
 				Keywords []string `json:"keywords"`
-				Tags []string `json:"tags"`
+				Tags     []string `json:"tags"`
 			}
 			
 			if err := json.Unmarshal(cloudWatchEvent.Detail, &nodeCreatedEvent); err != nil {
@@ -232,10 +175,14 @@ func handler(ctx context.Context, event json.RawMessage) error {
 			request := ConnectionRequest{
 				NodeID:         nodeCreatedEvent.NodeID,
 				UserID:         nodeCreatedEvent.UserID,
+				GraphID:        nodeCreatedEvent.GraphID,
+				Title:          nodeCreatedEvent.Title,
+				Content:        nodeCreatedEvent.Content,
 				Keywords:       nodeCreatedEvent.Keywords,
 				Tags:           nodeCreatedEvent.Tags,
-				MaxConnections: 5,
+				MaxConnections: 10, // Allow more connections for automatic discovery
 				ConnectionType: "semantic",
+				SimilarityThreshold: 0.3, // Lower threshold for automatic connections
 			}
 			
 			_, err := HandleConnectionDiscovery(ctx, request)

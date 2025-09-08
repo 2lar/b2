@@ -9,6 +9,7 @@ import (
 	"backend2/application/ports"
 	"backend2/domain/core/entities"
 	"backend2/domain/core/valueobjects"
+	"backend2/infrastructure/persistence/abstractions"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -17,10 +18,16 @@ import (
 	"go.uber.org/zap"
 )
 
-// NodeRepository implements the NodeRepository interface using DynamoDB
+// NodeRepository implements both the application ports.NodeRepository interface
+// and the abstractions.NodeRepositoryAbstraction interface using DynamoDB
 type NodeRepository struct {
 	*GenericRepository[*NodeEntity]
+	gsi2IndexName string // For direct NodeID lookups
 }
+
+// Compile-time interface checks
+var _ ports.NodeRepository = (*NodeRepository)(nil)
+var _ abstractions.NodeRepositoryAbstraction = (*NodeRepository)(nil)
 
 // NodeEntity is a wrapper to satisfy the Entity interface
 type NodeEntity struct {
@@ -85,6 +92,10 @@ func (c *NodeEntityConfig) ToItem(entity *NodeEntity) (map[string]types.Attribut
 	// Add GSI attributes for user-level queries
 	item["GSI1PK"] = &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", node.UserID())}
 	item["GSI1SK"] = &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", node.ID().String())}
+	
+	// Add GSI2 attributes for direct NodeID lookups (eliminates table scans)
+	item["GSI2PK"] = &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", node.ID().String())}
+	item["GSI2SK"] = &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPH#%s", node.GraphID())}
 	
 	// Add tags if present
 	tags := node.GetTags()
@@ -233,18 +244,29 @@ func (c *NodeEntityConfig) ParseItem(item map[string]types.AttributeValue) (*Nod
 }
 
 // NewNodeRepository creates a new node repository
-func NewNodeRepository(client *dynamodb.Client, tableName, indexName string, logger *zap.Logger) ports.NodeRepository {
+func NewNodeRepository(client *dynamodb.Client, tableName, gsi1IndexName, gsi2IndexName string, logger *zap.Logger) ports.NodeRepository {
 	config := &NodeEntityConfig{}
-	genericRepo := NewGenericRepository[*NodeEntity](client, tableName, indexName, config, logger)
+	genericRepo := NewGenericRepository[*NodeEntity](client, tableName, gsi1IndexName, config, logger)
 	
 	return &NodeRepository{
 		GenericRepository: genericRepo,
+		gsi2IndexName:     gsi2IndexName,
 	}
 }
 
 // Implementation of ports.NodeRepository interface
 
 func (r *NodeRepository) Save(ctx context.Context, node *entities.Node) error {
+	return r.saveNode(ctx, node)
+}
+
+// Update updates an existing node
+func (r *NodeRepository) Update(ctx context.Context, node *entities.Node) error {
+	return r.saveNode(ctx, node)
+}
+
+// saveNode is the internal save implementation
+func (r *NodeRepository) saveNode(ctx context.Context, node *entities.Node) error {
 	// Ensure node has a graph ID
 	if node.GraphID() == "" {
 		return fmt.Errorf("node must belong to a graph before saving")
@@ -278,13 +300,71 @@ func (r *NodeRepository) Save(ctx context.Context, node *entities.Node) error {
 	return nil
 }
 
+// SaveWithUoW saves a node within a unit of work transaction
+func (r *NodeRepository) SaveWithUoW(ctx context.Context, node *entities.Node, uow interface{}) error {
+	// Type assert to DynamoDBUnitOfWork
+	dynamoUoW, ok := uow.(*DynamoDBUnitOfWork)
+	if !ok {
+		return fmt.Errorf("invalid unit of work type")
+	}
+	
+	// Ensure node has a graph ID
+	if node.GraphID() == "" {
+		return fmt.Errorf("node must belong to a graph before saving")
+	}
+	
+	entity := &NodeEntity{node: node}
+	config := &NodeEntityConfig{}
+	item, err := config.ToItem(entity)
+	if err != nil {
+		return fmt.Errorf("failed to convert node to item: %w", err)
+	}
+	
+	// Register the save operation with the unit of work
+	transactItem := types.TransactWriteItem{
+		Put: &types.Put{
+			TableName: aws.String(r.GenericRepository.tableName),
+			Item:      item,
+		},
+	}
+	
+	if err := dynamoUoW.RegisterSave(transactItem); err != nil {
+		return fmt.Errorf("failed to register node save: %w", err)
+	}
+	
+	// Register any uncommitted events from the node
+	for _, event := range node.GetUncommittedEvents() {
+		if err := dynamoUoW.RegisterEvent(event); err != nil {
+			return fmt.Errorf("failed to register node event: %w", err)
+		}
+	}
+	
+	r.GenericRepository.logger.Debug("Node registered for transactional save",
+		zap.String("nodeID", node.ID().String()),
+		zap.String("graphID", node.GraphID()),
+		zap.String("userID", node.UserID()),
+	)
+	
+	return nil
+}
+
 func (r *NodeRepository) GetByID(ctx context.Context, id valueobjects.NodeID) (*entities.Node, error) {
 	// Since nodes are now scoped to graphs, we need to find it by scanning
 	// or maintaining a GSI for direct node lookups
 	return r.searchForNodeByID(ctx, id)
 }
 
+// FindByID retrieves a node by ID (alias for GetByID to satisfy interface)
+func (r *NodeRepository) FindByID(ctx context.Context, id valueobjects.NodeID) (*entities.Node, error) {
+	return r.GetByID(ctx, id)
+}
+
 func (r *NodeRepository) GetByUserID(ctx context.Context, userID string) ([]*entities.Node, error) {
+	return r.FindByUserID(ctx, userID)
+}
+
+// FindByUserID retrieves all nodes for a user (interface method)
+func (r *NodeRepository) FindByUserID(ctx context.Context, userID string) ([]*entities.Node, error) {
 	// Query using GSI1 where GSI1PK = USER#userID and GSI1SK begins_with NODE#
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(r.GenericRepository.tableName),
@@ -316,6 +396,11 @@ func (r *NodeRepository) GetByUserID(ctx context.Context, userID string) ([]*ent
 }
 
 func (r *NodeRepository) GetByGraphID(ctx context.Context, graphID string) ([]*entities.Node, error) {
+	return r.FindByGraphID(ctx, graphID)
+}
+
+// FindByGraphID retrieves all nodes for a graph (interface method)
+func (r *NodeRepository) FindByGraphID(ctx context.Context, graphID string) ([]*entities.Node, error) {
 	// Now this is a direct query since nodes are scoped to graphs
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(r.GenericRepository.tableName),
@@ -391,23 +476,25 @@ func (r *NodeRepository) BulkSave(ctx context.Context, nodes []*entities.Node) e
 	return r.GenericRepository.BatchSave(ctx, nodeEntities)
 }
 
-// searchForNodeByID searches for a node by ID using GSI2 (if available) or scanning
+// searchForNodeByID searches for a node by ID using GSI2 for efficient O(1) lookup
 func (r *NodeRepository) searchForNodeByID(ctx context.Context, id valueobjects.NodeID) (*entities.Node, error) {
-	// Try using GSI2 if available (NODE#nodeId as partition key)
-	// For now, we'll scan - in production, add a GSI for efficient node lookups
-	tableName := r.GenericRepository.tableName
-	input := &dynamodb.ScanInput{
-		TableName:        &tableName,
-		FilterExpression: aws.String("NodeID = :nodeId AND EntityType = :type"),
+	// Use GSI2 with NODE#nodeId as partition key for O(1) lookup
+	// IMPORTANT: Filter by GSI2SK to get the node itself, not edges where this node is the source
+	// Nodes have GSI2SK=GRAPH#graphId, while edges have GSI2SK=EDGE#edgeId
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(r.GenericRepository.tableName),
+		IndexName:              aws.String(r.gsi2IndexName),
+		KeyConditionExpression: aws.String("GSI2PK = :pk AND begins_with(GSI2SK, :sk)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":nodeId": &types.AttributeValueMemberS{Value: id.String()},
-			":type":   &types.AttributeValueMemberS{Value: "NODE"},
+			":pk": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", id.String())},
+			":sk": &types.AttributeValueMemberS{Value: "GRAPH#"}, // Filter for nodes only, not edges
 		},
+		Limit: aws.Int32(1), // We only expect one node result
 	}
 
-	result, err := r.GenericRepository.client.Scan(ctx, input)
+	result, err := r.GenericRepository.client.Query(ctx, input)
 	if err != nil {
-		return nil, fmt.Errorf("failed to search for node: %w", err)
+		return nil, fmt.Errorf("failed to query for node: %w", err)
 	}
 
 	if len(result.Items) == 0 {
@@ -420,6 +507,256 @@ func (r *NodeRepository) searchForNodeByID(ctx context.Context, id valueobjects.
 		return nil, fmt.Errorf("failed to parse node: %w", err)
 	}
 
-	// The entity is already a *NodeEntity, so we can access the node directly
 	return entity.node, nil
+}
+
+// CountNodesByGraph counts the number of nodes in a graph
+func (r *NodeRepository) CountNodesByGraph(ctx context.Context, graphID string) (int64, error) {
+	tableName := r.GenericRepository.tableName
+	input := &dynamodb.QueryInput{
+		TableName: &tableName,
+		KeyConditionExpression: aws.String("PK = :pk"),
+		FilterExpression: aws.String("EntityType = :type"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk":   &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPH#%s", graphID)},
+			":type": &types.AttributeValueMemberS{Value: "NODE"},
+		},
+		Select: types.SelectCount,
+	}
+
+	result, err := r.GenericRepository.client.Query(ctx, input)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count nodes: %w", err)
+	}
+
+	return int64(result.Count), nil
+}
+
+// FindSimilarNodes finds nodes similar to the given node
+func (r *NodeRepository) FindSimilarNodes(ctx context.Context, nodeID valueobjects.NodeID, threshold float64) ([]*entities.Node, error) {
+	// This is a simplified implementation
+	// In production, you'd use a similarity algorithm or vector database
+	node, err := r.GetByID(ctx, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find source node: %w", err)
+	}
+
+	// For now, return nodes with similar tags
+	tags := node.GetTags()
+	if len(tags) == 0 {
+		return []*entities.Node{}, nil
+	}
+
+	return r.FindByTags(ctx, tags)
+}
+
+// FindOrphanedNodes finds nodes that have no edges
+func (r *NodeRepository) FindOrphanedNodes(ctx context.Context, graphID string) ([]*entities.Node, error) {
+	// Get all nodes in the graph
+	nodes, err := r.GetByGraphID(ctx, graphID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter for nodes with no connections
+	orphaned := make([]*entities.Node, 0)
+	for _, node := range nodes {
+		if len(node.GetConnections()) == 0 {
+			orphaned = append(orphaned, node)
+		}
+	}
+
+	return orphaned, nil
+}
+
+// FindByTags finds nodes by their tags
+func (r *NodeRepository) FindByTags(ctx context.Context, tags []string) ([]*entities.Node, error) {
+	if len(tags) == 0 {
+		return []*entities.Node{}, nil
+	}
+
+	tableName := r.GenericRepository.tableName
+	
+	// Build filter expression for tags
+	filterParts := make([]string, len(tags))
+	expAttrValues := map[string]types.AttributeValue{
+		":type": &types.AttributeValueMemberS{Value: "NODE"},
+	}
+	
+	for i, tag := range tags {
+		key := fmt.Sprintf(":tag%d", i)
+		filterParts[i] = fmt.Sprintf("contains(Tags, %s)", key)
+		expAttrValues[key] = &types.AttributeValueMemberS{Value: tag}
+	}
+	
+	filterExpr := fmt.Sprintf("EntityType = :type AND (%s)", strings.Join(filterParts, " OR "))
+	
+	input := &dynamodb.ScanInput{
+		TableName:                 &tableName,
+		FilterExpression:         aws.String(filterExpr),
+		ExpressionAttributeValues: expAttrValues,
+	}
+
+	result, err := r.GenericRepository.client.Scan(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find nodes by tags: %w", err)
+	}
+
+	nodes := make([]*entities.Node, 0, len(result.Items))
+	for _, item := range result.Items {
+		entity, err := r.GenericRepository.config.ParseItem(item)
+		if err != nil {
+			continue
+		}
+		nodes = append(nodes, entity.node)
+	}
+
+	return nodes, nil
+}
+
+// SearchByContent searches nodes by content
+func (r *NodeRepository) SearchByContent(ctx context.Context, query string, limit int) ([]*entities.Node, error) {
+	if query == "" {
+		return []*entities.Node{}, nil
+	}
+
+	tableName := r.GenericRepository.tableName
+	
+	// Simple content search - in production, use a search service like Elasticsearch
+	input := &dynamodb.ScanInput{
+		TableName: &tableName,
+		FilterExpression: aws.String("EntityType = :type AND (contains(Title, :query) OR contains(Content, :query))"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":type":  &types.AttributeValueMemberS{Value: "NODE"},
+			":query": &types.AttributeValueMemberS{Value: query},
+		},
+	}
+	
+	if limit > 0 {
+		limitInt32 := int32(limit)
+		input.Limit = &limitInt32
+	}
+
+	result, err := r.GenericRepository.client.Scan(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search nodes: %w", err)
+	}
+
+	nodes := make([]*entities.Node, 0, len(result.Items))
+	for _, item := range result.Items {
+		entity, err := r.GenericRepository.config.ParseItem(item)
+		if err != nil {
+			continue
+		}
+		nodes = append(nodes, entity.node)
+	}
+
+	return nodes, nil
+}
+
+// SaveBatch saves multiple nodes in a batch using the improved generic batch operation
+func (r *NodeRepository) SaveBatch(ctx context.Context, nodes []*entities.Node) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	// Convert nodes to entities for the generic batch save
+	entities := make([]*NodeEntity, len(nodes))
+	for i, node := range nodes {
+		// Ensure each node has a GraphID before saving
+		if node.GraphID() == "" {
+			return fmt.Errorf("node %s must belong to a graph before batch saving", node.ID().String())
+		}
+		entities[i] = &NodeEntity{node: node}
+	}
+
+	// Use the improved generic BatchSave with retry logic and error handling
+	return r.GenericRepository.BatchSave(ctx, entities)
+}
+
+
+// DeleteBatch deletes multiple nodes in a batch using improved batch operations
+func (r *NodeRepository) DeleteBatch(ctx context.Context, nodeIDs []valueobjects.NodeID) error {
+	if len(nodeIDs) == 0 {
+		return nil
+	}
+
+	// First, we need to find each node to get their GraphIDs for proper key construction
+	// This is necessary because DynamoDB requires the full key (PK + SK) for deletion
+	keys := make([]map[string]types.AttributeValue, 0, len(nodeIDs))
+	notFoundNodes := make([]string, 0)
+
+	for _, nodeID := range nodeIDs {
+		// Use the GSI2 lookup to find the node and get its GraphID
+		node, err := r.searchForNodeByID(ctx, nodeID)
+		if err != nil {
+			r.GenericRepository.logger.Warn("Node not found for batch delete",
+				zap.String("nodeID", nodeID.String()),
+				zap.Error(err),
+			)
+			notFoundNodes = append(notFoundNodes, nodeID.String())
+			continue
+		}
+
+		// Construct the key for deletion
+		key := map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPH#%s", node.GraphID())},
+			"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", nodeID.String())},
+		}
+		keys = append(keys, key)
+	}
+
+	if len(notFoundNodes) > 0 {
+		r.GenericRepository.logger.Warn("Some nodes were not found during batch delete",
+			zap.Strings("notFoundNodes", notFoundNodes),
+		)
+	}
+
+	if len(keys) == 0 {
+		return fmt.Errorf("no valid nodes found for batch delete")
+	}
+
+	// Use the improved generic BatchDelete with retry logic
+	if err := r.GenericRepository.BatchDelete(ctx, keys); err != nil {
+		return fmt.Errorf("failed to batch delete nodes: %w", err)
+	}
+
+	r.GenericRepository.logger.Info("Batch deleted nodes successfully",
+		zap.Int("requestedCount", len(nodeIDs)),
+		zap.Int("deletedCount", len(keys)),
+		zap.Int("notFoundCount", len(notFoundNodes)),
+	)
+
+	return nil
+}
+
+// GetConnectedNodes gets all nodes connected to the given node
+func (r *NodeRepository) GetConnectedNodes(ctx context.Context, nodeID valueobjects.NodeID) ([]*entities.Node, error) {
+	// First get the node
+	node, err := r.GetByID(ctx, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find node: %w", err)
+	}
+
+	// Get connected node IDs
+	connections := node.GetConnections()
+	if len(connections) == 0 {
+		return []*entities.Node{}, nil
+	}
+
+	// Fetch each connected node
+	connectedNodes := make([]*entities.Node, 0, len(connections))
+	for _, conn := range connections {
+		connNodeID := conn.TargetID
+		
+		connNode, err := r.GetByID(ctx, connNodeID)
+		if err != nil {
+			// Skip nodes that can't be found
+			continue
+		}
+		
+		connectedNodes = append(connectedNodes, connNode)
+	}
+
+	return connectedNodes, nil
 }

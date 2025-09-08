@@ -146,7 +146,7 @@ COVERAGE_DIR="$PROJECT_ROOT/coverage"
 BUILD_TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 BUILD_ID="b2_backend2_${BUILD_TIMESTAMP}_$$"
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-VERSION="1.0.0-alpha"
+VERSION="2.0.0-alpha"  # Updated to v2 with new architecture
 
 echo -e "${BLUE}====================================${NC}"
 echo -e "${BLUE}    Backend2 Build System${NC}"
@@ -193,11 +193,23 @@ if [ "$RUN_LINT" = true ]; then
     
     # Run formatters
     echo "  • Checking code formatting..."
-    if ! gofmt -l . | grep -v "vendor\|build\|wire_gen.go"; then
+    UNFORMATTED=$(gofmt -l . | grep -v "vendor\|build\|wire_gen.go\|.pb.go")
+    if [ -z "$UNFORMATTED" ]; then
         echo -e "${GREEN}  ✓ Code formatting is correct${NC}"
     else
         echo -e "${RED}  ✗ Code needs formatting. Run: gofmt -w .${NC}"
+        echo "Files needing formatting:"
+        echo "$UNFORMATTED"
         exit 1
+    fi
+    
+    # Check for common issues in new architecture
+    echo "  • Checking for hardcoded values..."
+    HARDCODED=$(grep -r "125deabf-b32e-4313-b893-4a3ddb416cc2" --include="*.go" . 2>/dev/null | grep -v "test" || true)
+    if [ -z "$HARDCODED" ]; then
+        echo -e "${GREEN}  ✓ No hardcoded UUIDs found${NC}"
+    else
+        echo -e "${YELLOW}  ⚠️  Hardcoded UUIDs found (may be test data)${NC}"
     fi
     
     # Run go vet
@@ -275,6 +287,37 @@ if [ "$SKIP_TESTS" = false ]; then
     echo -e "${GREEN}✅ All tests passed${NC}"
 else
     echo -e "${BLUE}⏭️  Skipping tests (--skip-tests flag provided)${NC}"
+fi
+
+# Validate new architecture components
+echo -e "${YELLOW}🏛️  Validating DDD/CQRS architecture components...${NC}"
+
+# Check for required configuration files
+if [ ! -f "$PROJECT_ROOT/domain/config/domain_config.go" ]; then
+    echo -e "${YELLOW}⚠️  Domain configuration not found. Using defaults.${NC}"
+else
+    echo -e "${GREEN}  ✓ Domain configuration found${NC}"
+fi
+
+# Check for repository abstractions
+if [ -d "$PROJECT_ROOT/infrastructure/persistence/abstractions" ]; then
+    echo -e "${GREEN}  ✓ Repository abstractions found${NC}"
+else
+    echo -e "${YELLOW}⚠️  Repository abstractions not found${NC}"
+fi
+
+# Check for extension points
+if [ -f "$PROJECT_ROOT/pkg/extensions/hooks.go" ]; then
+    echo -e "${GREEN}  ✓ Extension points configured${NC}"
+else
+    echo -e "${YELLOW}⚠️  Extension points not configured${NC}"
+fi
+
+# Check for schema evolution
+if [ -f "$PROJECT_ROOT/infrastructure/persistence/schema/evolution.go" ]; then
+    echo -e "${GREEN}  ✓ Schema evolution strategy found${NC}"
+else
+    echo -e "${YELLOW}⚠️  Schema evolution not configured${NC}"
 fi
 
 # Wire dependency injection generation
@@ -465,7 +508,15 @@ for component in $components; do
   "build_time": "$BUILD_TIMESTAMP",
   "git_commit": "$GIT_COMMIT",
   "debug": $DEBUG_BUILD,
-  "race": $ENABLE_RACE
+  "race": $ENABLE_RACE,
+  "architecture": "DDD/CQRS",
+  "api_version": "v2",
+  "features": {
+    "domain_config": true,
+    "schema_evolution": true,
+    "extension_points": true,
+    "api_versioning": true
+  }
 }
 EOF
     

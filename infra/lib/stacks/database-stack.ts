@@ -15,6 +15,8 @@ export interface DatabaseStackProps extends StackProps {
 export class DatabaseStack extends Stack {
   public readonly memoryTable: dynamodb.Table;
   public readonly connectionsTable: dynamodb.Table;
+  public readonly eventsTable: dynamodb.Table;
+  public readonly rateLimitsTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: DatabaseStackProps) {
     super(scope, id, props);
@@ -84,6 +86,65 @@ export class DatabaseStack extends Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // DynamoDB table for Event Sourcing
+    this.eventsTable = new dynamodb.Table(this, 'EventsTable', {
+      tableName: 'b2-events',
+      partitionKey: { 
+        name: 'PK', // EVENTS#<aggregate_id>
+        type: dynamodb.AttributeType.STRING 
+      },
+      sortKey: { 
+        name: 'SK', // EVENT#<timestamp>#<event_id>
+        type: dynamodb.AttributeType.STRING 
+      },
+      billingMode: config.dynamodb.billingMode === 'PAY_PER_REQUEST' 
+        ? dynamodb.BillingMode.PAY_PER_REQUEST 
+        : dynamodb.BillingMode.PROVISIONED,
+      removalPolicy,
+      pointInTimeRecovery: config.stackName.includes('prod'),
+      timeToLiveAttribute: 'TTL',
+    });
+
+    // GSI for querying events by user
+    this.eventsTable.addGlobalSecondaryIndex({
+      indexName: 'UserEventsIndex',
+      partitionKey: { 
+        name: 'GSI1PK', // USER#<user_id>
+        type: dynamodb.AttributeType.STRING 
+      },
+      sortKey: { 
+        name: 'GSI1SK', // EVENT#<timestamp>
+        type: dynamodb.AttributeType.STRING 
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI for querying events by type
+    this.eventsTable.addGlobalSecondaryIndex({
+      indexName: 'EventTypeIndex',
+      partitionKey: { 
+        name: 'GSI2PK', // EVENTTYPE#<type>
+        type: dynamodb.AttributeType.STRING 
+      },
+      sortKey: { 
+        name: 'GSI2SK', // EVENT#<timestamp>
+        type: dynamodb.AttributeType.STRING 
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // DynamoDB table for Distributed Rate Limiting
+    this.rateLimitsTable = new dynamodb.Table(this, 'RateLimitsTable', {
+      tableName: 'b2-rate-limits',
+      partitionKey: { 
+        name: 'PK', // RATELIMIT#<identifier>#<window_timestamp>
+        type: dynamodb.AttributeType.STRING 
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy,
+      timeToLiveAttribute: 'TTL', // Auto-delete expired rate limit entries
+    });
+
     // DynamoDB table for tracking WebSocket connections - Match original b2-stack
     this.connectionsTable = new dynamodb.Table(this, 'ConnectionsTable', {
       tableName: 'B2-Connections',
@@ -125,10 +186,12 @@ export class DatabaseStack extends Stack {
       Component: 'database',
     };
 
-    // Apply tags to both tables
+    // Apply tags to all tables
     Object.entries(tags).forEach(([key, value]) => {
       Tags.of(this.memoryTable).add(key, value);
       Tags.of(this.connectionsTable).add(key, value);
+      Tags.of(this.eventsTable).add(key, value);
+      Tags.of(this.rateLimitsTable).add(key, value);
     });
   }
 }
