@@ -63,13 +63,13 @@ func (c *NodeEntityConfig) BuildKey(graphID, entityID string) map[string]types.A
 
 func (c *NodeEntityConfig) ToItem(entity *NodeEntity) (map[string]types.AttributeValue, error) {
 	node := entity.node
-	
+
 	// Build the DynamoDB item - nodes are now scoped to graphs
 	graphID := node.GraphID()
 	if graphID == "" {
 		return nil, fmt.Errorf("node must belong to a graph")
 	}
-	
+
 	item := map[string]types.AttributeValue{
 		"PK":         &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPH#%s", graphID)},
 		"SK":         &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", node.ID().String())},
@@ -88,15 +88,15 @@ func (c *NodeEntityConfig) ToItem(entity *NodeEntity) (map[string]types.Attribut
 		"CreatedAt":  &types.AttributeValueMemberS{Value: node.CreatedAt().Format(time.RFC3339)},
 		"UpdatedAt":  &types.AttributeValueMemberS{Value: node.UpdatedAt().Format(time.RFC3339)},
 	}
-	
+
 	// Add GSI attributes for user-level queries
 	item["GSI1PK"] = &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", node.UserID())}
 	item["GSI1SK"] = &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", node.ID().String())}
-	
+
 	// Add GSI2 attributes for direct NodeID lookups (eliminates table scans)
 	item["GSI2PK"] = &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", node.ID().String())}
 	item["GSI2SK"] = &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPH#%s", node.GraphID())}
-	
+
 	// Add tags if present
 	tags := node.GetTags()
 	if len(tags) > 0 {
@@ -106,7 +106,7 @@ func (c *NodeEntityConfig) ToItem(entity *NodeEntity) (map[string]types.Attribut
 		}
 		item["Tags"] = &types.AttributeValueMemberL{Value: tagList}
 	}
-	
+
 	// Add connections if present
 	connections := node.GetConnections()
 	if len(connections) > 0 {
@@ -122,7 +122,7 @@ func (c *NodeEntityConfig) ToItem(entity *NodeEntity) (map[string]types.Attribut
 		}
 		item["Connections"] = &types.AttributeValueMemberL{Value: connList}
 	}
-	
+
 	return item, nil
 }
 
@@ -134,33 +134,33 @@ func (c *NodeEntityConfig) ParseItem(item map[string]types.AttributeValue) (*Nod
 			nodeIDStr = strings.TrimPrefix(v.Value, "NODE#")
 		}
 	}
-	
+
 	// Extract basic fields
 	userID := ""
 	if v, ok := item["UserID"].(*types.AttributeValueMemberS); ok {
 		userID = v.Value
 	}
-	
+
 	title := ""
 	if v, ok := item["Title"].(*types.AttributeValueMemberS); ok {
 		title = v.Value
 	}
-	
+
 	body := ""
 	if v, ok := item["Content"].(*types.AttributeValueMemberS); ok {
 		body = v.Value
 	}
-	
+
 	format := "text"
 	if v, ok := item["Format"].(*types.AttributeValueMemberS); ok {
 		format = v.Value
 	}
-	
+
 	graphID := ""
 	if v, ok := item["GraphID"].(*types.AttributeValueMemberS); ok {
 		graphID = v.Value
 	}
-	
+
 	// Parse position
 	var x, y, z float64
 	if v, ok := item["PositionX"].(*types.AttributeValueMemberN); ok {
@@ -172,7 +172,7 @@ func (c *NodeEntityConfig) ParseItem(item map[string]types.AttributeValue) (*Nod
 	if v, ok := item["PositionZ"].(*types.AttributeValueMemberN); ok {
 		fmt.Sscanf(v.Value, "%f", &z)
 	}
-	
+
 	// Parse timestamps
 	var createdAt, updatedAt time.Time
 	if v, ok := item["CreatedAt"].(*types.AttributeValueMemberS); ok {
@@ -185,7 +185,7 @@ func (c *NodeEntityConfig) ParseItem(item map[string]types.AttributeValue) (*Nod
 			updatedAt = t
 		}
 	}
-	
+
 	// Parse status
 	status := entities.StatusDraft
 	if v, ok := item["Status"].(*types.AttributeValueMemberS); ok {
@@ -198,24 +198,24 @@ func (c *NodeEntityConfig) ParseItem(item map[string]types.AttributeValue) (*Nod
 			status = entities.StatusDraft
 		}
 	}
-	
+
 	// Create NodeID value object
 	nodeID, err := valueobjects.NewNodeIDFromString(nodeIDStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid node ID: %w", err)
 	}
-	
+
 	// Create value objects
 	content, err := valueobjects.NewNodeContent(title, body, valueobjects.ContentFormat(format))
 	if err != nil {
 		return nil, fmt.Errorf("invalid content: %w", err)
 	}
-	
+
 	position, err := valueobjects.NewPosition3D(x, y, z)
 	if err != nil {
 		return nil, fmt.Errorf("invalid position: %w", err)
 	}
-	
+
 	// Reconstruct the node with preserved timestamps
 	node, err := entities.ReconstructNode(
 		nodeID,
@@ -230,7 +230,7 @@ func (c *NodeEntityConfig) ParseItem(item map[string]types.AttributeValue) (*Nod
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconstruct node: %w", err)
 	}
-	
+
 	// Add tags if present
 	if tagsAttr, ok := item["Tags"].(*types.AttributeValueMemberL); ok {
 		for _, tagAttr := range tagsAttr.Value {
@@ -239,7 +239,7 @@ func (c *NodeEntityConfig) ParseItem(item map[string]types.AttributeValue) (*Nod
 			}
 		}
 	}
-	
+
 	return &NodeEntity{node: node}, nil
 }
 
@@ -247,7 +247,7 @@ func (c *NodeEntityConfig) ParseItem(item map[string]types.AttributeValue) (*Nod
 func NewNodeRepository(client *dynamodb.Client, tableName, gsi1IndexName, gsi2IndexName string, logger *zap.Logger) ports.NodeRepository {
 	config := &NodeEntityConfig{}
 	genericRepo := NewGenericRepository[*NodeEntity](client, tableName, gsi1IndexName, config, logger)
-	
+
 	return &NodeRepository{
 		GenericRepository: genericRepo,
 		gsi2IndexName:     gsi2IndexName,
@@ -271,7 +271,7 @@ func (r *NodeRepository) saveNode(ctx context.Context, node *entities.Node) erro
 	if node.GraphID() == "" {
 		return fmt.Errorf("node must belong to a graph before saving")
 	}
-	
+
 	entity := &NodeEntity{node: node}
 	// Note: GenericRepository.Save will need to be updated to use GraphID instead of UserID
 	// For now, we'll directly save using the client
@@ -280,23 +280,23 @@ func (r *NodeRepository) saveNode(ctx context.Context, node *entities.Node) erro
 	if err != nil {
 		return err
 	}
-	
+
 	input := &dynamodb.PutItemInput{
 		TableName: aws.String(r.GenericRepository.tableName),
 		Item:      item,
 	}
-	
+
 	_, err = r.GenericRepository.client.PutItem(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to save node: %w", err)
 	}
-	
+
 	r.GenericRepository.logger.Debug("Node saved",
 		zap.String("nodeID", node.ID().String()),
 		zap.String("graphID", node.GraphID()),
 		zap.String("userID", node.UserID()),
 	)
-	
+
 	return nil
 }
 
@@ -307,19 +307,19 @@ func (r *NodeRepository) SaveWithUoW(ctx context.Context, node *entities.Node, u
 	if !ok {
 		return fmt.Errorf("invalid unit of work type")
 	}
-	
+
 	// Ensure node has a graph ID
 	if node.GraphID() == "" {
 		return fmt.Errorf("node must belong to a graph before saving")
 	}
-	
+
 	entity := &NodeEntity{node: node}
 	config := &NodeEntityConfig{}
 	item, err := config.ToItem(entity)
 	if err != nil {
 		return fmt.Errorf("failed to convert node to item: %w", err)
 	}
-	
+
 	// Register the save operation with the unit of work
 	transactItem := types.TransactWriteItem{
 		Put: &types.Put{
@@ -327,24 +327,24 @@ func (r *NodeRepository) SaveWithUoW(ctx context.Context, node *entities.Node, u
 			Item:      item,
 		},
 	}
-	
+
 	if err := dynamoUoW.RegisterSave(transactItem); err != nil {
 		return fmt.Errorf("failed to register node save: %w", err)
 	}
-	
+
 	// Register any uncommitted events from the node
 	for _, event := range node.GetUncommittedEvents() {
 		if err := dynamoUoW.RegisterEvent(event); err != nil {
 			return fmt.Errorf("failed to register node event: %w", err)
 		}
 	}
-	
+
 	r.GenericRepository.logger.Debug("Node registered for transactional save",
 		zap.String("nodeID", node.ID().String()),
 		zap.String("graphID", node.GraphID()),
 		zap.String("userID", node.UserID()),
 	)
-	
+
 	return nil
 }
 
@@ -375,12 +375,12 @@ func (r *NodeRepository) FindByUserID(ctx context.Context, userID string) ([]*en
 			":sk": &types.AttributeValueMemberS{Value: "NODE#"},
 		},
 	}
-	
+
 	result, err := r.GenericRepository.client.Query(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query nodes by user: %w", err)
 	}
-	
+
 	nodes := make([]*entities.Node, 0, len(result.Items))
 	config := &NodeEntityConfig{}
 	for _, item := range result.Items {
@@ -391,7 +391,7 @@ func (r *NodeRepository) FindByUserID(ctx context.Context, userID string) ([]*en
 		}
 		nodes = append(nodes, entity.node)
 	}
-	
+
 	return nodes, nil
 }
 
@@ -410,12 +410,12 @@ func (r *NodeRepository) FindByGraphID(ctx context.Context, graphID string) ([]*
 			":sk": &types.AttributeValueMemberS{Value: "NODE#"},
 		},
 	}
-	
+
 	result, err := r.GenericRepository.client.Query(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query nodes by graph: %w", err)
 	}
-	
+
 	nodes := make([]*entities.Node, 0, len(result.Items))
 	config := &NodeEntityConfig{}
 	for _, item := range result.Items {
@@ -426,7 +426,7 @@ func (r *NodeRepository) FindByGraphID(ctx context.Context, graphID string) ([]*
 		}
 		nodes = append(nodes, entity.node)
 	}
-	
+
 	return nodes, nil
 }
 
@@ -436,28 +436,28 @@ func (r *NodeRepository) Delete(ctx context.Context, id valueobjects.NodeID) err
 	if err != nil {
 		return fmt.Errorf("failed to find node for deletion: %w", err)
 	}
-	
+
 	// Delete the node using its graph ID
 	key := map[string]types.AttributeValue{
 		"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPH#%s", node.GraphID())},
 		"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", id.String())},
 	}
-	
+
 	input := &dynamodb.DeleteItemInput{
 		TableName: aws.String(r.GenericRepository.tableName),
 		Key:       key,
 	}
-	
+
 	_, err = r.GenericRepository.client.DeleteItem(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to delete node: %w", err)
 	}
-	
+
 	r.GenericRepository.logger.Debug("Node deleted",
 		zap.String("nodeID", id.String()),
 		zap.String("graphID", node.GraphID()),
 	)
-	
+
 	return nil
 }
 
@@ -472,7 +472,7 @@ func (r *NodeRepository) BulkSave(ctx context.Context, nodes []*entities.Node) e
 	for i, node := range nodes {
 		nodeEntities[i] = &NodeEntity{node: node}
 	}
-	
+
 	return r.GenericRepository.BatchSave(ctx, nodeEntities)
 }
 
@@ -514,9 +514,9 @@ func (r *NodeRepository) searchForNodeByID(ctx context.Context, id valueobjects.
 func (r *NodeRepository) CountNodesByGraph(ctx context.Context, graphID string) (int64, error) {
 	tableName := r.GenericRepository.tableName
 	input := &dynamodb.QueryInput{
-		TableName: &tableName,
+		TableName:              &tableName,
 		KeyConditionExpression: aws.String("PK = :pk"),
-		FilterExpression: aws.String("EntityType = :type"),
+		FilterExpression:       aws.String("EntityType = :type"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":pk":   &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPH#%s", graphID)},
 			":type": &types.AttributeValueMemberS{Value: "NODE"},
@@ -576,24 +576,24 @@ func (r *NodeRepository) FindByTags(ctx context.Context, tags []string) ([]*enti
 	}
 
 	tableName := r.GenericRepository.tableName
-	
+
 	// Build filter expression for tags
 	filterParts := make([]string, len(tags))
 	expAttrValues := map[string]types.AttributeValue{
 		":type": &types.AttributeValueMemberS{Value: "NODE"},
 	}
-	
+
 	for i, tag := range tags {
 		key := fmt.Sprintf(":tag%d", i)
 		filterParts[i] = fmt.Sprintf("contains(Tags, %s)", key)
 		expAttrValues[key] = &types.AttributeValueMemberS{Value: tag}
 	}
-	
+
 	filterExpr := fmt.Sprintf("EntityType = :type AND (%s)", strings.Join(filterParts, " OR "))
-	
+
 	input := &dynamodb.ScanInput{
 		TableName:                 &tableName,
-		FilterExpression:         aws.String(filterExpr),
+		FilterExpression:          aws.String(filterExpr),
 		ExpressionAttributeValues: expAttrValues,
 	}
 
@@ -621,17 +621,17 @@ func (r *NodeRepository) SearchByContent(ctx context.Context, query string, limi
 	}
 
 	tableName := r.GenericRepository.tableName
-	
+
 	// Simple content search - in production, use a search service like Elasticsearch
 	input := &dynamodb.ScanInput{
-		TableName: &tableName,
+		TableName:        &tableName,
 		FilterExpression: aws.String("EntityType = :type AND (contains(Title, :query) OR contains(Content, :query))"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":type":  &types.AttributeValueMemberS{Value: "NODE"},
 			":query": &types.AttributeValueMemberS{Value: query},
 		},
 	}
-	
+
 	if limit > 0 {
 		limitInt32 := int32(limit)
 		input.Limit = &limitInt32
@@ -673,7 +673,6 @@ func (r *NodeRepository) SaveBatch(ctx context.Context, nodes []*entities.Node) 
 	// Use the improved generic BatchSave with retry logic and error handling
 	return r.GenericRepository.BatchSave(ctx, entities)
 }
-
 
 // DeleteBatch deletes multiple nodes in a batch using improved batch operations
 func (r *NodeRepository) DeleteBatch(ctx context.Context, nodeIDs []valueobjects.NodeID) error {
@@ -748,13 +747,13 @@ func (r *NodeRepository) GetConnectedNodes(ctx context.Context, nodeID valueobje
 	connectedNodes := make([]*entities.Node, 0, len(connections))
 	for _, conn := range connections {
 		connNodeID := conn.TargetID
-		
+
 		connNode, err := r.GetByID(ctx, connNodeID)
 		if err != nil {
 			// Skip nodes that can't be found
 			continue
 		}
-		
+
 		connectedNodes = append(connectedNodes, connNode)
 	}
 

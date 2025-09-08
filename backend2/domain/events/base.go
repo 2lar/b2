@@ -1,8 +1,8 @@
 package events
 
 import (
-	"time"
 	"backend2/domain/core/valueobjects"
+	"time"
 )
 
 // DomainEvent is the base interface for all domain events
@@ -22,23 +22,23 @@ type BaseEvent struct {
 	Version     int       `json:"version"`
 }
 
-func (e BaseEvent) GetAggregateID() string { return e.AggregateID }
-func (e BaseEvent) GetEventType() string   { return e.EventType }
+func (e BaseEvent) GetAggregateID() string  { return e.AggregateID }
+func (e BaseEvent) GetEventType() string    { return e.EventType }
 func (e BaseEvent) GetTimestamp() time.Time { return e.Timestamp }
-func (e BaseEvent) GetVersion() int        { return e.Version }
+func (e BaseEvent) GetVersion() int         { return e.Version }
 
 // Node Events
 
 // NodeCreated is raised when a new node is created
 type NodeCreated struct {
 	BaseEvent
-	NodeID   valueobjects.NodeID    `json:"node_id"`
-	UserID   string                 `json:"user_id"`
-	GraphID  string                 `json:"graph_id"`
-	Title    string                 `json:"title"`
-	Content  string                 `json:"content"`
-	Keywords []string               `json:"keywords"`
-	Tags     []string               `json:"tags"`
+	NodeID   valueobjects.NodeID `json:"node_id"`
+	UserID   string              `json:"user_id"`
+	GraphID  string              `json:"graph_id"`
+	Title    string              `json:"title"`
+	Content  string              `json:"content"`
+	Keywords []string            `json:"keywords"`
+	Tags     []string            `json:"tags"`
 }
 
 // NewNodeCreated creates a NodeCreated event
@@ -63,9 +63,9 @@ func NewNodeCreated(nodeID valueobjects.NodeID, userID, graphID, title, content 
 // NodeContentUpdated is raised when node content is updated
 type NodeContentUpdated struct {
 	BaseEvent
-	NodeID      valueobjects.NodeID      `json:"node_id"`
-	OldContent  valueobjects.NodeContent `json:"old_content"`
-	NewContent  valueobjects.NodeContent `json:"new_content"`
+	NodeID     valueobjects.NodeID      `json:"node_id"`
+	OldContent valueobjects.NodeContent `json:"old_content"`
+	NewContent valueobjects.NodeContent `json:"new_content"`
 }
 
 // NewNodeContentUpdated creates a NodeContentUpdated event

@@ -11,12 +11,12 @@ import (
 
 	awsevents "github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	
+
 	"backend2/application/commands"
 	"backend2/application/commands/bus"
+	"backend2/domain/events"
 	"backend2/infrastructure/config"
 	"backend2/infrastructure/di"
-	"backend2/domain/events"
 )
 
 // Global command bus for Lambda performance optimization
@@ -28,30 +28,30 @@ func init() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	
+
 	container, err := di.InitializeContainer(context.Background(), cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize dependency container: %v", err)
 	}
-	
+
 	commandBus = container.CommandBus
-	
+
 	log.Println("Cleanup handler initialized successfully")
 }
 
 // HandleNodeDeleted processes the NodeDeletedEvent from EventBridge
 func HandleNodeDeleted(ctx context.Context, event awsevents.CloudWatchEvent) error {
 	log.Printf("Processing NodeDeletedEvent: %s", event.ID)
-	
+
 	// Parse the event detail
 	var nodeEvent events.NodeDeletedEvent
 	if err := json.Unmarshal(event.Detail, &nodeEvent); err != nil {
 		return fmt.Errorf("failed to unmarshal event detail: %w", err)
 	}
-	
-	log.Printf("Node %s deleted by user %s, performing cleanup", 
+
+	log.Printf("Node %s deleted by user %s, performing cleanup",
 		nodeEvent.AggregateID, nodeEvent.UserID)
-	
+
 	// Create cleanup command
 	cleanupCmd := &commands.CleanupNodeResourcesCommand{
 		NodeID:   nodeEvent.AggregateID,
@@ -59,19 +59,19 @@ func HandleNodeDeleted(ctx context.Context, event awsevents.CloudWatchEvent) err
 		Keywords: nodeEvent.Keywords,
 		Tags:     nodeEvent.Tags,
 	}
-	
+
 	// Execute cleanup through command bus
 	if err := commandBus.Send(ctx, cleanupCmd); err != nil {
 		return fmt.Errorf("cleanup command failed: %w", err)
 	}
-	
+
 	// Additional cleanup tasks can be added here
 	// For example:
 	// - Remove from search index
 	// - Clear cache entries
 	// - Update analytics
 	// - Notify connected clients via WebSocket
-	
+
 	log.Printf("Successfully cleaned up resources for node %s", nodeEvent.AggregateID)
 	return nil
 }
@@ -79,27 +79,27 @@ func HandleNodeDeleted(ctx context.Context, event awsevents.CloudWatchEvent) err
 // HandleEdgeDeleted processes the EdgeDeletedEvent from EventBridge
 func HandleEdgeDeleted(ctx context.Context, event awsevents.CloudWatchEvent) error {
 	log.Printf("Processing EdgeDeletedEvent: %s", event.ID)
-	
+
 	var edgeEvent events.EdgeDeletedEvent
 	if err := json.Unmarshal(event.Detail, &edgeEvent); err != nil {
 		return fmt.Errorf("failed to unmarshal event detail: %w", err)
 	}
-	
+
 	log.Printf("Edge %s deleted, performing cleanup", edgeEvent.AggregateID)
-	
+
 	// Create cleanup command for edge
 	cleanupCmd := &commands.CleanupEdgeResourcesCommand{
-		EdgeID:     edgeEvent.AggregateID,
-		SourceID:   edgeEvent.SourceNodeID.String(),
-		TargetID:   edgeEvent.TargetNodeID.String(),
-		UserID:     edgeEvent.UserID,
+		EdgeID:   edgeEvent.AggregateID,
+		SourceID: edgeEvent.SourceNodeID.String(),
+		TargetID: edgeEvent.TargetNodeID.String(),
+		UserID:   edgeEvent.UserID,
 	}
-	
+
 	// Execute cleanup
 	if err := commandBus.Send(ctx, cleanupCmd); err != nil {
 		return fmt.Errorf("edge cleanup command failed: %w", err)
 	}
-	
+
 	log.Printf("Successfully cleaned up resources for edge %s", edgeEvent.AggregateID)
 	return nil
 }
@@ -107,7 +107,7 @@ func HandleEdgeDeleted(ctx context.Context, event awsevents.CloudWatchEvent) err
 // handler is the main Lambda handler that routes events based on detail-type
 func handler(ctx context.Context, event awsevents.CloudWatchEvent) error {
 	log.Printf("Received event: %s (detail-type: %s)", event.ID, event.DetailType)
-	
+
 	// Route based on event type
 	switch event.DetailType {
 	case "NodeDeleted":
@@ -130,7 +130,7 @@ func main() {
 	} else {
 		// Local testing mode
 		log.Println("Running in local test mode")
-		
+
 		// Create a test event
 		testEvent := awsevents.CloudWatchEvent{
 			ID:         "test-event-1",
@@ -146,12 +146,12 @@ func main() {
 				"occurred_at": "2024-01-01T00:00:00Z"
 			}`),
 		}
-		
+
 		// Process the test event
 		if err := handler(context.Background(), testEvent); err != nil {
 			log.Fatalf("Test event processing failed: %v", err)
 		}
-		
+
 		log.Println("Test event processed successfully")
 	}
 }

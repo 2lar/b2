@@ -22,9 +22,9 @@ type ErrorInfo struct {
 
 // MetaInfo contains metadata about the response
 type MetaInfo struct {
-	RequestID  string `json:"request_id,omitempty"`
-	Timestamp  string `json:"timestamp,omitempty"`
-	Version    string `json:"version,omitempty"`
+	RequestID  string          `json:"request_id,omitempty"`
+	Timestamp  string          `json:"timestamp,omitempty"`
+	Version    string          `json:"version,omitempty"`
 	Pagination *PaginationInfo `json:"pagination,omitempty"`
 }
 
@@ -44,7 +44,7 @@ func RespondJSON(w http.ResponseWriter, status int, data interface{}) {
 		Success: status >= 200 && status < 300,
 		Data:    data,
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(response)
@@ -59,7 +59,7 @@ func RespondError(w http.ResponseWriter, status int, code, message string) {
 			Message: message,
 		},
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(response)
@@ -75,7 +75,7 @@ func RespondErrorWithDetails(w http.ResponseWriter, status int, code, message st
 			Details: details,
 		},
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(response)
@@ -88,7 +88,7 @@ func RespondWithMeta(w http.ResponseWriter, status int, data interface{}, meta *
 		Data:    data,
 		Meta:    meta,
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(response)
@@ -106,48 +106,48 @@ func ExtractRequestID(r *http.Request) string {
 	if id := r.Header.Get("X-Amzn-Trace-Id"); id != "" {
 		return id
 	}
-	
+
 	// Try context value
 	if id, ok := r.Context().Value("request_id").(string); ok {
 		return id
 	}
-	
+
 	return ""
 }
 
 // StandardErrorCodes defines common error codes
 var StandardErrorCodes = struct {
-	ValidationError   string
-	NotFound          string
-	Unauthorized      string
-	Forbidden         string
-	Conflict          string
-	InternalError     string
-	BadRequest        string
-	TooManyRequests   string
+	ValidationError    string
+	NotFound           string
+	Unauthorized       string
+	Forbidden          string
+	Conflict           string
+	InternalError      string
+	BadRequest         string
+	TooManyRequests    string
 	ServiceUnavailable string
 }{
-	ValidationError:   "VALIDATION_ERROR",
-	NotFound:          "NOT_FOUND",
-	Unauthorized:      "UNAUTHORIZED",
-	Forbidden:         "FORBIDDEN",
-	Conflict:          "CONFLICT",
-	InternalError:     "INTERNAL_ERROR",
-	BadRequest:        "BAD_REQUEST",
-	TooManyRequests:   "TOO_MANY_REQUESTS",
+	ValidationError:    "VALIDATION_ERROR",
+	NotFound:           "NOT_FOUND",
+	Unauthorized:       "UNAUTHORIZED",
+	Forbidden:          "FORBIDDEN",
+	Conflict:           "CONFLICT",
+	InternalError:      "INTERNAL_ERROR",
+	BadRequest:         "BAD_REQUEST",
+	TooManyRequests:    "TOO_MANY_REQUESTS",
 	ServiceUnavailable: "SERVICE_UNAVAILABLE",
 }
 
 // ParseJSONBody parses JSON request body with size limit
 func ParseJSONBody(r *http.Request, v interface{}, maxBytes int64) error {
 	r.Body = http.MaxBytesReader(nil, r.Body, maxBytes)
-	
+
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
-	
+
 	if err := decoder.Decode(v); err != nil {
 		return err
 	}
-	
+
 	return nil
 }

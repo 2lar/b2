@@ -17,17 +17,17 @@ const (
 	ErrorTypeConflict     ErrorType = "CONFLICT"
 	ErrorTypeUnauthorized ErrorType = "UNAUTHORIZED"
 	ErrorTypeForbidden    ErrorType = "FORBIDDEN"
-	
+
 	// Application errors
-	ErrorTypeInternal     ErrorType = "INTERNAL"
-	ErrorTypeTimeout      ErrorType = "TIMEOUT"
-	ErrorTypeRateLimit    ErrorType = "RATE_LIMIT"
-	ErrorTypeUnavailable  ErrorType = "UNAVAILABLE"
-	
+	ErrorTypeInternal    ErrorType = "INTERNAL"
+	ErrorTypeTimeout     ErrorType = "TIMEOUT"
+	ErrorTypeRateLimit   ErrorType = "RATE_LIMIT"
+	ErrorTypeUnavailable ErrorType = "UNAVAILABLE"
+
 	// Infrastructure errors
-	ErrorTypeDatabase     ErrorType = "DATABASE"
-	ErrorTypeNetwork      ErrorType = "NETWORK"
-	ErrorTypeExternal     ErrorType = "EXTERNAL"
+	ErrorTypeDatabase ErrorType = "DATABASE"
+	ErrorTypeNetwork  ErrorType = "NETWORK"
+	ErrorTypeExternal ErrorType = "EXTERNAL"
 )
 
 // AppError represents an application-specific error
@@ -78,7 +78,7 @@ func captureStackTrace() string {
 	var pcs [depth]uintptr
 	n := runtime.Callers(3, pcs[:])
 	frames := runtime.CallersFrames(pcs[:n])
-	
+
 	stack := ""
 	for {
 		frame, more := frames.Next()
@@ -158,32 +158,12 @@ func NewInternalError(message string) *AppError {
 	}
 }
 
-// NewTimeoutError creates a timeout error
-func NewTimeoutError(operation string) *AppError {
-	return &AppError{
-		Type:       ErrorTypeTimeout,
-		Message:    fmt.Sprintf("operation '%s' timed out", operation),
-		HTTPStatus: http.StatusRequestTimeout,
-		StackTrace: captureStackTrace(),
-	}
-}
-
 // NewRateLimitError creates a rate limit error
 func NewRateLimitError(limit int, window string) *AppError {
 	return &AppError{
 		Type:       ErrorTypeRateLimit,
 		Message:    fmt.Sprintf("rate limit exceeded: %d requests per %s", limit, window),
 		HTTPStatus: http.StatusTooManyRequests,
-		StackTrace: captureStackTrace(),
-	}
-}
-
-// NewUnavailableError creates a service unavailable error
-func NewUnavailableError(service string) *AppError {
-	return &AppError{
-		Type:       ErrorTypeUnavailable,
-		Message:    fmt.Sprintf("service '%s' is unavailable", service),
-		HTTPStatus: http.StatusServiceUnavailable,
 		StackTrace: captureStackTrace(),
 	}
 }
@@ -195,28 +175,6 @@ func NewDatabaseError(operation string, err error) *AppError {
 		Message:    fmt.Sprintf("database operation '%s' failed", operation),
 		Cause:      err,
 		HTTPStatus: http.StatusInternalServerError,
-		StackTrace: captureStackTrace(),
-	}
-}
-
-// NewNetworkError creates a network error
-func NewNetworkError(message string, err error) *AppError {
-	return &AppError{
-		Type:       ErrorTypeNetwork,
-		Message:    message,
-		Cause:      err,
-		HTTPStatus: http.StatusBadGateway,
-		StackTrace: captureStackTrace(),
-	}
-}
-
-// NewExternalError creates an external service error
-func NewExternalError(service string, err error) *AppError {
-	return &AppError{
-		Type:       ErrorTypeExternal,
-		Message:    fmt.Sprintf("external service '%s' error", service),
-		Cause:      err,
-		HTTPStatus: http.StatusBadGateway,
 		StackTrace: captureStackTrace(),
 	}
 }
@@ -279,13 +237,13 @@ func Wrap(err error, message string) error {
 	if err == nil {
 		return nil
 	}
-	
+
 	// If it's already an AppError, add context to message
 	if appErr := GetAppError(err); appErr != nil {
 		appErr.Message = fmt.Sprintf("%s: %s", message, appErr.Message)
 		return appErr
 	}
-	
+
 	// Otherwise create a new internal error
 	return NewInternalError(message).WithCause(err)
 }

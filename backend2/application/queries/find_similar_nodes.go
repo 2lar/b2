@@ -68,7 +68,7 @@ func (h *FindSimilarNodesHandler) Handle(ctx context.Context, query interface{})
 	// Get the reference node
 	// Note: This is simplified - the actual nodeRepo.GetByID might need adjustment
 	// to work with string IDs instead of NodeID value objects
-	
+
 	// Get all nodes for the user (simplified approach)
 	// In a real implementation, this would use a specialized similarity search
 	allNodes, err := h.nodeRepo.GetByUserID(ctx, q.UserID)
@@ -77,7 +77,7 @@ func (h *FindSimilarNodesHandler) Handle(ctx context.Context, query interface{})
 	}
 
 	var similarNodes []SimilarNode
-	
+
 	// Filter out the reference node and calculate similarity
 	for _, node := range allNodes {
 		// Skip the reference node itself
@@ -86,10 +86,10 @@ func (h *FindSimilarNodesHandler) Handle(ctx context.Context, query interface{})
 		// if node.ID.String() == q.NodeID {
 		//     continue
 		// }
-		
+
 		// Calculate similarity based on type
 		similarity := h.calculateSimilarity(node, q.SimilarityType)
-		
+
 		if similarity > 0 {
 			similarNodes = append(similarNodes, SimilarNode{
 				Node:       node,
@@ -98,15 +98,15 @@ func (h *FindSimilarNodesHandler) Handle(ctx context.Context, query interface{})
 			})
 		}
 	}
-	
+
 	// Sort by similarity (simplified - just return as is)
 	// In production, would sort by similarity score descending
-	
+
 	// Limit results
 	if len(similarNodes) > q.MaxResults {
 		similarNodes = similarNodes[:q.MaxResults]
 	}
-	
+
 	return &FindSimilarNodesResult{
 		Nodes:      similarNodes,
 		TotalFound: len(similarNodes),
@@ -120,7 +120,7 @@ func (h *FindSimilarNodesHandler) calculateSimilarity(node *entities.Node, simil
 	// - Vector embeddings for semantic similarity
 	// - Keyword matching for keyword similarity
 	// - Time-based calculations for temporal similarity
-	
+
 	switch similarityType {
 	case "semantic":
 		// Would use embedding vectors here
@@ -210,7 +210,7 @@ func (h *SearchNodesHandler) Handle(ctx context.Context, query interface{}) (int
 	if end > len(matchedNodes) {
 		end = len(matchedNodes)
 	}
-	
+
 	paginatedNodes := matchedNodes[start:end]
 
 	return &SearchNodesResult{

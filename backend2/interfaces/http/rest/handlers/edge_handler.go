@@ -31,9 +31,9 @@ func NewEdgeHandler(commandBus *bus.CommandBus, logger *zap.Logger) *EdgeHandler
 
 // CreateEdgeRequest represents the request body for creating an edge
 type CreateEdgeRequest struct {
-	SourceID string `json:"source_id" validate:"required,uuid"`
-	TargetID string `json:"target_id" validate:"required,uuid"`
-	Type     string `json:"type,omitempty" validate:"omitempty,oneof=reference dependency parent child related"`
+	SourceID string  `json:"source_id" validate:"required,uuid"`
+	TargetID string  `json:"target_id" validate:"required,uuid"`
+	Type     string  `json:"type,omitempty" validate:"omitempty,oneof=reference dependency parent child related"`
 	Weight   float64 `json:"weight,omitempty" validate:"omitempty,min=0,max=1"`
 }
 
@@ -44,20 +44,20 @@ func (h *EdgeHandler) CreateEdge(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
 		return
 	}
-	
+
 	// Validate request
 	if err := utils.ValidateStruct(req); err != nil {
 		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
 		return
 	}
-	
+
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// Set defaults
 	if req.Type == "" {
 		req.Type = "related"
@@ -65,10 +65,10 @@ func (h *EdgeHandler) CreateEdge(w http.ResponseWriter, r *http.Request) {
 	if req.Weight == 0 {
 		req.Weight = 1.0
 	}
-	
+
 	// Generate edge ID
 	edgeID := uuid.New().String()
-	
+
 	// Create command
 	cmd := commands.CreateEdgeCommand{
 		EdgeID:   edgeID,
@@ -78,7 +78,7 @@ func (h *EdgeHandler) CreateEdge(w http.ResponseWriter, r *http.Request) {
 		Type:     req.Type,
 		Weight:   req.Weight,
 	}
-	
+
 	// Execute command
 	if err := h.commandBus.Send(r.Context(), cmd); err != nil {
 		h.logger.Error("Failed to create edge",
@@ -98,10 +98,10 @@ func (h *EdgeHandler) CreateEdge(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	
+
 	h.respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"id":      edgeID,
-		"message": "Edge created successfully",
+		"id":        edgeID,
+		"message":   "Edge created successfully",
 		"createdAt": utils.NowRFC3339(),
 	})
 }
@@ -113,26 +113,26 @@ func (h *EdgeHandler) DeleteEdge(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusBadRequest, "Edge ID is required")
 		return
 	}
-	
+
 	// Validate UUID format
 	if _, err := uuid.Parse(edgeID); err != nil {
 		h.respondError(w, http.StatusBadRequest, "Invalid edge ID format")
 		return
 	}
-	
+
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// Create command
 	cmd := commands.DeleteEdgeCommand{
 		UserID: userCtx.UserID,
 		EdgeID: edgeID,
 	}
-	
+
 	// Execute command
 	if err := h.commandBus.Send(r.Context(), cmd); err != nil {
 		h.logger.Error("Failed to delete edge",
@@ -147,7 +147,7 @@ func (h *EdgeHandler) DeleteEdge(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusNoContent)
 }
 

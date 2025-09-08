@@ -24,13 +24,13 @@ type Logger interface {
 // CreateNodeOrchestrator orchestrates the complex node creation process
 // It breaks down the monolithic CreateNodeCommand into smaller, focused operations
 type CreateNodeOrchestrator struct {
-	uow            ports.UnitOfWork
-	nodeRepo       ports.NodeRepository
-	graphRepo      ports.GraphRepository
-	edgeRepo       ports.EdgeRepository
-	eventPublisher ports.EventPublisher
+	uow             ports.UnitOfWork
+	nodeRepo        ports.NodeRepository
+	graphRepo       ports.GraphRepository
+	edgeRepo        ports.EdgeRepository
+	eventPublisher  ports.EventPublisher
 	distributedLock *dynamodb.DistributedLock
-	logger         Logger
+	logger          Logger
 }
 
 // NewCreateNodeOrchestrator creates a new orchestrator instance
@@ -44,13 +44,13 @@ func NewCreateNodeOrchestrator(
 	logger Logger,
 ) *CreateNodeOrchestrator {
 	return &CreateNodeOrchestrator{
-		uow:            uow,
-		nodeRepo:       nodeRepo,
-		graphRepo:      graphRepo,
-		edgeRepo:       edgeRepo,
-		eventPublisher: eventPublisher,
+		uow:             uow,
+		nodeRepo:        nodeRepo,
+		graphRepo:       graphRepo,
+		edgeRepo:        edgeRepo,
+		eventPublisher:  eventPublisher,
 		distributedLock: distributedLock,
-		logger:         logger,
+		logger:          logger,
 	}
 }
 
@@ -111,7 +111,7 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 	// Publish domain events after successful commit
 	events := node.GetUncommittedEvents()
 	events = append(events, graph.GetUncommittedEvents()...)
-	
+
 	if len(events) > 0 {
 		if err := o.eventPublisher.PublishBatch(ctx, events); err != nil {
 			// Log error but don't fail - events can be retried
@@ -194,13 +194,13 @@ func (o *CreateNodeOrchestrator) ensureGraphExists(ctx context.Context, userID s
 		// Graph exists, return it
 		return graph, nil
 	}
-	
+
 	// Graph doesn't exist, need to create it with distributed locking
 	// to prevent race conditions when multiple requests try to create the same graph
 	lockResource := fmt.Sprintf("default_graph_creation_%s", userID)
 	lockDuration := 30 * time.Second // Lock for up to 30 seconds
 	lockTimeout := 5 * time.Second   // Wait up to 5 seconds to acquire lock
-	
+
 	lock, err := o.distributedLock.TryAcquireLock(ctx, lockResource, userID, lockDuration, lockTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire lock for graph creation: %w", err)
@@ -213,22 +213,22 @@ func (o *CreateNodeOrchestrator) ensureGraphExists(ctx context.Context, userID s
 			)
 		}
 	}()
-	
+
 	// Double-check if graph was created by another process while we were waiting for the lock
 	graph, err = o.graphRepo.GetUserDefaultGraph(ctx, userID)
 	if err == nil {
 		o.logger.Debug("Default graph found after acquiring lock (created by another process)", "userID", userID)
 		return graph, nil
 	}
-	
+
 	// Create a new default graph for the user
 	o.logger.Debug("Creating new default graph for user with distributed lock", "userID", userID)
-	
+
 	graph, err = aggregates.NewGraph(userID, "Default Graph")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new graph: %w", err)
 	}
-	
+
 	// Don't save the graph here - it will be saved once in the main transaction
 	// after the node is added to it. This avoids duplicate operations on the same item.
 	o.logger.Info("Created default graph (will be saved in transaction)", "graphID", graph.ID().String(), "userID", userID)

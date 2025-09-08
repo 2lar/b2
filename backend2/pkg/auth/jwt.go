@@ -21,11 +21,11 @@ var (
 
 // Claims represents the JWT claims
 type Claims struct {
-	UserID    string   `json:"sub"`
-	Email     string   `json:"email"`
-	Roles     []string `json:"roles"`
-	Scope     string   `json:"scope"`
-	ClientID  string   `json:"client_id,omitempty"`
+	UserID   string   `json:"sub"`
+	Email    string   `json:"email"`
+	Roles    []string `json:"roles"`
+	Scope    string   `json:"scope"`
+	ClientID string   `json:"client_id,omitempty"`
 	jwt.RegisteredClaims
 }
 

@@ -44,7 +44,7 @@ func (dl *DistributedLock) AcquireLock(ctx context.Context, resourceName, ownerI
 	lockID := fmt.Sprintf("%s_%d", ownerID, time.Now().UnixNano())
 	now := time.Now()
 	expiresAt := now.Add(lockDuration)
-	
+
 	lockRecord := LockRecord{
 		PK:         fmt.Sprintf("LOCK#%s", resourceName),
 		SK:         "LOCK",
@@ -54,7 +54,7 @@ func (dl *DistributedLock) AcquireLock(ctx context.Context, resourceName, ownerI
 		ExpiresAt:  expiresAt.Format(time.RFC3339),
 		TTL:        expiresAt.Unix(),
 	}
-	
+
 	// Convert to DynamoDB item
 	item := map[string]types.AttributeValue{
 		"PK":         &types.AttributeValueMemberS{Value: lockRecord.PK},
@@ -65,7 +65,7 @@ func (dl *DistributedLock) AcquireLock(ctx context.Context, resourceName, ownerI
 		"ExpiresAt":  &types.AttributeValueMemberS{Value: lockRecord.ExpiresAt},
 		"TTL":        &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", lockRecord.TTL)},
 	}
-	
+
 	// Try to acquire the lock using conditional write
 	input := &dynamodb.PutItemInput{
 		TableName:           aws.String(dl.tableName),
@@ -75,7 +75,7 @@ func (dl *DistributedLock) AcquireLock(ctx context.Context, resourceName, ownerI
 			":now": &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
 		},
 	}
-	
+
 	_, err := dl.client.PutItem(ctx, input)
 	if err != nil {
 		var conditionalCheckFailed *types.ConditionalCheckFailedException
@@ -88,14 +88,14 @@ func (dl *DistributedLock) AcquireLock(ctx context.Context, resourceName, ownerI
 		}
 		return nil, fmt.Errorf("failed to acquire lock: %w", err)
 	}
-	
+
 	dl.logger.Debug("Lock acquired successfully",
 		zap.String("resource", resourceName),
 		zap.String("lockID", lockID),
 		zap.String("owner", ownerID),
 		zap.Duration("duration", lockDuration),
 	)
-	
+
 	return &Lock{
 		distributedLock: dl,
 		resourceName:    resourceName,
@@ -109,18 +109,18 @@ func (dl *DistributedLock) AcquireLock(ctx context.Context, resourceName, ownerI
 func (dl *DistributedLock) TryAcquireLock(ctx context.Context, resourceName, ownerID string, lockDuration, timeout time.Duration) (*Lock, error) {
 	deadline := time.Now().Add(timeout)
 	retryInterval := 100 * time.Millisecond
-	
+
 	for time.Now().Before(deadline) {
 		lock, err := dl.AcquireLock(ctx, resourceName, ownerID, lockDuration)
 		if err == nil {
 			return lock, nil
 		}
-		
+
 		// If it's not a lock contention error, return immediately
 		if err.Error() != fmt.Sprintf("lock already held for resource: %s", resourceName) {
 			return nil, err
 		}
-		
+
 		// Wait before retrying
 		select {
 		case <-ctx.Done():
@@ -132,7 +132,7 @@ func (dl *DistributedLock) TryAcquireLock(ctx context.Context, resourceName, own
 			}
 		}
 	}
-	
+
 	return nil, fmt.Errorf("timeout acquiring lock for resource: %s", resourceName)
 }
 
@@ -150,7 +150,7 @@ func (dl *DistributedLock) ReleaseLock(ctx context.Context, resourceName, lockID
 			":owner":  &types.AttributeValueMemberS{Value: ownerID},
 		},
 	}
-	
+
 	_, err := dl.client.DeleteItem(ctx, input)
 	if err != nil {
 		var conditionalCheckFailed *types.ConditionalCheckFailedException
@@ -164,13 +164,13 @@ func (dl *DistributedLock) ReleaseLock(ctx context.Context, resourceName, lockID
 		}
 		return fmt.Errorf("failed to release lock: %w", err)
 	}
-	
+
 	dl.logger.Debug("Lock released successfully",
 		zap.String("resource", resourceName),
 		zap.String("lockID", lockID),
 		zap.String("owner", ownerID),
 	)
-	
+
 	return nil
 }
 

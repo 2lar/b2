@@ -71,7 +71,7 @@ type graphItem struct {
 func (r *GraphRepository) Save(ctx context.Context, graph *aggregates.Graph) error {
 	// Get the edges from the graph
 	edges := graph.GetEdges()
-	
+
 	// Get node count safely for logging
 	nodes, err := graph.Nodes()
 	nodeCount := 0
@@ -81,14 +81,14 @@ func (r *GraphRepository) Save(ctx context.Context, graph *aggregates.Graph) err
 	} else {
 		nodeCount = len(nodes)
 	}
-	
+
 	r.logger.Info("Saving graph to DynamoDB",
 		zap.String("graphID", graph.ID().String()),
 		zap.String("userID", graph.UserID()),
 		zap.Int("nodeCount", nodeCount),
 		zap.Int("edgeCount", len(edges)),
 	)
-	
+
 	// Save edges to edge repository if available
 	if r.edgeRepo != nil {
 		for _, edge := range edges {
@@ -97,7 +97,7 @@ func (r *GraphRepository) Save(ctx context.Context, graph *aggregates.Graph) err
 				zap.String("sourceID", edge.SourceID.String()),
 				zap.String("targetID", edge.TargetID.String()),
 			)
-			
+
 			if err := r.edgeRepo.Save(ctx, graph.ID().String(), edge); err != nil {
 				r.logger.Error("Failed to save edge",
 					zap.Error(err),
@@ -109,7 +109,7 @@ func (r *GraphRepository) Save(ctx context.Context, graph *aggregates.Graph) err
 	} else {
 		r.logger.Warn("EdgeRepository not set, edges will not be persisted separately")
 	}
-	
+
 	item := graphItem{
 		PK:          fmt.Sprintf("USER#%s", graph.UserID()),
 		SK:          fmt.Sprintf("GRAPH#%s", graph.ID().String()),
@@ -165,7 +165,7 @@ func (r *GraphRepository) SaveWithUoW(ctx context.Context, graph *aggregates.Gra
 	if !ok {
 		return fmt.Errorf("invalid unit of work type")
 	}
-	
+
 	// Build the graph item
 	item := graphItem{
 		PK:          fmt.Sprintf("USER#%s", graph.UserID()),
@@ -185,12 +185,12 @@ func (r *GraphRepository) SaveWithUoW(ctx context.Context, graph *aggregates.Gra
 		UpdatedAt:   graph.UpdatedAt().Format(time.RFC3339),
 		Version:     graph.Version(),
 	}
-	
+
 	av, err := attributevalue.MarshalMap(item)
 	if err != nil {
 		return fmt.Errorf("failed to marshal graph: %w", err)
 	}
-	
+
 	// Register the save operation with the unit of work
 	transactItem := types.TransactWriteItem{
 		Put: &types.Put{
@@ -198,25 +198,25 @@ func (r *GraphRepository) SaveWithUoW(ctx context.Context, graph *aggregates.Gra
 			Item:      av,
 		},
 	}
-	
+
 	if err := dynamoUoW.RegisterSave(transactItem); err != nil {
 		return fmt.Errorf("failed to register graph save: %w", err)
 	}
-	
+
 	// Register any uncommitted events from the graph
 	for _, event := range graph.GetUncommittedEvents() {
 		if err := dynamoUoW.RegisterEvent(event); err != nil {
 			return fmt.Errorf("failed to register graph event: %w", err)
 		}
 	}
-	
+
 	r.logger.Debug("Graph registered for transactional save",
 		zap.String("graphID", graph.ID().String()),
 		zap.String("userID", graph.UserID()),
 		zap.Int("nodeCount", graph.NodeCount()),
 		zap.Int("edgeCount", graph.EdgeCount()),
 	)
-	
+
 	return nil
 }
 
@@ -224,8 +224,8 @@ func (r *GraphRepository) SaveWithUoW(ctx context.Context, graph *aggregates.Gra
 func (r *GraphRepository) GetByID(ctx context.Context, id aggregates.GraphID) (*aggregates.Graph, error) {
 	// Use GSI1 for efficient lookup by GraphID
 	input := &dynamodb.QueryInput{
-		TableName: aws.String(r.tableName),
-		IndexName: aws.String("GSI1"),
+		TableName:              aws.String(r.tableName),
+		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk AND GSI1SK = :sk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":pk": &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPHID#%s", id.String())},
@@ -247,7 +247,7 @@ func (r *GraphRepository) GetByID(ctx context.Context, id aggregates.GraphID) (*
 	if err := attributevalue.UnmarshalMap(result.Items[0], &item); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal graph: %w", err)
 	}
-	
+
 	// Add debug logging
 	r.logger.Debug("Retrieved graph from DynamoDB",
 		zap.String("graphID", item.GraphID),
@@ -268,16 +268,16 @@ func (r *GraphRepository) GetByID(ctx context.Context, id aggregates.GraphID) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconstruct graph: %w", err)
 	}
-	
+
 	// CRITICAL: Load nodes and edges in parallel for performance
 	var nodes []*entities.Node
 	var edges []*aggregates.Edge
 	var nodeErr, edgeErr error
-	
+
 	// Use goroutines for parallel loading
 	var wg sync.WaitGroup
 	wg.Add(2)
-	
+
 	// Load nodes in parallel
 	go func() {
 		defer wg.Done()
@@ -285,7 +285,7 @@ func (r *GraphRepository) GetByID(ctx context.Context, id aggregates.GraphID) (*
 			nodes, nodeErr = r.nodeRepo.GetByGraphID(ctx, id.String())
 		}
 	}()
-	
+
 	// Load edges in parallel
 	go func() {
 		defer wg.Done()
@@ -293,10 +293,10 @@ func (r *GraphRepository) GetByID(ctx context.Context, id aggregates.GraphID) (*
 			edges, edgeErr = r.edgeRepo.GetByGraphID(ctx, id.String())
 		}
 	}()
-	
+
 	// Wait for both operations to complete
 	wg.Wait()
-	
+
 	// Process nodes first (edges depend on nodes)
 	if nodeErr != nil {
 		r.logger.Warn("Failed to load nodes for graph",
@@ -318,7 +318,7 @@ func (r *GraphRepository) GetByID(ctx context.Context, id aggregates.GraphID) (*
 			zap.Int("nodeCount", len(nodes)),
 		)
 	}
-	
+
 	// Process edges after nodes are loaded
 	if edgeErr != nil {
 		r.logger.Warn("Failed to load edges for graph",
@@ -371,7 +371,7 @@ func (r *GraphRepository) GetByUserID(ctx context.Context, userID string) ([]*ag
 			r.logger.Warn("Failed to unmarshal graph item", zap.Error(err))
 			continue
 		}
-		
+
 		// Reconstruct the graph from stored data
 		graph := &aggregates.Graph{}
 		// Use reflection or a reconstruction method to properly restore the graph
@@ -386,7 +386,7 @@ func (r *GraphRepository) GetByUserID(ctx context.Context, userID string) ([]*ag
 			graphItem.UpdatedAt,
 		)
 		if err != nil {
-			r.logger.Warn("Failed to reconstruct graph from item", 
+			r.logger.Warn("Failed to reconstruct graph from item",
 				zap.String("graphID", graphItem.GraphID),
 				zap.Error(err))
 			continue
@@ -401,9 +401,9 @@ func (r *GraphRepository) GetByUserID(ctx context.Context, userID string) ([]*ag
 func (r *GraphRepository) GetUserDefaultGraph(ctx context.Context, userID string) (*aggregates.Graph, error) {
 	// Query for user's graphs where IsDefault = true
 	input := &dynamodb.QueryInput{
-		TableName: aws.String(r.tableName),
+		TableName:              aws.String(r.tableName),
 		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
-		FilterExpression: aws.String("IsDefault = :isDefault AND EntityType = :entityType"),
+		FilterExpression:       aws.String("IsDefault = :isDefault AND EntityType = :entityType"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":pk":         &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
 			":sk":         &types.AttributeValueMemberS{Value: "GRAPH#"},
@@ -472,7 +472,7 @@ func (r *GraphRepository) GetOrCreateDefaultGraph(ctx context.Context, userID st
 		// Found existing default graph
 		return existingGraph, nil
 	}
-	
+
 	// No default graph exists, create one
 	graph, err := aggregates.NewGraph(userID, "Default Graph")
 	if err != nil {
@@ -605,8 +605,8 @@ func (r *GraphRepository) UpdateGraphMetadata(ctx context.Context, graphID strin
 	// Get the user ID for the graph (we need it for the key)
 	// First, get the graph metadata to find the user
 	graphQueryInput := &dynamodb.QueryInput{
-		TableName: aws.String(r.tableName),
-		IndexName: aws.String("GSI1"),
+		TableName:              aws.String(r.tableName),
+		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk AND GSI1SK = :sk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":pk": &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPHID#%s", graphID)},

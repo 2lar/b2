@@ -22,10 +22,10 @@ func NewInMemoryCache() *InMemoryCache {
 	cache := &InMemoryCache{
 		items: make(map[string]cacheItem),
 	}
-	
+
 	// Start cleanup goroutine
 	go cache.cleanupExpired()
-	
+
 	return cache
 }
 
@@ -33,16 +33,16 @@ func NewInMemoryCache() *InMemoryCache {
 func (c *InMemoryCache) Get(ctx context.Context, key string) (interface{}, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	item, exists := c.items[key]
 	if !exists {
 		return nil, false
 	}
-	
+
 	if time.Now().After(item.expiresAt) {
 		return nil, false
 	}
-	
+
 	return item.value, true
 }
 
@@ -50,12 +50,12 @@ func (c *InMemoryCache) Get(ctx context.Context, key string) (interface{}, bool)
 func (c *InMemoryCache) Set(ctx context.Context, key string, value interface{}, ttl int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	c.items[key] = cacheItem{
 		value:     value,
 		expiresAt: time.Now().Add(time.Duration(ttl) * time.Second),
 	}
-	
+
 	return nil
 }
 
@@ -63,7 +63,7 @@ func (c *InMemoryCache) Set(ctx context.Context, key string, value interface{}, 
 func (c *InMemoryCache) Delete(ctx context.Context, key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	delete(c.items, key)
 	return nil
 }
@@ -72,7 +72,7 @@ func (c *InMemoryCache) Delete(ctx context.Context, key string) error {
 func (c *InMemoryCache) Clear(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	c.items = make(map[string]cacheItem)
 	return nil
 }
@@ -81,7 +81,7 @@ func (c *InMemoryCache) Clear(ctx context.Context) error {
 func (c *InMemoryCache) cleanupExpired() {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		c.mu.Lock()
 		now := time.Now()

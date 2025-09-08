@@ -79,7 +79,7 @@ func (h *CreateEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 	if err != nil {
 		return fmt.Errorf("invalid source node ID: %w", err)
 	}
-	
+
 	targetID, err := valueobjects.NewNodeIDFromString(createCmd.TargetID)
 	if err != nil {
 		return fmt.Errorf("invalid target node ID: %w", err)
@@ -90,7 +90,7 @@ func (h *CreateEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 	if err != nil {
 		return fmt.Errorf("source node not found: %w", err)
 	}
-	
+
 	targetNode, err := h.nodeRepo.GetByID(ctx, targetID)
 	if err != nil {
 		return fmt.Errorf("target node not found: %w", err)
@@ -100,7 +100,7 @@ func (h *CreateEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 	if sourceNode.GraphID() != targetNode.GraphID() {
 		return fmt.Errorf("nodes belong to different graphs")
 	}
-	
+
 	// Ensure the user owns the source node
 	if sourceNode.UserID() != createCmd.UserID {
 		return fmt.Errorf("user does not own the source node")
@@ -118,17 +118,17 @@ func (h *CreateEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 	if edgeType == "" {
 		edgeType = entities.EdgeTypeSimilar
 	}
-	
+
 	edge, err := graph.ConnectNodes(sourceID, targetID, edgeType)
 	if err != nil {
 		return fmt.Errorf("failed to connect nodes in graph: %w", err)
 	}
-	
+
 	// Set the weight if provided
 	if createCmd.Weight > 0 {
 		edge.Weight = createCmd.Weight
 	}
-	
+
 	// Set metadata if provided
 	if createCmd.Metadata != nil {
 		edge.Metadata = createCmd.Metadata
@@ -146,7 +146,7 @@ func (h *CreateEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 	if err := targetNode.ConnectTo(sourceID, edgeType); err != nil {
 		return fmt.Errorf("failed to connect target node: %w", err)
 	}
-	
+
 	// Save the updated nodes
 	if err := h.nodeRepo.Save(ctx, sourceNode); err != nil {
 		return fmt.Errorf("failed to save source node: %w", err)
@@ -160,7 +160,7 @@ func (h *CreateEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 	allEvents = append(allEvents, graph.GetUncommittedEvents()...)
 	allEvents = append(allEvents, sourceNode.GetUncommittedEvents()...)
 	allEvents = append(allEvents, targetNode.GetUncommittedEvents()...)
-	
+
 	if err := h.eventBus.PublishBatch(ctx, allEvents); err != nil {
 		// Log error but don't fail
 	}
@@ -169,7 +169,7 @@ func (h *CreateEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 	graph.MarkEventsAsCommitted()
 	sourceNode.MarkEventsAsCommitted()
 	targetNode.MarkEventsAsCommitted()
-	
+
 	return nil
 }
 
@@ -217,6 +217,6 @@ func (h *DeleteEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 	// In a full implementation, this would:
 	// 1. Delete the edge from the graph
 	// 2. Publish EdgeDeleted event
-	
+
 	return nil
 }

@@ -1,8 +1,8 @@
 package valueobjects
 
 import (
-	"math"
 	pkgerrors "backend2/pkg/errors"
+	"math"
 )
 
 // Position is a value object representing node coordinates in 2D/3D space

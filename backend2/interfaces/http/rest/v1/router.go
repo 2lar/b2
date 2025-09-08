@@ -5,7 +5,8 @@ import (
 
 	"backend2/interfaces/http/rest/handlers"
 	"backend2/interfaces/http/rest/middleware"
-	"github.com/gorilla/mux"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // NewRouter creates the v1 API router
@@ -14,52 +15,56 @@ func NewRouter(
 	graphHandler *handlers.GraphHandler,
 	edgeHandler *handlers.EdgeHandler,
 	searchHandler *handlers.SearchHandler,
-) *mux.Router {
-	router := mux.NewRouter()
-	v1 := router.PathPrefix("/api/v1").Subrouter()
+) chi.Router {
+	router := chi.NewRouter()
+	
+	// Create v1 subrouter
+	router.Route("/api/v1", func(r chi.Router) {
+		// Apply middleware
+		r.Use(middleware.Logging())
+		r.Use(middleware.CORS())
+		r.Use(middleware.RequestID())
+		r.Use(middleware.Authenticate())
+		r.Use(versionHeaders)
 
-	// Apply middleware
-	v1.Use(middleware.Logging())
-	v1.Use(middleware.CORS())
-	v1.Use(middleware.RequestID())
-	v1.Use(middleware.Authenticate())
+		// Node endpoints
+		r.Post("/nodes", nodeHandler.CreateNode)
+		r.Get("/nodes", nodeHandler.ListNodes)
+		r.Get("/nodes/{id}", nodeHandler.GetNode)
+		r.Put("/nodes/{id}", nodeHandler.UpdateNode)
+		r.Delete("/nodes/{id}", nodeHandler.DeleteNode)
+		r.Post("/nodes/bulk-delete", nodeHandler.BulkDeleteNodes)
+		// TODO: Implement node connection endpoints
+		// r.Post("/nodes/{id}/connect", nodeHandler.ConnectNodes)
+		// r.Post("/nodes/{id}/disconnect", nodeHandler.DisconnectNodes)
 
-	// Node endpoints
-	v1.HandleFunc("/nodes", nodeHandler.CreateNode).Methods("POST")
-	v1.HandleFunc("/nodes", nodeHandler.ListNodes).Methods("GET")
-	v1.HandleFunc("/nodes/{id}", nodeHandler.GetNode).Methods("GET")
-	v1.HandleFunc("/nodes/{id}", nodeHandler.UpdateNode).Methods("PUT")
-	v1.HandleFunc("/nodes/{id}", nodeHandler.DeleteNode).Methods("DELETE")
-	v1.HandleFunc("/nodes/bulk-delete", nodeHandler.BulkDeleteNodes).Methods("POST")
-	v1.HandleFunc("/nodes/{id}/connect", nodeHandler.ConnectNodes).Methods("POST")
-	v1.HandleFunc("/nodes/{id}/disconnect", nodeHandler.DisconnectNodes).Methods("POST")
+		// Graph endpoints
+		// TODO: Implement graph CRUD operations
+		// r.Post("/graphs", graphHandler.CreateGraph)
+		r.Get("/graphs", graphHandler.ListGraphs)
+		r.Get("/graphs/{id}", graphHandler.GetGraph)
+		// r.Put("/graphs/{id}", graphHandler.UpdateGraph)
+		// r.Delete("/graphs/{id}", graphHandler.DeleteGraph)
+		// r.Get("/graphs/{id}/nodes", graphHandler.GetGraphNodes)
+		// r.Get("/graphs/{id}/edges", graphHandler.GetGraphEdges)
+		r.Get("/graphs/{id}/data", graphHandler.GetGraphData)
 
-	// Graph endpoints
-	v1.HandleFunc("/graphs", graphHandler.CreateGraph).Methods("POST")
-	v1.HandleFunc("/graphs", graphHandler.ListGraphs).Methods("GET")
-	v1.HandleFunc("/graphs/{id}", graphHandler.GetGraph).Methods("GET")
-	v1.HandleFunc("/graphs/{id}", graphHandler.UpdateGraph).Methods("PUT")
-	v1.HandleFunc("/graphs/{id}", graphHandler.DeleteGraph).Methods("DELETE")
-	v1.HandleFunc("/graphs/{id}/nodes", graphHandler.GetGraphNodes).Methods("GET")
-	v1.HandleFunc("/graphs/{id}/edges", graphHandler.GetGraphEdges).Methods("GET")
-	v1.HandleFunc("/graphs/{id}/data", graphHandler.GetGraphData).Methods("GET")
+		// Edge endpoints
+		r.Post("/edges", edgeHandler.CreateEdge)
+		// TODO: Implement edge read and update operations
+		// r.Get("/edges/{id}", edgeHandler.GetEdge)
+		// r.Put("/edges/{id}", edgeHandler.UpdateEdge)
+		r.Delete("/edges/{id}", edgeHandler.DeleteEdge)
 
-	// Edge endpoints
-	v1.HandleFunc("/edges", edgeHandler.CreateEdge).Methods("POST")
-	v1.HandleFunc("/edges/{id}", edgeHandler.GetEdge).Methods("GET")
-	v1.HandleFunc("/edges/{id}", edgeHandler.UpdateEdge).Methods("PUT")
-	v1.HandleFunc("/edges/{id}", edgeHandler.DeleteEdge).Methods("DELETE")
+		// Search endpoints
+		r.Post("/search", searchHandler.Search)
+		// TODO: Implement additional search endpoints
+		// r.Get("/search/nodes", searchHandler.SearchNodes)
+		// r.Post("/search/similar", searchHandler.FindSimilarNodes)
 
-	// Search endpoints
-	v1.HandleFunc("/search", searchHandler.Search).Methods("POST")
-	v1.HandleFunc("/search/nodes", searchHandler.SearchNodes).Methods("GET")
-	v1.HandleFunc("/search/similar", searchHandler.FindSimilarNodes).Methods("POST")
-
-	// Health check
-	v1.HandleFunc("/health", healthCheck).Methods("GET")
-
-	// Add version header middleware
-	v1.Use(versionHeaders)
+		// Health check
+		r.Get("/health", healthCheck)
+	})
 
 	return router
 }

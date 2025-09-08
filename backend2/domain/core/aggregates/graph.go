@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"backend2/domain/config"
 	"backend2/domain/core/entities"
 	"backend2/domain/core/valueobjects"
 	"backend2/domain/events"
 	pkgerrors "backend2/pkg/errors"
+	"github.com/google/uuid"
 )
 
 // GraphID represents a unique graph identifier
@@ -93,15 +93,15 @@ func NewGraphWithConfig(userID, name string, cfg *config.DomainConfig) (*Graph, 
 	if userID == "" {
 		return nil, pkgerrors.NewValidationError("userID is required")
 	}
-	
+
 	if cfg == nil {
 		cfg = config.DefaultDomainConfig()
 	}
-	
+
 	if name == "" {
 		name = cfg.DefaultGraphName
 	}
-	
+
 	now := time.Now()
 	graph := &Graph{
 		id:          NewGraphID(),
@@ -111,7 +111,7 @@ func NewGraphWithConfig(userID, name string, cfg *config.DomainConfig) (*Graph, 
 		nodes:       make(map[valueobjects.NodeID]*entities.Node),
 		edges:       make(map[string]*Edge),
 		config:      cfg,
-		metadata:  GraphMetadata{
+		metadata: GraphMetadata{
 			ViewSettings: ViewSettings{
 				Layout:     LayoutForceDirected,
 				ShowLabels: true,
@@ -122,7 +122,7 @@ func NewGraphWithConfig(userID, name string, cfg *config.DomainConfig) (*Graph, 
 		version:   1,
 		events:    []events.DomainEvent{},
 	}
-	
+
 	graph.addEvent(events.GraphCreated{
 		BaseEvent: events.BaseEvent{
 			AggregateID: graph.id.String(),
@@ -134,7 +134,7 @@ func NewGraphWithConfig(userID, name string, cfg *config.DomainConfig) (*Graph, 
 		UserID:  userID,
 		Name:    name,
 	})
-	
+
 	return graph, nil
 }
 
@@ -151,10 +151,10 @@ func ReconstructGraph(
 	if id == "" || userID == "" || name == "" {
 		return nil, pkgerrors.NewValidationError("required fields missing for graph reconstruction")
 	}
-	
+
 	created, _ := time.Parse(time.RFC3339, createdAt)
 	updated, _ := time.Parse(time.RFC3339, updatedAt)
-	
+
 	graph := &Graph{
 		id:          GraphID(id),
 		userID:      userID,
@@ -174,7 +174,7 @@ func ReconstructGraph(
 		version:   1,
 		events:    []events.DomainEvent{},
 	}
-	
+
 	return graph, nil
 }
 
@@ -209,7 +209,7 @@ func (g *Graph) Nodes() (map[valueobjects.NodeID]*entities.Node, error) {
 	if len(g.nodes) > 1000 {
 		return nil, fmt.Errorf("graph has %d nodes (limit: 1000), use GetNodesPaginated instead", len(g.nodes))
 	}
-	
+
 	// Return a copy to maintain encapsulation
 	nodes := make(map[valueobjects.NodeID]*entities.Node, len(g.nodes))
 	for k, v := range g.nodes {
@@ -241,13 +241,13 @@ func (g *Graph) EdgeCount() int {
 // Metadata returns the graph's metadata
 func (g *Graph) Metadata() map[string]interface{} {
 	return map[string]interface{}{
-		"nodeCount":    g.metadata.NodeCount,
-		"edgeCount":    g.metadata.EdgeCount,
-		"isPublic":     g.metadata.IsPublic,
-		"tags":         g.metadata.Tags,
-		"layout":       g.metadata.ViewSettings.Layout,
-		"theme":        g.metadata.ViewSettings.Theme,
-		"showLabels":   g.metadata.ViewSettings.ShowLabels,
+		"nodeCount":  g.metadata.NodeCount,
+		"edgeCount":  g.metadata.EdgeCount,
+		"isPublic":   g.metadata.IsPublic,
+		"tags":       g.metadata.Tags,
+		"layout":     g.metadata.ViewSettings.Layout,
+		"theme":      g.metadata.ViewSettings.Theme,
+		"showLabels": g.metadata.ViewSettings.ShowLabels,
 	}
 }
 
@@ -272,22 +272,22 @@ func (g *Graph) AddNode(node *entities.Node) error {
 	if node == nil {
 		return pkgerrors.NewValidationError("node cannot be nil")
 	}
-	
+
 	nodeID := node.ID()
 	if _, exists := g.nodes[nodeID]; exists {
 		return pkgerrors.NewConflictError("node already exists in graph")
 	}
-	
+
 	// Check node limit (business rule)
 	if g.config != nil && len(g.nodes) >= g.config.MaxNodesPerGraph {
 		return fmt.Errorf("maximum nodes reached: %d", g.config.MaxNodesPerGraph)
 	}
-	
+
 	g.nodes[nodeID] = node
 	g.metadata.NodeCount++
 	g.updatedAt = time.Now()
 	g.version++
-	
+
 	g.addEvent(events.NodeAddedToGraph{
 		BaseEvent: events.BaseEvent{
 			AggregateID: g.id.String(),
@@ -298,7 +298,7 @@ func (g *Graph) AddNode(node *entities.Node) error {
 		GraphID: g.id.String(),
 		NodeID:  nodeID,
 	})
-	
+
 	return nil
 }
 
@@ -307,48 +307,48 @@ func (g *Graph) ConnectNodes(sourceID, targetID valueobjects.NodeID, edgeType en
 	// Validate nodes exist
 	sourceNode, sourceExists := g.nodes[sourceID]
 	_, targetExists := g.nodes[targetID]
-	
+
 	if !sourceExists || !targetExists {
 		return nil, pkgerrors.NewValidationError("both nodes must exist in graph")
 	}
-	
+
 	// Check for self-reference
 	if sourceID.Equals(targetID) {
 		return nil, pkgerrors.NewValidationError("cannot connect node to itself")
 	}
-	
+
 	// Check for duplicate edge
 	edgeKey := g.makeEdgeKey(sourceID, targetID)
 	if _, exists := g.edges[edgeKey]; exists {
 		return nil, pkgerrors.NewConflictError("edge already exists")
 	}
-	
+
 	// Check edge limit (business rule)
 	if g.config != nil && len(g.edges) >= g.config.MaxEdgesPerGraph {
 		return nil, fmt.Errorf("maximum edges reached: %d", g.config.MaxEdgesPerGraph)
 	}
-	
+
 	// Create the edge
 	edge := &Edge{
-		ID:           uuid.New().String(),
-		SourceID:     sourceID,
-		TargetID:     targetID,
-		Type:         edgeType,
-		Weight:       1.0,
+		ID:            uuid.New().String(),
+		SourceID:      sourceID,
+		TargetID:      targetID,
+		Type:          edgeType,
+		Weight:        1.0,
 		Bidirectional: false,
-		CreatedAt:    time.Now(),
+		CreatedAt:     time.Now(),
 	}
-	
+
 	// Update the source node's connections
 	if err := sourceNode.ConnectTo(targetID, edgeType); err != nil {
 		return nil, err
 	}
-	
+
 	g.edges[edgeKey] = edge
 	g.metadata.EdgeCount++
 	g.updatedAt = time.Now()
 	g.version++
-	
+
 	g.addEvent(events.NodesConnected{
 		BaseEvent: events.BaseEvent{
 			AggregateID: g.id.String(),
@@ -360,7 +360,7 @@ func (g *Graph) ConnectNodes(sourceID, targetID valueobjects.NodeID, edgeType en
 		TargetID: targetID,
 		EdgeType: string(edgeType),
 	})
-	
+
 	return edge, nil
 }
 
@@ -370,30 +370,30 @@ func (g *Graph) LoadEdge(edge *Edge) error {
 	if edge == nil {
 		return pkgerrors.NewValidationError("edge cannot be nil")
 	}
-	
+
 	// Check that both nodes exist with detailed error reporting
 	sourceNode, sourceExists := g.nodes[edge.SourceID]
 	_, targetExists := g.nodes[edge.TargetID]
-	
+
 	if !sourceExists {
 		return fmt.Errorf("source node %s not found for edge %s", edge.SourceID.String(), edge.ID)
 	}
 	if !targetExists {
 		return fmt.Errorf("target node %s not found for edge %s", edge.TargetID.String(), edge.ID)
 	}
-	
+
 	edgeKey := g.makeEdgeKey(edge.SourceID, edge.TargetID)
-	
+
 	// Only add if not already present
 	if _, exists := g.edges[edgeKey]; !exists {
 		// Check edge limit even when loading
 		if g.config != nil && len(g.edges) >= g.config.MaxEdgesPerGraph {
 			return fmt.Errorf("cannot load edge: maximum edges reached (%d)", g.config.MaxEdgesPerGraph)
 		}
-		
+
 		g.edges[edgeKey] = edge
 		g.metadata.EdgeCount++
-		
+
 		// Update the source node's connections with error handling
 		if err := sourceNode.ConnectTo(edge.TargetID, edge.Type); err != nil {
 			// Rollback the edge addition if node connection fails
@@ -402,7 +402,7 @@ func (g *Graph) LoadEdge(edge *Edge) error {
 			return fmt.Errorf("failed to update node connections: %w", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -412,12 +412,12 @@ func (g *Graph) RemoveNode(nodeID valueobjects.NodeID) error {
 	if !exists {
 		return pkgerrors.NewNotFoundError("node")
 	}
-	
+
 	// Archive the node first
 	if err := node.Archive(); err != nil {
 		return err
 	}
-	
+
 	// Remove all edges connected to this node
 	edgesToRemove := []string{}
 	for key, edge := range g.edges {
@@ -425,18 +425,18 @@ func (g *Graph) RemoveNode(nodeID valueobjects.NodeID) error {
 			edgesToRemove = append(edgesToRemove, key)
 		}
 	}
-	
+
 	for _, key := range edgesToRemove {
 		delete(g.edges, key)
 		g.metadata.EdgeCount--
 	}
-	
+
 	// Remove the node
 	delete(g.nodes, nodeID)
 	g.metadata.NodeCount--
 	g.updatedAt = time.Now()
 	g.version++
-	
+
 	g.addEvent(events.NodeRemovedFromGraph{
 		BaseEvent: events.BaseEvent{
 			AggregateID: g.id.String(),
@@ -447,7 +447,7 @@ func (g *Graph) RemoveNode(nodeID valueobjects.NodeID) error {
 		GraphID: g.id.String(),
 		NodeID:  nodeID,
 	})
-	
+
 	return nil
 }
 
@@ -473,7 +473,7 @@ func (g *Graph) GetNodes() ([]*entities.Node, error) {
 	if len(g.nodes) > 1000 {
 		return nil, fmt.Errorf("graph has %d nodes (limit: 1000), use GetNodesPaginated instead", len(g.nodes))
 	}
-	
+
 	nodes := make([]*entities.Node, 0, len(g.nodes))
 	for _, node := range g.nodes {
 		nodes = append(nodes, node)
@@ -486,11 +486,11 @@ func (g *Graph) GetNodesPaginated(limit int, lastNodeID *valueobjects.NodeID) ([
 	if limit <= 0 || limit > 100 {
 		limit = 100 // Sensible default
 	}
-	
+
 	nodes := make([]*entities.Node, 0, limit)
 	hasMore := false
 	skipUntilFound := lastNodeID != nil
-	
+
 	for id, node := range g.nodes {
 		if skipUntilFound {
 			if id.Equals(*lastNodeID) {
@@ -498,15 +498,15 @@ func (g *Graph) GetNodesPaginated(limit int, lastNodeID *valueobjects.NodeID) ([
 			}
 			continue
 		}
-		
+
 		if len(nodes) >= limit {
 			hasMore = true
 			break
 		}
-		
+
 		nodes = append(nodes, node)
 	}
-	
+
 	return nodes, hasMore
 }
 
@@ -527,25 +527,25 @@ func (g *Graph) FindPath(startID, endID valueobjects.NodeID) ([]valueobjects.Nod
 	if _, exists := g.nodes[endID]; !exists {
 		return nil, pkgerrors.NewNotFoundError("end node")
 	}
-	
+
 	if startID.Equals(endID) {
 		return []valueobjects.NodeID{startID}, nil
 	}
-	
+
 	// BFS implementation
 	visited := make(map[valueobjects.NodeID]bool)
 	parent := make(map[valueobjects.NodeID]valueobjects.NodeID)
 	queue := []valueobjects.NodeID{startID}
 	visited[startID] = true
-	
+
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		
+
 		// Check all edges from current node
 		for _, edge := range g.edges {
 			var next valueobjects.NodeID
-			
+
 			if edge.SourceID.Equals(current) {
 				next = edge.TargetID
 			} else if edge.Bidirectional && edge.TargetID.Equals(current) {
@@ -553,12 +553,12 @@ func (g *Graph) FindPath(startID, endID valueobjects.NodeID) ([]valueobjects.Nod
 			} else {
 				continue
 			}
-			
+
 			if !visited[next] {
 				visited[next] = true
 				parent[next] = current
 				queue = append(queue, next)
-				
+
 				if next.Equals(endID) {
 					// Reconstruct path
 					path := []valueobjects.NodeID{}
@@ -573,7 +573,7 @@ func (g *Graph) FindPath(startID, endID valueobjects.NodeID) ([]valueobjects.Nod
 			}
 		}
 	}
-	
+
 	return nil, pkgerrors.NewNotFoundError("path between nodes")
 }
 
@@ -581,14 +581,14 @@ func (g *Graph) FindPath(startID, endID valueobjects.NodeID) ([]valueobjects.Nod
 func (g *Graph) GetClusters() [][]valueobjects.NodeID {
 	visited := make(map[valueobjects.NodeID]bool)
 	var clusters [][]valueobjects.NodeID
-	
+
 	for nodeID := range g.nodes {
 		if !visited[nodeID] {
 			cluster := g.dfs(nodeID, visited)
 			clusters = append(clusters, cluster)
 		}
 	}
-	
+
 	return clusters
 }
 
@@ -603,7 +603,7 @@ func (g *Graph) Validate() error {
 			return pkgerrors.NewValidationError("edge references non-existent target node")
 		}
 	}
-	
+
 	// Check metadata consistency
 	if len(g.nodes) != g.metadata.NodeCount {
 		return pkgerrors.NewValidationError("node count mismatch")
@@ -611,7 +611,7 @@ func (g *Graph) Validate() error {
 	if len(g.edges) != g.metadata.EdgeCount {
 		return pkgerrors.NewValidationError("edge count mismatch")
 	}
-	
+
 	return nil
 }
 
@@ -620,19 +620,19 @@ func (g *Graph) GetUncommittedEvents() []events.DomainEvent {
 	// Collect events from the graph itself
 	allEvents := make([]events.DomainEvent, len(g.events))
 	copy(allEvents, g.events)
-	
+
 	// Collect events from all nodes
 	for _, node := range g.nodes {
 		allEvents = append(allEvents, node.GetUncommittedEvents()...)
 	}
-	
+
 	return allEvents
 }
 
 // MarkEventsAsCommitted clears all uncommitted events
 func (g *Graph) MarkEventsAsCommitted() {
 	g.events = []events.DomainEvent{}
-	
+
 	// Also mark node events as committed
 	for _, node := range g.nodes {
 		node.MarkEventsAsCommitted()
@@ -652,10 +652,10 @@ func (g *Graph) makeEdgeKey(sourceID, targetID valueobjects.NodeID) string {
 func (g *Graph) dfs(nodeID valueobjects.NodeID, visited map[valueobjects.NodeID]bool) []valueobjects.NodeID {
 	cluster := []valueobjects.NodeID{nodeID}
 	visited[nodeID] = true
-	
+
 	for _, edge := range g.edges {
 		var next valueobjects.NodeID
-		
+
 		if edge.SourceID.Equals(nodeID) {
 			next = edge.TargetID
 		} else if edge.Bidirectional && edge.TargetID.Equals(nodeID) {
@@ -663,11 +663,11 @@ func (g *Graph) dfs(nodeID valueobjects.NodeID, visited map[valueobjects.NodeID]
 		} else {
 			continue
 		}
-		
+
 		if !visited[next] {
 			cluster = append(cluster, g.dfs(next, visited)...)
 		}
 	}
-	
+
 	return cluster
 }

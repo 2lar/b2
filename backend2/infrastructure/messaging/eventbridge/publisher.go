@@ -47,29 +47,29 @@ func (p *EventBridgePublisher) PublishBatch(ctx context.Context, domainEvents []
 	if len(domainEvents) == 0 {
 		return nil
 	}
-	
+
 	// EventBridge limits to 10 events per PutEvents call
 	const batchSize = 10
-	
+
 	for i := 0; i < len(domainEvents); i += batchSize {
 		end := i + batchSize
 		if end > len(domainEvents) {
 			end = len(domainEvents)
 		}
-		
+
 		batch := domainEvents[i:end]
 		if err := p.publishBatch(ctx, batch); err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
 // publishBatch publishes a batch of events (max 10)
 func (p *EventBridgePublisher) publishBatch(ctx context.Context, domainEvents []events.DomainEvent) error {
 	entries := make([]types.PutEventsRequestEntry, 0, len(domainEvents))
-	
+
 	for _, event := range domainEvents {
 		// Serialize event to JSON
 		eventData, err := json.Marshal(event)
@@ -80,7 +80,7 @@ func (p *EventBridgePublisher) publishBatch(ctx context.Context, domainEvents []
 			)
 			continue
 		}
-		
+
 		// Create EventBridge entry
 		entry := types.PutEventsRequestEntry{
 			EventBusName: aws.String(p.eventBusName),
@@ -92,24 +92,24 @@ func (p *EventBridgePublisher) publishBatch(ctx context.Context, domainEvents []
 				fmt.Sprintf("arn:aws:brain2::%s", event.GetAggregateID()),
 			},
 		}
-		
+
 		entries = append(entries, entry)
 	}
-	
+
 	if len(entries) == 0 {
 		return nil
 	}
-	
+
 	// Send events to EventBridge
 	input := &eventbridge.PutEventsInput{
 		Entries: entries,
 	}
-	
+
 	result, err := p.client.PutEvents(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to publish events to EventBridge: %w", err)
 	}
-	
+
 	// Check for failures
 	if result.FailedEntryCount > 0 {
 		for i, entry := range result.Entries {
@@ -123,12 +123,12 @@ func (p *EventBridgePublisher) publishBatch(ctx context.Context, domainEvents []
 		}
 		return fmt.Errorf("%d events failed to publish", result.FailedEntryCount)
 	}
-	
+
 	p.logger.Debug("Events published to EventBridge",
 		zap.Int("count", len(entries)),
 		zap.String("eventBus", p.eventBusName),
 	)
-	
+
 	return nil
 }
 
@@ -168,25 +168,25 @@ func (e *RetryableError) Error() string {
 func (p *EventBridgePublisher) publishWithRetry(ctx context.Context, domainEvents []events.DomainEvent) error {
 	const maxRetries = 3
 	backoff := 100 * time.Millisecond
-	
+
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		err := p.publishBatch(ctx, domainEvents)
 		if err == nil {
 			return nil
 		}
-		
+
 		// Check if error is retryable
 		if !isRetryableError(err) {
 			return err
 		}
-		
+
 		if attempt < maxRetries-1 {
 			p.logger.Warn("Retrying event publication",
 				zap.Int("attempt", attempt+1),
 				zap.Error(err),
 				zap.Duration("backoff", backoff),
 			)
-			
+
 			select {
 			case <-time.After(backoff):
 				backoff *= 2
@@ -195,7 +195,7 @@ func (p *EventBridgePublisher) publishWithRetry(ctx context.Context, domainEvent
 			}
 		}
 	}
-	
+
 	return fmt.Errorf("failed to publish events after %d attempts", maxRetries)
 }
 

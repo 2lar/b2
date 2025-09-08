@@ -12,10 +12,10 @@ import (
 
 // UpdateNodeHandler handles node update commands
 type UpdateNodeHandler struct {
-	nodeRepo     ports.NodeRepository
-	eventStore   ports.EventStore
-	eventBus     ports.EventBus
-	logger       *zap.Logger
+	nodeRepo   ports.NodeRepository
+	eventStore ports.EventStore
+	eventBus   ports.EventBus
+	logger     *zap.Logger
 }
 
 // NewUpdateNodeHandler creates a new update node handler
@@ -63,7 +63,7 @@ func (h *UpdateNodeHandler) Handle(ctx context.Context, cmd commands.UpdateNodeC
 		title := currentContent.Title()
 		content := currentContent.Body()
 		format := currentContent.Format()
-		
+
 		if cmd.Title != nil {
 			title = *cmd.Title
 		}
@@ -73,12 +73,12 @@ func (h *UpdateNodeHandler) Handle(ctx context.Context, cmd commands.UpdateNodeC
 		if cmd.Format != nil {
 			format = valueobjects.ContentFormat(*cmd.Format)
 		}
-		
+
 		newContent, err := valueobjects.NewNodeContent(title, content, format)
 		if err != nil {
 			return fmt.Errorf("invalid content: %w", err)
 		}
-		
+
 		if err := node.UpdateContent(newContent); err != nil {
 			return fmt.Errorf("failed to update content: %w", err)
 		}
@@ -90,7 +90,7 @@ func (h *UpdateNodeHandler) Handle(ctx context.Context, cmd commands.UpdateNodeC
 		x := currentPosition.X()
 		y := currentPosition.Y()
 		z := currentPosition.Z()
-		
+
 		if cmd.X != nil {
 			x = *cmd.X
 		}
@@ -100,12 +100,12 @@ func (h *UpdateNodeHandler) Handle(ctx context.Context, cmd commands.UpdateNodeC
 		if cmd.Z != nil {
 			z = *cmd.Z
 		}
-		
+
 		newPosition, err := valueobjects.NewPosition3D(x, y, z)
 		if err != nil {
 			return fmt.Errorf("invalid position: %w", err)
 		}
-		
+
 		if err := node.MoveTo(newPosition); err != nil {
 			return fmt.Errorf("failed to update position: %w", err)
 		}
@@ -120,7 +120,7 @@ func (h *UpdateNodeHandler) Handle(ctx context.Context, cmd commands.UpdateNodeC
 				h.logger.Warn("Failed to remove tag", zap.String("tag", tag), zap.Error(err))
 			}
 		}
-		
+
 		// Add new tags
 		for _, tag := range *cmd.Tags {
 			if err := node.AddTag(tag); err != nil {
@@ -140,7 +140,7 @@ func (h *UpdateNodeHandler) Handle(ctx context.Context, cmd commands.UpdateNodeC
 			h.logger.Warn("Failed to publish event", zap.Error(err))
 		}
 	}
-	
+
 	// Mark events as committed
 	node.MarkEventsAsCommitted()
 

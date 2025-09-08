@@ -48,7 +48,7 @@ func LoadConfig() (*Config, error) {
 		Environment:   getEnv("ENVIRONMENT", "development"),
 		AWSRegion:     getEnv("AWS_REGION", "us-west-2"),
 		DynamoDBTable: getEnv("TABLE_NAME", getEnv("DYNAMODB_TABLE", "brain2")),
-		IndexName:     getEnv("INDEX_NAME", "KeywordIndex"),        // GSI1
+		IndexName:     getEnv("INDEX_NAME", "KeywordIndex"),   // GSI1
 		GSI2IndexName: getEnv("GSI2_INDEX_NAME", "EdgeIndex"), // GSI2 - Used for both node and edge lookups
 		EventBusName:  getEnv("EVENT_BUS_NAME", "brain2-events"),
 

@@ -68,7 +68,7 @@ func (r *GenericRepository[T]) Save(ctx context.Context, entity T) error {
 
 	// Add metadata
 	item["UpdatedAt"] = &types.AttributeValueMemberS{Value: time.Now().Format(time.RFC3339)}
-	
+
 	// Build condition for optimistic locking
 	var condition expression.ConditionBuilder
 	if entity.GetVersion() > 1 {
@@ -115,7 +115,7 @@ func (r *GenericRepository[T]) GetByID(ctx context.Context, userID, entityID str
 	var zero T
 
 	key := r.config.BuildKey(userID, entityID)
-	
+
 	input := &dynamodb.GetItemInput{
 		TableName: aws.String(r.tableName),
 		Key:       key,
@@ -143,7 +143,7 @@ func (r *GenericRepository[T]) GetByUserID(ctx context.Context, userID string) (
 	// Build query expression
 	keyExpr := expression.Key("PK").Equal(expression.Value(fmt.Sprintf("USER#%s", userID)))
 	filterExpr := expression.Name("EntityType").Equal(expression.Value(r.config.GetEntityType()))
-	
+
 	expr, err := expression.NewBuilder().
 		WithKeyCondition(keyExpr).
 		WithFilter(filterExpr).
@@ -155,7 +155,7 @@ func (r *GenericRepository[T]) GetByUserID(ctx context.Context, userID string) (
 	input := &dynamodb.QueryInput{
 		TableName:                 aws.String(r.tableName),
 		KeyConditionExpression:    expr.KeyCondition(),
-		FilterExpression:         expr.Filter(),
+		FilterExpression:          expr.Filter(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 	}
@@ -181,7 +181,7 @@ func (r *GenericRepository[T]) GetByUserID(ctx context.Context, userID string) (
 // Delete removes an entity
 func (r *GenericRepository[T]) Delete(ctx context.Context, userID, entityID string) error {
 	key := r.config.BuildKey(userID, entityID)
-	
+
 	input := &dynamodb.DeleteItemInput{
 		TableName: aws.String(r.tableName),
 		Key:       key,
@@ -211,7 +211,7 @@ func (r *GenericRepository[T]) QueryWithPagination(
 	// Build query expression
 	keyExpr := expression.Key("PK").Equal(expression.Value(fmt.Sprintf("USER#%s", userID)))
 	filterExpr := expression.Name("EntityType").Equal(expression.Value(r.config.GetEntityType()))
-	
+
 	expr, err := expression.NewBuilder().
 		WithKeyCondition(keyExpr).
 		WithFilter(filterExpr).
@@ -223,11 +223,11 @@ func (r *GenericRepository[T]) QueryWithPagination(
 	input := &dynamodb.QueryInput{
 		TableName:                 aws.String(r.tableName),
 		KeyConditionExpression:    expr.KeyCondition(),
-		FilterExpression:         expr.Filter(),
+		FilterExpression:          expr.Filter(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
-		Limit:                    aws.Int32(limit),
-		ExclusiveStartKey:        lastEvaluatedKey,
+		Limit:                     aws.Int32(limit),
+		ExclusiveStartKey:         lastEvaluatedKey,
 	}
 
 	result, err := r.client.Query(ctx, input)
@@ -257,31 +257,31 @@ func (r *GenericRepository[T]) BatchSave(ctx context.Context, entities []T) erro
 	// DynamoDB limits batch writes to 25 items
 	const batchSize = 25
 	const maxRetries = 3
-	
+
 	totalProcessed := 0
-	
+
 	for i := 0; i < len(entities); i += batchSize {
 		end := i + batchSize
 		if end > len(entities) {
 			end = len(entities)
 		}
-		
+
 		batch := entities[i:end]
 		requests := make([]types.WriteRequest, 0, len(batch))
-		
+
 		for _, entity := range batch {
 			item, err := r.config.ToItem(entity)
 			if err != nil {
 				return fmt.Errorf("failed to convert entity to item: %w", err)
 			}
-			
+
 			requests = append(requests, types.WriteRequest{
 				PutRequest: &types.PutRequest{
 					Item: item,
 				},
 			})
 		}
-		
+
 		// Retry logic for unprocessed items
 		unprocessedRequests := requests
 		for retry := 0; retry < maxRetries && len(unprocessedRequests) > 0; retry++ {
@@ -290,7 +290,7 @@ func (r *GenericRepository[T]) BatchSave(ctx context.Context, entities []T) erro
 					r.tableName: unprocessedRequests,
 				},
 			}
-			
+
 			result, err := r.client.BatchWriteItem(ctx, input)
 			if err != nil {
 				// Exponential backoff for retries
@@ -300,7 +300,7 @@ func (r *GenericRepository[T]) BatchSave(ctx context.Context, entities []T) erro
 					zap.Int("retry", retry+1),
 					zap.Duration("backoff", backoffDuration),
 				)
-				
+
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
@@ -309,7 +309,7 @@ func (r *GenericRepository[T]) BatchSave(ctx context.Context, entities []T) erro
 				}
 				continue
 			}
-			
+
 			// Check for unprocessed items
 			if unprocessedItems, exists := result.UnprocessedItems[r.tableName]; exists && len(unprocessedItems) > 0 {
 				unprocessedRequests = unprocessedItems
@@ -317,7 +317,7 @@ func (r *GenericRepository[T]) BatchSave(ctx context.Context, entities []T) erro
 					zap.Int("unprocessedCount", len(unprocessedItems)),
 					zap.Int("retry", retry+1),
 				)
-				
+
 				// Exponential backoff for unprocessed items
 				backoffDuration := time.Duration(retry*retry+1) * time.Millisecond * 100
 				select {
@@ -332,42 +332,42 @@ func (r *GenericRepository[T]) BatchSave(ctx context.Context, entities []T) erro
 				break
 			}
 		}
-		
+
 		if len(unprocessedRequests) > 0 {
 			return fmt.Errorf("failed to process %d items after %d retries", len(unprocessedRequests), maxRetries)
 		}
-		
+
 		totalProcessed += len(batch)
 	}
-	
+
 	r.logger.Debug("Batch saved entities successfully",
 		zap.String("entityType", r.config.GetEntityType()),
 		zap.Int("totalCount", len(entities)),
 		zap.Int("processedCount", totalProcessed),
 	)
-	
+
 	return nil
 }
 
 // Update performs a partial update on an entity
 func (r *GenericRepository[T]) Update(ctx context.Context, userID, entityID string, updates map[string]interface{}) error {
 	key := r.config.BuildKey(userID, entityID)
-	
+
 	// Build update expression
 	var updateExpr expression.UpdateBuilder
 	for attr, value := range updates {
 		updateExpr = updateExpr.Set(expression.Name(attr), expression.Value(value))
 	}
-	
+
 	// Add updated timestamp
 	updateExpr = updateExpr.Set(
 		expression.Name("UpdatedAt"),
 		expression.Value(time.Now().Format(time.RFC3339)),
 	)
-	
+
 	// Build condition to ensure entity exists
 	condition := expression.Name("PK").AttributeExists()
-	
+
 	expr, err := expression.NewBuilder().
 		WithUpdate(updateExpr).
 		WithCondition(condition).
@@ -375,16 +375,16 @@ func (r *GenericRepository[T]) Update(ctx context.Context, userID, entityID stri
 	if err != nil {
 		return fmt.Errorf("failed to build expression: %w", err)
 	}
-	
+
 	input := &dynamodb.UpdateItemInput{
 		TableName:                 aws.String(r.tableName),
-		Key:                      key,
-		UpdateExpression:         expr.Update(),
-		ConditionExpression:      expr.Condition(),
+		Key:                       key,
+		UpdateExpression:          expr.Update(),
+		ConditionExpression:       expr.Condition(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 	}
-	
+
 	_, err = r.client.UpdateItem(ctx, input)
 	if err != nil {
 		var ccf *types.ConditionalCheckFailedException
@@ -393,31 +393,31 @@ func (r *GenericRepository[T]) Update(ctx context.Context, userID, entityID stri
 		}
 		return fmt.Errorf("failed to update entity: %w", err)
 	}
-	
+
 	r.logger.Debug("Entity updated",
 		zap.String("entityType", r.config.GetEntityType()),
 		zap.String("entityID", entityID),
 		zap.String("userID", userID),
 	)
-	
+
 	return nil
 }
 
 // Exists checks if an entity exists
 func (r *GenericRepository[T]) Exists(ctx context.Context, userID, entityID string) (bool, error) {
 	key := r.config.BuildKey(userID, entityID)
-	
+
 	input := &dynamodb.GetItemInput{
 		TableName:            aws.String(r.tableName),
 		Key:                  key,
 		ProjectionExpression: aws.String("PK"), // Only fetch primary key
 	}
-	
+
 	result, err := r.client.GetItem(ctx, input)
 	if err != nil {
 		return false, fmt.Errorf("failed to check existence: %w", err)
 	}
-	
+
 	return result.Item != nil, nil
 }
 
@@ -430,18 +430,18 @@ func (r *GenericRepository[T]) BatchDelete(ctx context.Context, keys []map[strin
 	// DynamoDB limits batch writes to 25 items
 	const batchSize = 25
 	const maxRetries = 3
-	
+
 	totalProcessed := 0
-	
+
 	for i := 0; i < len(keys); i += batchSize {
 		end := i + batchSize
 		if end > len(keys) {
 			end = len(keys)
 		}
-		
+
 		batch := keys[i:end]
 		requests := make([]types.WriteRequest, 0, len(batch))
-		
+
 		for _, key := range batch {
 			requests = append(requests, types.WriteRequest{
 				DeleteRequest: &types.DeleteRequest{
@@ -449,7 +449,7 @@ func (r *GenericRepository[T]) BatchDelete(ctx context.Context, keys []map[strin
 				},
 			})
 		}
-		
+
 		// Retry logic for unprocessed items
 		unprocessedRequests := requests
 		for retry := 0; retry < maxRetries && len(unprocessedRequests) > 0; retry++ {
@@ -458,7 +458,7 @@ func (r *GenericRepository[T]) BatchDelete(ctx context.Context, keys []map[strin
 					r.tableName: unprocessedRequests,
 				},
 			}
-			
+
 			result, err := r.client.BatchWriteItem(ctx, input)
 			if err != nil {
 				// Exponential backoff for retries
@@ -468,7 +468,7 @@ func (r *GenericRepository[T]) BatchDelete(ctx context.Context, keys []map[strin
 					zap.Int("retry", retry+1),
 					zap.Duration("backoff", backoffDuration),
 				)
-				
+
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
@@ -477,7 +477,7 @@ func (r *GenericRepository[T]) BatchDelete(ctx context.Context, keys []map[strin
 				}
 				continue
 			}
-			
+
 			// Check for unprocessed items
 			if unprocessedItems, exists := result.UnprocessedItems[r.tableName]; exists && len(unprocessedItems) > 0 {
 				unprocessedRequests = unprocessedItems
@@ -485,7 +485,7 @@ func (r *GenericRepository[T]) BatchDelete(ctx context.Context, keys []map[strin
 					zap.Int("unprocessedCount", len(unprocessedItems)),
 					zap.Int("retry", retry+1),
 				)
-				
+
 				// Exponential backoff for unprocessed items
 				backoffDuration := time.Duration(retry*retry+1) * time.Millisecond * 100
 				select {
@@ -500,19 +500,19 @@ func (r *GenericRepository[T]) BatchDelete(ctx context.Context, keys []map[strin
 				break
 			}
 		}
-		
+
 		if len(unprocessedRequests) > 0 {
 			return fmt.Errorf("failed to delete %d items after %d retries", len(unprocessedRequests), maxRetries)
 		}
-		
+
 		totalProcessed += len(batch)
 	}
-	
+
 	r.logger.Debug("Batch deleted items successfully",
 		zap.String("entityType", r.config.GetEntityType()),
 		zap.Int("totalCount", len(keys)),
 		zap.Int("processedCount", totalProcessed),
 	)
-	
+
 	return nil
 }

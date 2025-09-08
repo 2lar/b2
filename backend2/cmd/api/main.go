@@ -32,17 +32,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize container: %v", err)
 	}
-	
+
 	// Create router
 	router := rest.NewRouter(
 		container.CommandBus,
 		container.QueryBus,
 		container.Logger,
 	)
-	
+
 	// Setup routes
 	handler := router.Setup()
-	
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:         cfg.ServerAddress,
@@ -54,11 +54,11 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		container.Logger.Info("Starting server", 
+		container.Logger.Info("Starting server",
 			zap.String("address", cfg.ServerAddress),
 			zap.String("environment", cfg.Environment),
 		)
-		
+
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			container.Logger.Fatal("Server failed to start", zap.Error(err))
 		}
@@ -71,7 +71,7 @@ func main() {
 
 	// Graceful shutdown
 	container.Logger.Info("Shutting down server...")
-	
+
 	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer shutdownCancel()
 

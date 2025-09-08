@@ -52,7 +52,7 @@ func (s *EdgeService) CreateEdgesForNewNode(
 	if nodeID == "" || userID == "" || graphID == "" {
 		return nil, fmt.Errorf("invalid input: nodeID, userID, and graphID are required")
 	}
-	
+
 	s.logger.Debug("Creating edges for new node",
 		zap.String("nodeID", nodeID),
 		zap.String("graphID", graphID),
@@ -100,7 +100,7 @@ func (s *EdgeService) CreateEdgesForNewNode(
 
 	// Use default limits for now
 	// TODO: Get these from graph config when available
-	maxEdges := 10 // Default max edges per node
+	maxEdges := 10             // Default max edges per node
 	similarityThreshold := 0.3 // Default threshold
 
 	// Calculate similarity scores for all nodes
@@ -108,9 +108,9 @@ func (s *EdgeService) CreateEdgesForNewNode(
 		node       *entities.Node
 		similarity float64
 	}
-	
+
 	similarities := make([]nodeSimilarity, 0, len(existingNodes))
-	
+
 	for _, targetNode := range existingNodes {
 		// Skip self
 		if targetNode.ID() == sourceNodeID {
@@ -119,7 +119,7 @@ func (s *EdgeService) CreateEdgesForNewNode(
 
 		// Calculate similarity based on keywords and tags
 		similarity := s.calculateSimilarity(targetNode, keywordSet, tagSet)
-		
+
 		// Only consider if above threshold
 		if similarity > similarityThreshold {
 			similarities = append(similarities, nodeSimilarity{
@@ -128,17 +128,17 @@ func (s *EdgeService) CreateEdgesForNewNode(
 			})
 		}
 	}
-	
+
 	// Sort by similarity (highest first) and limit
 	sort.Slice(similarities, func(i, j int) bool {
 		return similarities[i].similarity > similarities[j].similarity
 	})
-	
+
 	// Limit to maxEdges
 	if len(similarities) > maxEdges {
 		similarities = similarities[:maxEdges]
 	}
-	
+
 	// Create edges for top similar nodes
 	var createdEdgeIDs []string
 	for _, sim := range similarities {
@@ -161,7 +161,7 @@ func (s *EdgeService) CreateEdgesForNewNode(
 		edge.Weight = sim.similarity
 
 		createdEdgeIDs = append(createdEdgeIDs, edge.ID)
-		
+
 		s.logger.Debug("Created edge",
 			zap.String("edgeID", edge.ID),
 			zap.String("source", nodeID),
@@ -198,13 +198,13 @@ func (s *EdgeService) calculateSimilarity(
 
 	matches := 0
 	total := len(sourceKeywords) + len(sourceTags)
-	
+
 	// Build word set from target node for O(1) lookups
 	nodeContent := targetNode.Content()
 	if !nodeContent.IsEmpty() {
 		// Pre-process target text into word set
 		targetWords := s.extractWords(nodeContent.Title() + " " + nodeContent.Body())
-		
+
 		// Check keyword matches with O(1) lookup
 		for keyword := range sourceKeywords {
 			if targetWords[keyword] {
@@ -224,7 +224,7 @@ func (s *EdgeService) calculateSimilarity(
 
 	// Calculate similarity as percentage of matches
 	similarity := float64(matches) / float64(total)
-	
+
 	// Cap at 1.0
 	if similarity > 1.0 {
 		similarity = 1.0
@@ -236,11 +236,11 @@ func (s *EdgeService) calculateSimilarity(
 // extractWords tokenizes text into lowercase words for fast lookup
 func (s *EdgeService) extractWords(text string) map[string]bool {
 	words := make(map[string]bool)
-	
+
 	// Simple word extraction (can be improved with proper tokenization)
 	text = strings.ToLower(text)
 	tokens := strings.Fields(text)
-	
+
 	for _, token := range tokens {
 		// Clean token of punctuation
 		cleaned := strings.Trim(token, ".,!?;:\"'()[]{}#@$%^&*+=<>/\\|`~")
@@ -248,7 +248,7 @@ func (s *EdgeService) extractWords(text string) map[string]bool {
 			words[cleaned] = true
 		}
 	}
-	
+
 	return words
 }
 

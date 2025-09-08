@@ -23,12 +23,13 @@ type TokenBucketLimiter struct {
 }
 
 type bucket struct {
-	tokens    int
+	tokens     int
 	lastRefill time.Time
-	mu        sync.Mutex
+	mu         sync.Mutex
 }
 
 // NewTokenBucketLimiter creates a new token bucket rate limiter
+// NOTE: Currently unused but kept for potential future use
 func NewTokenBucketLimiter(maxTokens int, refillRate time.Duration) *TokenBucketLimiter {
 	limiter := &TokenBucketLimiter{
 		buckets:    make(map[string]*bucket),
@@ -63,7 +64,7 @@ func (l *TokenBucketLimiter) Allow(ctx context.Context, key string) (bool, error
 	now := time.Now()
 	elapsed := now.Sub(b.lastRefill)
 	tokensToAdd := int(elapsed / l.refillRate)
-	
+
 	if tokensToAdd > 0 {
 		b.tokens = min(b.tokens+tokensToAdd, l.maxTokens)
 		b.lastRefill = now
@@ -82,7 +83,7 @@ func (l *TokenBucketLimiter) Allow(ctx context.Context, key string) (bool, error
 func (l *TokenBucketLimiter) Reset(ctx context.Context, key string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	delete(l.buckets, key)
 	return nil
 }
@@ -169,7 +170,7 @@ func (l *SlidingWindowLimiter) Allow(ctx context.Context, key string) (bool, err
 func (l *SlidingWindowLimiter) Reset(ctx context.Context, key string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	delete(l.windows, key)
 	return nil
 }
@@ -214,6 +215,7 @@ type CompositeRateLimiter struct {
 }
 
 // NewCompositeRateLimiter creates a new composite rate limiter
+// NOTE: Currently unused but kept for potential future use
 func NewCompositeRateLimiter(limiters ...RateLimiter) *CompositeRateLimiter {
 	return &CompositeRateLimiter{
 		limiters: limiters,

@@ -33,28 +33,28 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusBadRequest, "Search query is required")
 		return
 	}
-	
+
 	// Get user from context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// Parse query parameters
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit <= 0 {
 		limit = 20
 	}
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	
+
 	// Parse tags from comma-separated list
 	tagsParam := r.URL.Query().Get("tags")
 	var tags []string
 	if tagsParam != "" {
 		tags = strings.Split(tagsParam, ",")
 	}
-	
+
 	// Create search query
 	searchQuery := queries.SearchNodesQuery{
 		UserID:   userCtx.UserID,
@@ -63,13 +63,13 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		Limit:    limit,
 		Offset:   offset,
 	}
-	
+
 	// Validate query
 	if err := searchQuery.Validate(); err != nil {
 		h.respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	
+
 	// Execute query
 	result, err := h.queryBus.Ask(r.Context(), &searchQuery)
 	if err != nil {
@@ -81,24 +81,24 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusInternalServerError, "Search failed")
 		return
 	}
-	
+
 	// Format response
 	searchResult, ok := result.(*queries.SearchNodesResult)
 	if !ok {
 		h.respondError(w, http.StatusInternalServerError, "Invalid search result")
 		return
 	}
-	
+
 	// Convert to API response format
 	response := map[string]interface{}{
-		"query":       query,
-		"results":     searchResult.Nodes,
-		"total":       searchResult.TotalCount,
-		"offset":      searchResult.Offset,
-		"limit":       limit,
-		"has_more":    searchResult.Offset+limit < searchResult.TotalCount,
+		"query":    query,
+		"results":  searchResult.Nodes,
+		"total":    searchResult.TotalCount,
+		"offset":   searchResult.Offset,
+		"limit":    limit,
+		"has_more": searchResult.Offset+limit < searchResult.TotalCount,
 	}
-	
+
 	h.respondJSON(w, http.StatusOK, response)
 }
 

@@ -38,9 +38,9 @@ func init() {
 	if err != nil {
 		log.Fatalf("Failed to load AWS config: %v", err)
 	}
-	
+
 	dynamoClient = dynamodb.NewFromConfig(cfg)
-	
+
 	log.Println("WebSocket connect handler initialized")
 }
 
@@ -50,16 +50,16 @@ func validateToken(token string) (string, error) {
 	// 1. Validate JWT signature
 	// 2. Check expiration
 	// 3. Extract user ID from claims
-	
+
 	// For now, simplified validation
 	if token == "" {
 		return "", fmt.Errorf("missing authentication token")
 	}
-	
+
 	// Mock user ID extraction
 	// In production, decode JWT and extract user ID from claims
 	userID := "user-" + token[:8]
-	
+
 	return userID, nil
 }
 
@@ -73,10 +73,10 @@ func storeConnection(ctx context.Context, conn Connection) error {
 			tableName = "B2-Connections"
 		}
 	}
-	
+
 	// Set TTL to 24 hours from now
 	conn.TTL = time.Now().Add(24 * time.Hour).Unix()
-	
+
 	// Use composite key structure: PK=CONNECTION#<id>, SK=METADATA
 	item := map[string]types.AttributeValue{
 		"PK":           &types.AttributeValueMemberS{Value: fmt.Sprintf("CONNECTION#%s", conn.ConnectionID)},
@@ -90,17 +90,17 @@ func storeConnection(ctx context.Context, conn Connection) error {
 		"Endpoint":     &types.AttributeValueMemberS{Value: conn.Endpoint},
 		"TTL":          &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", conn.TTL)},
 	}
-	
+
 	input := &dynamodb.PutItemInput{
 		TableName: aws.String(tableName),
 		Item:      item,
 	}
-	
+
 	_, err := dynamoClient.PutItem(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to store connection: %w", err)
 	}
-	
+
 	log.Printf("Stored connection %s for user %s", conn.ConnectionID, conn.UserID)
 	return nil
 }
@@ -108,7 +108,7 @@ func storeConnection(ctx context.Context, conn Connection) error {
 // handler processes WebSocket connection requests
 func handler(ctx context.Context, request events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
 	log.Printf("WebSocket connect request from connection: %s", request.RequestContext.ConnectionID)
-	
+
 	// Extract token from query parameters
 	token := request.QueryStringParameters["token"]
 	if token == "" {
@@ -117,7 +117,7 @@ func handler(ctx context.Context, request events.APIGatewayWebsocketProxyRequest
 			token = auth
 		}
 	}
-	
+
 	// Validate token and extract user ID
 	userID, err := validateToken(token)
 	if err != nil {
@@ -127,7 +127,7 @@ func handler(ctx context.Context, request events.APIGatewayWebsocketProxyRequest
 			Body:       `{"error": "unauthorized"}`,
 		}, nil
 	}
-	
+
 	// Create connection record
 	connection := Connection{
 		ConnectionID: request.RequestContext.ConnectionID,
@@ -136,7 +136,7 @@ func handler(ctx context.Context, request events.APIGatewayWebsocketProxyRequest
 		LastPingAt:   time.Now(),
 		Endpoint:     fmt.Sprintf("%s/%s", request.RequestContext.DomainName, request.RequestContext.Stage),
 	}
-	
+
 	// Store connection in DynamoDB
 	if err := storeConnection(ctx, connection); err != nil {
 		log.Printf("Failed to store connection: %v", err)
@@ -145,7 +145,7 @@ func handler(ctx context.Context, request events.APIGatewayWebsocketProxyRequest
 			Body:       `{"error": "internal server error"}`,
 		}, nil
 	}
-	
+
 	// Send welcome message
 	welcomeMsg := map[string]interface{}{
 		"type":         "connection_established",
@@ -154,11 +154,11 @@ func handler(ctx context.Context, request events.APIGatewayWebsocketProxyRequest
 		"timestamp":    time.Now().Unix(),
 		"message":      "Welcome to Brain2 WebSocket API",
 	}
-	
+
 	welcomeJSON, _ := json.Marshal(welcomeMsg)
-	
+
 	log.Printf("WebSocket connection established for user %s", userID)
-	
+
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
 		Body:       string(welcomeJSON),
@@ -173,7 +173,7 @@ func main() {
 	} else {
 		// Local testing mode
 		log.Println("Running in local test mode")
-		
+
 		// Create a test request
 		testRequest := events.APIGatewayWebsocketProxyRequest{
 			RequestContext: events.APIGatewayWebsocketProxyRequestContext{
@@ -185,13 +185,13 @@ func main() {
 				"token": "test-token-12345678",
 			},
 		}
-		
+
 		// Process the test request
 		response, err := handler(context.Background(), testRequest)
 		if err != nil {
 			log.Fatalf("Test request processing failed: %v", err)
 		}
-		
+
 		log.Printf("Test response: %+v", response)
 	}
 }

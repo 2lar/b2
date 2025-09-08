@@ -34,20 +34,20 @@ func (h *GraphHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusBadRequest, "Graph ID is required")
 		return
 	}
-	
+
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// Create query
 	query := queries.GetGraphByIDQuery{
 		UserID:  userCtx.UserID,
 		GraphID: graphID,
 	}
-	
+
 	// Execute query
 	result, err := h.queryBus.Ask(r.Context(), query)
 	if err != nil {
@@ -59,7 +59,7 @@ func (h *GraphHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusNotFound, "Graph not found")
 		return
 	}
-	
+
 	h.respondJSON(w, http.StatusOK, result)
 }
 
@@ -71,13 +71,13 @@ func (h *GraphHandler) ListGraphs(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// Parse query parameters
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	sortBy := r.URL.Query().Get("sort_by")
 	order := r.URL.Query().Get("order")
-	
+
 	// Create query
 	query := queries.ListGraphsQuery{
 		UserID: userCtx.UserID,
@@ -86,7 +86,7 @@ func (h *GraphHandler) ListGraphs(w http.ResponseWriter, r *http.Request) {
 		SortBy: sortBy,
 		Order:  order,
 	}
-	
+
 	// Execute query
 	result, err := h.queryBus.Ask(r.Context(), query)
 	if err != nil {
@@ -97,7 +97,7 @@ func (h *GraphHandler) ListGraphs(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusInternalServerError, "Failed to list graphs")
 		return
 	}
-	
+
 	h.respondJSON(w, http.StatusOK, result)
 }
 
@@ -109,16 +109,16 @@ func (h *GraphHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// Get optional graph ID from query params
 	graphID := r.URL.Query().Get("graph_id")
-	
+
 	// Create query
 	query := queries.GetGraphDataQuery{
 		UserID:  userCtx.UserID,
 		GraphID: graphID,
 	}
-	
+
 	// Execute query
 	result, err := h.queryBus.Ask(r.Context(), query)
 	if err != nil {
@@ -130,7 +130,7 @@ func (h *GraphHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusInternalServerError, "Failed to get graph data")
 		return
 	}
-	
+
 	h.respondJSON(w, http.StatusOK, result)
 }
 

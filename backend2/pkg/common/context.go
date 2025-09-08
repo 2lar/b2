@@ -87,7 +87,7 @@ func HasRole(ctx context.Context, role string) bool {
 	if !ok {
 		return false
 	}
-	
+
 	for _, r := range roles {
 		if r == role {
 			return true
@@ -128,7 +128,7 @@ type ContextMetadata struct {
 // ExtractMetadata extracts all metadata from context
 func ExtractMetadata(ctx context.Context) ContextMetadata {
 	meta := ContextMetadata{}
-	
+
 	if userID, ok := GetUserID(ctx); ok {
 		meta.UserID = userID
 	}
@@ -145,6 +145,6 @@ func ExtractMetadata(ctx context.Context) ContextMetadata {
 		meta.Roles = roles
 	}
 	meta.Duration = GetElapsedTime(ctx)
-	
+
 	return meta
 }

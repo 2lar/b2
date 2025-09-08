@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"backend2/application/commands"
-	commands_handlers "backend2/application/commands/handlers"
 	"backend2/application/commands/bus"
+	commands_handlers "backend2/application/commands/handlers"
 	"backend2/application/ports"
 	"backend2/application/queries"
-	queries_handlers "backend2/application/queries/handlers"
 	querybus "backend2/application/queries/bus"
+	queries_handlers "backend2/application/queries/handlers"
 	"backend2/domain/events"
 	"backend2/infrastructure/config"
 	"backend2/infrastructure/messaging/eventbridge"
@@ -31,17 +31,17 @@ import (
 func ProvideLogger(cfg *config.Config) (*zap.Logger, error) {
 	var logger *zap.Logger
 	var err error
-	
+
 	if cfg.Environment == "production" {
 		logger, err = zap.NewProduction()
 	} else {
 		logger, err = zap.NewDevelopment()
 	}
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return logger, nil
 }
 
@@ -86,13 +86,13 @@ func ProvideGraphRepository(
 		cfg.DynamoDBTable,
 		logger,
 	)
-	
+
 	// Set the edge repository for saving edges
 	if gr, ok := graphRepo.(*dynamodb.GraphRepository); ok {
 		gr.SetEdgeRepository(edgeRepo)
 		gr.SetNodeRepository(nodeRepo)
 	}
-	
+
 	return graphRepo
 }
 
@@ -190,9 +190,9 @@ func ProvideDistributedRateLimiter(client *awsdynamodb.Client, cfg *config.Confi
 	return auth.NewDistributedRateLimiter(
 		client,
 		tableName,
-		100,                    // 100 requests
-		1*time.Minute,          // per minute
-		"API",                  // key prefix for API rate limiting
+		100,           // 100 requests
+		1*time.Minute, // per minute
+		"API",         // key prefix for API rate limiting
 	)
 }
 
@@ -207,6 +207,7 @@ func ProvideCommandBus(
 	nodeRepo ports.NodeRepository,
 	edgeRepo ports.EdgeRepository,
 	graphRepo ports.GraphRepository,
+	eventStore ports.EventStore,
 	eventBus ports.EventBus,
 	eventPublisher ports.EventPublisher,
 	distributedLock *dynamodb.DistributedLock,
@@ -215,7 +216,7 @@ func ProvideCommandBus(
 ) *bus.CommandBus {
 	// Create command bus with dependencies
 	commandBus := bus.NewCommandBusWithDependencies(uow, metrics)
-	
+
 	// Create orchestrator for complex commands
 	orchestrator := commands_handlers.NewCreateNodeOrchestrator(
 		uow,
@@ -226,7 +227,7 @@ func ProvideCommandBus(
 		distributedLock,
 		&zapLoggerAdapter{logger},
 	)
-	
+
 	// Register CreateNodeCommand with orchestrator
 	commandBus.Register(commands.CreateNodeCommand{}, &CommandHandlerAdapter{
 		handler: func(ctx context.Context, cmd bus.Command) error {
@@ -238,7 +239,7 @@ func ProvideCommandBus(
 			return err
 		},
 	})
-	
+
 	// Register UpdateNodeCommand handler
 	// Note: Using nil for EventStore as it's not implemented yet
 	updateNodeHandler := commands_handlers.NewUpdateNodeHandler(nodeRepo, nil, eventBus, logger)
@@ -251,10 +252,9 @@ func ProvideCommandBus(
 			return updateNodeHandler.Handle(ctx, updateCmd)
 		},
 	})
-	
+
 	// Register DeleteNodeCommand handler
-	// Note: Using nil for EventStore as it's not implemented yet
-	deleteNodeHandler := commands_handlers.NewDeleteNodeHandler(nodeRepo, edgeRepo, graphRepo, nil, eventBus, logger)
+	deleteNodeHandler := commands_handlers.NewDeleteNodeHandler(nodeRepo, edgeRepo, graphRepo, eventStore, eventBus, logger)
 	commandBus.Register(commands.DeleteNodeCommand{}, &CommandHandlerAdapter{
 		handler: func(ctx context.Context, cmd bus.Command) error {
 			deleteCmd, ok := cmd.(commands.DeleteNodeCommand)
@@ -264,9 +264,9 @@ func ProvideCommandBus(
 			return deleteNodeHandler.Handle(ctx, deleteCmd)
 		},
 	})
-	
+
 	// Register BulkDeleteNodesCommand handler
-	bulkDeleteHandler := commands_handlers.NewBulkDeleteNodesHandler(uow, nodeRepo, edgeRepo, graphRepo, eventBus, logger)
+	bulkDeleteHandler := commands_handlers.NewBulkDeleteNodesHandler(uow, nodeRepo, edgeRepo, graphRepo, eventStore, eventBus, logger)
 	commandBus.Register(commands.BulkDeleteNodesCommand{}, &CommandHandlerAdapter{
 		handler: func(ctx context.Context, cmd bus.Command) error {
 			bulkCmd, ok := cmd.(commands.BulkDeleteNodesCommand)
@@ -277,7 +277,7 @@ func ProvideCommandBus(
 			return err
 		},
 	})
-	
+
 	// Register CreateEdgeCommand handler
 	createEdgeHandler := commands.NewCreateEdgeHandler(nodeRepo, graphRepo, eventBus)
 	commandBus.Register(commands.CreateEdgeCommand{}, &CommandHandlerAdapter{
@@ -289,7 +289,7 @@ func ProvideCommandBus(
 			return createEdgeHandler.Handle(ctx, &edgeCmd)
 		},
 	})
-	
+
 	// Register CleanupNodeResourcesCommand handler
 	cleanupHandler := commands.NewCleanupNodeResourcesHandler()
 	commandBus.Register(&commands.CleanupNodeResourcesCommand{}, &CommandHandlerAdapter{
@@ -301,7 +301,7 @@ func ProvideCommandBus(
 			return cleanupHandler.Handle(ctx, cleanupCmd)
 		},
 	})
-	
+
 	return commandBus
 }
 
@@ -323,7 +323,7 @@ func ProvideQueryBus(
 	logger *zap.Logger,
 ) *querybus.QueryBus {
 	queryBus := querybus.NewQueryBus()
-	
+
 	// Register GetGraphQuery handler
 	getGraphHandler := queries.NewGetGraphHandler(graphRepo, cache)
 	queryBus.Register(queries.GetGraphQuery{}, &QueryHandlerAdapter{
@@ -335,7 +335,7 @@ func ProvideQueryBus(
 			return getGraphHandler.Handle(ctx, getQuery)
 		},
 	})
-	
+
 	// Register GetGraphDataQuery handler
 	getGraphDataHandler := queries_handlers.NewGetGraphDataHandler(graphRepo, nodeRepo, edgeRepo, logger)
 	queryBus.Register(queries.GetGraphDataQuery{}, &QueryHandlerAdapter{
@@ -347,7 +347,7 @@ func ProvideQueryBus(
 			return getGraphDataHandler.Handle(ctx, getQuery)
 		},
 	})
-	
+
 	// Register ListNodesQuery handler
 	listNodesHandler := queries_handlers.NewListNodesHandler(nodeRepo, logger)
 	queryBus.Register(queries.ListNodesQuery{}, &QueryHandlerAdapter{
@@ -359,7 +359,7 @@ func ProvideQueryBus(
 			return listNodesHandler.Handle(ctx, listQuery)
 		},
 	})
-	
+
 	// Register GetNodeQuery handler
 	getNodeHandler := queries_handlers.NewGetNodeHandler(nodeRepo, logger)
 	queryBus.Register(queries.GetNodeQuery{}, &QueryHandlerAdapter{
@@ -371,7 +371,7 @@ func ProvideQueryBus(
 			return getNodeHandler.Handle(ctx, getQuery)
 		},
 	})
-	
+
 	// Register ListGraphsQuery handler
 	listGraphsHandler := queries_handlers.NewListGraphsHandler(graphRepo, logger)
 	queryBus.Register(queries.ListGraphsQuery{}, &QueryHandlerAdapter{
@@ -383,7 +383,7 @@ func ProvideQueryBus(
 			return listGraphsHandler.Handle(ctx, listQuery)
 		},
 	})
-	
+
 	// Register GetGraphByIDQuery handler
 	getGraphByIDHandler := queries_handlers.NewGetGraphHandler(graphRepo, nodeRepo, logger)
 	queryBus.Register(queries.GetGraphByIDQuery{}, &QueryHandlerAdapter{
@@ -395,7 +395,7 @@ func ProvideQueryBus(
 			return getGraphByIDHandler.Handle(ctx, getQuery)
 		},
 	})
-	
+
 	// Register FindSimilarNodesQuery handler
 	findSimilarHandler := queries.NewFindSimilarNodesHandler(nodeRepo)
 	queryBus.Register(&queries.FindSimilarNodesQuery{}, &QueryHandlerAdapter{
@@ -407,7 +407,7 @@ func ProvideQueryBus(
 			return findSimilarHandler.Handle(ctx, findQuery)
 		},
 	})
-	
+
 	return queryBus
 }
 

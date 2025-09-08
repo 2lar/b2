@@ -1,8 +1,8 @@
 package abstractions
 
 import (
-	"context"
 	"backend2/domain/core/aggregates"
+	"context"
 )
 
 // GraphRepositoryAbstraction provides a database-agnostic interface for graph persistence
@@ -12,21 +12,21 @@ type GraphRepositoryAbstraction interface {
 	FindByID(ctx context.Context, graphID string) (*aggregates.Graph, error)
 	Update(ctx context.Context, graph *aggregates.Graph) error
 	Delete(ctx context.Context, graphID string) error
-	
+
 	// Query operations
 	FindByUserID(ctx context.Context, userID string) ([]*aggregates.Graph, error)
 	FindPublicGraphs(ctx context.Context, limit int) ([]*aggregates.Graph, error)
 	FindSharedGraphs(ctx context.Context, userID string) ([]*aggregates.Graph, error)
-	
+
 	// Graph statistics
 	GetGraphStatistics(ctx context.Context, graphID string) (*GraphStatistics, error)
 	CountGraphsByUser(ctx context.Context, userID string) (int64, error)
-	
+
 	// Version management
 	GetGraphVersion(ctx context.Context, graphID string, version int) (*aggregates.Graph, error)
 	ListGraphVersions(ctx context.Context, graphID string) ([]GraphVersion, error)
 	CreateGraphSnapshot(ctx context.Context, graphID string) error
-	
+
 	// Search and discovery
 	SearchGraphs(ctx context.Context, query string, filters GraphFilter) ([]*aggregates.Graph, error)
 	GetRecommendedGraphs(ctx context.Context, userID string, limit int) ([]*aggregates.Graph, error)

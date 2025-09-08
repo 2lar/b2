@@ -42,11 +42,11 @@ func NewNodeHandler(
 
 // CreateNodeRequest represents the request body for creating a node
 type CreateNodeRequest struct {
-	Title   string   `json:"title,omitempty" validate:"omitempty,min=1,max=200"`  // Optional, auto-generated from content if not provided
+	Title   string   `json:"title,omitempty" validate:"omitempty,min=1,max=200"` // Optional, auto-generated from content if not provided
 	Content string   `json:"content" validate:"required"`
 	Format  string   `json:"format,omitempty" validate:"omitempty,oneof=text markdown html code"`
-	X       *float64 `json:"x,omitempty"`  // Optional, will be auto-generated if not provided
-	Y       *float64 `json:"y,omitempty"`  // Optional, will be auto-generated if not provided
+	X       *float64 `json:"x,omitempty"` // Optional, will be auto-generated if not provided
+	Y       *float64 `json:"y,omitempty"` // Optional, will be auto-generated if not provided
 	Z       *float64 `json:"z,omitempty"`
 	Tags    []string `json:"tags,omitempty" validate:"omitempty,max=10,dive,max=50"`
 }
@@ -76,25 +76,25 @@ func (h *NodeHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
 		return
 	}
-	
+
 	// Validate request
 	if err := utils.ValidateStruct(req); err != nil {
 		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
 		return
 	}
-	
+
 	// Get user context from auth middleware
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// Set default format if not provided
 	if req.Format == "" {
 		req.Format = "text"
 	}
-	
+
 	// Generate title from content if not provided
 	if req.Title == "" {
 		// Take first 50 characters of content or less
@@ -111,10 +111,10 @@ func (h *NodeHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 			req.Title = req.Title + "..."
 		}
 	}
-	
+
 	// Generate node ID
 	nodeID := uuid.New().String()
-	
+
 	// Generate random positions if not provided
 	var x, y, z float64
 	if req.X != nil {
@@ -134,7 +134,7 @@ func (h *NodeHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	} else {
 		z = 0 // Default Z to 0
 	}
-	
+
 	// Create command
 	cmd := commands.CreateNodeCommand{
 		NodeID:  nodeID,
@@ -147,10 +147,10 @@ func (h *NodeHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		Z:       z,
 		Tags:    req.Tags,
 	}
-	
+
 	// Execute command
 	if err := h.commandBus.Send(r.Context(), cmd); err != nil {
-		h.logger.Error("Failed to create node", 
+		h.logger.Error("Failed to create node",
 			zap.String("userID", userCtx.UserID),
 			zap.Error(err),
 		)
@@ -161,13 +161,13 @@ func (h *NodeHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	
+
 	response := CreateNodeResponse{
 		ID:        nodeID,
 		Message:   "Node created successfully",
 		CreatedAt: utils.NowRFC3339(),
 	}
-	
+
 	h.respondJSON(w, http.StatusCreated, response)
 }
 
@@ -178,30 +178,30 @@ func (h *NodeHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusBadRequest, "Node ID is required")
 		return
 	}
-	
+
 	// Validate UUID format
 	if _, err := uuid.Parse(nodeID); err != nil {
 		h.respondError(w, http.StatusBadRequest, "Invalid node ID format")
 		return
 	}
-	
+
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// Create query
 	query := queries.GetNodeQuery{
 		UserID: userCtx.UserID,
 		NodeID: nodeID,
 	}
-	
+
 	// Execute query
 	result, err := h.queryBus.Ask(r.Context(), query)
 	if err != nil {
-		h.logger.Error("Failed to get node", 
+		h.logger.Error("Failed to get node",
 			zap.String("nodeID", nodeID),
 			zap.String("userID", userCtx.UserID),
 			zap.Error(err),
@@ -213,7 +213,7 @@ func (h *NodeHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	
+
 	h.respondJSON(w, http.StatusOK, result)
 }
 
@@ -224,32 +224,32 @@ func (h *NodeHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusBadRequest, "Node ID is required")
 		return
 	}
-	
+
 	// Validate UUID format
 	if _, err := uuid.Parse(nodeID); err != nil {
 		h.respondError(w, http.StatusBadRequest, "Invalid node ID format")
 		return
 	}
-	
+
 	var req UpdateNodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.respondError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
 		return
 	}
-	
+
 	// Validate request
 	if err := utils.ValidateStruct(req); err != nil {
 		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
 		return
 	}
-	
+
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// Create command
 	cmd := commands.UpdateNodeCommand{
 		UserID:  userCtx.UserID,
@@ -262,7 +262,7 @@ func (h *NodeHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 		Z:       req.Z,
 		Tags:    req.Tags,
 	}
-	
+
 	// Execute command
 	if err := h.commandBus.Send(r.Context(), cmd); err != nil {
 		h.logger.Error("Failed to update node",
@@ -279,7 +279,7 @@ func (h *NodeHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	
+
 	h.respondJSON(w, http.StatusOK, map[string]string{
 		"message": "Node updated successfully",
 		"id":      nodeID,
@@ -292,37 +292,37 @@ func (h *NodeHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		NodeIDs []string `json:"node_ids" validate:"required,min=1,max=100"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	
+
 	// Validate request
 	if err := utils.ValidateStruct(req); err != nil {
 		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
 		return
 	}
-	
+
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// For now, delete nodes individually since we don't have a bulk handler registered
 	// TODO: Register bulk delete handler in DI container
 	deletedCount := 0
 	var failedIDs []string
 	var errors []string
-	
+
 	for _, nodeID := range req.NodeIDs {
 		deleteCmd := commands.DeleteNodeCommand{
 			UserID: userCtx.UserID,
 			NodeID: nodeID,
 		}
-		
+
 		if err := h.commandBus.Send(r.Context(), deleteCmd); err != nil {
 			failedIDs = append(failedIDs, nodeID)
 			errors = append(errors, fmt.Sprintf("Failed to delete node %s: %v", nodeID, err))
@@ -334,14 +334,14 @@ func (h *NodeHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) {
 			deletedCount++
 		}
 	}
-	
+
 	// Build response
 	response := map[string]interface{}{
 		"deleted_count": deletedCount,
 		"failed_ids":    failedIDs,
 		"errors":        errors,
 	}
-	
+
 	h.respondJSON(w, http.StatusOK, response)
 }
 
@@ -352,26 +352,26 @@ func (h *NodeHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusBadRequest, "Node ID is required")
 		return
 	}
-	
+
 	// Validate UUID format
 	if _, err := uuid.Parse(nodeID); err != nil {
 		h.respondError(w, http.StatusBadRequest, "Invalid node ID format")
 		return
 	}
-	
+
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// Create command
 	cmd := commands.DeleteNodeCommand{
 		UserID: userCtx.UserID,
 		NodeID: nodeID,
 	}
-	
+
 	// Execute command
 	if err := h.commandBus.Send(r.Context(), cmd); err != nil {
 		h.logger.Error("Failed to delete node",
@@ -386,7 +386,7 @@ func (h *NodeHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -398,13 +398,13 @@ func (h *NodeHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	// Parse query parameters
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	sortBy := r.URL.Query().Get("sort_by")
 	order := r.URL.Query().Get("order")
-	
+
 	// Create query
 	query := queries.ListNodesQuery{
 		UserID: userCtx.UserID,
@@ -413,7 +413,7 @@ func (h *NodeHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		SortBy: sortBy,
 		Order:  order,
 	}
-	
+
 	// Execute query
 	result, err := h.queryBus.Ask(r.Context(), query)
 	if err != nil {
@@ -424,7 +424,7 @@ func (h *NodeHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, http.StatusInternalServerError, "Failed to list nodes")
 		return
 	}
-	
+
 	h.respondJSON(w, http.StatusOK, result)
 }
 

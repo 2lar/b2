@@ -34,12 +34,12 @@ func NewQueryBus() *QueryBus {
 func (b *QueryBus) Register(queryType Query, handler QueryHandler) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	t := reflect.TypeOf(queryType)
 	if _, exists := b.handlers[t]; exists {
 		return fmt.Errorf("handler already registered for query type %s", t.Name())
 	}
-	
+
 	b.handlers[t] = handler
 	return nil
 }
@@ -50,21 +50,21 @@ func (b *QueryBus) Ask(ctx context.Context, query Query) (interface{}, error) {
 	if err := query.Validate(); err != nil {
 		return nil, fmt.Errorf("query validation failed: %w", err)
 	}
-	
+
 	b.mu.RLock()
 	handler, exists := b.handlers[reflect.TypeOf(query)]
 	b.mu.RUnlock()
-	
+
 	if !exists {
 		return nil, fmt.Errorf("no handler registered for query type %T", query)
 	}
-	
+
 	// Execute handler
 	result, err := handler.Handle(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("query handler failed: %w", err)
 	}
-	
+
 	return result, nil
 }
 
@@ -95,21 +95,21 @@ func (m *CachingMiddleware) Wrap(next QueryHandler) QueryHandler {
 	return QueryHandlerFunc(func(ctx context.Context, query Query) (interface{}, error) {
 		// Generate cache key from query
 		cacheKey := m.generateCacheKey(query)
-		
+
 		// Check cache
 		if cached, found := m.cache.Get(ctx, cacheKey); found {
 			return cached, nil
 		}
-		
+
 		// Execute query
 		result, err := next.Handle(ctx, query)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Store in cache
 		m.cache.Set(ctx, cacheKey, result, m.ttl)
-		
+
 		return result, nil
 	})
 }
@@ -141,21 +141,21 @@ func NewMetricsMiddleware(metrics Metrics) *MetricsMiddleware {
 func (m *MetricsMiddleware) Wrap(next QueryHandler) QueryHandler {
 	return QueryHandlerFunc(func(ctx context.Context, query Query) (interface{}, error) {
 		queryType := reflect.TypeOf(query).Name()
-		
+
 		// Start timer
 		timer := m.metrics.StartTimer("query_duration", queryType)
 		defer timer.Stop()
-		
+
 		// Increment counter
 		m.metrics.Increment("query_count", queryType)
-		
+
 		// Execute query
 		result, err := next.Handle(ctx, query)
 		if err != nil {
 			m.metrics.Increment("query_errors", queryType)
 			return nil, err
 		}
-		
+
 		m.metrics.Increment("query_success", queryType)
 		return result, nil
 	})

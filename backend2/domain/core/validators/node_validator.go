@@ -329,23 +329,23 @@ func (v *NodeValidator) containsForbiddenWords(text string) bool {
 
 // GraphValidator validates graph-related domain rules
 type GraphValidator struct {
-	nameMinLength     int
-	nameMaxLength     int
-	descMaxLength     int
-	maxNodesPerGraph  int
-	maxEdgesPerGraph  int
-	maxGraphsPerUser  int
+	nameMinLength    int
+	nameMaxLength    int
+	descMaxLength    int
+	maxNodesPerGraph int
+	maxEdgesPerGraph int
+	maxGraphsPerUser int
 }
 
 // NewGraphValidator creates a new graph validator
 func NewGraphValidator() *GraphValidator {
 	return &GraphValidator{
-		nameMinLength:     1,
-		nameMaxLength:     255,
-		descMaxLength:     1000,
-		maxNodesPerGraph:  10000,
-		maxEdgesPerGraph:  50000,
-		maxGraphsPerUser:  100,
+		nameMinLength:    1,
+		nameMaxLength:    255,
+		descMaxLength:    1000,
+		maxNodesPerGraph: 10000,
+		maxEdgesPerGraph: 50000,
+		maxGraphsPerUser: 100,
 	}
 }
 

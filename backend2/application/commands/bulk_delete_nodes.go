@@ -16,15 +16,15 @@ func (c BulkDeleteNodesCommand) Validate() error {
 	if c.UserID == "" {
 		return errors.New("user ID is required")
 	}
-	
+
 	if len(c.NodeIDs) == 0 {
 		return errors.New("at least one node ID is required")
 	}
-	
+
 	if len(c.NodeIDs) > 100 {
 		return errors.New("cannot delete more than 100 nodes at once")
 	}
-	
+
 	// Check for duplicate IDs
 	seen := make(map[string]bool)
 	for _, id := range c.NodeIDs {
@@ -36,7 +36,7 @@ func (c BulkDeleteNodesCommand) Validate() error {
 		}
 		seen[id] = true
 	}
-	
+
 	return nil
 }
 

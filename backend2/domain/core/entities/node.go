@@ -24,20 +24,20 @@ const (
 // This is a rich domain model with encapsulated business logic
 type Node struct {
 	// Private fields ensure encapsulation
-	id         valueobjects.NodeID
-	userID     string
-	graphID    string  // ID of the graph this node belongs to
-	content    valueobjects.NodeContent
-	position   valueobjects.Position
-	metadata   Metadata
-	edges      []EdgeReference
-	createdAt  time.Time
-	updatedAt  time.Time
-	version    int
-	status     NodeStatus
-	
+	id        valueobjects.NodeID
+	userID    string
+	graphID   string // ID of the graph this node belongs to
+	content   valueobjects.NodeContent
+	position  valueobjects.Position
+	metadata  Metadata
+	edges     []EdgeReference
+	createdAt time.Time
+	updatedAt time.Time
+	version   int
+	status    NodeStatus
+
 	// Domain events that occurred during this aggregate's lifetime
-	events     []events.DomainEvent
+	events []events.DomainEvent
 }
 
 // EdgeReference is a lightweight reference to connected edges
@@ -72,11 +72,11 @@ func NewNode(userID string, content valueobjects.NodeContent, position valueobje
 	if userID == "" {
 		return nil, pkgerrors.NewValidationError("userID cannot be empty")
 	}
-	
+
 	if content.IsEmpty() {
 		return nil, pkgerrors.NewValidationError("content cannot be empty")
 	}
-	
+
 	now := time.Now()
 	node := &Node{
 		id:        valueobjects.NewNodeID(),
@@ -91,15 +91,15 @@ func NewNode(userID string, content valueobjects.NodeContent, position valueobje
 		status:    StatusDraft,
 		events:    []events.DomainEvent{},
 	}
-	
+
 	// Extract keywords for the event (will be used by connect-node Lambda)
 	keywords := extractKeywords(content.Title() + " " + content.Body())
-	
+
 	// Note: graphID will be set later when node is added to a graph
 	// Tags will be populated when AddTag is called
 	node.addEvent(events.NewNodeCreated(
-		node.id, 
-		userID, 
+		node.id,
+		userID,
 		"", // graphID will be set when SetGraphID is called
 		content.Title(),
 		content.Body(),
@@ -107,7 +107,7 @@ func NewNode(userID string, content valueobjects.NodeContent, position valueobje
 		[]string{}, // tags will be populated when AddTag is called
 		now,
 	))
-	
+
 	return node, nil
 }
 
@@ -124,11 +124,11 @@ func ReconstructNode(
 	if userID == "" {
 		return nil, pkgerrors.NewValidationError("userID cannot be empty")
 	}
-	
+
 	if content.IsEmpty() {
 		return nil, pkgerrors.NewValidationError("content cannot be empty")
 	}
-	
+
 	node := &Node{
 		id:        id,
 		userID:    userID,
@@ -143,7 +143,7 @@ func ReconstructNode(
 		status:    status,
 		events:    []events.DomainEvent{},
 	}
-	
+
 	return node, nil
 }
 
@@ -186,7 +186,7 @@ func (n *Node) GraphID() string {
 func (n *Node) SetGraphID(graphID string) {
 	n.graphID = graphID
 	n.updatedAt = time.Now()
-	
+
 	// Update the NodeCreated event with the graph ID
 	// This is important for the connect-node Lambda to know which graph to work with
 	for i, event := range n.events {
@@ -205,22 +205,22 @@ func (n *Node) UpdateContent(content valueobjects.NodeContent) error {
 	if n.status == StatusArchived {
 		return pkgerrors.NewValidationError("cannot update archived node")
 	}
-	
+
 	if content.IsEmpty() {
 		return pkgerrors.NewValidationError("content cannot be empty")
 	}
-	
+
 	if content.Equals(n.content) {
 		return nil // No change needed
 	}
-	
+
 	oldContent := n.content
 	n.content = content
 	n.updatedAt = time.Now()
 	n.version++
-	
+
 	n.addEvent(events.NewNodeContentUpdated(n.id, oldContent, content, n.updatedAt))
-	
+
 	return nil
 }
 
@@ -229,17 +229,17 @@ func (n *Node) MoveTo(position valueobjects.Position) error {
 	if n.status == StatusArchived {
 		return pkgerrors.NewValidationError("cannot move archived node")
 	}
-	
+
 	if position.Equals(n.position) {
 		return nil // No movement needed
 	}
-	
+
 	oldPosition := n.position
 	n.position = position
 	n.updatedAt = time.Now()
-	
+
 	n.addEvent(events.NewNodeMoved(n.id, oldPosition, position, n.updatedAt))
-	
+
 	return nil
 }
 
@@ -253,12 +253,12 @@ func (n *Node) ConnectToWithConfig(targetID valueobjects.NodeID, edgeType EdgeTy
 	if cfg == nil {
 		cfg = config.DefaultDomainConfig()
 	}
-	
+
 	// Check for self-reference
 	if !cfg.AllowSelfConnections && n.id.Equals(targetID) {
 		return pkgerrors.NewValidationError("cannot connect node to itself")
 	}
-	
+
 	// Check for duplicate connection
 	if !cfg.AllowDuplicateEdges {
 		for _, edge := range n.edges {
@@ -267,23 +267,23 @@ func (n *Node) ConnectToWithConfig(targetID valueobjects.NodeID, edgeType EdgeTy
 			}
 		}
 	}
-	
+
 	// Check connection limit (business rule)
 	if len(n.edges) >= cfg.MaxConnectionsPerNode {
 		return fmt.Errorf("maximum connections reached: %d", cfg.MaxConnectionsPerNode)
 	}
-	
+
 	edgeRef := EdgeReference{
 		EdgeID:   generateEdgeID(),
 		TargetID: targetID,
 		Type:     edgeType,
 	}
-	
+
 	n.edges = append(n.edges, edgeRef)
 	n.updatedAt = time.Now()
-	
+
 	n.addEvent(events.NewNodesConnected(n.id, targetID, string(edgeType), n.updatedAt))
-	
+
 	return nil
 }
 
@@ -291,7 +291,7 @@ func (n *Node) ConnectToWithConfig(targetID valueobjects.NodeID, edgeType EdgeTy
 func (n *Node) Disconnect(targetID valueobjects.NodeID) error {
 	found := false
 	newEdges := []EdgeReference{}
-	
+
 	for _, edge := range n.edges {
 		if !edge.TargetID.Equals(targetID) {
 			newEdges = append(newEdges, edge)
@@ -299,16 +299,16 @@ func (n *Node) Disconnect(targetID valueobjects.NodeID) error {
 			found = true
 		}
 	}
-	
+
 	if !found {
 		return pkgerrors.NewNotFoundError("connection")
 	}
-	
+
 	n.edges = newEdges
 	n.updatedAt = time.Now()
-	
+
 	n.addEvent(events.NewNodesDisconnected(n.id, targetID, n.updatedAt))
-	
+
 	return nil
 }
 
@@ -317,17 +317,17 @@ func (n *Node) Publish() error {
 	if n.status == StatusArchived {
 		return pkgerrors.NewValidationError("cannot publish archived node")
 	}
-	
+
 	if n.status == StatusPublished {
 		return nil // Already published
 	}
-	
+
 	n.status = StatusPublished
 	n.updatedAt = time.Now()
 	n.version++
-	
+
 	n.addEvent(events.NewNodePublished(n.id, n.updatedAt))
-	
+
 	return nil
 }
 
@@ -336,16 +336,16 @@ func (n *Node) Archive() error {
 	if n.status == StatusArchived {
 		return nil // Already archived
 	}
-	
+
 	n.status = StatusArchived
 	n.updatedAt = time.Now()
 	n.version++
-	
+
 	// Remove all connections when archiving
 	n.edges = []EdgeReference{}
-	
+
 	n.addEvent(events.NewNodeArchived(n.id, n.updatedAt))
-	
+
 	return nil
 }
 
@@ -359,26 +359,26 @@ func (n *Node) AddTagWithConfig(tag string, cfg *config.DomainConfig) error {
 	if cfg == nil {
 		cfg = config.DefaultDomainConfig()
 	}
-	
+
 	if tag == "" {
 		return pkgerrors.NewValidationError("tag cannot be empty")
 	}
-	
+
 	// Check for duplicate
 	for _, t := range n.metadata.Tags {
 		if t == tag {
 			return nil // Tag already exists
 		}
 	}
-	
+
 	// Check tag limit
 	if len(n.metadata.Tags) >= cfg.MaxTagsPerNode {
 		return fmt.Errorf("maximum tags reached: %d", cfg.MaxTagsPerNode)
 	}
-	
+
 	n.metadata.Tags = append(n.metadata.Tags, tag)
 	n.updatedAt = time.Now()
-	
+
 	// Update the NodeCreated event with the new tags
 	for i, event := range n.events {
 		if nodeCreated, ok := event.(events.NodeCreated); ok {
@@ -387,7 +387,7 @@ func (n *Node) AddTagWithConfig(tag string, cfg *config.DomainConfig) error {
 			break
 		}
 	}
-	
+
 	return nil
 }
 
@@ -395,7 +395,7 @@ func (n *Node) AddTagWithConfig(tag string, cfg *config.DomainConfig) error {
 func (n *Node) RemoveTag(tag string) error {
 	newTags := []string{}
 	found := false
-	
+
 	for _, t := range n.metadata.Tags {
 		if t != tag {
 			newTags = append(newTags, t)
@@ -403,14 +403,14 @@ func (n *Node) RemoveTag(tag string) error {
 			found = true
 		}
 	}
-	
+
 	if !found {
 		return pkgerrors.NewNotFoundError("tag")
 	}
-	
+
 	n.metadata.Tags = newTags
 	n.updatedAt = time.Now()
-	
+
 	return nil
 }
 
@@ -465,7 +465,7 @@ func extractKeywords(text string) []string {
 	// Simple keyword extraction - in production, use NLP
 	words := strings.Fields(strings.ToLower(text))
 	keywords := []string{}
-	
+
 	stopWords := map[string]bool{
 		"the": true, "a": true, "an": true, "and": true, "or": true,
 		"but": true, "in": true, "on": true, "at": true, "to": true,
@@ -474,18 +474,18 @@ func extractKeywords(text string) []string {
 		"have": true, "has": true, "had": true, "do": true, "does": true,
 		"did": true, "will": true, "would": true, "could": true, "should": true,
 	}
-	
+
 	seen := make(map[string]bool)
 	for _, word := range words {
 		// Clean punctuation
 		word = strings.Trim(word, ".,!?;:\"'()[]{}")
-		
+
 		// Skip short words, stop words, and duplicates
 		if len(word) > 3 && !stopWords[word] && !seen[word] {
 			keywords = append(keywords, word)
 			seen[word] = true
 		}
 	}
-	
+
 	return keywords
 }

@@ -128,6 +128,19 @@ func (h *DeleteNodeHandler) Handle(ctx context.Context, cmd commands.DeleteNodeC
 		h.logger.Warn("Failed to publish deletion event", zap.Error(err))
 	}
 
+	// Clean up all events for this node (immediate cleanup strategy)
+	if err := h.eventStore.DeleteEvents(ctx, cmd.NodeID); err != nil {
+		h.logger.Error("Failed to delete events for node",
+			zap.String("nodeID", cmd.NodeID),
+			zap.Error(err),
+		)
+		// Don't fail the operation if event cleanup fails
+	} else {
+		h.logger.Info("Deleted all events for node",
+			zap.String("nodeID", cmd.NodeID),
+		)
+	}
+
 	h.logger.Info("Node deleted",
 		zap.String("nodeID", cmd.NodeID),
 		zap.String("userID", cmd.UserID),

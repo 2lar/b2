@@ -21,13 +21,13 @@ import (
 var (
 	// chiLambda wraps the Chi router for AWS Lambda integration
 	chiLambda *chiadapter.ChiLambdaV2
-	
+
 	// container holds the dependency injection container
 	container *di.Container
-	
+
 	// coldStart tracks whether this is a cold start invocation
 	coldStart = true
-	
+
 	// coldStartTime records when the cold start began
 	coldStartTime time.Time
 )
@@ -36,23 +36,23 @@ var (
 func init() {
 	coldStartTime = time.Now()
 	log.Println("Lambda cold start initiated")
-	
+
 	// Initialize context with timeout to prevent hanging
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
-	
+
 	// Initialize dependency container
 	container, err = di.InitializeContainer(ctx, cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize container: %v", err)
 	}
-	
+
 	// Pre-warm DynamoDB connection by executing a simple query
 	// This reduces latency on first real request
 	if container != nil && container.NodeRepo != nil {
@@ -63,24 +63,24 @@ func init() {
 			_, _ = container.NodeRepo.GetByID(warmCtx, valueobjects.NewNodeID())
 		}()
 	}
-	
+
 	// Create router
 	router := rest.NewRouter(
 		container.CommandBus,
 		container.QueryBus,
 		container.Logger,
 	)
-	
+
 	// Setup routes
 	handler := router.Setup()
-	
+
 	// Create Lambda adapter - need to type assert to *chi.Mux
 	chiRouter, ok := handler.(*chi.Mux)
 	if !ok {
 		log.Fatal("Failed to cast handler to chi.Mux")
 	}
 	chiLambda = chiadapter.NewV2(chiRouter)
-	
+
 	// Log cold start duration
 	coldStartDuration := time.Since(coldStartTime)
 	log.Printf("Lambda cold start completed in %v", coldStartDuration)
@@ -98,11 +98,11 @@ func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 			zap.Any("authorizer", req.RequestContext.Authorizer),
 		)
 	}
-	
+
 	// Check for Authorization header in both cases (lowercase and capitalized)
 	var hasAuth bool
 	var authHeader string
-	
+
 	if req.Headers != nil {
 		// Check lowercase first (most common)
 		if auth, ok := req.Headers["authorization"]; ok {
@@ -113,7 +113,7 @@ func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 			hasAuth = true
 			authHeader = auth
 		}
-		
+
 		if container != nil && container.Logger != nil {
 			container.Logger.Info("Authorization header check",
 				zap.Bool("has_auth", hasAuth),
@@ -121,14 +121,14 @@ func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 				zap.String("path", req.RequestContext.HTTP.Path),
 			)
 		}
-		
+
 		// Extract user context from API Gateway authorizer
 		// The authorizer context is available at req.RequestContext.Authorizer
 		if req.RequestContext.Authorizer != nil && req.RequestContext.Authorizer.Lambda != nil {
 			// Extract user information from Lambda authorizer context
 			// The JWT authorizer returns: sub (user ID), email, and role
 			lambdaClaims := req.RequestContext.Authorizer.Lambda
-			
+
 			if userID, ok := lambdaClaims["sub"].(string); ok && userID != "" {
 				req.Headers["X-User-ID"] = userID
 			}
@@ -138,13 +138,13 @@ func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 			if role, ok := lambdaClaims["role"].(string); ok && role != "" {
 				req.Headers["X-User-Roles"] = role
 			}
-			
+
 			// Set bypass headers to indicate pre-authorized request
 			delete(req.Headers, "authorization")
 			delete(req.Headers, "Authorization")
 			req.Headers["Authorization"] = "Bearer api-gateway-validated"
 			req.Headers["X-API-Gateway-Authorized"] = "true"
-			
+
 			if container != nil && container.Logger != nil {
 				container.Logger.Info("Extracted user context from API Gateway authorizer",
 					zap.String("user_id", req.Headers["X-User-ID"]),
@@ -165,15 +165,15 @@ func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 			}
 		}
 	}
-	
+
 	// Process the request through the Chi router
 	proxyReq, err := chiLambda.ProxyWithContextV2(ctx, req)
-	
+
 	// Add custom headers for monitoring
 	if proxyReq.Headers == nil {
 		proxyReq.Headers = make(map[string]string)
 	}
-	
+
 	if coldStart {
 		proxyReq.Headers["X-Cold-Start"] = "true"
 		proxyReq.Headers["X-Cold-Start-Duration"] = time.Since(coldStartTime).String()
@@ -181,16 +181,16 @@ func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 	} else {
 		proxyReq.Headers["X-Cold-Start"] = "false"
 	}
-	
+
 	// Add request ID for tracing
 	if req.RequestContext.RequestID != "" {
 		proxyReq.Headers["X-Request-ID"] = req.RequestContext.RequestID
 	}
-	
+
 	// Add Lambda context headers
 	proxyReq.Headers["X-Lambda-Request-ID"] = req.RequestContext.RequestID
 	proxyReq.Headers["X-Lambda-Stage"] = req.RequestContext.Stage
-	
+
 	// Log response details for debugging
 	if container != nil && container.Logger != nil {
 		container.Logger.Info("Lambda response",
@@ -202,7 +202,7 @@ func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 			zap.String("stage", req.RequestContext.Stage),
 			zap.Any("response_headers", proxyReq.Headers),
 		)
-		
+
 		// Log response body if it's an error
 		if proxyReq.StatusCode >= 400 && proxyReq.StatusCode < 600 {
 			container.Logger.Error("Lambda error response",
@@ -211,7 +211,7 @@ func Handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 			)
 		}
 	}
-	
+
 	return proxyReq, err
 }
 

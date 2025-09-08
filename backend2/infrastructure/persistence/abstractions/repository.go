@@ -11,22 +11,22 @@ import (
 type Repository interface {
 	// Create stores a new item in the repository
 	Create(ctx context.Context, item interface{}) error
-	
+
 	// Update modifies an existing item in the repository
 	Update(ctx context.Context, item interface{}) error
-	
+
 	// Delete removes an item from the repository
 	Delete(ctx context.Context, id string) error
-	
+
 	// FindByID retrieves an item by its unique identifier
 	FindByID(ctx context.Context, id string) (interface{}, error)
-	
+
 	// FindAll retrieves all items matching the given criteria
 	FindAll(ctx context.Context, criteria QueryCriteria) ([]interface{}, error)
-	
+
 	// Count returns the number of items matching the given criteria
 	Count(ctx context.Context, criteria QueryCriteria) (int64, error)
-	
+
 	// Transaction executes multiple operations atomically
 	Transaction(ctx context.Context, fn func(tx Repository) error) error
 }
@@ -35,14 +35,14 @@ type Repository interface {
 type QueryCriteria struct {
 	// Filters to apply to the query
 	Filters []Filter
-	
+
 	// Sorting options
 	Sort []SortOption
-	
+
 	// Pagination
 	Limit  int
 	Offset int
-	
+
 	// Include related entities
 	Includes []string
 }
@@ -103,10 +103,10 @@ const (
 // BatchRepository extends Repository with batch operations
 type BatchRepository interface {
 	Repository
-	
+
 	// BatchWrite performs multiple write operations efficiently
 	BatchWrite(ctx context.Context, operations []BatchOperation) error
-	
+
 	// BatchRead retrieves multiple items by their IDs
 	BatchRead(ctx context.Context, ids []string) ([]interface{}, error)
 }

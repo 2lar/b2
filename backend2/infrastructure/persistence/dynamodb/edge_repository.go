@@ -48,10 +48,10 @@ type edgeItem struct {
 	Metadata      map[string]interface{} `dynamodbav:"Metadata"`
 	CreatedAt     string                 `dynamodbav:"CreatedAt"`
 	UpdatedAt     string                 `dynamodbav:"UpdatedAt"`
-	
+
 	// GSI attributes for querying by node
-	GSI2PK        string                 `dynamodbav:"GSI2PK,omitempty"` // NODE#nodeId for source
-	GSI2SK        string                 `dynamodbav:"GSI2SK,omitempty"` // EDGE#edgeId
+	GSI2PK string `dynamodbav:"GSI2PK,omitempty"` // NODE#nodeId for source
+	GSI2SK string `dynamodbav:"GSI2SK,omitempty"` // EDGE#edgeId
 }
 
 // Save persists an edge to DynamoDB
@@ -64,7 +64,7 @@ func (r *EdgeRepository) Save(ctx context.Context, graphID string, edge *aggrega
 		zap.String("type", string(edge.Type)),
 		zap.Float64("weight", edge.Weight),
 	)
-	
+
 	item := edgeItem{
 		PK:            fmt.Sprintf("GRAPH#%s", graphID),
 		SK:            fmt.Sprintf("EDGE#%s#%s", edge.SourceID, edge.TargetID),
@@ -131,7 +131,7 @@ func (r *EdgeRepository) SaveWithUoW(ctx context.Context, graphID string, edge *
 	if !ok {
 		return fmt.Errorf("invalid unit of work type")
 	}
-	
+
 	// Build the edge item
 	item := edgeItem{
 		PK:            fmt.Sprintf("GRAPH#%s", graphID),
@@ -150,12 +150,12 @@ func (r *EdgeRepository) SaveWithUoW(ctx context.Context, graphID string, edge *
 		GSI2PK:        fmt.Sprintf("NODE#%s", edge.SourceID.String()),
 		GSI2SK:        fmt.Sprintf("EDGE#%s", edge.ID),
 	}
-	
+
 	av, err := attributevalue.MarshalMap(item)
 	if err != nil {
 		return fmt.Errorf("failed to marshal edge: %w", err)
 	}
-	
+
 	// Register the save operation with the unit of work
 	// Use conditional write to prevent duplicate edges
 	transactItem := types.TransactWriteItem{
@@ -165,18 +165,18 @@ func (r *EdgeRepository) SaveWithUoW(ctx context.Context, graphID string, edge *
 			ConditionExpression: aws.String("attribute_not_exists(PK) AND attribute_not_exists(SK)"),
 		},
 	}
-	
+
 	if err := dynamoUoW.RegisterSave(transactItem); err != nil {
 		return fmt.Errorf("failed to register edge save: %w", err)
 	}
-	
+
 	r.logger.Debug("Edge registered for transactional save",
 		zap.String("edgeID", edge.ID),
 		zap.String("graphID", graphID),
 		zap.String("sourceID", edge.SourceID.String()),
 		zap.String("targetID", edge.TargetID.String()),
 	)
-	
+
 	return nil
 }
 
@@ -186,7 +186,7 @@ func (r *EdgeRepository) GetByGraphID(ctx context.Context, graphID string) ([]*a
 		zap.String("graphID", graphID),
 		zap.String("PK", fmt.Sprintf("GRAPH#%s", graphID)),
 	)
-	
+
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(r.tableName),
 		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
@@ -223,7 +223,7 @@ func (r *EdgeRepository) GetByGraphID(ctx context.Context, graphID string) ([]*a
 func (r *EdgeRepository) GetByNodeID(ctx context.Context, nodeID string) ([]*aggregates.Edge, error) {
 	edges := make([]*aggregates.Edge, 0)
 	edgeMap := make(map[string]bool) // To avoid duplicates
-	
+
 	// First, try to use the EdgeIndex GSI to find edges where this node is the source
 	sourceInput := &dynamodb.QueryInput{
 		TableName:              aws.String(r.tableName),
@@ -391,7 +391,7 @@ func (r *EdgeRepository) parseEdgeItem(item map[string]types.AttributeValue) (*a
 	// Note: This is a simplified reconstruction. In production, you'd use proper value objects
 	sourceID, _ := valueobjects.NewNodeIDFromString(ei.SourceID)
 	targetID, _ := valueobjects.NewNodeIDFromString(ei.TargetID)
-	
+
 	edge := &aggregates.Edge{
 		ID:            ei.EdgeID,
 		SourceID:      sourceID,
@@ -411,7 +411,7 @@ func (r *EdgeRepository) DeleteByNodeIDs(ctx context.Context, graphID string, no
 	if len(nodeIDs) == 0 {
 		return nil
 	}
-	
+
 	// Get all edges for all nodes in batch
 	allEdges := make([]*aggregates.Edge, 0)
 	for _, nodeID := range nodeIDs {
@@ -425,11 +425,11 @@ func (r *EdgeRepository) DeleteByNodeIDs(ctx context.Context, graphID string, no
 		}
 		allEdges = append(allEdges, edges...)
 	}
-	
+
 	if len(allEdges) == 0 {
 		return nil // No edges to delete
 	}
-	
+
 	// Group edges by their keys for batch deletion
 	edgeKeys := make([]map[string]types.AttributeValue, 0, len(allEdges))
 	for _, edge := range allEdges {
@@ -439,20 +439,20 @@ func (r *EdgeRepository) DeleteByNodeIDs(ctx context.Context, graphID string, no
 		}
 		edgeKeys = append(edgeKeys, key)
 	}
-	
+
 	// Use batch delete for efficient edge removal
 	if len(edgeKeys) > 0 {
 		if err := r.batchDeleteEdges(ctx, edgeKeys); err != nil {
 			return fmt.Errorf("failed to batch delete edges: %w", err)
 		}
 	}
-	
+
 	r.logger.Debug("Batch deleted edges for nodes",
 		zap.String("graphID", graphID),
 		zap.Strings("nodeIDs", nodeIDs),
 		zap.Int("edgesDeleted", len(allEdges)),
 	)
-	
+
 	return nil
 }
 

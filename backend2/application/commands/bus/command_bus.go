@@ -51,12 +51,12 @@ func NewCommandBusWithDependencies(uow ports.UnitOfWork, metrics *observability.
 func (b *CommandBus) Register(cmdType Command, handler CommandHandler) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	t := reflect.TypeOf(cmdType)
 	if _, exists := b.handlers[t]; exists {
 		return fmt.Errorf("handler already registered for command type %s", t.Name())
 	}
-	
+
 	b.handlers[t] = handler
 	return nil
 }
@@ -67,34 +67,34 @@ func (b *CommandBus) Send(ctx context.Context, cmd Command) error {
 	if err := cmd.Validate(); err != nil {
 		return fmt.Errorf("command validation failed: %w", err)
 	}
-	
+
 	b.mu.RLock()
 	handler, exists := b.handlers[reflect.TypeOf(cmd)]
 	b.mu.RUnlock()
-	
+
 	if !exists {
 		return fmt.Errorf("no handler registered for command type %T", cmd)
 	}
-	
+
 	// Track metrics if available
 	var start time.Time
 	if b.metrics != nil {
 		start = time.Now()
 	}
-	
+
 	// Execute handler
 	err := handler.Handle(ctx, cmd)
-	
+
 	// Record metrics if available
 	if b.metrics != nil {
 		cmdName := reflect.TypeOf(cmd).Name()
 		b.metrics.RecordCommandExecution(ctx, cmdName, time.Since(start), err)
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("command handler failed: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -104,12 +104,12 @@ func (b *CommandBus) SendWithTransaction(ctx context.Context, cmd Command) error
 		// Fallback to regular send if no UoW configured
 		return b.Send(ctx, cmd)
 	}
-	
+
 	// Begin transaction
 	if err := b.uow.Begin(ctx); err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	
+
 	// Ensure rollback on error
 	defer func() {
 		if r := recover(); r != nil {
@@ -117,19 +117,19 @@ func (b *CommandBus) SendWithTransaction(ctx context.Context, cmd Command) error
 			panic(r)
 		}
 	}()
-	
+
 	// Execute command
 	if err := b.Send(ctx, cmd); err != nil {
 		b.uow.Rollback()
 		return err
 	}
-	
+
 	// Commit transaction
 	if err := b.uow.Commit(ctx); err != nil {
 		b.uow.Rollback()
 		return fmt.Errorf("failed to commit: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -150,14 +150,14 @@ func LoggingMiddleware(logger Logger) Middleware {
 		return CommandHandlerFunc(func(ctx context.Context, cmd Command) error {
 			cmdType := reflect.TypeOf(cmd).Name()
 			logger.Info("Executing command", "type", cmdType)
-			
+
 			err := next.Handle(ctx, cmd)
 			if err != nil {
 				logger.Error("Command failed", "type", cmdType, "error", err)
 			} else {
 				logger.Info("Command succeeded", "type", cmdType)
 			}
-			
+
 			return err
 		})
 	}
@@ -183,10 +183,10 @@ func TransactionMiddleware(txManager TransactionManager) Middleware {
 			if err != nil {
 				return fmt.Errorf("failed to begin transaction: %w", err)
 			}
-			
+
 			// Store transaction in context
 			ctx = context.WithValue(ctx, "tx", tx)
-			
+
 			err = next.Handle(ctx, cmd)
 			if err != nil {
 				if rbErr := tx.Rollback(); rbErr != nil {
@@ -194,11 +194,11 @@ func TransactionMiddleware(txManager TransactionManager) Middleware {
 				}
 				return err
 			}
-			
+
 			if err := tx.Commit(); err != nil {
 				return fmt.Errorf("commit failed: %w", err)
 			}
-			
+
 			return nil
 		})
 	}
@@ -251,7 +251,7 @@ func (p *Pipeline) Execute(handler CommandHandler) CommandHandler {
 
 // Errors
 var (
-	ErrHandlerNotFound = errors.New("command handler not found")
+	ErrHandlerNotFound  = errors.New("command handler not found")
 	ErrValidationFailed = errors.New("command validation failed")
-	ErrExecutionFailed = errors.New("command execution failed")
+	ErrExecutionFailed  = errors.New("command execution failed")
 )

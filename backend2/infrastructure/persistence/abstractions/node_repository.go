@@ -1,9 +1,9 @@
 package abstractions
 
 import (
-	"context"
 	"backend2/domain/core/entities"
 	"backend2/domain/core/valueobjects"
+	"context"
 )
 
 // NodeRepositoryAbstraction provides a database-agnostic interface for node persistence
@@ -13,21 +13,21 @@ type NodeRepositoryAbstraction interface {
 	FindByID(ctx context.Context, nodeID valueobjects.NodeID) (*entities.Node, error)
 	Update(ctx context.Context, node *entities.Node) error
 	Delete(ctx context.Context, nodeID valueobjects.NodeID) error
-	
+
 	// Query operations
 	FindByGraphID(ctx context.Context, graphID string) ([]*entities.Node, error)
 	FindByUserID(ctx context.Context, userID string) ([]*entities.Node, error)
 	FindByTags(ctx context.Context, tags []string) ([]*entities.Node, error)
 	SearchByContent(ctx context.Context, query string, limit int) ([]*entities.Node, error)
-	
+
 	// Batch operations
 	SaveBatch(ctx context.Context, nodes []*entities.Node) error
 	DeleteBatch(ctx context.Context, nodeIDs []valueobjects.NodeID) error
-	
+
 	// Connection operations (if not handled by EdgeRepository)
 	GetConnectedNodes(ctx context.Context, nodeID valueobjects.NodeID) ([]*entities.Node, error)
 	CountNodesByGraph(ctx context.Context, graphID string) (int64, error)
-	
+
 	// Advanced queries
 	FindSimilarNodes(ctx context.Context, nodeID valueobjects.NodeID, threshold float64) ([]*entities.Node, error)
 	FindOrphanedNodes(ctx context.Context, graphID string) ([]*entities.Node, error)
@@ -35,10 +35,10 @@ type NodeRepositoryAbstraction interface {
 
 // NodeFilter provides filtering options for node queries
 type NodeFilter struct {
-	GraphID   *string
-	UserID    *string
-	Status    *entities.NodeStatus
-	Tags      []string
+	GraphID       *string
+	UserID        *string
+	Status        *entities.NodeStatus
+	Tags          []string
 	CreatedAfter  *string
 	CreatedBefore *string
 	UpdatedAfter  *string

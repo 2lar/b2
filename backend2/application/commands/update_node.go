@@ -9,7 +9,7 @@ import (
 type UpdateNodeCommand struct {
 	UserID  string
 	NodeID  string
-	Title   *string  // Pointer allows partial updates
+	Title   *string // Pointer allows partial updates
 	Content *string
 	Format  *string
 	X       *float64
@@ -26,18 +26,18 @@ func (c UpdateNodeCommand) Validate() error {
 	if c.NodeID == "" {
 		return errors.New("node ID is required")
 	}
-	
+
 	// Check if at least one field is being updated
 	if c.Title == nil && c.Content == nil && c.Format == nil &&
 		c.X == nil && c.Y == nil && c.Z == nil && c.Tags == nil {
 		return errors.New("no fields to update")
 	}
-	
+
 	// Validate title if provided
 	if c.Title != nil && strings.TrimSpace(*c.Title) == "" {
 		return errors.New("title cannot be empty")
 	}
-	
+
 	// Validate format if provided
 	if c.Format != nil {
 		validFormats := map[string]bool{
@@ -50,6 +50,6 @@ func (c UpdateNodeCommand) Validate() error {
 			return errors.New("invalid format")
 		}
 	}
-	
+
 	return nil
 }

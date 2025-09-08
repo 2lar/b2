@@ -34,8 +34,8 @@ const (
 
 // EventRecord represents how events are stored in DynamoDB with Outbox pattern
 type EventRecord struct {
-	PK            string                 `dynamodbav:"PK"`     // EVENTS#<aggregate_id>
-	SK            string                 `dynamodbav:"SK"`     // EVENT#<timestamp>#<event_id>
+	PK            string                 `dynamodbav:"PK"` // EVENTS#<aggregate_id>
+	SK            string                 `dynamodbav:"SK"` // EVENT#<timestamp>#<event_id>
 	EventID       string                 `dynamodbav:"EventID"`
 	EventType     string                 `dynamodbav:"EventType"`
 	AggregateID   string                 `dynamodbav:"AggregateID"`
@@ -45,22 +45,22 @@ type EventRecord struct {
 	Timestamp     string                 `dynamodbav:"Timestamp"`
 	Version       int                    `dynamodbav:"Version"`
 	UserID        string                 `dynamodbav:"UserID"`
-	
+
 	// Outbox pattern fields
-	PublishStatus    string    `dynamodbav:"PublishStatus"`    // pending/published/failed
-	PublishAttempts  int       `dynamodbav:"PublishAttempts"`  // Number of publish attempts
-	LastPublishTry   string    `dynamodbav:"LastPublishTry,omitempty"` // RFC3339 timestamp
-	PublishedAt      string    `dynamodbav:"PublishedAt,omitempty"`    // RFC3339 timestamp when published
-	ErrorMessage     string    `dynamodbav:"ErrorMessage,omitempty"`   // Last error message if failed
-	
+	PublishStatus   string `dynamodbav:"PublishStatus"`            // pending/published/failed
+	PublishAttempts int    `dynamodbav:"PublishAttempts"`          // Number of publish attempts
+	LastPublishTry  string `dynamodbav:"LastPublishTry,omitempty"` // RFC3339 timestamp
+	PublishedAt     string `dynamodbav:"PublishedAt,omitempty"`    // RFC3339 timestamp when published
+	ErrorMessage    string `dynamodbav:"ErrorMessage,omitempty"`   // Last error message if failed
+
 	// GSI attributes for querying
-	GSI1PK        string                 `dynamodbav:"GSI1PK"` // USER#<user_id>
-	GSI1SK        string                 `dynamodbav:"GSI1SK"` // EVENT#<timestamp>
-	GSI2PK        string                 `dynamodbav:"GSI2PK"` // EVENTTYPE#<type>
-	GSI2SK        string                 `dynamodbav:"GSI2SK"` // EVENT#<timestamp>
-	
+	GSI1PK string `dynamodbav:"GSI1PK"` // USER#<user_id>
+	GSI1SK string `dynamodbav:"GSI1SK"` // EVENT#<timestamp>
+	GSI2PK string `dynamodbav:"GSI2PK"` // EVENTTYPE#<type>
+	GSI2SK string `dynamodbav:"GSI2SK"` // EVENT#<timestamp>
+
 	// TTL for automatic cleanup (optional)
-	TTL           int64                  `dynamodbav:"TTL,omitempty"`
+	TTL int64 `dynamodbav:"TTL,omitempty"`
 }
 
 // NewDynamoDBEventStore creates a new DynamoDB event store
@@ -76,53 +76,53 @@ func (es *DynamoDBEventStore) SaveEvents(ctx context.Context, domainEvents []eve
 	if len(domainEvents) == 0 {
 		return nil
 	}
-	
+
 	writeRequests := make([]types.WriteRequest, 0, len(domainEvents))
-	
+
 	for _, event := range domainEvents {
 		record, err := es.eventToRecord(event)
 		if err != nil {
 			return fmt.Errorf("failed to convert event to record: %w", err)
 		}
-		
+
 		item, err := attributevalue.MarshalMap(record)
 		if err != nil {
 			return fmt.Errorf("failed to marshal event record: %w", err)
 		}
-		
+
 		writeRequests = append(writeRequests, types.WriteRequest{
 			PutRequest: &types.PutRequest{
 				Item: item,
 			},
 		})
 	}
-	
+
 	// Batch write events (DynamoDB limit is 25 items per batch)
 	for i := 0; i < len(writeRequests); i += 25 {
 		end := i + 25
 		if end > len(writeRequests) {
 			end = len(writeRequests)
 		}
-		
+
 		batch := writeRequests[i:end]
 		input := &dynamodb.BatchWriteItemInput{
 			RequestItems: map[string][]types.WriteRequest{
 				es.tableName: batch,
 			},
 		}
-		
+
 		result, err := es.client.BatchWriteItem(ctx, input)
 		if err != nil {
 			return fmt.Errorf("failed to write events batch: %w", err)
 		}
-		
+
 		// Handle unprocessed items (retry logic could be added here)
 		if len(result.UnprocessedItems) > 0 {
 			// For now, return an error. In production, implement retry with backoff
 			return fmt.Errorf("failed to write %d events", len(result.UnprocessedItems[es.tableName]))
 		}
 	}
-	
+
 	return nil
 }
 
@@ -136,37 +136,37 @@ func (es *DynamoDBEventStore) GetEvents(ctx context.Context, aggregateID string)
 		},
 		ScanIndexForward: aws.Bool(true), // Order by timestamp ascending
 	}
-	
+
 	var allEvents []events.DomainEvent
-	
+
 	// Handle pagination
 	for {
 		result, err := es.client.Query(ctx, input)
 		if err != nil {
 			return nil, fmt.Errorf("failed to query events: %w", err)
 		}
-		
+
 		for _, item := range result.Items {
 			var record EventRecord
 			if err := attributevalue.UnmarshalMap(item, &record); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal event record: %w", err)
 			}
-			
+
 			event, err := es.recordToEvent(record)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert record to event: %w", err)
 			}
-			
+
 			allEvents = append(allEvents, event)
 		}
-		
+
 		// Check if there are more pages
 		if result.LastEvaluatedKey == nil {
 			break
 		}
 		input.ExclusiveStartKey = result.LastEvaluatedKey
 	}
-	
+
 	return allEvents, nil
 }
 
@@ -181,31 +181,31 @@ func (es *DynamoDBEventStore) GetEventsByType(ctx context.Context, eventType str
 		},
 		ScanIndexForward: aws.Bool(false), // Order by timestamp descending (most recent first)
 	}
-	
+
 	if limit > 0 {
 		input.Limit = aws.Int32(int32(limit))
 	}
-	
+
 	result, err := es.client.Query(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query events by type: %w", err)
 	}
-	
+
 	domainEvents := make([]events.DomainEvent, 0, len(result.Items))
 	for _, item := range result.Items {
 		var record EventRecord
 		if err := attributevalue.UnmarshalMap(item, &record); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal event record: %w", err)
 		}
-		
+
 		event, err := es.recordToEvent(record)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert record to event: %w", err)
 		}
-		
+
 		domainEvents = append(domainEvents, event)
 	}
-	
+
 	return domainEvents, nil
 }
 
@@ -216,7 +216,7 @@ func (es *DynamoDBEventStore) GetEventsAfter(ctx context.Context, aggregateID st
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Filter events after the specified version
 	var filteredEvents []events.DomainEvent
 	for _, event := range allEvents {
@@ -224,7 +224,7 @@ func (es *DynamoDBEventStore) GetEventsAfter(ctx context.Context, aggregateID st
 			filteredEvents = append(filteredEvents, event)
 		}
 	}
-	
+
 	return filteredEvents, nil
 }
 
@@ -240,31 +240,31 @@ func (es *DynamoDBEventStore) GetEventsByUser(ctx context.Context, userID string
 		},
 		ScanIndexForward: aws.Bool(true), // Order by timestamp ascending
 	}
-	
+
 	if limit > 0 {
 		input.Limit = aws.Int32(int32(limit))
 	}
-	
+
 	result, err := es.client.Query(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query events by user: %w", err)
 	}
-	
+
 	domainEvents := make([]events.DomainEvent, 0, len(result.Items))
 	for _, item := range result.Items {
 		var record EventRecord
 		if err := attributevalue.UnmarshalMap(item, &record); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal event record: %w", err)
 		}
-		
+
 		event, err := es.recordToEvent(record)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert record to event: %w", err)
 		}
-		
+
 		domainEvents = append(domainEvents, event)
 	}
-	
+
 	return domainEvents, nil
 }
 
@@ -275,12 +275,12 @@ func (es *DynamoDBEventStore) PrepareEventItem(event events.DomainEvent) (types.
 	if err != nil {
 		return types.TransactWriteItem{}, err
 	}
-	
+
 	item, err := attributevalue.MarshalMap(record)
 	if err != nil {
 		return types.TransactWriteItem{}, err
 	}
-	
+
 	return types.TransactWriteItem{
 		Put: &types.Put{
 			TableName: aws.String(es.tableName),
@@ -293,32 +293,32 @@ func (es *DynamoDBEventStore) PrepareEventItem(event events.DomainEvent) (types.
 func (es *DynamoDBEventStore) eventToRecord(event events.DomainEvent) (*EventRecord, error) {
 	// Get event data as a map
 	eventData := make(map[string]interface{})
-	
+
 	// Try to marshal the event to JSON and then to a map
 	// This allows us to store the event data in a flexible format
 	eventBytes, err := json.Marshal(event)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal event: %w", err)
 	}
-	
+
 	if err := json.Unmarshal(eventBytes, &eventData); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal event to map: %w", err)
 	}
-	
+
 	timestamp := event.GetTimestamp()
 	// Generate a unique event ID since DomainEvent doesn't have GetEventID
 	eventID := uuid.New().String()
-	
+
 	// Calculate TTL (optional - events older than 1 year are automatically deleted)
 	// You can adjust or remove this based on your requirements
 	ttl := timestamp.Add(365 * 24 * time.Hour).Unix()
-	
+
 	// Extract user ID from event data if available
 	userID := ""
 	if userData, ok := eventData["user_id"].(string); ok {
 		userID = userData
 	}
-	
+
 	// Determine aggregate type from event type
 	aggregateType := "unknown"
 	if strings.HasPrefix(event.GetEventType(), "node.") {
@@ -328,7 +328,7 @@ func (es *DynamoDBEventStore) eventToRecord(event events.DomainEvent) (*EventRec
 	} else if strings.HasPrefix(event.GetEventType(), "nodes.") {
 		aggregateType = "edge"
 	}
-	
+
 	return &EventRecord{
 		PK:            fmt.Sprintf("EVENTS#%s", event.GetAggregateID()),
 		SK:            fmt.Sprintf("EVENT#%s#%s", timestamp.Format(time.RFC3339Nano), eventID),
@@ -341,16 +341,16 @@ func (es *DynamoDBEventStore) eventToRecord(event events.DomainEvent) (*EventRec
 		Timestamp:     timestamp.Format(time.RFC3339),
 		Version:       event.GetVersion(),
 		UserID:        userID,
-		
+
 		// Outbox pattern fields - events start as pending
 		PublishStatus:   string(PublishStatusPending),
 		PublishAttempts: 0,
-		
-		GSI1PK:        fmt.Sprintf("USER#%s", userID),
-		GSI1SK:        fmt.Sprintf("EVENT#%s", timestamp.Format(time.RFC3339Nano)),
-		GSI2PK:        fmt.Sprintf("EVENTTYPE#%s", event.GetEventType()),
-		GSI2SK:        fmt.Sprintf("EVENT#%s", timestamp.Format(time.RFC3339Nano)),
-		TTL:           ttl,
+
+		GSI1PK: fmt.Sprintf("USER#%s", userID),
+		GSI1SK: fmt.Sprintf("EVENT#%s", timestamp.Format(time.RFC3339Nano)),
+		GSI2PK: fmt.Sprintf("EVENTTYPE#%s", event.GetEventType()),
+		GSI2SK: fmt.Sprintf("EVENT#%s", timestamp.Format(time.RFC3339Nano)),
+		TTL:    ttl,
 	}, nil
 }
 
@@ -361,7 +361,7 @@ func (es *DynamoDBEventStore) recordToEvent(record EventRecord) (events.DomainEv
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse timestamp: %w", err)
 	}
-	
+
 	// Create a base event
 	// In a real implementation, you would use a factory pattern
 	// to create the specific event type based on EventType
@@ -371,7 +371,7 @@ func (es *DynamoDBEventStore) recordToEvent(record EventRecord) (events.DomainEv
 		Timestamp:   timestamp,
 		Version:     record.Version,
 	}
-	
+
 	// Depending on the event type, create the appropriate concrete event
 	// This is a simplified version - in production, use a proper event factory
 	switch record.EventType {
@@ -380,28 +380,28 @@ func (es *DynamoDBEventStore) recordToEvent(record EventRecord) (events.DomainEv
 		nodeIDStr, _ := record.EventData["node_id"].(string)
 		nodeID, _ := valueobjects.NewNodeIDFromString(nodeIDStr)
 		userID, _ := record.EventData["user_id"].(string)
-		
+
 		return &events.NodeCreated{
 			BaseEvent: *baseEvent,
 			NodeID:    nodeID,
 			UserID:    userID,
 		}, nil
-		
+
 	case "node.archived":
 		nodeIDStr, _ := record.EventData["node_id"].(string)
 		nodeID, _ := valueobjects.NewNodeIDFromString(nodeIDStr)
-		
+
 		return &events.NodeArchived{
 			BaseEvent: *baseEvent,
 			NodeID:    nodeID,
 		}, nil
-		
+
 	case "NodeDeleted":
 		nodeIDStr, _ := record.EventData["node_id"].(string)
 		nodeID, _ := valueobjects.NewNodeIDFromString(nodeIDStr)
 		userID, _ := record.EventData["user_id"].(string)
 		content, _ := record.EventData["content"].(string)
-		
+
 		// Handle keywords and tags arrays
 		var keywords []string
 		if kwInterface, ok := record.EventData["keywords"].([]interface{}); ok {
@@ -411,7 +411,7 @@ func (es *DynamoDBEventStore) recordToEvent(record EventRecord) (events.DomainEv
 				}
 			}
 		}
-		
+
 		var tags []string
 		if tagsInterface, ok := record.EventData["tags"].([]interface{}); ok {
 			for _, tag := range tagsInterface {
@@ -420,7 +420,7 @@ func (es *DynamoDBEventStore) recordToEvent(record EventRecord) (events.DomainEv
 				}
 			}
 		}
-		
+
 		return &events.NodeDeletedEvent{
 			BaseEvent: *baseEvent,
 			NodeID:    nodeID,
@@ -429,19 +429,19 @@ func (es *DynamoDBEventStore) recordToEvent(record EventRecord) (events.DomainEv
 			Keywords:  keywords,
 			Tags:      tags,
 		}, nil
-		
+
 	case "graph.created":
 		graphID, _ := record.EventData["graph_id"].(string)
 		userID, _ := record.EventData["user_id"].(string)
 		name, _ := record.EventData["name"].(string)
-		
+
 		return &events.GraphCreated{
 			BaseEvent: *baseEvent,
 			GraphID:   graphID,
 			UserID:    userID,
 			Name:      name,
 		}, nil
-		
+
 	default:
 		// For unknown event types, return the base event
 		// In production, you might want to handle this differently
@@ -458,21 +458,21 @@ func (es *DynamoDBEventStore) GetSnapshot(ctx context.Context, aggregateID strin
 			"SK": &types.AttributeValueMemberS{Value: "LATEST"},
 		},
 	}
-	
+
 	result, err := es.client.GetItem(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapshot: %w", err)
 	}
-	
+
 	if result.Item == nil {
 		return nil, nil // No snapshot exists
 	}
-	
+
 	var snapshot EventSnapshot
 	if err := attributevalue.UnmarshalMap(result.Item, &snapshot); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal snapshot: %w", err)
 	}
-	
+
 	return &snapshot, nil
 }
 
@@ -482,24 +482,24 @@ func (es *DynamoDBEventStore) SaveSnapshot(ctx context.Context, snapshot *EventS
 	if err != nil {
 		return fmt.Errorf("failed to marshal snapshot: %w", err)
 	}
-	
+
 	input := &dynamodb.PutItemInput{
 		TableName: aws.String(es.tableName),
 		Item:      item,
 	}
-	
+
 	_, err = es.client.PutItem(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to save snapshot: %w", err)
 	}
-	
+
 	return nil
 }
 
 // EventSnapshot represents a snapshot of an aggregate's state
 type EventSnapshot struct {
-	PK            string                 `dynamodbav:"PK"`      // SNAPSHOT#<aggregate_id>
-	SK            string                 `dynamodbav:"SK"`      // LATEST
+	PK            string                 `dynamodbav:"PK"` // SNAPSHOT#<aggregate_id>
+	SK            string                 `dynamodbav:"SK"` // LATEST
 	AggregateID   string                 `dynamodbav:"AggregateID"`
 	AggregateType string                 `dynamodbav:"AggregateType"`
 	Version       int                    `dynamodbav:"Version"`
@@ -547,7 +547,7 @@ func (es *DynamoDBEventStore) GetPendingEvents(ctx context.Context, limit int32)
 // MarkEventAsPublished marks an event as successfully published
 func (es *DynamoDBEventStore) MarkEventAsPublished(ctx context.Context, eventPK, eventSK string) error {
 	now := time.Now().Format(time.RFC3339)
-	
+
 	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String(es.tableName),
 		Key: map[string]types.AttributeValue{
@@ -573,13 +573,13 @@ func (es *DynamoDBEventStore) MarkEventAsPublished(ctx context.Context, eventPK,
 // MarkEventAsFailed marks an event as failed to publish with error details
 func (es *DynamoDBEventStore) MarkEventAsFailed(ctx context.Context, eventPK, eventSK string, errorMsg string, attempts int) error {
 	now := time.Now().Format(time.RFC3339)
-	
+
 	// Determine status based on attempt count
 	status := string(PublishStatusFailed)
 	if attempts < 3 { // Max 3 attempts before marking as permanently failed
 		status = string(PublishStatusPending) // Keep as pending for retry
 	}
-	
+
 	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String(es.tableName),
 		Key: map[string]types.AttributeValue{
@@ -588,10 +588,10 @@ func (es *DynamoDBEventStore) MarkEventAsFailed(ctx context.Context, eventPK, ev
 		},
 		UpdateExpression: aws.String("SET PublishStatus = :status, PublishAttempts = :attempts, LastPublishTry = :lastTry, ErrorMessage = :error"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":status":    &types.AttributeValueMemberS{Value: status},
-			":attempts":  &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", attempts)},
-			":lastTry":   &types.AttributeValueMemberS{Value: now},
-			":error":     &types.AttributeValueMemberS{Value: errorMsg},
+			":status":   &types.AttributeValueMemberS{Value: status},
+			":attempts": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", attempts)},
+			":lastTry":  &types.AttributeValueMemberS{Value: now},
+			":error":    &types.AttributeValueMemberS{Value: errorMsg},
 		},
 		ConditionExpression: aws.String("attribute_exists(PK)"), // Ensure event exists
 	}
@@ -599,6 +599,100 @@ func (es *DynamoDBEventStore) MarkEventAsFailed(ctx context.Context, eventPK, ev
 	_, err := es.client.UpdateItem(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to mark event as failed: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteEvents removes all events for an aggregate
+func (es *DynamoDBEventStore) DeleteEvents(ctx context.Context, aggregateID string) error {
+	// First, query all events for this aggregate
+	pk := fmt.Sprintf("EVENTS#%s", aggregateID)
+	
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(es.tableName),
+		KeyConditionExpression: aws.String("PK = :pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": &types.AttributeValueMemberS{Value: pk},
+		},
+		ProjectionExpression: aws.String("PK, SK"), // Only need keys for deletion
+	}
+
+	var keysToDelete []map[string]types.AttributeValue
+
+	// Handle pagination
+	for {
+		result, err := es.client.Query(ctx, input)
+		if err != nil {
+			return fmt.Errorf("failed to query events for deletion: %w", err)
+		}
+
+		for _, item := range result.Items {
+			keysToDelete = append(keysToDelete, map[string]types.AttributeValue{
+				"PK": item["PK"],
+				"SK": item["SK"],
+			})
+		}
+
+		// Check if there are more pages
+		if result.LastEvaluatedKey == nil {
+			break
+		}
+		input.ExclusiveStartKey = result.LastEvaluatedKey
+	}
+
+	// Delete events in batches (DynamoDB limit is 25 items per batch)
+	for i := 0; i < len(keysToDelete); i += 25 {
+		end := i + 25
+		if end > len(keysToDelete) {
+			end = len(keysToDelete)
+		}
+
+		batch := keysToDelete[i:end]
+		writeRequests := make([]types.WriteRequest, 0, len(batch))
+
+		for _, key := range batch {
+			writeRequests = append(writeRequests, types.WriteRequest{
+				DeleteRequest: &types.DeleteRequest{
+					Key: key,
+				},
+			})
+		}
+
+		batchInput := &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{
+				es.tableName: writeRequests,
+			},
+		}
+
+		result, err := es.client.BatchWriteItem(ctx, batchInput)
+		if err != nil {
+			return fmt.Errorf("failed to delete events batch: %w", err)
+		}
+
+		// Handle unprocessed items (retry logic could be added here)
+		if len(result.UnprocessedItems) > 0 {
+			// For now, return an error. In production, implement retry with backoff
+			return fmt.Errorf("failed to delete %d events", len(result.UnprocessedItems[es.tableName]))
+		}
+	}
+
+	return nil
+}
+
+// DeleteEventsBatch removes all events for multiple aggregates
+func (es *DynamoDBEventStore) DeleteEventsBatch(ctx context.Context, aggregateIDs []string) error {
+	if len(aggregateIDs) == 0 {
+		return nil
+	}
+
+	// Process each aggregate's events
+	for _, aggregateID := range aggregateIDs {
+		if err := es.DeleteEvents(ctx, aggregateID); err != nil {
+			// Log error but continue with other deletions
+			// In production, you might want to track failed deletions
+			continue
+		}
 	}
 
 	return nil

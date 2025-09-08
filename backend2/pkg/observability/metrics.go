@@ -164,9 +164,9 @@ func (m *Metrics) RecordBusinessMetric(ctx context.Context, metricName string, v
 		{
 			MetricName: aws.String(metricName),
 			Dimensions: cwDimensions,
-			Value:     aws.Float64(value),
-			Unit:      unit,
-			Timestamp: aws.Time(time.Now()),
+			Value:      aws.Float64(value),
+			Unit:       unit,
+			Timestamp:  aws.Time(time.Now()),
 		},
 	}
 

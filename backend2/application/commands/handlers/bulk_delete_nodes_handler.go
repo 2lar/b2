@@ -12,12 +12,13 @@ import (
 
 // BulkDeleteNodesHandler handles bulk delete commands with transactional safety
 type BulkDeleteNodesHandler struct {
-	uow       ports.UnitOfWork
-	nodeRepo  ports.NodeRepository
-	edgeRepo  ports.EdgeRepository
-	graphRepo ports.GraphRepository
-	eventBus  ports.EventBus
-	logger    *zap.Logger
+	uow        ports.UnitOfWork
+	nodeRepo   ports.NodeRepository
+	edgeRepo   ports.EdgeRepository
+	graphRepo  ports.GraphRepository
+	eventStore ports.EventStore
+	eventBus   ports.EventBus
+	logger     *zap.Logger
 }
 
 // NewBulkDeleteNodesHandler creates a new bulk delete handler
@@ -26,16 +27,18 @@ func NewBulkDeleteNodesHandler(
 	nodeRepo ports.NodeRepository,
 	edgeRepo ports.EdgeRepository,
 	graphRepo ports.GraphRepository,
+	eventStore ports.EventStore,
 	eventBus ports.EventBus,
 	logger *zap.Logger,
 ) *BulkDeleteNodesHandler {
 	return &BulkDeleteNodesHandler{
-		uow:       uow,
-		nodeRepo:  nodeRepo,
-		edgeRepo:  edgeRepo,
-		graphRepo: graphRepo,
-		eventBus:  eventBus,
-		logger:    logger,
+		uow:        uow,
+		nodeRepo:   nodeRepo,
+		edgeRepo:   edgeRepo,
+		graphRepo:  graphRepo,
+		eventStore: eventStore,
+		eventBus:   eventBus,
+		logger:     logger,
 	}
 }
 
@@ -49,7 +52,7 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 	// Convert node ID strings to value objects and validate them upfront
 	nodeIDs := make([]valueobjects.NodeID, 0, len(cmd.NodeIDs))
 	invalidIDs := make([]string, 0)
-	
+
 	for _, nodeIDStr := range cmd.NodeIDs {
 		nodeID, err := valueobjects.NewNodeIDFromString(nodeIDStr)
 		if err != nil {
@@ -58,7 +61,7 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 		}
 		nodeIDs = append(nodeIDs, nodeID)
 	}
-	
+
 	// If all node IDs are invalid, return early
 	if len(nodeIDs) == 0 {
 		return &commands.BulkDeleteNodesResult{
@@ -78,7 +81,7 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 	validNodes := make([]*nodeValidationInfo, 0, len(nodeIDs))
 	failedIDs := make([]string, 0)
 	errors := make([]string, 0)
-	
+
 	for _, nodeID := range nodeIDs {
 		node, err := h.nodeRepo.GetByID(ctx, nodeID)
 		if err != nil {
@@ -86,21 +89,21 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 			errors = append(errors, fmt.Sprintf("Node %s not found: %v", nodeID.String(), err))
 			continue
 		}
-		
+
 		// Verify ownership
 		if node.UserID() != cmd.UserID {
 			failedIDs = append(failedIDs, nodeID.String())
 			errors = append(errors, fmt.Sprintf("Node %s does not belong to user", nodeID.String()))
 			continue
 		}
-		
+
 		validNodes = append(validNodes, &nodeValidationInfo{
 			nodeID:  nodeID,
 			node:    node,
 			graphID: node.GraphID(),
 		})
 	}
-	
+
 	// If no valid nodes to delete, rollback and return
 	if len(validNodes) == 0 {
 		return &commands.BulkDeleteNodesResult{
@@ -121,12 +124,12 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 		if graphID == "" {
 			continue // Skip nodes without graph ID
 		}
-		
+
 		nodeIDStrs := make([]string, len(nodeInfos))
 		for i, info := range nodeInfos {
 			nodeIDStrs[i] = info.nodeID.String()
 		}
-		
+
 		if err := h.edgeRepo.DeleteByNodeIDs(ctx, graphID, nodeIDStrs); err != nil {
 			h.logger.Warn("Failed to delete edges for nodes in graph",
 				zap.String("graphID", graphID),
@@ -142,7 +145,7 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 	for i, info := range validNodes {
 		nodeIDsToDelete[i] = info.nodeID
 	}
-	
+
 	if err := h.nodeRepo.DeleteBatch(ctx, nodeIDsToDelete); err != nil {
 		return nil, fmt.Errorf("failed to delete nodes in batch: %w", err)
 	}
@@ -152,7 +155,7 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 		if graphID == "" {
 			continue
 		}
-		
+
 		if err := h.graphRepo.UpdateGraphMetadata(ctx, graphID); err != nil {
 			h.logger.Error("Failed to update graph metadata",
 				zap.String("graphID", graphID),
@@ -165,6 +168,24 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 	// Commit the transaction
 	if err := h.uow.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("failed to commit bulk delete transaction: %w", err)
+	}
+
+	// Clean up all events for deleted nodes (immediate cleanup strategy)
+	deletedNodeIDs := make([]string, len(validNodes))
+	for i, info := range validNodes {
+		deletedNodeIDs[i] = info.nodeID.String()
+	}
+	
+	if err := h.eventStore.DeleteEventsBatch(ctx, deletedNodeIDs); err != nil {
+		h.logger.Error("Failed to delete events for nodes batch",
+			zap.Int("nodeCount", len(deletedNodeIDs)),
+			zap.Error(err),
+		)
+		// Don't fail the operation if event cleanup fails
+	} else {
+		h.logger.Info("Deleted all events for nodes batch",
+			zap.Int("nodeCount", len(deletedNodeIDs)),
+		)
 	}
 
 	result := &commands.BulkDeleteNodesResult{
@@ -190,4 +211,3 @@ type nodeValidationInfo struct {
 	node    interface{} // We don't use the full node object after validation
 	graphID string
 }
-

@@ -21,7 +21,7 @@ func Authenticate() func(next http.Handler) http.Handler {
 		// We just need to extract the user context from headers
 		return AuthenticateForLambda()
 	}
-	
+
 	// Load configuration for non-Lambda environments
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -62,7 +62,7 @@ func Authenticate() func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Extract client IP for rate limiting
 			clientIP := getClientIP(r)
-			
+
 			// Apply IP rate limiting
 			allowed, _ := ipLimiter.Allow(r.Context(), clientIP)
 			if !allowed {
@@ -80,16 +80,16 @@ func Authenticate() func(next http.Handler) http.Handler {
 				respondUnauthorized(w, "Missing authorization header")
 				return
 			}
-			
+
 			// Check for Bearer token
 			parts := strings.Split(authHeader, " ")
 			if len(parts) != 2 || (parts[0] != "Bearer" && parts[0] != "bearer") {
 				respondUnauthorized(w, "Invalid authorization header format")
 				return
 			}
-			
+
 			token := parts[1]
-			
+
 			// Check for API Gateway pre-authorized request
 			var claims *auth.Claims
 			if token == "api-gateway-validated" && r.Header.Get("X-API-Gateway-Authorized") == "true" {
@@ -104,18 +104,18 @@ func Authenticate() func(next http.Handler) http.Handler {
 						return
 					}
 				}
-				
+
 				userEmail := r.Header.Get("X-User-Email")
 				if userEmail == "" {
 					userEmail = "user@api-gateway.com" // Default email for API Gateway auth
 				}
-				
+
 				userRoles := r.Header.Get("X-User-Roles")
 				roles := []string{"authenticated"}
 				if userRoles != "" {
 					roles = strings.Split(userRoles, ",")
 				}
-				
+
 				claims = &auth.Claims{
 					UserID: userID,
 					Email:  userEmail,
@@ -128,7 +128,7 @@ func Authenticate() func(next http.Handler) http.Handler {
 					respondUnauthorized(w, "Invalid Lambda authorization")
 					return
 				}
-				
+
 				// Create claims from Lambda context
 				// The JWT authorizer has already validated, so we trust these headers
 				claims = &auth.Claims{
@@ -169,13 +169,13 @@ func Authenticate() func(next http.Handler) http.Handler {
 				Email:  claims.Email,
 				Roles:  claims.Roles,
 			}
-			
+
 			// Add user context to request
 			ctx := auth.SetUserInContext(r.Context(), userCtx)
-			
+
 			// Also add userID for backwards compatibility
 			ctx = context.WithValue(ctx, "userID", claims.UserID)
-			
+
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -192,7 +192,7 @@ func AuthenticateForLambda() func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Extract client IP for rate limiting
 			clientIP := getClientIP(r)
-			
+
 			// Apply IP rate limiting
 			allowed, _ := ipLimiter.Allow(r.Context(), clientIP)
 			if !allowed {
@@ -206,37 +206,37 @@ func AuthenticateForLambda() func(next http.Handler) http.Handler {
 				userID := r.Header.Get("X-User-ID")
 				userEmail := r.Header.Get("X-User-Email")
 				userRoles := r.Header.Get("X-User-Roles")
-				
+
 				if userID == "" {
 					respondUnauthorized(w, "Missing user context from API Gateway")
 					return
 				}
-				
+
 				// Apply user rate limiting
 				allowed, _ = userLimiter.Allow(r.Context(), userID)
 				if !allowed {
 					respondWithError(w, http.StatusTooManyRequests, "User rate limit exceeded")
 					return
 				}
-				
+
 				// Create user context
 				roles := []string{"authenticated"}
 				if userRoles != "" {
 					roles = strings.Split(userRoles, ",")
 				}
-				
+
 				userCtx := &auth.UserContext{
 					UserID: userID,
 					Email:  userEmail,
 					Roles:  roles,
 				}
-				
+
 				// Add user context to request
 				ctx := auth.SetUserInContext(r.Context(), userCtx)
-				
+
 				// Also add userID for backwards compatibility
 				ctx = context.WithValue(ctx, "userID", userID)
-				
+
 				next.ServeHTTP(w, r.WithContext(ctx))
 			} else {
 				// Request wasn't pre-authorized by API Gateway
@@ -256,7 +256,7 @@ func AuthenticateWithConfig(validator *auth.JWTValidator, logger *zap.Logger) fu
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Extract client IP for rate limiting
 			clientIP := getClientIP(r)
-			
+
 			// Apply IP rate limiting
 			allowed, err := ipLimiter.Allow(r.Context(), clientIP)
 			if err != nil {
@@ -279,12 +279,12 @@ func AuthenticateWithConfig(validator *auth.JWTValidator, logger *zap.Logger) fu
 			// Validate JWT token
 			claims, err := validator.ValidateToken(token)
 			if err != nil {
-				logger.Warn("Invalid token", 
+				logger.Warn("Invalid token",
 					zap.Error(err),
 					zap.String("ip", clientIP),
 					zap.String("path", r.URL.Path),
 				)
-				
+
 				switch err {
 				case auth.ErrExpiredToken:
 					respondUnauthorized(w, "Token has expired")
@@ -317,10 +317,10 @@ func AuthenticateWithConfig(validator *auth.JWTValidator, logger *zap.Logger) fu
 
 			// Add user context to request
 			ctx := auth.SetUserInContext(r.Context(), userCtx)
-			
+
 			// Also add userID for backwards compatibility
 			ctx = context.WithValue(ctx, "userID", claims.UserID)
-			
+
 			// Log successful authentication
 			logger.Debug("Request authenticated",
 				zap.String("user_id", claims.UserID),

@@ -77,11 +77,11 @@ func (h *GetGraphHandler) Handle(ctx context.Context, query queries.GetGraphByID
 	for _, node := range nodes {
 		content := node.Content()
 		position := node.Position()
-		
+
 		result.Nodes = append(result.Nodes, queries.GraphNode{
-			ID:       node.ID().String(),
-			Title:    content.Title(),
-			Content:  content.Body(),
+			ID:      node.ID().String(),
+			Title:   content.Title(),
+			Content: content.Body(),
 			Position: queries.Position{
 				X: position.X(),
 				Y: position.Y(),

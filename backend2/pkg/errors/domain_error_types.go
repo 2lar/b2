@@ -12,28 +12,28 @@ type DomainErrorType string
 const (
 	// DomainValidationError indicates input validation failure
 	DomainValidationError DomainErrorType = "VALIDATION_ERROR"
-	
+
 	// DomainBusinessRuleError indicates a business rule violation
 	DomainBusinessRuleError DomainErrorType = "BUSINESS_RULE_ERROR"
-	
+
 	// DomainNotFoundError indicates a resource was not found
 	DomainNotFoundError DomainErrorType = "NOT_FOUND"
-	
+
 	// DomainConflictError indicates a conflict with existing state
 	DomainConflictError DomainErrorType = "CONFLICT"
-	
+
 	// DomainInfrastructureError indicates an infrastructure-level failure
 	DomainInfrastructureError DomainErrorType = "INFRASTRUCTURE_ERROR"
-	
+
 	// DomainAuthorizationError indicates insufficient permissions
 	DomainAuthorizationError DomainErrorType = "AUTHORIZATION_ERROR"
-	
+
 	// DomainAuthenticationError indicates authentication failure
 	DomainAuthenticationError DomainErrorType = "AUTHENTICATION_ERROR"
-	
+
 	// DomainRateLimitError indicates rate limit exceeded
 	DomainRateLimitError DomainErrorType = "RATE_LIMIT_ERROR"
-	
+
 	// DomainTimeoutError indicates operation timeout
 	DomainTimeoutError DomainErrorType = "TIMEOUT_ERROR"
 )
@@ -150,121 +150,121 @@ var (
 		"NODE_NOT_FOUND",
 		"The requested node does not exist",
 	)
-	
+
 	ErrNodeTitleRequired = NewDomainError(
 		DomainValidationError,
 		"NODE_TITLE_REQUIRED",
 		"Node title is required",
 	)
-	
+
 	ErrNodeTitleTooLong = NewDomainError(
 		DomainValidationError,
 		"NODE_TITLE_TOO_LONG",
 		"Node title exceeds maximum length",
 	).WithDetail("max_length", 255)
-	
+
 	ErrNodeContentTooLong = NewDomainError(
 		DomainValidationError,
 		"NODE_CONTENT_TOO_LONG",
 		"Node content exceeds maximum length",
 	).WithDetail("max_length", 50000)
-	
+
 	ErrInvalidNodePosition = NewDomainError(
 		DomainValidationError,
 		"INVALID_NODE_POSITION",
 		"Node position coordinates are invalid",
 	)
-	
+
 	// Graph errors
 	ErrGraphNotFound = NewDomainError(
 		DomainNotFoundError,
 		"GRAPH_NOT_FOUND",
 		"The requested graph does not exist",
 	)
-	
+
 	ErrGraphLimitExceeded = NewDomainError(
 		DomainBusinessRuleError,
 		"GRAPH_LIMIT_EXCEEDED",
 		"Maximum number of nodes in graph exceeded",
 	).WithDetail("limit", 10000)
-	
+
 	ErrGraphNameRequired = NewDomainError(
 		DomainValidationError,
 		"GRAPH_NAME_REQUIRED",
 		"Graph name is required",
 	)
-	
+
 	ErrDuplicateGraphName = NewDomainError(
 		DomainConflictError,
 		"DUPLICATE_GRAPH_NAME",
 		"A graph with this name already exists",
 	)
-	
+
 	// Edge errors
 	ErrEdgeNotFound = NewDomainError(
 		DomainNotFoundError,
 		"EDGE_NOT_FOUND",
 		"The requested edge does not exist",
 	)
-	
+
 	ErrSelfReferentialEdge = NewDomainError(
 		DomainBusinessRuleError,
 		"SELF_REFERENTIAL_EDGE",
 		"Cannot create an edge from a node to itself",
 	)
-	
+
 	ErrDuplicateEdge = NewDomainError(
 		DomainConflictError,
 		"DUPLICATE_EDGE",
 		"An edge between these nodes already exists",
 	)
-	
+
 	ErrCyclicDependency = NewDomainError(
 		DomainBusinessRuleError,
 		"CYCLIC_DEPENDENCY",
 		"Creating this edge would result in a cyclic dependency",
 	)
-	
+
 	// User errors
 	ErrUserNotFound = NewDomainError(
 		DomainNotFoundError,
 		"USER_NOT_FOUND",
 		"The requested user does not exist",
 	)
-	
+
 	ErrUserNotAuthorized = NewDomainError(
 		DomainAuthorizationError,
 		"USER_NOT_AUTHORIZED",
 		"User is not authorized to perform this action",
 	)
-	
+
 	// Transaction errors
 	ErrConcurrentModification = NewDomainError(
 		DomainConflictError,
 		"CONCURRENT_MODIFICATION",
 		"The resource was modified by another process",
 	).WithRetryable(true)
-	
+
 	ErrTransactionFailed = NewDomainError(
 		DomainInfrastructureError,
 		"TRANSACTION_FAILED",
 		"Database transaction failed",
 	).WithRetryable(true)
-	
+
 	// Rate limiting errors
 	ErrRateLimitExceeded = NewDomainError(
 		DomainRateLimitError,
 		"RATE_LIMIT_EXCEEDED",
 		"Too many requests, please try again later",
 	).WithRetryable(true)
-	
+
 	// Infrastructure errors
 	ErrDatabaseConnection = NewDomainError(
 		DomainInfrastructureError,
 		"DATABASE_CONNECTION_ERROR",
 		"Failed to connect to database",
 	).WithRetryable(true)
-	
+
 	ErrEventPublishFailed = NewDomainError(
 		DomainInfrastructureError,
 		"EVENT_PUBLISH_FAILED",
@@ -306,7 +306,7 @@ func (v *ValidationErrors) Error() string {
 	if len(v.Errors) == 0 {
 		return ""
 	}
-	
+
 	messages := make([]string, len(v.Errors))
 	for i, err := range v.Errors {
 		messages[i] = err.Message
@@ -317,32 +317,32 @@ func (v *ValidationErrors) Error() string {
 // ToMap converts validation errors to a map for JSON serialization
 func (v *ValidationErrors) ToMap() map[string][]string {
 	result := make(map[string][]string)
-	
+
 	for _, err := range v.Errors {
 		field, ok := err.Details["field"].(string)
 		if !ok {
 			field = "general"
 		}
-		
+
 		if _, exists := result[field]; !exists {
 			result[field] = make([]string, 0)
 		}
 		result[field] = append(result[field], err.Message)
 	}
-	
+
 	return result
 }
 
 // DomainErrorResponse represents the API error response format for domain errors
 type DomainErrorResponse struct {
-	Error      bool                   `json:"error"`
-	Type       DomainErrorType        `json:"type"`
-	Code       string                 `json:"code"`
-	Message    string                 `json:"message"`
-	Details    map[string]interface{} `json:"details,omitempty"`
-	Retryable  bool                   `json:"retryable"`
-	RequestID  string                 `json:"request_id,omitempty"`
-	Timestamp  string                 `json:"timestamp"`
+	Error     bool                   `json:"error"`
+	Type      DomainErrorType        `json:"type"`
+	Code      string                 `json:"code"`
+	Message   string                 `json:"message"`
+	Details   map[string]interface{} `json:"details,omitempty"`
+	Retryable bool                   `json:"retryable"`
+	RequestID string                 `json:"request_id,omitempty"`
+	Timestamp string                 `json:"timestamp"`
 }
 
 // NewDomainErrorResponse creates an error response from a domain error

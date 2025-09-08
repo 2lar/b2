@@ -8,12 +8,12 @@ type DomainConfig struct {
 	MaxNodesPerGraph int
 	MaxEdgesPerGraph int
 	DefaultGraphName string
-	
+
 	// Performance limits
-	MaxNodesPerQuery int
-	MaxEdgesPerQuery int
+	MaxNodesPerQuery          int
+	MaxEdgesPerQuery          int
 	MaxSimilarityCalculations int
-	SimilarityThreshold float64
+	SimilarityThreshold       float64
 
 	// Node constraints
 	MaxConnectionsPerNode int
@@ -34,16 +34,16 @@ type DomainConfig struct {
 	ConnectionTimeout time.Duration
 
 	// Validation settings
-	AllowEmptyContent     bool
+	AllowEmptyContent       bool
 	RequireUniqueNodeTitles bool
-	AllowSelfConnections   bool
-	AllowDuplicateEdges    bool
+	AllowSelfConnections    bool
+	AllowDuplicateEdges     bool
 
 	// Feature flags
-	EnableAutoTagging     bool
-	EnableSemanticSearch  bool
-	EnableGraphAnalytics  bool
-	EnableRealTimeSync    bool
+	EnableAutoTagging    bool
+	EnableSemanticSearch bool
+	EnableGraphAnalytics bool
+	EnableRealTimeSync   bool
 }
 
 // DefaultDomainConfig returns the default domain configuration
@@ -53,12 +53,12 @@ func DefaultDomainConfig() *DomainConfig {
 		MaxNodesPerGraph: 10000,
 		MaxEdgesPerGraph: 50000,
 		DefaultGraphName: "Default Graph",
-		
+
 		// Performance limits
-		MaxNodesPerQuery: 1000,
-		MaxEdgesPerQuery: 5000,
+		MaxNodesPerQuery:          1000,
+		MaxEdgesPerQuery:          5000,
 		MaxSimilarityCalculations: 100,
-		SimilarityThreshold: 0.3,
+		SimilarityThreshold:       0.3,
 
 		// Node constraints
 		MaxConnectionsPerNode: 50,
@@ -95,36 +95,36 @@ func DefaultDomainConfig() *DomainConfig {
 // ProductionDomainConfig returns production-specific configuration
 func ProductionDomainConfig() *DomainConfig {
 	config := DefaultDomainConfig()
-	
+
 	// More restrictive limits for production
 	config.MaxNodesPerGraph = 5000
 	config.MaxEdgesPerGraph = 25000
 	config.MaxConnectionsPerNode = 30
 	config.MaxContentLength = 20000
-	
+
 	// Stricter validation
 	config.AllowEmptyContent = false
 	config.RequireUniqueNodeTitles = true
-	
+
 	return config
 }
 
 // DevelopmentDomainConfig returns development-specific configuration
 func DevelopmentDomainConfig() *DomainConfig {
 	config := DefaultDomainConfig()
-	
+
 	// More permissive for development
 	config.MaxNodesPerGraph = 100000
 	config.MaxEdgesPerGraph = 500000
 	config.AllowEmptyContent = true
 	config.AllowSelfConnections = true
 	config.AllowDuplicateEdges = true
-	
+
 	// Enable all features for testing
 	config.EnableAutoTagging = true
 	config.EnableSemanticSearch = true
 	config.EnableGraphAnalytics = true
-	
+
 	return config
 }
 

@@ -4,19 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	
+
 	"go.uber.org/zap"
 )
 
 // ErrorResponse represents the API error response format
 type ErrorResponse struct {
-	Error      bool                   `json:"error"`
-	Type       string                 `json:"type"`
-	Message    string                 `json:"message"`
-	Code       string                 `json:"code,omitempty"`
-	Details    map[string]interface{} `json:"details,omitempty"`
-	RequestID  string                 `json:"request_id,omitempty"`
-	TraceID    string                 `json:"trace_id,omitempty"`
+	Error     bool                   `json:"error"`
+	Type      string                 `json:"type"`
+	Message   string                 `json:"message"`
+	Code      string                 `json:"code,omitempty"`
+	Details   map[string]interface{} `json:"details,omitempty"`
+	RequestID string                 `json:"request_id,omitempty"`
+	TraceID   string                 `json:"trace_id,omitempty"`
 }
 
 // ErrorHandler handles errors and sends appropriate HTTP responses
@@ -40,22 +40,22 @@ func (h *ErrorHandler) Handle(w http.ResponseWriter, r *http.Request, err error)
 	if err == nil {
 		return
 	}
-	
+
 	// Extract request/trace IDs from context if available
 	requestID := r.Header.Get("X-Request-ID")
 	traceID := r.Header.Get("X-Trace-ID")
-	
+
 	// Determine error type and status code
 	var status int
 	var response ErrorResponse
-	
+
 	if appErr := GetAppError(err); appErr != nil {
 		// Handle application error
 		status = appErr.HTTPStatus
 		if status == 0 {
 			status = h.defaultStatus
 		}
-		
+
 		response = ErrorResponse{
 			Error:     true,
 			Type:      string(appErr.Type),
@@ -65,10 +65,10 @@ func (h *ErrorHandler) Handle(w http.ResponseWriter, r *http.Request, err error)
 			RequestID: requestID,
 			TraceID:   traceID,
 		}
-		
+
 		// Log the error
 		h.logError(r, appErr, status)
-		
+
 		// Add stack trace in debug mode
 		if h.debug && appErr.StackTrace != "" {
 			if response.Details == nil {
@@ -86,7 +86,7 @@ func (h *ErrorHandler) Handle(w http.ResponseWriter, r *http.Request, err error)
 			RequestID: requestID,
 			TraceID:   traceID,
 		}
-		
+
 		// Log the error
 		h.logger.Error("Unhandled error",
 			zap.Error(err),
@@ -96,13 +96,13 @@ func (h *ErrorHandler) Handle(w http.ResponseWriter, r *http.Request, err error)
 			zap.String("trace_id", traceID),
 			zap.Int("status", status),
 		)
-		
+
 		// Add error details in debug mode
 		if h.debug {
 			response.Message = err.Error()
 		}
 	}
-	
+
 	// Send response
 	h.sendJSON(w, status, response)
 }
@@ -116,14 +116,14 @@ func (h *ErrorHandler) HandleStatus(w http.ResponseWriter, r *http.Request, stat
 		RequestID: r.Header.Get("X-Request-ID"),
 		TraceID:   r.Header.Get("X-Trace-ID"),
 	}
-	
+
 	h.logger.Warn("HTTP error",
 		zap.String("method", r.Method),
 		zap.String("path", r.URL.Path),
 		zap.Int("status", status),
 		zap.String("message", message),
 	)
-	
+
 	h.sendJSON(w, status, response)
 }
 
@@ -137,19 +137,19 @@ func (h *ErrorHandler) logError(r *http.Request, err *AppError, status int) {
 		zap.String("request_id", r.Header.Get("X-Request-ID")),
 		zap.String("trace_id", r.Header.Get("X-Trace-ID")),
 	}
-	
+
 	if err.Code != "" {
 		fields = append(fields, zap.String("error_code", err.Code))
 	}
-	
+
 	if err.Cause != nil {
 		fields = append(fields, zap.Error(err.Cause))
 	}
-	
+
 	if err.Details != nil {
 		fields = append(fields, zap.Any("details", err.Details))
 	}
-	
+
 	// Log based on error type and status
 	switch {
 	case status >= 500:
@@ -165,7 +165,7 @@ func (h *ErrorHandler) logError(r *http.Request, err *AppError, status int) {
 func (h *ErrorHandler) sendJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	
+
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		h.logger.Error("Failed to encode error response",
 			zap.Error(err),
@@ -210,7 +210,7 @@ func (h *ErrorHandler) Middleware(next http.Handler) http.Handler {
 				h.Handle(w, r, err)
 			}
 		}()
-		
+
 		// Call next handler
 		next.ServeHTTP(w, r)
 	})

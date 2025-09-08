@@ -74,7 +74,7 @@ func (h *CategoryHandler) SuggestCategories(w http.ResponseWriter, r *http.Reque
 // Stub: Returns empty categories for the node
 func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Request) {
 	nodeID := chi.URLParam(r, "nodeID")
-	
+
 	h.logger.Info("Node categories requested (stub)",
 		zap.String("method", r.Method),
 		zap.String("path", r.URL.Path),
@@ -99,7 +99,7 @@ func (h *CategoryHandler) GetNodeCategories(w http.ResponseWriter, r *http.Reque
 // Stub: Returns success without actually categorizing
 func (h *CategoryHandler) CategorizeNode(w http.ResponseWriter, r *http.Request) {
 	nodeID := chi.URLParam(r, "nodeID")
-	
+
 	h.logger.Info("Node categorization requested (stub)",
 		zap.String("method", r.Method),
 		zap.String("path", r.URL.Path),

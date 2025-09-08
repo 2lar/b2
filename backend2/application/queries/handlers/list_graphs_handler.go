@@ -66,13 +66,13 @@ func (h *ListGraphsHandler) Handle(ctx context.Context, query queries.ListGraphs
 	summaries := make([]queries.GraphSummary, 0, end-start)
 	for i := start; i < end; i++ {
 		graph := graphs[i]
-		
+
 		// Get node count safely
 		nodes, err := graph.Nodes()
 		if err != nil {
 			// For large graphs, use approximate count or pagination
-			h.logger.Warn("Graph too large for Nodes() method", 
-				zap.String("graphID", graph.ID().String()), 
+			h.logger.Warn("Graph too large for Nodes() method",
+				zap.String("graphID", graph.ID().String()),
 				zap.Error(err))
 			summaries = append(summaries, queries.GraphSummary{
 				ID:          graph.ID().String(),
@@ -86,7 +86,7 @@ func (h *ListGraphsHandler) Handle(ctx context.Context, query queries.ListGraphs
 			})
 			continue
 		}
-		
+
 		summaries = append(summaries, queries.GraphSummary{
 			ID:          graph.ID().String(),
 			Name:        graph.Name(),

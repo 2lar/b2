@@ -45,14 +45,14 @@ func (h *GetGraphDataHandler) Handle(ctx context.Context, query queries.GetGraph
 	// Get the graph - either specific one or user's default
 	var graph *aggregates.Graph
 	var err error
-	
+
 	if query.GraphID != "" {
 		graphID := aggregates.GraphID(query.GraphID)
 		graph, err = h.graphRepo.GetByID(ctx, graphID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get graph: %w", err)
 		}
-		
+
 		// Verify ownership
 		if graph.UserID() != query.UserID {
 			return nil, fmt.Errorf("graph does not belong to user")
@@ -88,7 +88,7 @@ func (h *GetGraphDataHandler) Handle(ctx context.Context, query queries.GetGraph
 		)
 		nodes = []*entities.Node{}
 	}
-	
+
 	// Get edges from the edge repository
 	edges, err := h.edgeRepo.GetByGraphID(ctx, graph.ID().String())
 	if err != nil {
@@ -114,17 +114,17 @@ func (h *GetGraphDataHandler) Handle(ctx context.Context, query queries.GetGraph
 	for _, node := range nodes {
 		content := node.Content()
 		position := node.Position()
-		
+
 		graphNode := queries.GraphNode{
-			ID:       node.ID().String(),
-			Title:    content.Title(),
-			Content:  content.Body(),
+			ID:      node.ID().String(),
+			Title:   content.Title(),
+			Content: content.Body(),
 			Position: queries.Position{
 				X: position.X(),
 				Y: position.Y(),
 				Z: position.Z(),
 			},
-			Tags:     node.GetTags(),
+			Tags: node.GetTags(),
 			Metadata: map[string]string{
 				"created_at": node.CreatedAt().Format(time.RFC3339),
 				"updated_at": node.UpdatedAt().Format(time.RFC3339),
@@ -173,7 +173,7 @@ func (h *GetGraphDataHandler) Handle(ctx context.Context, query queries.GetGraph
 func (h *GetGraphDataHandler) calculateClusters(graph *aggregates.Graph) [][]string {
 	// Use the graph's built-in GetClusters method
 	clusters := graph.GetClusters()
-	
+
 	// Convert to string arrays
 	result := make([][]string, len(clusters))
 	for i, cluster := range clusters {
@@ -183,6 +183,6 @@ func (h *GetGraphDataHandler) calculateClusters(graph *aggregates.Graph) [][]str
 		}
 		result[i] = strCluster
 	}
-	
+
 	return result
 }

@@ -36,31 +36,31 @@ func NewNodeContentWithConfig(title, body string, format ContentFormat, cfg *con
 	if cfg == nil {
 		cfg = config.DefaultDomainConfig()
 	}
-	
+
 	title = strings.TrimSpace(title)
 	body = strings.TrimSpace(body)
 
 	if title == "" && !cfg.AllowEmptyContent {
 		return NodeContent{}, pkgerrors.NewValidationError("title cannot be empty")
 	}
-	
+
 	titleLength := utf8.RuneCountInString(title)
 	if titleLength < cfg.MinTitleLength {
 		return NodeContent{}, fmt.Errorf("title too short: minimum %d characters required", cfg.MinTitleLength)
 	}
-	
+
 	if titleLength > cfg.MaxTitleLength {
 		return NodeContent{}, fmt.Errorf("title exceeds maximum length of %d characters", cfg.MaxTitleLength)
 	}
-	
+
 	if utf8.RuneCountInString(body) > cfg.MaxContentLength {
 		return NodeContent{}, fmt.Errorf("content body exceeds maximum length of %d characters", cfg.MaxContentLength)
 	}
-	
+
 	if !isValidFormat(format) {
 		return NodeContent{}, pkgerrors.NewValidationError("invalid content format")
 	}
-	
+
 	return NodeContent{
 		title:  title,
 		body:   body,
@@ -90,8 +90,8 @@ func (c NodeContent) IsEmpty() bool {
 
 // Equals checks if two contents are equal
 func (c NodeContent) Equals(other NodeContent) bool {
-	return c.title == other.title && 
-		c.body == other.body && 
+	return c.title == other.title &&
+		c.body == other.body &&
 		c.format == other.format
 }
 
@@ -106,16 +106,16 @@ func (c NodeContent) Summary(maxLength int) string {
 	if maxLength <= 0 {
 		return ""
 	}
-	
+
 	combined := c.title
 	if c.body != "" {
 		combined += ": " + c.body
 	}
-	
+
 	if utf8.RuneCountInString(combined) <= maxLength {
 		return combined
 	}
-	
+
 	runes := []rune(combined)
 	return string(runes[:maxLength-3]) + "..."
 }

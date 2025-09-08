@@ -24,7 +24,7 @@ type GraphMigrationSaga struct {
 	edgeRepo      ports.EdgeRepository
 	graphRepo     ports.GraphRepository
 	logger        *zap.Logger
-	
+
 	// Track migrated entities for rollback
 	migratedNodes []string
 	migratedEdges []string
@@ -33,12 +33,12 @@ type GraphMigrationSaga struct {
 
 // GraphMigrationData holds data passed between saga steps
 type GraphMigrationData struct {
-	SourceGraph   *aggregates.Graph
-	TargetGraph   *aggregates.Graph
-	Nodes         []*entities.Node
-	Edges         []*aggregates.Edge
-	NodeMapping   map[string]string
-	StartTime     time.Time
+	SourceGraph    *aggregates.Graph
+	TargetGraph    *aggregates.Graph
+	Nodes          []*entities.Node
+	Edges          []*aggregates.Edge
+	NodeMapping    map[string]string
+	StartTime      time.Time
 	CompletedSteps int
 }
 
@@ -70,7 +70,7 @@ func NewGraphMigrationSaga(
 		WithCompensableStep("CopyNodes", gms.copyNodes, gms.compensateNodes).
 		WithCompensableStep("CopyEdges", gms.copyEdges, gms.compensateEdges).
 		WithCompensableStep("UpdateMetadata", gms.updateMetadata, gms.compensateMetadata).
-		WithStep("FinalizeM igration", gms.finalizeMigration).
+		WithStep("FinalizeMigration", gms.finalizeMigration).
 		Build()
 
 	return gms
@@ -137,7 +137,7 @@ func (gms *GraphMigrationSaga) validateGraphs(ctx context.Context, data interfac
 	sourceMetadata := sourceGraph.Metadata()
 	sourceNodeCount, _ := sourceMetadata["nodeCount"].(int)
 	sourceEdgeCount, _ := sourceMetadata["edgeCount"].(int)
-	
+
 	gms.logger.Info("Graphs validated",
 		zap.String("source_nodes", fmt.Sprintf("%d", sourceNodeCount)),
 		zap.String("source_edges", fmt.Sprintf("%d", sourceEdgeCount)),
@@ -168,7 +168,7 @@ func (gms *GraphMigrationSaga) copyNodes(ctx context.Context, data interface{}) 
 	for _, node := range nodes {
 		// Create new node with new ID but same content
 		newNodeID := valueobjects.NewNodeID()
-		
+
 		// Create new node with same content but new ID and graph
 		newNode, err := entities.NewNode(
 			newNodeID.String(),
@@ -256,7 +256,7 @@ func (gms *GraphMigrationSaga) copyEdges(ctx context.Context, data interface{}) 
 		// Create new edge with mapped node IDs
 		newSourceNodeID, _ := valueobjects.NewNodeIDFromString(newSourceID)
 		newTargetNodeID, _ := valueobjects.NewNodeIDFromString(newTargetID)
-		
+
 		newEdge := &aggregates.Edge{
 			ID:        fmt.Sprintf("%s", uuid.New()),
 			SourceID:  newSourceNodeID,
@@ -320,15 +320,15 @@ func (gms *GraphMigrationSaga) updateMetadata(ctx context.Context, data interfac
 
 	// Update target graph metadata
 	targetGraph := migrationData.TargetGraph
-	
+
 	// Note: The graph's metadata is updated automatically when nodes are added
 	// No need to manually update counts
-	
+
 	// Update migration metadata
 	// Store migration metadata separately as the graph doesn't have a SetMetadata method
 	// This would typically be stored in a separate migration audit table
 	migrationMetadata := map[string]interface{}{
-		"migrated_from": gms.sourceGraphID,
+		"migrated_from":  gms.sourceGraphID,
 		"migration_date": time.Now().Format(time.RFC3339),
 		"migrated_nodes": len(gms.migratedNodes),
 		"migrated_edges": len(gms.migratedEdges),
@@ -354,7 +354,7 @@ func (gms *GraphMigrationSaga) compensateMetadata(ctx context.Context, data inte
 // Step 5: Finalize migration
 func (gms *GraphMigrationSaga) finalizeMigration(ctx context.Context, data interface{}) (interface{}, error) {
 	migrationData := data.(*GraphMigrationData)
-	
+
 	duration := time.Since(migrationData.StartTime)
 	gms.logger.Info("Migration finalized",
 		zap.String("duration", duration.String()),

@@ -155,7 +155,7 @@ func (uow *DynamoDBUnitOfWork) Commit(ctx context.Context) error {
 	// Events are now persisted with "pending" status using the Outbox pattern
 	// A separate background process will handle publishing them to EventBridge
 	// This ensures that events are never lost even if publishing fails
-	
+
 	// Note: The events were already saved to the event store during the transaction
 	// with PublishStatus = "pending", so we don't need to publish them here.
 	// The OutboxProcessor will handle publishing asynchronously.

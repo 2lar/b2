@@ -1,8 +1,8 @@
 package valueobjects
 
 import (
-	"github.com/google/uuid"
 	pkgerrors "backend2/pkg/errors"
+	"github.com/google/uuid"
 )
 
 // NodeID is a value object representing a unique node identifier

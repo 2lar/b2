@@ -21,17 +21,17 @@ func (q GetNodeQuery) Validate() error {
 
 // GetNodeResult represents the result of getting a node
 type GetNodeResult struct {
-	ID       string            `json:"id"`
-	UserID   string            `json:"userId"`
-	Title    string            `json:"title"`
-	Content  string            `json:"content"`
-	Format   string            `json:"format"`
-	Position Position          `json:"position"`
-	Tags     []string          `json:"tags"`
-	Metadata map[string]string `json:"metadata"`
-	Version  int               `json:"version"`
-	CreatedAt string           `json:"createdAt"`
-	UpdatedAt string           `json:"updatedAt"`
+	ID        string            `json:"id"`
+	UserID    string            `json:"userId"`
+	Title     string            `json:"title"`
+	Content   string            `json:"content"`
+	Format    string            `json:"format"`
+	Position  Position          `json:"position"`
+	Tags      []string          `json:"tags"`
+	Metadata  map[string]string `json:"metadata"`
+	Version   int               `json:"version"`
+	CreatedAt string            `json:"createdAt"`
+	UpdatedAt string            `json:"updatedAt"`
 }
 
 // Position represents spatial coordinates

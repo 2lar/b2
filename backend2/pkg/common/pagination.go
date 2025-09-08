@@ -25,14 +25,14 @@ func DefaultPaginationParams() PaginationParams {
 // ExtractPaginationParams extracts pagination parameters from request
 func ExtractPaginationParams(r *http.Request) PaginationParams {
 	params := DefaultPaginationParams()
-	
+
 	// Extract page
 	if page := r.URL.Query().Get("page"); page != "" {
 		if p, err := strconv.Atoi(page); err == nil && p > 0 {
 			params.Page = p
 		}
 	}
-	
+
 	// Extract page size
 	if pageSize := r.URL.Query().Get("page_size"); pageSize != "" {
 		if ps, err := strconv.Atoi(pageSize); err == nil && ps > 0 {
@@ -42,19 +42,19 @@ func ExtractPaginationParams(r *http.Request) PaginationParams {
 			params.PageSize = ps
 		}
 	}
-	
+
 	// Extract sort field
 	if sort := r.URL.Query().Get("sort"); sort != "" {
 		params.Sort = sort
 	}
-	
+
 	// Extract order
 	if order := r.URL.Query().Get("order"); order != "" {
 		if order == "asc" || order == "desc" {
 			params.Order = order
 		}
 	}
-	
+
 	return params
 }
 
@@ -78,7 +78,7 @@ func CalculateTotalPages(total, pageSize int) int {
 // BuildPaginationMeta builds pagination metadata
 func BuildPaginationMeta(page, pageSize, total int) *PaginationInfo {
 	totalPages := CalculateTotalPages(total, pageSize)
-	
+
 	return &PaginationInfo{
 		Page:       page,
 		PageSize:   pageSize,

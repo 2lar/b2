@@ -9,7 +9,7 @@
 - [x] **Extract Business Rules Configuration** - Created DomainConfig, removed all hardcoded limits from domain
 - [x] **Standardize Error Handling** - Created typed error system with proper error codes and context
 - [x] **Fix Authentication Context Extraction** - Fixed hardcoded UserID extraction, now properly extracts from headers
-- [x] **Add API Versioning** - Implemented version routing with /api/v1 and /api/v2, added version headers
+- [x] **Add API Versioning** - Implemented version routing with /api/v1, added version headers
 
 ### Phase 2: Architecture & Maintainability
 - [x] **Abstract DynamoDB Dependencies** - Created repository abstractions to hide AWS-specific types

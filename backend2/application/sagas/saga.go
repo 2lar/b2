@@ -10,21 +10,21 @@ import (
 
 // SagaStep represents a single step in a saga
 type SagaStep struct {
-	Name         string
-	Execute      func(ctx context.Context, data interface{}) (interface{}, error)
-	Compensate   func(ctx context.Context, data interface{}) error
-	MaxRetries   int
-	RetryDelay   time.Duration
+	Name       string
+	Execute    func(ctx context.Context, data interface{}) (interface{}, error)
+	Compensate func(ctx context.Context, data interface{}) error
+	MaxRetries int
+	RetryDelay time.Duration
 }
 
 // SagaState represents the current state of a saga execution
 type SagaState string
 
 const (
-	SagaStatePending    SagaState = "PENDING"
-	SagaStateRunning    SagaState = "RUNNING"
-	SagaStateCompleted  SagaState = "COMPLETED"
-	SagaStateFailed     SagaState = "FAILED"
+	SagaStatePending      SagaState = "PENDING"
+	SagaStateRunning      SagaState = "RUNNING"
+	SagaStateCompleted    SagaState = "COMPLETED"
+	SagaStateFailed       SagaState = "FAILED"
 	SagaStateCompensating SagaState = "COMPENSATING"
 	SagaStateCompensated  SagaState = "COMPENSATED"
 )

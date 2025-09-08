@@ -47,13 +47,13 @@ func (h *GetNodeHandler) Handle(ctx context.Context, query queries.GetNodeQuery)
 	// Map domain model to query result
 	content := node.Content()
 	position := node.Position()
-	
+
 	result := &queries.GetNodeResult{
-		ID:       node.ID().String(),
-		UserID:   node.UserID(),
-		Title:    content.Title(),
-		Content:  content.Body(),
-		Format:   string(content.Format()),
+		ID:      node.ID().String(),
+		UserID:  node.UserID(),
+		Title:   content.Title(),
+		Content: content.Body(),
+		Format:  string(content.Format()),
 		Position: queries.Position{
 			X: position.X(),
 			Y: position.Y(),

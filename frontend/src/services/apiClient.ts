@@ -241,7 +241,7 @@ class ApiClient {
         };
         if (tags && tags.length > 0) body.tags = tags;
         console.log('DEBUG apiClient.createNode - body:', JSON.stringify(body));
-        return this.request<Node>('POST', '/api/v2/nodes', body);
+        return this.request<Node>('POST', '/api/v1/nodes', body);
     }
 
     /**
@@ -260,7 +260,7 @@ class ApiClient {
             weight: weight ?? 1.0
         };
         console.log('DEBUG apiClient.createEdge - body:', JSON.stringify(body));
-        return this.request<any>('POST', '/api/v2/edges', body);
+        return this.request<any>('POST', '/api/v1/edges', body);
     }
 
     /**
@@ -269,7 +269,7 @@ class ApiClient {
      * @returns Promise resolving when edge is deleted
      */
     public async deleteEdge(edgeId: string): Promise<void> {
-        return this.request<void>('DELETE', `/api/v2/edges/${edgeId}`);
+        return this.request<void>('DELETE', `/api/v1/edges/${edgeId}`);
     }
 
     /**
@@ -284,7 +284,7 @@ class ApiClient {
         if (nextToken) params.append('nextToken', nextToken);
         
         const queryString = params.toString();
-        const path = queryString ? `/api/v2/nodes?${queryString}` : '/api/v2/nodes';
+        const path = queryString ? `/api/v1/nodes?${queryString}` : '/api/v1/nodes';
         
         const response = await this.request<any>('GET', path);
         
@@ -309,7 +309,7 @@ class ApiClient {
      * @returns Promise resolving to NodeDetails with content and connections
      */
     public getNode(nodeId: string): Promise<NodeDetails> {
-        return this.request<NodeDetails>('GET', `/api/v2/nodes/${nodeId}`);
+        return this.request<NodeDetails>('GET', `/api/v1/nodes/${nodeId}`);
     }
 
     /**
@@ -318,7 +318,7 @@ class ApiClient {
      * @returns Promise resolving when deletion is complete
      */
     public deleteNode(nodeId: string): Promise<void> {
-        return this.request<void>('DELETE', `/api/v2/nodes/${nodeId}`);
+        return this.request<void>('DELETE', `/api/v1/nodes/${nodeId}`);
     }
 
     /**
@@ -326,7 +326,7 @@ class ApiClient {
      * @returns Promise resolving to graph data with nodes and edges
      */
     public getGraphData(): Promise<GraphDataResponse> {
-        return this.request<GraphDataResponse>('GET', '/api/v2/graph-data');
+        return this.request<GraphDataResponse>('GET', '/api/v1/graph-data');
     }
 
     /**
@@ -341,7 +341,7 @@ class ApiClient {
         const body: { content: string; tags?: string[]; title?: string } = { content };
         if (tags && tags.length > 0) body.tags = tags;
         if (title !== undefined) body.title = title.trim();
-        return this.request<{ message: string }>('PUT', `/api/v2/nodes/${nodeId}`, body);
+        return this.request<{ message: string }>('PUT', `/api/v1/nodes/${nodeId}`, body);
     }
 
     /**
@@ -350,7 +350,7 @@ class ApiClient {
      * @returns Promise resolving to deletion results
      */
     public bulkDeleteNodes(nodeIds: string[]): Promise<BulkDeleteResponse> {
-        return this.request<BulkDeleteResponse>('POST', '/api/v2/nodes/bulk-delete', { node_ids: nodeIds });
+        return this.request<BulkDeleteResponse>('POST', '/api/v1/nodes/bulk-delete', { node_ids: nodeIds });
     }
 
     // Category management operations
@@ -520,7 +520,7 @@ class ApiClient {
      * @returns Promise resolving to rebuild results and statistics
      */
     public rebuildCategories(): Promise<operations['rebuildCategories']['responses']['200']['content']['application/json']> {
-        return this.request('POST', '/api/v2/categories/rebuild');
+        return this.request('POST', '/api/v1/categories/rebuild');
     }
 
     /**
@@ -601,7 +601,7 @@ class ApiClient {
      * @returns Promise resolving to array of categories assigned to the node
      */
     public getNodeCategories(nodeId: string): Promise<operations['getNodeCategories']['responses']['200']['content']['application/json']> {
-        return this.request('GET', `/api/v2/nodes/${nodeId}/categories`);
+        return this.request('GET', `/api/v1/nodes/${nodeId}/categories`);
     }
 
     /**
@@ -610,7 +610,7 @@ class ApiClient {
      * @returns Promise resolving to array of assigned categories
      */
     public categorizeNode(nodeId: string): Promise<operations['categorizeNode']['responses']['200']['content']['application/json']> {
-        return this.request('POST', `/api/v2/nodes/${nodeId}/categories`);
+        return this.request('POST', `/api/v1/nodes/${nodeId}/categories`);
     }
 }
 

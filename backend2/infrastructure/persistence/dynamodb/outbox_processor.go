@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"backend2/application/ports"
-	
+
 	"go.uber.org/zap"
 )
 
@@ -16,15 +16,15 @@ type OutboxProcessor struct {
 	eventStore     *DynamoDBEventStore
 	eventPublisher ports.EventPublisher
 	logger         *zap.Logger
-	
+
 	// Configuration
-	batchSize      int32
+	batchSize          int32
 	processingInterval time.Duration
-	maxRetries     int
-	
+	maxRetries         int
+
 	// Control channels
-	stopChan       chan struct{}
-	stoppedChan    chan struct{}
+	stopChan    chan struct{}
+	stoppedChan chan struct{}
 }
 
 // NewOutboxProcessor creates a new outbox processor
@@ -36,12 +36,12 @@ func NewOutboxProcessor(
 	return &OutboxProcessor{
 		eventStore:         eventStore,
 		eventPublisher:     eventPublisher,
-		logger:            logger,
-		batchSize:         50, // Process 50 events at a time
+		logger:             logger,
+		batchSize:          50,              // Process 50 events at a time
 		processingInterval: 5 * time.Second, // Process every 5 seconds
-		maxRetries:        3, // Maximum 3 attempts per event
-		stopChan:          make(chan struct{}),
-		stoppedChan:       make(chan struct{}),
+		maxRetries:         3,               // Maximum 3 attempts per event
+		stopChan:           make(chan struct{}),
+		stoppedChan:        make(chan struct{}),
 	}
 }
 
@@ -51,7 +51,7 @@ func (op *OutboxProcessor) Start(ctx context.Context) {
 		zap.Int32("batchSize", op.batchSize),
 		zap.Duration("interval", op.processingInterval),
 	)
-	
+
 	go op.processLoop(ctx)
 }
 
@@ -66,10 +66,10 @@ func (op *OutboxProcessor) Stop() {
 // processLoop is the main processing loop
 func (op *OutboxProcessor) processLoop(ctx context.Context) {
 	defer close(op.stoppedChan)
-	
+
 	ticker := time.NewTicker(op.processingInterval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -93,18 +93,18 @@ func (op *OutboxProcessor) processBatch(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get pending events: %w", err)
 	}
-	
+
 	if len(pendingEvents) == 0 {
 		return nil // No events to process
 	}
-	
+
 	op.logger.Debug("Processing outbox batch",
 		zap.Int("eventCount", len(pendingEvents)),
 	)
-	
+
 	successCount := 0
 	failureCount := 0
-	
+
 	for _, eventRecord := range pendingEvents {
 		if err := op.processEvent(ctx, eventRecord); err != nil {
 			op.logger.Error("Failed to process event",
@@ -117,12 +117,12 @@ func (op *OutboxProcessor) processBatch(ctx context.Context) error {
 			successCount++
 		}
 	}
-	
+
 	op.logger.Debug("Completed outbox batch processing",
 		zap.Int("successCount", successCount),
 		zap.Int("failureCount", failureCount),
 	)
-	
+
 	return nil
 }
 
@@ -134,13 +134,13 @@ func (op *OutboxProcessor) processEvent(ctx context.Context, eventRecord *EventR
 		// Mark as failed - malformed events can't be processed
 		return op.markEventFailed(ctx, eventRecord, fmt.Sprintf("Failed to convert to domain event: %v", err))
 	}
-	
+
 	// Try to publish the event
 	if err := op.eventPublisher.Publish(ctx, domainEvent); err != nil {
 		// Mark as failed or retry
 		return op.markEventFailed(ctx, eventRecord, fmt.Sprintf("Publish failed: %v", err))
 	}
-	
+
 	// Mark as successfully published
 	return op.markEventPublished(ctx, eventRecord)
 }
@@ -155,19 +155,19 @@ func (op *OutboxProcessor) markEventPublished(ctx context.Context, eventRecord *
 		)
 		return err
 	}
-	
+
 	op.logger.Debug("Event published successfully",
 		zap.String("eventID", eventRecord.EventID),
 		zap.String("eventType", eventRecord.EventType),
 	)
-	
+
 	return nil
 }
 
 // markEventFailed marks an event as failed with appropriate retry logic
 func (op *OutboxProcessor) markEventFailed(ctx context.Context, eventRecord *EventRecord, errorMsg string) error {
 	newAttempts := eventRecord.PublishAttempts + 1
-	
+
 	err := op.eventStore.MarkEventAsFailed(ctx, eventRecord.PK, eventRecord.SK, errorMsg, newAttempts)
 	if err != nil {
 		op.logger.Error("Failed to mark event as failed",
@@ -176,7 +176,7 @@ func (op *OutboxProcessor) markEventFailed(ctx context.Context, eventRecord *Eve
 		)
 		return err
 	}
-	
+
 	if newAttempts >= op.maxRetries {
 		op.logger.Warn("Event permanently failed after max retries",
 			zap.String("eventID", eventRecord.EventID),
@@ -192,7 +192,7 @@ func (op *OutboxProcessor) markEventFailed(ctx context.Context, eventRecord *Eve
 			zap.String("error", errorMsg),
 		)
 	}
-	
+
 	return fmt.Errorf("event processing failed: %s", errorMsg)
 }
 
@@ -203,13 +203,13 @@ func (op *OutboxProcessor) GetStats(ctx context.Context) (map[string]interface{}
 	if err != nil {
 		return nil, err
 	}
-	
+
 	hasPendingEvents := len(pendingEvents) > 0
-	
+
 	return map[string]interface{}{
-		"hasPendingEvents": hasPendingEvents,
-		"batchSize":        op.batchSize,
+		"hasPendingEvents":   hasPendingEvents,
+		"batchSize":          op.batchSize,
 		"processingInterval": op.processingInterval.String(),
-		"maxRetries":       op.maxRetries,
+		"maxRetries":         op.maxRetries,
 	}, nil
 }

@@ -16,22 +16,22 @@ type GetGraphQuery struct {
 
 // GetGraphResult represents the query result
 type GetGraphResult struct {
-	Graph     *aggregates.Graph       `json:"graph"`
-	Nodes     []NodeDTO              `json:"nodes"`
-	Edges     []EdgeDTO              `json:"edges"`
-	Metadata  GraphMetadataDTO       `json:"metadata"`
+	Graph    *aggregates.Graph `json:"graph"`
+	Nodes    []NodeDTO         `json:"nodes"`
+	Edges    []EdgeDTO         `json:"edges"`
+	Metadata GraphMetadataDTO  `json:"metadata"`
 }
 
 // NodeDTO is a data transfer object for nodes
 type NodeDTO struct {
-	ID        string                 `json:"id"`
-	Title     string                 `json:"title"`
-	Content   string                 `json:"content"`
-	Position  PositionDTO            `json:"position"`
-	Status    string                 `json:"status"`
-	Tags      []string              `json:"tags"`
-	CreatedAt string                `json:"created_at"`
-	UpdatedAt string                `json:"updated_at"`
+	ID        string      `json:"id"`
+	Title     string      `json:"title"`
+	Content   string      `json:"content"`
+	Position  PositionDTO `json:"position"`
+	Status    string      `json:"status"`
+	Tags      []string    `json:"tags"`
+	CreatedAt string      `json:"created_at"`
+	UpdatedAt string      `json:"updated_at"`
 }
 
 // EdgeDTO is a data transfer object for edges
@@ -81,20 +81,20 @@ func (h *GetGraphHandler) Handle(ctx context.Context, query GetGraphQuery) (*Get
 			return result, nil
 		}
 	}
-	
+
 	// Load graph from repository
 	graph, err := h.graphRepo.GetByID(ctx, aggregates.GraphID(query.GraphID))
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Verify user has access
 	if graph.UserID() != query.UserID {
 		// Check if graph is public
 		// For now, we'll return an error
 		return nil, errors.New("access denied")
 	}
-	
+
 	// Get nodes safely
 	nodes, err := graph.GetNodes()
 	if err != nil {
@@ -113,7 +113,7 @@ func (h *GetGraphHandler) Handle(ctx context.Context, query GetGraphQuery) (*Get
 			Tags:      []string{},
 		},
 	}
-	
+
 	// Convert nodes to DTOs
 	for _, node := range nodes {
 		dto := NodeDTO{
@@ -132,7 +132,7 @@ func (h *GetGraphHandler) Handle(ctx context.Context, query GetGraphQuery) (*Get
 		}
 		result.Nodes = append(result.Nodes, dto)
 	}
-	
+
 	// Convert edges to DTOs
 	for _, edge := range graph.GetEdges() {
 		dto := EdgeDTO{
@@ -144,10 +144,10 @@ func (h *GetGraphHandler) Handle(ctx context.Context, query GetGraphQuery) (*Get
 		}
 		result.Edges = append(result.Edges, dto)
 	}
-	
+
 	// Cache the result for 5 minutes
 	h.cache.Set(ctx, cacheKey, result, 300)
-	
+
 	return result, nil
 }
 

@@ -13,13 +13,13 @@ func Logger(logger *zap.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			
+
 			// Wrap response writer to capture status code
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
-			
+
 			// Process request
 			next.ServeHTTP(ww, r)
-			
+
 			// Log request details
 			logger.Info("HTTP Request",
 				zap.String("method", r.Method),

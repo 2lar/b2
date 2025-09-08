@@ -48,7 +48,7 @@ func (h *ListNodesHandler) Handle(ctx context.Context, query queries.ListNodesQu
 
 	// Apply sorting
 	// TODO: Implement proper sorting in repository layer
-	
+
 	// Apply pagination
 	totalCount := len(nodes)
 	start := query.Offset

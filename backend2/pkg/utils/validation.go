@@ -11,12 +11,9 @@ import (
 
 var (
 	validate = validator.New()
-	
+
 	// Common validation patterns
-	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	uuidRegex  = regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$`)
-	urlRegex   = regexp.MustCompile(`^(https?://)([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*/?$`)
-	alphanumericRegex = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+	uuidRegex = regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$`)
 )
 
 // ValidateStruct validates a struct based on its validation tags
@@ -42,7 +39,7 @@ func formatValidationError(err error) error {
 // formatFieldError formats a single field validation error
 func formatFieldError(e validator.FieldError) string {
 	field := strings.ToLower(e.Field())
-	
+
 	switch e.Tag() {
 	case "required":
 		return fmt.Sprintf("%s is required", field)
@@ -61,36 +58,12 @@ func formatFieldError(e validator.FieldError) string {
 	}
 }
 
-// ValidateEmail checks if an email is valid
-func ValidateEmail(email string) bool {
-	if email == "" || len(email) > 254 {
-		return false
-	}
-	return emailRegex.MatchString(email)
-}
-
 // ValidateUUID checks if a string is a valid UUID
 func ValidateUUID(uuid string) bool {
 	if uuid == "" || len(uuid) != 36 {
 		return false
 	}
 	return uuidRegex.MatchString(uuid)
-}
-
-// ValidateURL checks if a string is a valid URL
-func ValidateURL(url string) bool {
-	if url == "" || len(url) > 2048 {
-		return false
-	}
-	return urlRegex.MatchString(url)
-}
-
-// ValidateAlphanumeric checks if a string contains only alphanumeric characters
-func ValidateAlphanumeric(s string) bool {
-	if s == "" {
-		return false
-	}
-	return alphanumericRegex.MatchString(s)
 }
 
 // ValidateStringLength validates string length with UTF-8 awareness
@@ -110,7 +83,7 @@ func ValidateRequired(value interface{}, fieldName string) error {
 	if value == nil {
 		return fmt.Errorf("%s is required", fieldName)
 	}
-	
+
 	switch v := value.(type) {
 	case string:
 		if strings.TrimSpace(v) == "" {
@@ -125,7 +98,7 @@ func ValidateRequired(value interface{}, fieldName string) error {
 			return fmt.Errorf("%s cannot be empty", fieldName)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -156,7 +129,7 @@ func SanitizeString(input string) string {
 			result.WriteRune(r)
 		}
 	}
-	
+
 	// Trim whitespace
 	return strings.TrimSpace(result.String())
 }
@@ -165,10 +138,10 @@ func SanitizeString(input string) string {
 func NormalizeString(input string) string {
 	// Trim whitespace
 	input = strings.TrimSpace(input)
-	
+
 	// Normalize multiple spaces to single space
 	input = regexp.MustCompile(`\s+`).ReplaceAllString(input, " ")
-	
+
 	return input
 }
 

@@ -225,21 +225,21 @@ type EdgesDiff struct {
 
 // VersioningPolicy defines versioning behavior
 type VersioningPolicy struct {
-	AutoVersion        bool          `json:"auto_version"`
-	MaxVersions        int           `json:"max_versions"`
-	RetentionPeriod    time.Duration `json:"retention_period"`
-	VersionOnNodeCount int           `json:"version_on_node_count"`
+	AutoVersion          bool          `json:"auto_version"`
+	MaxVersions          int           `json:"max_versions"`
+	RetentionPeriod      time.Duration `json:"retention_period"`
+	VersionOnNodeCount   int           `json:"version_on_node_count"`
 	VersionOnTimeElapsed time.Duration `json:"version_on_time_elapsed"`
 }
 
 // DefaultVersioningPolicy returns the default versioning policy
 func DefaultVersioningPolicy() VersioningPolicy {
 	return VersioningPolicy{
-		AutoVersion:        true,
-		MaxVersions:        10,
-		RetentionPeriod:    30 * 24 * time.Hour, // 30 days
-		VersionOnNodeCount: 100,                  // Version every 100 nodes
-		VersionOnTimeElapsed: 24 * time.Hour,     // Version daily
+		AutoVersion:          true,
+		MaxVersions:          10,
+		RetentionPeriod:      30 * 24 * time.Hour, // 30 days
+		VersionOnNodeCount:   100,                 // Version every 100 nodes
+		VersionOnTimeElapsed: 24 * time.Hour,      // Version daily
 	}
 }
 
