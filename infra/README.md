@@ -419,7 +419,7 @@ npm test -- --updateSnapshot
 
 - [ ] AWS credentials configured
 - [ ] Environment variables set
-- [ ] Backend Lambda functions built (`../backend2/build/`)
+- [ ] Backend Lambda functions built (`../backend/build/`)
 - [ ] Frontend assets built (`../frontend/dist/`)
 - [ ] Tests passing (`npm test`)
 
@@ -431,7 +431,7 @@ npm test -- --updateSnapshot
    npm run build-lambda
    
    # Build Go Lambda functions
-   cd ../backend2
+   cd ../backend
    ./build.sh
    cd ../infra
    ```

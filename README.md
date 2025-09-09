@@ -185,9 +185,9 @@ Navigate to the `frontend/` directory to run these commands.
 *   `npm test`: Runs TypeScript type checking (`tsc --noEmit`) to catch type-related errors. (Note: This project currently lacks comprehensive unit/integration tests for the frontend beyond type checking.)
 *   `npm run clean`: Removes `node_modules` and `dist` directories.
 
-#### Backend (`backend2/` directory)
+#### Backend (`backend/` directory)
 
-Navigate to the `backend2/` directory to run these commands.
+Navigate to the `backend/` directory to run these commands.
 
 *   `./build.sh`: Builds all Lambda functions for deployment to AWS, creating binaries in the `build/` directory.
 *   `./run-local.sh`: Runs the backend API server locally on port 8080 for development and debugging.

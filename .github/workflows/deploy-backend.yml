@@ -4,13 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - 'backend2/**'
+      - 'backend/**'
       - 'infra/**'
       - '.github/workflows/deploy-backend.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'backend2/**'
+      - 'backend/**'
       - 'infra/**'
   workflow_dispatch:
     inputs:
@@ -52,10 +52,10 @@ jobs:
       with:
         go-version: '1.21'
         cache: true
-        cache-dependency-path: backend2/go.sum
+        cache-dependency-path: backend/go.sum
     
     - name: Install dependencies
-      working-directory: ./backend2
+      working-directory: ./backend
       run: |
         go mod download
         go mod tidy
@@ -64,22 +64,22 @@ jobs:
       run: go install github.com/google/wire/cmd/wire@latest
     
     - name: Generate Wire code
-      working-directory: ./backend2/infrastructure/di
+      working-directory: ./backend/infrastructure/di
       run: wire
     
     - name: Run unit tests
       if: github.event_name == 'pull_request' || github.event.inputs.test_level == 'unit'
-      working-directory: ./backend2
+      working-directory: ./backend
       run: go test ./tests/unit/...
     
     - name: Run all tests
       if: github.event_name == 'push' || github.event.inputs.test_level == 'all'
-      working-directory: ./backend2
+      working-directory: ./backend
       run: go test ./...
     
     - name: Generate test coverage
       if: github.event_name == 'push'
-      working-directory: ./backend2
+      working-directory: ./backend
       run: |
         go test -coverprofile=coverage.out ./...
         go tool cover -func=coverage.out | grep total | awk '{print "Total Coverage: " $3}'
@@ -88,12 +88,12 @@ jobs:
       if: github.event_name == 'push'
       uses: codecov/codecov-action@v3
       with:
-        file: ./backend2/coverage.out
-        flags: backend2
-        name: backend2-coverage
+        file: ./backend/coverage.out
+        flags: backend
+        name: backend-coverage
     
     - name: Run code quality checks
-      working-directory: ./backend2
+      working-directory: ./backend
       run: |
         go fmt ./...
         go vet ./...
@@ -105,7 +105,7 @@ jobs:
         fi
     
     - name: Run security scan
-      working-directory: ./backend2
+      working-directory: ./backend
       run: |
         go install github.com/securego/gosec/v2/cmd/gosec@latest
         gosec -fmt json -out security-report.json ./... || true
@@ -133,10 +133,10 @@ jobs:
       with:
         go-version: '1.21'
         cache: true
-        cache-dependency-path: backend2/go.sum
+        cache-dependency-path: backend/go.sum
     
     - name: Build Lambda functions
-      working-directory: ./backend2
+      working-directory: ./backend
       run: |
         # Build all Lambda functions
         ./build.sh
@@ -145,7 +145,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: lambda-functions
-        path: backend2/build/
+        path: backend/build/
         retention-days: 7
 
   deploy:
@@ -164,7 +164,7 @@ jobs:
       uses: actions/download-artifact@v3
       with:
         name: lambda-functions
-        path: backend2/build/
+        path: backend/build/
     
     - name: Set up Node.js
       uses: actions/setup-node@v4
@@ -272,10 +272,10 @@ jobs:
       with:
         go-version: '1.21'
         cache: true
-        cache-dependency-path: backend2/go.sum
+        cache-dependency-path: backend/go.sum
     
     - name: Run benchmarks
-      working-directory: ./backend2
+      working-directory: ./backend
       run: |
         go test -bench=. ./... > benchmark-results.txt
         
@@ -287,5 +287,5 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: benchmark-results
-        path: backend2/benchmark-results.txt
+        path: backend/benchmark-results.txt
         retention-days: 30

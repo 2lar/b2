@@ -164,8 +164,8 @@ The CDK automatically manages stack dependencies, but the logical order is:
 
 ### Go Lambda Functions
 ```bash
-# Navigate to backend2 directory
-cd ../backend2
+# Navigate to backend directory
+cd ../backend
 
 # Build all Lambda functions for AWS
 ./build.sh

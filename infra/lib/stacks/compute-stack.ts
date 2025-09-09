@@ -56,7 +56,7 @@ export class ComputeStack extends Stack {
     // Main Backend Lambda (Go) - Match original b2-stack pattern
     this.backendLambda = new lambda.Function(this, 'BackendLambda', {
       runtime: lambda.Runtime.PROVIDED_AL2,
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/lambda')),
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/lambda')),
       handler: 'bootstrap',
       memorySize: 128,
       timeout: Duration.seconds(30),
@@ -74,7 +74,7 @@ export class ComputeStack extends Stack {
     // Node Connection Discovery Lambda (Go) - Match original b2-stack pattern
     this.connectNodeLambda = new lambda.Function(this, 'ConnectNodeLambda', {
       runtime: lambda.Runtime.PROVIDED_AL2,
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/connect-node')),
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/connect-node')),
       handler: 'bootstrap',
       memorySize: 128,
       timeout: Duration.seconds(30),
@@ -92,7 +92,7 @@ export class ComputeStack extends Stack {
     // Cleanup Lambda (Go) - Async cleanup of node residuals
     this.cleanupLambda = new lambda.Function(this, 'CleanupLambda', {
       runtime: lambda.Runtime.PROVIDED_AL2,
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/cleanup-handler')),
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/cleanup-handler')),
       handler: 'bootstrap',
       memorySize: 256,  // More memory for batch operations
       timeout: Duration.seconds(60),  // Longer timeout for cleanup operations
@@ -111,7 +111,7 @@ export class ComputeStack extends Stack {
     // WebSocket Connect Lambda (Go) - Match original b2-stack pattern
     this.wsConnectLambda = new lambda.Function(this, 'wsConnectLambda', {
         runtime: lambda.Runtime.PROVIDED_AL2,
-        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/ws-connect')),
+        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/ws-connect')),
         handler: 'bootstrap',
         memorySize: 128,
         timeout: Duration.seconds(10),
@@ -125,7 +125,7 @@ export class ComputeStack extends Stack {
     // WebSocket Disconnect Lambda (Go) - Match original b2-stack pattern
     this.wsDisconnectLambda = new lambda.Function(this, 'wsDisconnectLambda', {
         runtime: lambda.Runtime.PROVIDED_AL2,
-        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/ws-disconnect')),
+        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/ws-disconnect')),
         handler: 'bootstrap',
         memorySize: 128,
         timeout: Duration.seconds(10),
@@ -138,7 +138,7 @@ export class ComputeStack extends Stack {
     // WebSocket Send Message Lambda (Go) - Match original b2-stack pattern
     this.wsSendMessageLambda = new lambda.Function(this, 'wsSendMessageLambda', {
         runtime: lambda.Runtime.PROVIDED_AL2,
-        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend2/build/ws-send-message')),
+        code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/ws-send-message')),
         handler: 'bootstrap',
         memorySize: 128,
         timeout: Duration.seconds(10),
@@ -171,11 +171,11 @@ export class ComputeStack extends Stack {
     this.eventBus.grantPutEventsTo(this.connectNodeLambda);
     this.eventBus.grantPutEventsTo(this.cleanupLambda);  // Cleanup might publish events
 
-    // EventBridge rule for NodeCreated events - Match backend2 event source
+    // EventBridge rule for NodeCreated events - Match backend event source
     new events.Rule(this, 'NodeCreatedRule', {
         eventBus: this.eventBus,
         eventPattern: {
-            source: ['brain2.backend2'],  // Updated to match actual backend source
+            source: ['brain2.backend'],  // Updated to match actual backend source
             detailType: ['node.created'],  // Updated to match the actual event type from domain events
         },
         targets: [new targets.LambdaFunction(this.connectNodeLambda)],
@@ -195,7 +195,7 @@ export class ComputeStack extends Stack {
     new events.Rule(this, 'NodeDeletedRule', {
         eventBus: this.eventBus,
         eventPattern: {
-            source: ['brain2.backend2'],  // Updated to match actual backend source
+            source: ['brain2.backend'],  // Updated to match actual backend source
             detailType: ['node.deleted'],  // Updated to match the actual event type from domain events
         },
         targets: [

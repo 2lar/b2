@@ -10,7 +10,7 @@ echo "=========================================="
 # Step 1: Force rebuild backend
 echo ""
 echo "📦 Step 1/4: Force rebuilding backend..."
-cd /home/wsl/b2/backend2
+cd /home/wsl/b2/backend
 chmod +x build.sh
 ./build.sh
 
@@ -86,5 +86,5 @@ echo "   - 'DEBUG HANDLER: Decoded request'"
 echo "   - 'DEBUG HANDLER: Created command'"
 echo ""
 echo "If debug logs don't appear, try:"
-echo "  aws lambda update-function-code --function-name <your-function> --zip-file fileb://backend2/build/lambda/bootstrap.zip"
+echo "  aws lambda update-function-code --function-name <your-function> --zip-file fileb://backend/build/lambda/bootstrap.zip"
 echo "=========================================="

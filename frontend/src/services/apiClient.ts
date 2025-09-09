@@ -354,17 +354,17 @@ class ApiClient {
     }
 
     // Category management operations
-    // NOTE: Categories are not yet implemented in backend2 - commented out for now
+    // NOTE: Categories are not yet implemented in backend - commented out for now
 
     /**
      * Create a new category
      * @param title The title of the category
      * @param description Optional description of the category
      * @returns Promise resolving to the created Category
-     * @stub Categories not yet implemented in backend2
+     * @stub Categories not yet implemented in backend
      */
     public createCategory(title: string, description?: string): Promise<Category> {
-        console.warn('Categories not yet implemented in backend2 - returning stub data');
+        console.warn('Categories not yet implemented in backend - returning stub data');
         // Return mock category for now
         return Promise.resolve({
             id: `cat-${Date.now()}`,
@@ -384,10 +384,10 @@ class ApiClient {
     /**
      * List all user's categories
      * @returns Promise resolving to array of categories
-     * @stub Categories not yet implemented in backend2
+     * @stub Categories not yet implemented in backend
      */
     public listCategories(): Promise<ListCategoriesResponse> {
-        console.warn('Categories not yet implemented in backend2 - returning empty list');
+        console.warn('Categories not yet implemented in backend - returning empty list');
         // Return empty categories list for now
         return Promise.resolve({
             categories: [],
@@ -399,10 +399,10 @@ class ApiClient {
      * Get detailed information about a specific category
      * @param categoryId Unique identifier of the category
      * @returns Promise resolving to Category with details
-     * @stub Categories not yet implemented in backend2
+     * @stub Categories not yet implemented in backend
      */
     public getCategory(categoryId: string): Promise<Category> {
-        console.warn('Categories not yet implemented in backend2 - returning stub data');
+        console.warn('Categories not yet implemented in backend - returning stub data');
         // Return mock category for now
         return Promise.resolve({
             id: categoryId,
@@ -425,10 +425,10 @@ class ApiClient {
      * @param title New title for the category
      * @param description New description for the category
      * @returns Promise resolving to success message
-     * @stub Categories not yet implemented in backend2
+     * @stub Categories not yet implemented in backend
      */
     public updateCategory(categoryId: string, title: string, description?: string): Promise<{ message: string; categoryId: string }> {
-        console.warn('Categories not yet implemented in backend2 - returning stub response');
+        console.warn('Categories not yet implemented in backend - returning stub response');
         return Promise.resolve({
             message: 'Category update stubbed',
             categoryId
@@ -439,10 +439,10 @@ class ApiClient {
      * Delete a category permanently
      * @param categoryId Unique identifier of the category to delete
      * @returns Promise resolving to success message
-     * @stub Categories not yet implemented in backend2
+     * @stub Categories not yet implemented in backend
      */
     public deleteCategory(categoryId: string): Promise<{ message: string }> {
-        console.warn('Categories not yet implemented in backend2 - returning stub response');
+        console.warn('Categories not yet implemented in backend - returning stub response');
         return Promise.resolve({ message: 'Category deletion stubbed' });
     }
 
@@ -450,10 +450,10 @@ class ApiClient {
      * Get all nodes in a specific category
      * @param categoryId Unique identifier of the category
      * @returns Promise resolving to array of nodes in the category
-     * @stub Categories not yet implemented in backend2
+     * @stub Categories not yet implemented in backend
      */
     public getNodesInCategory(categoryId: string): Promise<GetNodesInCategoryResponse> {
-        console.warn('Categories not yet implemented in backend2 - returning empty nodes');
+        console.warn('Categories not yet implemented in backend - returning empty nodes');
         return Promise.resolve({
             nodes: [],
             categoryId,
@@ -466,10 +466,10 @@ class ApiClient {
      * @param categoryId Unique identifier of the category
      * @param nodeId Unique identifier of the node to assign
      * @returns Promise resolving to success message
-     * @stub Categories not yet implemented in backend2
+     * @stub Categories not yet implemented in backend
      */
     public assignNodeToCategory(categoryId: string, nodeId: string): Promise<{ message: string }> {
-        console.warn('Categories not yet implemented in backend2 - returning stub response');
+        console.warn('Categories not yet implemented in backend - returning stub response');
         return Promise.resolve({ message: 'Node assignment stubbed' });
     }
 
@@ -478,10 +478,10 @@ class ApiClient {
      * @param categoryId Unique identifier of the category
      * @param nodeId Unique identifier of the node to remove
      * @returns Promise resolving to success message
-     * @stub Categories not yet implemented in backend2
+     * @stub Categories not yet implemented in backend
      */
     public removeNodeFromCategory(categoryId: string, nodeId: string): Promise<{ message: string }> {
-        console.warn('Categories not yet implemented in backend2 - returning stub response');
+        console.warn('Categories not yet implemented in backend - returning stub response');
         return Promise.resolve({ message: 'Node removal stubbed' });
     }
 
@@ -490,10 +490,10 @@ class ApiClient {
     /**
      * Get hierarchical category tree
      * @returns Promise resolving to category hierarchy with parent-child relationships
-     * @stub Categories not yet implemented in backend2
+     * @stub Categories not yet implemented in backend
      */
     public getCategoryHierarchy(): Promise<operations['getCategoryHierarchy']['responses']['200']['content']['application/json']> {
-        console.warn('Categories not yet implemented in backend2 - returning empty hierarchy');
+        console.warn('Categories not yet implemented in backend - returning empty hierarchy');
         return Promise.resolve({
             categories: [],
             rootCategories: [],
@@ -505,10 +505,10 @@ class ApiClient {
      * Get AI-powered category suggestions for content
      * @param content The content to analyze for category suggestions
      * @returns Promise resolving to array of category suggestions with confidence scores
-     * @stub Categories not yet implemented in backend2
+     * @stub Categories not yet implemented in backend
      */
     public suggestCategories(content: string): Promise<operations['suggestCategories']['responses']['200']['content']['application/json']> {
-        console.warn('Categories not yet implemented in backend2 - returning empty suggestions');
+        console.warn('Categories not yet implemented in backend - returning empty suggestions');
         return Promise.resolve({
             suggestions: [],
             confidence: 0
@@ -528,7 +528,7 @@ class ApiClient {
      * @returns Promise resolving to comprehensive category insights
      */
     public getCategoryInsights(): Promise<any> {
-        console.warn('Categories not yet implemented in backend2 - returning stub data');
+        console.warn('Categories not yet implemented in backend - returning stub data');
         // Return mock insights for now
         return Promise.resolve({
             totalCategories: 0,
