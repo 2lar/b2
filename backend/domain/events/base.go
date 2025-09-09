@@ -197,13 +197,14 @@ type NodeDeletedEvent struct {
 	BaseEvent
 	NodeID   valueobjects.NodeID `json:"node_id"`
 	UserID   string              `json:"user_id"`
+	GraphID  string              `json:"graph_id"`
 	Content  string              `json:"content"`
 	Keywords []string            `json:"keywords"`
 	Tags     []string            `json:"tags"`
 }
 
 // NewNodeDeletedEvent creates a NodeDeletedEvent
-func NewNodeDeletedEvent(nodeID valueobjects.NodeID, userID string, content string, keywords, tags []string, timestamp time.Time) NodeDeletedEvent {
+func NewNodeDeletedEvent(nodeID valueobjects.NodeID, userID string, graphID string, content string, keywords, tags []string, timestamp time.Time) NodeDeletedEvent {
 	return NodeDeletedEvent{
 		BaseEvent: BaseEvent{
 			AggregateID: nodeID.String(),
@@ -213,6 +214,7 @@ func NewNodeDeletedEvent(nodeID valueobjects.NodeID, userID string, content stri
 		},
 		NodeID:   nodeID,
 		UserID:   userID,
+		GraphID:  graphID,
 		Content:  content,
 		Keywords: keywords,
 		Tags:     tags,

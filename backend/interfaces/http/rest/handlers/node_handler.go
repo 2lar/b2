@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -311,35 +310,37 @@ func (h *NodeHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For now, delete nodes individually since we don't have a bulk handler registered
-	// TODO: Register bulk delete handler in DI container
-	deletedCount := 0
-	var failedIDs []string
-	var errors []string
-
-	for _, nodeID := range req.NodeIDs {
-		deleteCmd := commands.DeleteNodeCommand{
-			UserID: userCtx.UserID,
-			NodeID: nodeID,
-		}
-
-		if err := h.commandBus.Send(r.Context(), deleteCmd); err != nil {
-			failedIDs = append(failedIDs, nodeID)
-			errors = append(errors, fmt.Sprintf("Failed to delete node %s: %v", nodeID, err))
-			h.logger.Error("Failed to delete node in bulk operation",
-				zap.String("nodeID", nodeID),
-				zap.Error(err),
-			)
-		} else {
-			deletedCount++
-		}
+	// Use the bulk delete command handler
+	bulkDeleteCmd := commands.BulkDeleteNodesCommand{
+		UserID:  userCtx.UserID,
+		NodeIDs: req.NodeIDs,
 	}
 
-	// Build response
+	// Send command to the bulk delete handler
+	result, err := h.commandBus.SendWithResult(r.Context(), bulkDeleteCmd)
+	if err != nil {
+		h.logger.Error("Failed to execute bulk delete",
+			zap.String("userID", userCtx.UserID),
+			zap.Int("nodeCount", len(req.NodeIDs)),
+			zap.Error(err),
+		)
+		h.respondError(w, http.StatusInternalServerError, "Failed to delete nodes")
+		return
+	}
+
+	// Type assert the result
+	bulkResult, ok := result.(*commands.BulkDeleteNodesResult)
+	if !ok {
+		h.logger.Error("Invalid result type from bulk delete handler")
+		h.respondError(w, http.StatusInternalServerError, "Failed to process bulk delete result")
+		return
+	}
+
+	// Build response from the actual result
 	response := map[string]interface{}{
-		"deleted_count": deletedCount,
-		"failed_ids":    failedIDs,
-		"errors":        errors,
+		"deleted_count": bulkResult.DeletedCount,
+		"failed_ids":    bulkResult.FailedIDs,
+		"errors":        bulkResult.Errors,
 	}
 
 	h.respondJSON(w, http.StatusOK, response)

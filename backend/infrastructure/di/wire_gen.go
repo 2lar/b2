@@ -42,7 +42,7 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 	distributedLock := ProvideDistributedLock(client, cfg, logger)
 	cloudwatchClient := ProvideCloudWatchClient(awsConfig)
 	metrics := ProvideMetrics(cloudwatchClient, cfg)
-	commandBus := ProvideCommandBus(unitOfWork, nodeRepository, edgeRepository, graphRepository, eventStore, eventBus, eventPublisher, distributedLock, metrics, logger)
+	commandBus := ProvideCommandBus(unitOfWork, nodeRepository, edgeRepository, graphRepository, eventStore, eventBus, eventPublisher, distributedLock, metrics, cfg, logger)
 	cache := ProvideInMemoryCache()
 	queryBus := ProvideQueryBus(graphRepository, nodeRepository, edgeRepository, cache, logger)
 	distributedRateLimiter := ProvideDistributedRateLimiter(client, cfg)
@@ -100,6 +100,7 @@ var SuperSet = wire.NewSet(
 	ProvideMetrics,
 	ProvideDistributedRateLimiter,
 	ProvideDistributedLock,
+	ProvideEdgeService,
 	ProvideCommandBus,
 	ProvideQueryBus,
 	ProvideInMemoryCache, wire.Struct(new(Container), "*"),

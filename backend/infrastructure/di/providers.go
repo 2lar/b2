@@ -12,6 +12,7 @@ import (
 	"backend/application/queries"
 	querybus "backend/application/queries/bus"
 	queries_handlers "backend/application/queries/handlers"
+	"backend/application/services"
 	"backend/domain/events"
 	"backend/infrastructure/config"
 	"backend/infrastructure/messaging/eventbridge"
@@ -147,6 +148,15 @@ func (a *CommandHandlerAdapter) Handle(ctx context.Context, cmd bus.Command) err
 	return a.handler(ctx, cmd)
 }
 
+// CommandHandlerWithResultAdapter adapts handlers that return results
+type CommandHandlerWithResultAdapter struct {
+	handler func(context.Context, bus.Command) (interface{}, error)
+}
+
+func (a *CommandHandlerWithResultAdapter) HandleWithResult(ctx context.Context, cmd bus.Command) (interface{}, error) {
+	return a.handler(ctx, cmd)
+}
+
 // ProvideUnitOfWork creates a unit of work for transactions
 func ProvideUnitOfWork(
 	client *awsdynamodb.Client,
@@ -201,6 +211,23 @@ func ProvideDistributedLock(client *awsdynamodb.Client, cfg *config.Config, logg
 	return dynamodb.NewDistributedLock(client, cfg.DynamoDBTable, logger)
 }
 
+// ProvideEdgeService creates an EdgeService instance for edge operations
+func ProvideEdgeService(
+	nodeRepo ports.NodeRepository,
+	graphRepo ports.GraphRepository,
+	edgeRepo ports.EdgeRepository,
+	cfg *config.Config,
+	logger *zap.Logger,
+) *services.EdgeService {
+	return services.NewEdgeService(
+		nodeRepo,
+		graphRepo,
+		edgeRepo,
+		&cfg.EdgeCreation,
+		logger,
+	)
+}
+
 // ProvideCommandBus creates a command bus with registered handlers
 func ProvideCommandBus(
 	uow ports.UnitOfWork,
@@ -212,10 +239,20 @@ func ProvideCommandBus(
 	eventPublisher ports.EventPublisher,
 	distributedLock *dynamodb.DistributedLock,
 	metrics *observability.Metrics,
+	cfg *config.Config,
 	logger *zap.Logger,
 ) *bus.CommandBus {
 	// Create command bus with dependencies
 	commandBus := bus.NewCommandBusWithDependencies(uow, metrics)
+
+	// Create EdgeService for edge operations
+	edgeService := services.NewEdgeService(
+		nodeRepo,
+		graphRepo,
+		edgeRepo,
+		&cfg.EdgeCreation,
+		logger,
+	)
 
 	// Create orchestrator for complex commands
 	orchestrator := commands_handlers.NewCreateNodeOrchestrator(
@@ -223,8 +260,10 @@ func ProvideCommandBus(
 		nodeRepo,
 		graphRepo,
 		edgeRepo,
+		edgeService,
 		eventPublisher,
 		distributedLock,
+		&cfg.EdgeCreation,
 		&zapLoggerAdapter{logger},
 	)
 
@@ -265,18 +304,20 @@ func ProvideCommandBus(
 		},
 	})
 
-	// Register BulkDeleteNodesCommand handler
+	// Register BulkDeleteNodesCommand handler with result
 	bulkDeleteHandler := commands_handlers.NewBulkDeleteNodesHandler(uow, nodeRepo, edgeRepo, graphRepo, eventStore, eventBus, logger)
-	commandBus.Register(commands.BulkDeleteNodesCommand{}, &CommandHandlerAdapter{
-		handler: func(ctx context.Context, cmd bus.Command) error {
+	
+	if err := commandBus.RegisterWithResult(commands.BulkDeleteNodesCommand{}, &CommandHandlerWithResultAdapter{
+		handler: func(ctx context.Context, cmd bus.Command) (interface{}, error) {
 			bulkCmd, ok := cmd.(commands.BulkDeleteNodesCommand)
 			if !ok {
-				return fmt.Errorf("invalid command type")
+				return nil, fmt.Errorf("invalid command type")
 			}
-			_, err := bulkDeleteHandler.Handle(ctx, bulkCmd)
-			return err
+			return bulkDeleteHandler.Handle(ctx, bulkCmd)
 		},
-	})
+	}); err != nil {
+		logger.Error("Failed to register BulkDeleteNodesCommand handler", zap.Error(err))
+	}
 
 	// Register CreateEdgeCommand handler
 	createEdgeHandler := commands.NewCreateEdgeHandler(nodeRepo, graphRepo, eventBus)

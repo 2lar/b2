@@ -412,45 +412,48 @@ func (r *EdgeRepository) DeleteByNodeIDs(ctx context.Context, graphID string, no
 		return nil
 	}
 
-	// Get all edges for all nodes in batch
-	allEdges := make([]*aggregates.Edge, 0)
+	// FIXED: Query ALL edges for this specific graph (no scan!)
+	graphEdges, err := r.GetByGraphID(ctx, graphID)
+	if err != nil {
+		return fmt.Errorf("failed to get edges for graph: %w", err)
+	}
+
+	// Create a set of node IDs for efficient lookup
+	nodeIDSet := make(map[string]bool)
 	for _, nodeID := range nodeIDs {
-		edges, err := r.GetByNodeID(ctx, nodeID)
-		if err != nil {
-			r.logger.Warn("Failed to get edges for node during batch delete",
-				zap.String("nodeID", nodeID),
-				zap.Error(err),
-			)
-			continue
-		}
-		allEdges = append(allEdges, edges...)
+		nodeIDSet[nodeID] = true
 	}
 
-	if len(allEdges) == 0 {
-		return nil // No edges to delete
+	// Filter edges that connect to any of the deleted nodes
+	edgeKeys := make([]map[string]types.AttributeValue, 0)
+	for _, edge := range graphEdges {
+		// Delete edge if either source or target is in the deleted nodes
+		if nodeIDSet[edge.SourceID.String()] || nodeIDSet[edge.TargetID.String()] {
+			key := map[string]types.AttributeValue{
+				"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPH#%s", graphID)},
+				"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#%s#%s", edge.SourceID.String(), edge.TargetID.String())},
+			}
+			edgeKeys = append(edgeKeys, key)
+		}
 	}
 
-	// Group edges by their keys for batch deletion
-	edgeKeys := make([]map[string]types.AttributeValue, 0, len(allEdges))
-	for _, edge := range allEdges {
-		key := map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPH#%s", graphID)},
-			"SK": &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#%s#%s", edge.SourceID.String(), edge.TargetID.String())},
-		}
-		edgeKeys = append(edgeKeys, key)
+	if len(edgeKeys) == 0 {
+		r.logger.Debug("No edges to delete for nodes",
+			zap.String("graphID", graphID),
+			zap.Strings("nodeIDs", nodeIDs),
+		)
+		return nil
 	}
 
 	// Use batch delete for efficient edge removal
-	if len(edgeKeys) > 0 {
-		if err := r.batchDeleteEdges(ctx, edgeKeys); err != nil {
-			return fmt.Errorf("failed to batch delete edges: %w", err)
-		}
+	if err := r.batchDeleteEdges(ctx, edgeKeys); err != nil {
+		return fmt.Errorf("failed to batch delete edges: %w", err)
 	}
 
-	r.logger.Debug("Batch deleted edges for nodes",
+	r.logger.Info("Successfully deleted edges for nodes",
 		zap.String("graphID", graphID),
 		zap.Strings("nodeIDs", nodeIDs),
-		zap.Int("edgesDeleted", len(allEdges)),
+		zap.Int("edgesDeleted", len(edgeKeys)),
 	)
 
 	return nil

@@ -63,32 +63,17 @@ func (h *DeleteNodeHandler) Handle(ctx context.Context, cmd commands.DeleteNodeC
 		return fmt.Errorf("node does not belong to user")
 	}
 
-	// Get the user's default graph to find edges and update metadata
+	// Get the user's default graph ID for the async cleanup event
 	var graphID string
 	graph, err := h.graphRepo.GetUserDefaultGraph(ctx, cmd.UserID)
 	if err != nil {
-		h.logger.Warn("Failed to get user's default graph for edge deletion",
+		h.logger.Warn("Failed to get user's default graph",
 			zap.String("userID", cmd.UserID),
 			zap.Error(err),
 		)
 		// Continue with node deletion even if graph lookup fails
 	} else {
 		graphID = graph.ID().String()
-		// Delete all edges connected to this node
-		if err := h.edgeRepo.DeleteByNodeID(ctx, graphID, cmd.NodeID); err != nil {
-			h.logger.Error("Failed to delete edges for node",
-				zap.String("nodeID", cmd.NodeID),
-				zap.String("graphID", graphID),
-				zap.Error(err),
-			)
-			// Continue with node deletion even if edge deletion fails
-			// This prevents orphaned nodes but may leave orphaned edges
-		} else {
-			h.logger.Info("Deleted edges connected to node",
-				zap.String("nodeID", cmd.NodeID),
-				zap.String("graphID", graphID),
-			)
-		}
 	}
 
 	// Delete the node
@@ -96,31 +81,17 @@ func (h *DeleteNodeHandler) Handle(ctx context.Context, cmd commands.DeleteNodeC
 		return fmt.Errorf("failed to delete node: %w", err)
 	}
 
-	// Update graph metadata to reflect the actual node/edge counts in the database
-	if graphID != "" {
-		if err := h.graphRepo.UpdateGraphMetadata(ctx, graphID); err != nil {
-			h.logger.Error("Failed to update graph metadata after node deletion",
-				zap.String("graphID", graphID),
-				zap.String("nodeID", cmd.NodeID),
-				zap.Error(err),
-			)
-			// Don't fail the operation, as node was already deleted
-		} else {
-			h.logger.Info("Updated graph metadata after node deletion",
-				zap.String("graphID", graphID),
-				zap.String("nodeID", cmd.NodeID),
-			)
-		}
-	}
+	// Graph metadata will be updated asynchronously after edge cleanup
 
-	// Create and publish deletion event
+	// Create and publish deletion event with GraphID for async cleanup
 	content := node.Content()
 	event := events.NewNodeDeletedEvent(
 		nodeID,
 		cmd.UserID,
+		graphID,
 		content.Title(),
 		node.GetTags(),
-		[]string{}, // connected node IDs - would need to extract from edges
+		[]string{}, // Keywords - can be extracted from content if needed
 		node.UpdatedAt(),
 	)
 
@@ -128,20 +99,10 @@ func (h *DeleteNodeHandler) Handle(ctx context.Context, cmd commands.DeleteNodeC
 		h.logger.Warn("Failed to publish deletion event", zap.Error(err))
 	}
 
-	// Clean up all events for this node (immediate cleanup strategy)
-	if err := h.eventStore.DeleteEvents(ctx, cmd.NodeID); err != nil {
-		h.logger.Error("Failed to delete events for node",
-			zap.String("nodeID", cmd.NodeID),
-			zap.Error(err),
-		)
-		// Don't fail the operation if event cleanup fails
-	} else {
-		h.logger.Info("Deleted all events for node",
-			zap.String("nodeID", cmd.NodeID),
-		)
-	}
+	// Event cleanup will happen asynchronously via the cleanup handler
+	// This ensures immediate response to the user while heavy cleanup happens in background
 
-	h.logger.Info("Node deleted",
+	h.logger.Info("Node deleted successfully, async cleanup initiated",
 		zap.String("nodeID", cmd.NodeID),
 		zap.String("userID", cmd.UserID),
 	)

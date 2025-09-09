@@ -302,6 +302,34 @@ func (g *Graph) AddNode(node *entities.Node) error {
 	return nil
 }
 
+// LoadNode adds a node to the graph during reconstruction from storage
+// Unlike AddNode, this doesn't check for duplicates or emit events
+// This is specifically for loading existing nodes from the database
+func (g *Graph) LoadNode(node *entities.Node) error {
+	if node == nil {
+		return pkgerrors.NewValidationError("node cannot be nil")
+	}
+
+	nodeID := node.ID()
+	
+	// Check node limit (business rule)
+	if g.config != nil && len(g.nodes) >= g.config.MaxNodesPerGraph {
+		return fmt.Errorf("maximum nodes reached: %d", g.config.MaxNodesPerGraph)
+	}
+
+	// Simply add the node without duplicate checking
+	// This is safe because we're loading from a trusted source (database)
+	g.nodes[nodeID] = node
+	
+	// Update metadata to reflect the actual count
+	g.metadata.NodeCount = len(g.nodes)
+	
+	// Don't emit events or update version during loading
+	// These are already persisted state, not new changes
+	
+	return nil
+}
+
 // ConnectNodes creates an edge between two nodes
 func (g *Graph) ConnectNodes(sourceID, targetID valueobjects.NodeID, edgeType entities.EdgeType) (*Edge, error) {
 	// Validate nodes exist

@@ -10,8 +10,17 @@ import (
 	"backend/domain/core/aggregates"
 	"backend/domain/core/entities"
 	"backend/domain/core/valueobjects"
+	"backend/infrastructure/config"
 	"go.uber.org/zap"
 )
+
+// EdgeCandidate represents a potential edge to be created
+type EdgeCandidate struct {
+	SourceID   valueobjects.NodeID
+	TargetID   valueobjects.NodeID
+	Type       entities.EdgeType
+	Similarity float64
+}
 
 // EdgeService provides simple, direct edge creation functionality
 // This service is used internally by Lambda functions for efficient edge creation
@@ -20,6 +29,7 @@ type EdgeService struct {
 	nodeRepo  ports.NodeRepository
 	graphRepo ports.GraphRepository
 	edgeRepo  ports.EdgeRepository
+	config    *config.EdgeCreationConfig
 	logger    *zap.Logger
 }
 
@@ -28,14 +38,121 @@ func NewEdgeService(
 	nodeRepo ports.NodeRepository,
 	graphRepo ports.GraphRepository,
 	edgeRepo ports.EdgeRepository,
+	config *config.EdgeCreationConfig,
 	logger *zap.Logger,
 ) *EdgeService {
 	return &EdgeService{
 		nodeRepo:  nodeRepo,
 		graphRepo: graphRepo,
 		edgeRepo:  edgeRepo,
+		config:    config,
 		logger:    logger,
 	}
+}
+
+// DiscoverEdges analyzes a node and returns edge candidates split into sync and async groups
+// This supports the hybrid edge creation approach where critical edges are created synchronously
+// and the rest are created asynchronously
+func (s *EdgeService) DiscoverEdges(
+	ctx context.Context,
+	node *entities.Node,
+	graph *aggregates.Graph,
+	syncLimit int,
+) (syncEdges []EdgeCandidate, asyncCandidates []EdgeCandidate, err error) {
+	if node == nil || graph == nil {
+		return nil, nil, fmt.Errorf("node and graph are required")
+	}
+
+	// Use config value if syncLimit is 0
+	if syncLimit == 0 {
+		syncLimit = s.config.SyncEdgeLimit
+	}
+
+	s.logger.Debug("Discovering edges for node",
+		zap.String("nodeID", node.ID().String()),
+		zap.String("graphID", string(graph.ID())),
+		zap.Int("syncLimit", syncLimit),
+	)
+
+	// Get all nodes in the graph
+	existingNodes, err := graph.Nodes()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get nodes from graph: %w", err)
+	}
+
+	if len(existingNodes) <= 1 {
+		// No other nodes to connect to
+		return nil, nil, nil
+	}
+
+	// Extract keywords and tags from the source node
+	nodeContent := node.Content()
+	keywords := s.extractWords(nodeContent.Title() + " " + nodeContent.Body())
+	tags := node.GetTags()
+
+	// Pre-process for O(1) lookups
+	keywordSet := make(map[string]bool)
+	for word := range keywords {
+		keywordSet[word] = true
+	}
+	
+	tagSet := make(map[string]bool)
+	for _, tag := range tags {
+		tagSet[strings.ToLower(tag)] = true
+	}
+
+	// Calculate similarity scores for all nodes
+	var candidates []EdgeCandidate
+	
+	for _, targetNode := range existingNodes {
+		// Skip self
+		if targetNode.ID() == node.ID() {
+			continue
+		}
+
+		// Calculate similarity
+		similarity := s.calculateSimilarity(targetNode, keywordSet, tagSet)
+		
+		// Only consider if above threshold
+		if similarity > s.config.SimilarityThreshold {
+			candidates = append(candidates, EdgeCandidate{
+				SourceID:   node.ID(),
+				TargetID:   targetNode.ID(),
+				Type:       entities.EdgeTypeSimilar,
+				Similarity: similarity,
+			})
+		}
+	}
+
+	// Sort by similarity (highest first)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Similarity > candidates[j].Similarity
+	})
+
+	// Apply max edges limit
+	if len(candidates) > s.config.MaxEdgesPerNode {
+		candidates = candidates[:s.config.MaxEdgesPerNode]
+	}
+
+	// Split into sync and async
+	if len(candidates) <= syncLimit {
+		// All edges can be created synchronously
+		syncEdges = candidates
+		asyncCandidates = nil
+	} else {
+		// Split at the sync limit
+		syncEdges = candidates[:syncLimit]
+		asyncCandidates = candidates[syncLimit:]
+	}
+
+	s.logger.Info("Edge discovery complete",
+		zap.String("nodeID", node.ID().String()),
+		zap.Int("totalCandidates", len(candidates)),
+		zap.Int("syncEdges", len(syncEdges)),
+		zap.Int("asyncCandidates", len(asyncCandidates)),
+	)
+
+	return syncEdges, asyncCandidates, nil
 }
 
 // CreateEdgesForNewNode discovers and creates edges for a newly created node
@@ -72,8 +189,19 @@ func (s *EdgeService) CreateEdgesForNewNode(
 		// For large graphs, fall back to pagination or skip auto-connection
 		return nil, fmt.Errorf("graph too large for automatic edge creation: %w", err)
 	}
+	
+	s.logger.Info("Checking nodes for edge creation",
+		zap.String("nodeID", nodeID),
+		zap.String("graphID", graphID),
+		zap.Int("existingNodes", len(existingNodes)),
+	)
+	
 	if len(existingNodes) <= 1 {
 		// No other nodes to connect to
+		s.logger.Info("Not enough nodes to create edges",
+			zap.String("nodeID", nodeID),
+			zap.Int("nodeCount", len(existingNodes)),
+		)
 		return nil, nil
 	}
 
@@ -98,10 +226,9 @@ func (s *EdgeService) CreateEdgesForNewNode(
 		}
 	}
 
-	// Use default limits for now
-	// TODO: Get these from graph config when available
-	maxEdges := 10             // Default max edges per node
-	similarityThreshold := 0.3 // Default threshold
+	// Use configured limits
+	maxEdges := s.config.MaxEdgesPerNode
+	similarityThreshold := s.config.SimilarityThreshold
 
 	// Calculate similarity scores for all nodes
 	type nodeSimilarity struct {
@@ -119,6 +246,13 @@ func (s *EdgeService) CreateEdgesForNewNode(
 
 		// Calculate similarity based on keywords and tags
 		similarity := s.calculateSimilarity(targetNode, keywordSet, tagSet)
+		
+		s.logger.Debug("Calculated similarity",
+			zap.String("sourceNode", nodeID),
+			zap.String("targetNode", targetNode.ID().String()),
+			zap.Float64("similarity", similarity),
+			zap.Float64("threshold", similarityThreshold),
+		)
 
 		// Only consider if above threshold
 		if similarity > similarityThreshold {
@@ -138,6 +272,12 @@ func (s *EdgeService) CreateEdgesForNewNode(
 	if len(similarities) > maxEdges {
 		similarities = similarities[:maxEdges]
 	}
+
+	s.logger.Info("Found similar nodes for edge creation",
+		zap.String("nodeID", nodeID),
+		zap.Int("similarNodes", len(similarities)),
+		zap.Int("maxEdges", maxEdges),
+	)
 
 	// Create edges for top similar nodes
 	var createdEdgeIDs []string

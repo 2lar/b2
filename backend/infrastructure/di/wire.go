@@ -50,6 +50,7 @@ var SuperSet = wire.NewSet(
 	ProvideMetrics,
 	ProvideDistributedRateLimiter,
 	ProvideDistributedLock,
+	ProvideEdgeService,
 	ProvideCommandBus,
 	ProvideQueryBus,
 	ProvideInMemoryCache,

@@ -4,13 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"backend/application/commands"
 	"backend/application/ports"
+	"backend/application/services"
 	"backend/domain/core/aggregates"
 	"backend/domain/core/entities"
 	"backend/domain/core/valueobjects"
+	"backend/domain/events"
+	"backend/infrastructure/config"
 	"backend/infrastructure/persistence/dynamodb"
 )
 
@@ -28,8 +32,10 @@ type CreateNodeOrchestrator struct {
 	nodeRepo        ports.NodeRepository
 	graphRepo       ports.GraphRepository
 	edgeRepo        ports.EdgeRepository
+	edgeService     *services.EdgeService
 	eventPublisher  ports.EventPublisher
 	distributedLock *dynamodb.DistributedLock
+	config          *config.EdgeCreationConfig
 	logger          Logger
 }
 
@@ -39,8 +45,10 @@ func NewCreateNodeOrchestrator(
 	nodeRepo ports.NodeRepository,
 	graphRepo ports.GraphRepository,
 	edgeRepo ports.EdgeRepository,
+	edgeService *services.EdgeService,
 	eventPublisher ports.EventPublisher,
 	distributedLock *dynamodb.DistributedLock,
+	config *config.EdgeCreationConfig,
 	logger Logger,
 ) *CreateNodeOrchestrator {
 	return &CreateNodeOrchestrator{
@@ -48,8 +56,10 @@ func NewCreateNodeOrchestrator(
 		nodeRepo:        nodeRepo,
 		graphRepo:       graphRepo,
 		edgeRepo:        edgeRepo,
+		edgeService:     edgeService,
 		eventPublisher:  eventPublisher,
 		distributedLock: distributedLock,
+		config:          config,
 		logger:          logger,
 	}
 }
@@ -93,10 +103,48 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 		return nil, fmt.Errorf("failed to add node to graph: %w", err)
 	}
 
-	// Step 6: Edge creation now happens asynchronously via EventBridge
-	// The NodeCreated event will trigger the connect-node Lambda
-	// which will discover and create edges based on similarity
-	// This prevents race conditions when multiple nodes are created rapidly
+	// Step 6: Hybrid edge creation - sync for critical edges, async for the rest
+	var syncEdges []services.EdgeCandidate
+	var asyncCandidates []services.EdgeCandidate
+	syncEdges, asyncCandidates, err = o.edgeService.DiscoverEdges(
+		ctx, node, graph, o.config.SyncEdgeLimit,
+	)
+	if err != nil {
+		o.logger.Error("Failed to discover edges",
+			"error", err,
+			"nodeID", node.ID().String(),
+		)
+		// Don't fail node creation if edge discovery fails
+	} else {
+		// Create high-priority edges synchronously
+		for _, edgeCandidate := range syncEdges {
+			edge, err := graph.ConnectNodes(
+				edgeCandidate.SourceID,
+				edgeCandidate.TargetID,
+				edgeCandidate.Type,
+			)
+			if err != nil {
+				o.logger.Error("Failed to create sync edge",
+					"error", err,
+					"source", edgeCandidate.SourceID.String(),
+					"target", edgeCandidate.TargetID.String(),
+				)
+				continue
+			}
+			// Set the weight based on similarity
+			edge.Weight = edgeCandidate.Similarity
+		}
+
+		o.logger.Info("Synchronous edges created",
+			"nodeID", node.ID().String(),
+			"syncEdgeCount", len(syncEdges),
+			"asyncPending", len(asyncCandidates),
+		)
+
+		// If async is enabled and there are more edges to create,
+		// they will be handled by the connect-node Lambda via events
+		// The event system will include metadata about pending edges
+	}
 
 	// Step 7: Save the graph with all nodes and edges
 	if err := o.saveGraphWithUoW(ctx, graph); err != nil {
@@ -109,15 +157,46 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 	}
 
 	// Publish domain events after successful commit
-	events := node.GetUncommittedEvents()
-	events = append(events, graph.GetUncommittedEvents()...)
+	domainEvents := node.GetUncommittedEvents()
+	domainEvents = append(domainEvents, graph.GetUncommittedEvents()...)
 
-	if len(events) > 0 {
-		if err := o.eventPublisher.PublishBatch(ctx, events); err != nil {
+	// If there are async edge candidates, create enhanced event
+	if len(asyncCandidates) > 0 && o.config.AsyncEnabled {
+		// Convert service candidates to event candidates
+		eventCandidates := make([]events.EdgeCandidate, len(asyncCandidates))
+		for i, candidate := range asyncCandidates {
+			eventCandidates[i] = events.EdgeCandidate{
+				SourceID:   candidate.SourceID.String(),
+				TargetID:   candidate.TargetID.String(),
+				Type:       string(candidate.Type),
+				Similarity: candidate.Similarity,
+			}
+		}
+
+		// Extract keywords from node content
+		nodeContent := node.Content()
+		keywords := o.extractKeywords(nodeContent.Title() + " " + nodeContent.Body())
+		
+		// Create enhanced event with pending edges
+		enhancedEvent := events.NewNodeCreatedWithPendingEdges(
+			node.ID(),
+			string(graph.ID()),
+			cmd.UserID,
+			nodeContent.Title(),
+			keywords,
+			node.GetTags(),
+			len(syncEdges),
+			eventCandidates,
+		)
+		domainEvents = append(domainEvents, enhancedEvent)
+	}
+
+	if len(domainEvents) > 0 {
+		if err := o.eventPublisher.PublishBatch(ctx, domainEvents); err != nil {
 			// Log error but don't fail - events can be retried
 			o.logger.Error("Failed to publish domain events",
 				"error", err,
-				"eventCount", len(events),
+				"eventCount", len(domainEvents),
 				"nodeID", node.ID().String(),
 			)
 		} else {
@@ -278,6 +357,31 @@ func (o *CreateNodeOrchestrator) createNode(ctx context.Context, cmd commands.Cr
 }
 
 // Helper methods for UoW operations
+
+// extractKeywords extracts keywords from text (simple word extraction)
+func (o *CreateNodeOrchestrator) extractKeywords(text string) []string {
+	// Simple word extraction - can be enhanced with NLP later
+	words := strings.Fields(strings.ToLower(text))
+	seen := make(map[string]bool)
+	var keywords []string
+	
+	for _, word := range words {
+		// Clean word of common punctuation
+		cleaned := strings.Trim(word, ".,!?;:\"'()[]{}#@$%^&*+=<>/\\|`~")
+		// Skip short words and duplicates
+		if len(cleaned) > 3 && !seen[cleaned] {
+			seen[cleaned] = true
+			keywords = append(keywords, cleaned)
+		}
+	}
+	
+	// Limit to reasonable number of keywords
+	if len(keywords) > 20 {
+		keywords = keywords[:20]
+	}
+	
+	return keywords
+}
 
 func (o *CreateNodeOrchestrator) saveNodeWithUoW(ctx context.Context, node *entities.Node) error {
 	// Check if repository supports UoW

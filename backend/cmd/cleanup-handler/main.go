@@ -14,13 +14,19 @@ import (
 
 	"backend/application/commands"
 	"backend/application/commands/bus"
+	"backend/application/ports"
 	"backend/domain/events"
 	"backend/infrastructure/config"
 	"backend/infrastructure/di"
 )
 
-// Global command bus for Lambda performance optimization
-var commandBus *bus.CommandBus
+// Global dependencies for Lambda performance optimization
+var (
+	commandBus *bus.CommandBus
+	edgeRepo   ports.EdgeRepository
+	eventStore ports.EventStore
+	graphRepo  ports.GraphRepository
+)
 
 func init() {
 	// Initialize dependencies using Wire
@@ -35,6 +41,9 @@ func init() {
 	}
 
 	commandBus = container.CommandBus
+	edgeRepo = container.EdgeRepo
+	eventStore = container.EventStore
+	graphRepo = container.GraphRepo
 
 	log.Println("Cleanup handler initialized successfully")
 }
@@ -49,10 +58,38 @@ func HandleNodeDeleted(ctx context.Context, event awsevents.CloudWatchEvent) err
 		return fmt.Errorf("failed to unmarshal event detail: %w", err)
 	}
 
-	log.Printf("Node %s deleted by user %s, performing cleanup",
+	log.Printf("Node %s deleted by user %s, performing async cleanup",
 		nodeEvent.AggregateID, nodeEvent.UserID)
 
-	// Create cleanup command
+	// 1. Delete all edges connected to this node
+	if nodeEvent.GraphID != "" {
+		if err := edgeRepo.DeleteByNodeID(ctx, nodeEvent.GraphID, nodeEvent.AggregateID); err != nil {
+			log.Printf("Failed to delete edges for node %s: %v", nodeEvent.AggregateID, err)
+			// Continue with other cleanup tasks even if edge deletion fails
+		} else {
+			log.Printf("Successfully deleted edges for node %s", nodeEvent.AggregateID)
+		}
+	}
+
+	// 2. Delete all events for this node from event store
+	if err := eventStore.DeleteEvents(ctx, nodeEvent.AggregateID); err != nil {
+		log.Printf("Failed to delete events for node %s: %v", nodeEvent.AggregateID, err)
+		// Continue with other cleanup tasks
+	} else {
+		log.Printf("Successfully deleted events for node %s", nodeEvent.AggregateID)
+	}
+
+	// 3. Update graph metadata to reflect the new node/edge counts
+	if nodeEvent.GraphID != "" {
+		if err := graphRepo.UpdateGraphMetadata(ctx, nodeEvent.GraphID); err != nil {
+			log.Printf("Failed to update graph metadata for graph %s: %v", nodeEvent.GraphID, err)
+			// Non-critical error, don't fail the operation
+		} else {
+			log.Printf("Successfully updated graph metadata for graph %s", nodeEvent.GraphID)
+		}
+	}
+
+	// 4. Execute any additional cleanup commands (search index, cache, etc.)
 	cleanupCmd := &commands.CleanupNodeResourcesCommand{
 		NodeID:   nodeEvent.AggregateID,
 		UserID:   nodeEvent.UserID,
@@ -60,17 +97,10 @@ func HandleNodeDeleted(ctx context.Context, event awsevents.CloudWatchEvent) err
 		Tags:     nodeEvent.Tags,
 	}
 
-	// Execute cleanup through command bus
 	if err := commandBus.Send(ctx, cleanupCmd); err != nil {
-		return fmt.Errorf("cleanup command failed: %w", err)
+		log.Printf("Additional cleanup command failed: %v", err)
+		// Non-critical, continue
 	}
-
-	// Additional cleanup tasks can be added here
-	// For example:
-	// - Remove from search index
-	// - Clear cache entries
-	// - Update analytics
-	// - Notify connected clients via WebSocket
 
 	log.Printf("Successfully cleaned up resources for node %s", nodeEvent.AggregateID)
 	return nil
@@ -139,6 +169,7 @@ func main() {
 				"event_type": "NodeDeleted",
 				"aggregate_id": "test-node-123",
 				"user_id": "test-user-456",
+				"graph_id": "test-graph-789",
 				"content": "Test content",
 				"keywords": ["test", "example"],
 				"tags": ["cleanup", "test"],

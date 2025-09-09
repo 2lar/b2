@@ -32,7 +32,7 @@ func NewEventBridgePublisher(
 	return &EventBridgePublisher{
 		client:       client,
 		eventBusName: eventBusName,
-		source:       "brain2.backend2",
+		source:       events.SourceBackend, // Use constant from events package
 		logger:       logger,
 	}
 }

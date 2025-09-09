@@ -210,6 +210,26 @@ func (r *GraphRepository) SaveWithUoW(ctx context.Context, graph *aggregates.Gra
 		}
 	}
 
+	// NEW: Save all edges from the graph within the same transaction
+	// This ensures edges are immediately visible when the graph is saved
+	if r.edgeRepo != nil {
+		edges := graph.GetEdges()
+		for _, edge := range edges {
+			// Check if edge repository supports UoW
+			if edgeRepoWithUoW, ok := r.edgeRepo.(interface {
+				SaveWithUoW(context.Context, string, *aggregates.Edge, interface{}) error
+			}); ok {
+				if err := edgeRepoWithUoW.SaveWithUoW(ctx, graph.ID().String(), edge, dynamoUoW); err != nil {
+					return fmt.Errorf("failed to save edge %s in transaction: %w", edge.ID, err)
+				}
+			}
+		}
+		r.logger.Debug("Edges registered for transactional save",
+			zap.String("graphID", graph.ID().String()),
+			zap.Int("edgeCount", len(edges)),
+		)
+	}
+
 	r.logger.Debug("Graph registered for transactional save",
 		zap.String("graphID", graph.ID().String()),
 		zap.String("userID", graph.UserID()),
@@ -304,18 +324,24 @@ func (r *GraphRepository) GetByID(ctx context.Context, id aggregates.GraphID) (*
 			zap.Error(nodeErr),
 		)
 	} else if nodes != nil {
-		// Add all nodes to the graph aggregate
+		// Load all nodes into the graph aggregate
+		// Use LoadNode instead of AddNode since we're reconstructing from storage
+		successfulNodes := 0
 		for _, node := range nodes {
-			if err := graph.AddNode(node); err != nil {
-				r.logger.Debug("Node already in graph or failed to add",
+			if err := graph.LoadNode(node); err != nil {
+				r.logger.Error("Failed to load node into graph",
 					zap.String("nodeID", node.ID().String()),
+					zap.String("graphID", id.String()),
 					zap.Error(err),
 				)
+			} else {
+				successfulNodes++
 			}
 		}
-		r.logger.Debug("Loaded nodes into graph",
+		r.logger.Info("Loaded nodes into graph",
 			zap.String("graphID", id.String()),
-			zap.Int("nodeCount", len(nodes)),
+			zap.Int("totalNodes", len(nodes)),
+			zap.Int("successfulNodes", successfulNodes),
 		)
 	}
 

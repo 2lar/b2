@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 
 	"backend/application/services"
+	"backend/domain/events"
 	"backend/infrastructure/config"
 	"backend/infrastructure/di"
 	"go.uber.org/zap"
@@ -42,6 +43,7 @@ func init() {
 		container.NodeRepo,
 		container.GraphRepo,
 		container.EdgeRepo,
+		&cfg.EdgeCreation,
 		logger,
 	)
 
@@ -155,7 +157,51 @@ func handler(ctx context.Context, event json.RawMessage) error {
 	// Try to parse as EventBridge event (async invocation)
 	var cloudWatchEvent awsevents.CloudWatchEvent
 	if err := json.Unmarshal(event, &cloudWatchEvent); err == nil {
-		if cloudWatchEvent.DetailType == "node.created" {
+		// Handle enhanced event with async edge candidates
+		if cloudWatchEvent.DetailType == events.TypeNodeCreatedWithPending {
+			var enhancedEvent struct {
+				NodeID           string                 `json:"nodeId"`
+				UserID           string                 `json:"userId"`
+				GraphID          string                 `json:"graphId"`
+				Title            string                 `json:"title"`
+				Keywords         []string               `json:"keywords"`
+				Tags             []string               `json:"tags"`
+				SyncEdgesCreated int                    `json:"syncEdgesCreated"`
+				AsyncCandidates  []events.EdgeCandidate `json:"asyncCandidates"`
+			}
+
+			if err := json.Unmarshal(cloudWatchEvent.Detail, &enhancedEvent); err != nil {
+				return fmt.Errorf("failed to parse enhanced NodeCreated event: %w", err)
+			}
+
+			log.Printf("Processing async edge candidates for node %s (sync edges created: %d, async pending: %d)",
+				enhancedEvent.NodeID, enhancedEvent.SyncEdgesCreated, len(enhancedEvent.AsyncCandidates))
+
+			// Process the async edge candidates
+			// Since edges were already discovered in the main process,
+			// we just need to create them based on the candidates
+			for _, candidate := range enhancedEvent.AsyncCandidates {
+				_, err := edgeService.CreateEdge(
+					ctx,
+					candidate.SourceID,
+					candidate.TargetID,
+					enhancedEvent.GraphID,
+					candidate.Type,
+					candidate.Similarity,
+				)
+				if err != nil {
+					log.Printf("Failed to create async edge from %s to %s: %v",
+						candidate.SourceID, candidate.TargetID, err)
+					// Continue with other edges even if one fails
+				}
+			}
+
+			log.Printf("Completed processing async edges for node %s", enhancedEvent.NodeID)
+			return nil
+		}
+
+		// Handle regular node.created event (backward compatibility)
+		if cloudWatchEvent.DetailType == events.TypeNodeCreated {
 			// Auto-discover connections for newly created nodes
 			var nodeCreatedEvent struct {
 				NodeID   string   `json:"node_id"`

@@ -3,10 +3,12 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"backend/application/commands"
 	"backend/application/ports"
 	"backend/domain/core/valueobjects"
+	"backend/domain/events"
 	"go.uber.org/zap"
 )
 
@@ -113,55 +115,39 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 		}, nil
 	}
 
-	// Group nodes by graph ID for efficient edge deletion
+	// Collect graph IDs for publishing events
 	nodesByGraph := make(map[string][]*nodeValidationInfo)
 	for _, info := range validNodes {
 		nodesByGraph[info.graphID] = append(nodesByGraph[info.graphID], info)
 	}
 
-	// Delete edges for all nodes (grouped by graph for efficiency)
-	for graphID, nodeInfos := range nodesByGraph {
-		if graphID == "" {
-			continue // Skip nodes without graph ID
-		}
-
-		nodeIDStrs := make([]string, len(nodeInfos))
-		for i, info := range nodeInfos {
-			nodeIDStrs[i] = info.nodeID.String()
-		}
-
-		if err := h.edgeRepo.DeleteByNodeIDs(ctx, graphID, nodeIDStrs); err != nil {
-			h.logger.Warn("Failed to delete edges for nodes in graph",
-				zap.String("graphID", graphID),
-				zap.Strings("nodeIDs", nodeIDStrs),
-				zap.Error(err),
-			)
-			// Don't fail the transaction - continue with node deletion
-		}
-	}
-
 	// Delete all nodes using batch delete
 	nodeIDsToDelete := make([]valueobjects.NodeID, len(validNodes))
+	nodeIDStrings := make([]string, len(validNodes))
 	for i, info := range validNodes {
 		nodeIDsToDelete[i] = info.nodeID
+		nodeIDStrings[i] = info.nodeID.String()
 	}
 
 	if err := h.nodeRepo.DeleteBatch(ctx, nodeIDsToDelete); err != nil {
 		return nil, fmt.Errorf("failed to delete nodes in batch: %w", err)
 	}
 
-	// Update graph metadata for affected graphs
+	// NEW: Immediately delete associated edges using batch operation
+	// This is more efficient than transaction-based deletion
 	for graphID := range nodesByGraph {
-		if graphID == "" {
-			continue
-		}
-
-		if err := h.graphRepo.UpdateGraphMetadata(ctx, graphID); err != nil {
-			h.logger.Error("Failed to update graph metadata",
+		if err := h.edgeRepo.DeleteByNodeIDs(ctx, graphID, nodeIDStrings); err != nil {
+			h.logger.Warn("Failed to delete edges for nodes in graph",
 				zap.String("graphID", graphID),
+				zap.Int("nodeCount", len(nodeIDStrings)),
 				zap.Error(err),
 			)
-			// Don't fail the transaction - the deletion was successful
+			// Continue - async cleanup will handle any missed edges
+		} else {
+			h.logger.Info("Successfully deleted edges for nodes",
+				zap.String("graphID", graphID),
+				zap.Int("nodeCount", len(nodeIDStrings)),
+			)
 		}
 	}
 
@@ -170,23 +156,32 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 		return nil, fmt.Errorf("failed to commit bulk delete transaction: %w", err)
 	}
 
-	// Clean up all events for deleted nodes (immediate cleanup strategy)
-	deletedNodeIDs := make([]string, len(validNodes))
-	for i, info := range validNodes {
-		deletedNodeIDs[i] = info.nodeID.String()
-	}
-	
-	if err := h.eventStore.DeleteEventsBatch(ctx, deletedNodeIDs); err != nil {
-		h.logger.Error("Failed to delete events for nodes batch",
-			zap.Int("nodeCount", len(deletedNodeIDs)),
-			zap.Error(err),
+	// Publish deletion events for async cleanup of edges and events
+	for _, info := range validNodes {
+		content := ""
+		if nodeEntity, ok := info.node.(interface{ Content() interface{ Title() string } }); ok {
+			content = nodeEntity.Content().Title()
+		}
+		
+		event := events.NewNodeDeletedEvent(
+			info.nodeID,
+			cmd.UserID,
+			info.graphID,
+			content,
+			[]string{}, // Tags
+			[]string{}, // Keywords
+			time.Now(),
 		)
-		// Don't fail the operation if event cleanup fails
-	} else {
-		h.logger.Info("Deleted all events for nodes batch",
-			zap.Int("nodeCount", len(deletedNodeIDs)),
-		)
+		
+		if err := h.eventBus.Publish(ctx, event); err != nil {
+			h.logger.Warn("Failed to publish deletion event for node",
+				zap.String("nodeID", info.nodeID.String()),
+				zap.Error(err),
+			)
+		}
 	}
+
+	// Edge and event cleanup will happen asynchronously via the cleanup handler
 
 	result := &commands.BulkDeleteNodesResult{
 		DeletedCount: len(validNodes),
@@ -194,7 +189,7 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 		Errors:       errors,
 	}
 
-	h.logger.Info("Transactional bulk delete completed successfully",
+	h.logger.Info("Bulk delete completed, async cleanup initiated",
 		zap.String("userID", cmd.UserID),
 		zap.Int("requested", len(cmd.NodeIDs)),
 		zap.Int("deleted", result.DeletedCount),

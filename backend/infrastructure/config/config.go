@@ -6,6 +6,18 @@ import (
 	"strconv"
 )
 
+// EdgeCreationConfig holds configuration for edge creation behavior
+type EdgeCreationConfig struct {
+	// SyncEdgeLimit is the maximum number of edges to create synchronously
+	SyncEdgeLimit int
+	// SimilarityThreshold is the minimum similarity score for edge creation
+	SimilarityThreshold float64
+	// MaxEdgesPerNode is the maximum total edges allowed per node
+	MaxEdgesPerNode int
+	// AsyncEnabled determines if async edge creation is enabled
+	AsyncEnabled bool
+}
+
 // Config holds all application configuration
 type Config struct {
 	// Server configuration
@@ -39,6 +51,9 @@ type Config struct {
 	EnableMetrics bool
 	EnableTracing bool
 	EnableCORS    bool
+
+	// Edge creation configuration
+	EdgeCreation EdgeCreationConfig
 }
 
 // LoadConfig loads configuration from environment variables
@@ -70,6 +85,14 @@ func LoadConfig() (*Config, error) {
 		EnableMetrics: getEnvBool("ENABLE_METRICS", false),
 		EnableTracing: getEnvBool("ENABLE_TRACING", false),
 		EnableCORS:    getEnvBool("ENABLE_CORS", true),
+
+		// Edge creation configuration
+		EdgeCreation: EdgeCreationConfig{
+			SyncEdgeLimit:       getEnvInt("EDGE_SYNC_LIMIT", 20),
+			SimilarityThreshold: getEnvFloat("EDGE_SIMILARITY_THRESHOLD", 0.3),
+			MaxEdgesPerNode:     getEnvInt("EDGE_MAX_PER_NODE", 100),
+			AsyncEnabled:        getEnvBool("EDGE_ASYNC_ENABLED", true),
+		},
 	}
 
 	// Validate required configuration
@@ -134,6 +157,16 @@ func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intVal, err := strconv.Atoi(value); err == nil {
 			return intVal
+		}
+	}
+	return defaultValue
+}
+
+// getEnvFloat gets a float environment variable with a default value
+func getEnvFloat(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
+			return floatVal
 		}
 	}
 	return defaultValue
