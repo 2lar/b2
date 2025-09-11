@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"backend/application/mediator"
 	"backend/application/queries"
-	querybus "backend/application/queries/bus"
 	"backend/pkg/auth"
 
 	"github.com/go-chi/chi/v5"
@@ -15,14 +16,14 @@ import (
 
 // GraphHandler handles graph-related HTTP requests
 type GraphHandler struct {
-	queryBus *querybus.QueryBus
+	mediator mediator.IMediator
 	logger   *zap.Logger
 }
 
 // NewGraphHandler creates a new graph handler
-func NewGraphHandler(queryBus *querybus.QueryBus, logger *zap.Logger) *GraphHandler {
+func NewGraphHandler(med mediator.IMediator, logger *zap.Logger) *GraphHandler {
 	return &GraphHandler{
-		queryBus: queryBus,
+		mediator: med,
 		logger:   logger,
 	}
 }
@@ -49,7 +50,7 @@ func (h *GraphHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute query
-	result, err := h.queryBus.Ask(r.Context(), query)
+	result, err := h.mediator.Query(r.Context(), query)
 	if err != nil {
 		h.logger.Error("Failed to get graph",
 			zap.String("graphID", graphID),
@@ -88,7 +89,7 @@ func (h *GraphHandler) ListGraphs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute query
-	result, err := h.queryBus.Ask(r.Context(), query)
+	result, err := h.mediator.Query(r.Context(), query)
 	if err != nil {
 		h.logger.Error("Failed to list graphs",
 			zap.String("userID", userCtx.UserID),
@@ -120,7 +121,7 @@ func (h *GraphHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute query
-	result, err := h.queryBus.Ask(r.Context(), query)
+	result, err := h.mediator.Query(r.Context(), query)
 	if err != nil {
 		h.logger.Error("Failed to get graph data",
 			zap.String("userID", userCtx.UserID),
@@ -142,6 +143,47 @@ func (h *GraphHandler) respondJSON(w http.ResponseWriter, status int, data inter
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		h.logger.Error("Failed to encode response", zap.Error(err))
 	}
+}
+
+// GetGraphStats handles GET /graphs/{graphID}/stats
+func (h *GraphHandler) GetGraphStats(w http.ResponseWriter, r *http.Request) {
+	graphID := chi.URLParam(r, "graphID")
+	if graphID == "" {
+		h.respondError(w, http.StatusBadRequest, "Graph ID is required")
+		return
+	}
+
+	// Get user context
+	userCtx, err := auth.GetUserFromContext(r.Context())
+	if err != nil {
+		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// Create and execute query
+	query := queries.GetGraphStatsQuery{
+		UserID:  userCtx.UserID,
+		GraphID: graphID,
+	}
+
+	result, err := h.mediator.Query(r.Context(), query)
+	if err != nil {
+		h.logger.Error("Failed to get graph stats",
+			zap.String("graphID", graphID),
+			zap.String("userID", userCtx.UserID),
+			zap.Error(err),
+		)
+		if strings.Contains(err.Error(), "not found") {
+			h.respondError(w, http.StatusNotFound, "Graph not found")
+		} else if strings.Contains(err.Error(), "unauthorized") {
+			h.respondError(w, http.StatusForbidden, "Access denied")
+		} else {
+			h.respondError(w, http.StatusInternalServerError, "Failed to retrieve graph statistics")
+		}
+		return
+	}
+
+	h.respondJSON(w, http.StatusOK, result)
 }
 
 func (h *GraphHandler) respondError(w http.ResponseWriter, status int, message string) {

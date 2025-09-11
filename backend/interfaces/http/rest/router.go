@@ -3,8 +3,7 @@ package rest
 import (
 	"net/http"
 
-	"backend/application/commands/bus"
-	querybus "backend/application/queries/bus"
+	"backend/application/mediator"
 	"backend/interfaces/http/rest/handlers"
 	"backend/interfaces/http/rest/middleware"
 
@@ -16,21 +15,18 @@ import (
 
 // Router creates and configures the HTTP router
 type Router struct {
-	commandBus *bus.CommandBus
-	queryBus   *querybus.QueryBus
-	logger     *zap.Logger
+	mediator mediator.IMediator
+	logger   *zap.Logger
 }
 
 // NewRouter creates a new router instance
 func NewRouter(
-	commandBus *bus.CommandBus,
-	queryBus *querybus.QueryBus,
+	med mediator.IMediator,
 	logger *zap.Logger,
 ) *Router {
 	return &Router{
-		commandBus: commandBus,
-		queryBus:   queryBus,
-		logger:     logger,
+		mediator: med,
+		logger:   logger,
 	}
 }
 
@@ -66,7 +62,7 @@ func (rt *Router) Setup() http.Handler {
 
 		// Node endpoints
 		r.Route("/nodes", func(r chi.Router) {
-			nodeHandler := handlers.NewNodeHandler(rt.commandBus, rt.queryBus, rt.logger)
+			nodeHandler := handlers.NewNodeHandler(rt.mediator, rt.logger)
 			r.Post("/", nodeHandler.CreateNode)
 			r.Get("/{nodeID}", nodeHandler.GetNode)
 			r.Put("/{nodeID}", nodeHandler.UpdateNode)
@@ -82,14 +78,15 @@ func (rt *Router) Setup() http.Handler {
 
 		// Graph endpoints
 		r.Route("/graphs", func(r chi.Router) {
-			graphHandler := handlers.NewGraphHandler(rt.queryBus, rt.logger)
+			graphHandler := handlers.NewGraphHandler(rt.mediator, rt.logger)
 			r.Get("/{graphID}", graphHandler.GetGraph)
+			r.Get("/{graphID}/stats", graphHandler.GetGraphStats)
 			r.Get("/", graphHandler.ListGraphs)
 		})
 
 		// Edge endpoints
 		r.Route("/edges", func(r chi.Router) {
-			edgeHandler := handlers.NewEdgeHandler(rt.commandBus, rt.logger)
+			edgeHandler := handlers.NewEdgeHandler(rt.mediator, rt.logger)
 			r.Post("/", edgeHandler.CreateEdge)
 			r.Delete("/{edgeID}", edgeHandler.DeleteEdge)
 		})
@@ -103,10 +100,16 @@ func (rt *Router) Setup() http.Handler {
 		})
 
 		// Search endpoint
-		r.Get("/search", handlers.NewSearchHandler(rt.queryBus, rt.logger).Search)
+		r.Get("/search", handlers.NewSearchHandler(rt.mediator, rt.logger).Search)
 
 		// Graph data endpoint for visualization
-		r.Get("/graph-data", handlers.NewGraphHandler(rt.queryBus, rt.logger).GetGraphData)
+		r.Get("/graph-data", handlers.NewGraphHandler(rt.mediator, rt.logger).GetGraphData)
+
+		// Operation status endpoint
+		r.Route("/operations", func(r chi.Router) {
+			operationHandler := handlers.NewOperationHandler(rt.mediator, rt.logger)
+			r.Get("/{operationID}", operationHandler.GetOperationStatus)
+		})
 	})
 
 	return router

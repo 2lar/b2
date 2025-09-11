@@ -17,7 +17,7 @@ type NodeRepositoryAbstraction interface {
 	// Query operations
 	FindByGraphID(ctx context.Context, graphID string) ([]*entities.Node, error)
 	FindByUserID(ctx context.Context, userID string) ([]*entities.Node, error)
-	FindByTags(ctx context.Context, tags []string) ([]*entities.Node, error)
+	FindByTags(ctx context.Context, userID string, tags []string) ([]*entities.Node, error)
 	SearchByContent(ctx context.Context, query string, limit int) ([]*entities.Node, error)
 
 	// Batch operations

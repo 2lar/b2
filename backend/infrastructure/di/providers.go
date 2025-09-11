@@ -148,14 +148,6 @@ func (a *CommandHandlerAdapter) Handle(ctx context.Context, cmd bus.Command) err
 	return a.handler(ctx, cmd)
 }
 
-// CommandHandlerWithResultAdapter adapts handlers that return results
-type CommandHandlerWithResultAdapter struct {
-	handler func(context.Context, bus.Command) (interface{}, error)
-}
-
-func (a *CommandHandlerWithResultAdapter) HandleWithResult(ctx context.Context, cmd bus.Command) (interface{}, error) {
-	return a.handler(ctx, cmd)
-}
 
 // ProvideUnitOfWork creates a unit of work for transactions
 func ProvideUnitOfWork(
@@ -274,8 +266,7 @@ func ProvideCommandBus(
 			if !ok {
 				return fmt.Errorf("invalid command type")
 			}
-			_, err := orchestrator.Handle(ctx, createCmd)
-			return err
+			return orchestrator.Handle(ctx, createCmd)
 		},
 	})
 
@@ -304,14 +295,14 @@ func ProvideCommandBus(
 		},
 	})
 
-	// Register BulkDeleteNodesCommand handler with result
+	// Register BulkDeleteNodesCommand handler (now returns void per CQRS)
 	bulkDeleteHandler := commands_handlers.NewBulkDeleteNodesHandler(uow, nodeRepo, edgeRepo, graphRepo, eventStore, eventBus, logger)
 	
-	if err := commandBus.RegisterWithResult(commands.BulkDeleteNodesCommand{}, &CommandHandlerWithResultAdapter{
-		handler: func(ctx context.Context, cmd bus.Command) (interface{}, error) {
+	if err := commandBus.Register(commands.BulkDeleteNodesCommand{}, &CommandHandlerAdapter{
+		handler: func(ctx context.Context, cmd bus.Command) error {
 			bulkCmd, ok := cmd.(commands.BulkDeleteNodesCommand)
 			if !ok {
-				return nil, fmt.Errorf("invalid command type")
+				return fmt.Errorf("invalid command type")
 			}
 			return bulkDeleteHandler.Handle(ctx, bulkCmd)
 		},
@@ -361,6 +352,7 @@ func ProvideQueryBus(
 	nodeRepo ports.NodeRepository,
 	edgeRepo ports.EdgeRepository,
 	cache ports.Cache,
+	operationStore ports.OperationStore,
 	logger *zap.Logger,
 ) *querybus.QueryBus {
 	queryBus := querybus.NewQueryBus()
@@ -448,6 +440,21 @@ func ProvideQueryBus(
 			return findSimilarHandler.Handle(ctx, findQuery)
 		},
 	})
+
+	// Register GetGraphStatsQuery handler
+	getGraphStatsHandler := queries_handlers.NewGetGraphStatsHandler(cache, graphRepo, nodeRepo, edgeRepo, logger)
+	queryBus.Register(queries.GetGraphStatsQuery{}, &QueryHandlerAdapter{
+		handler: func(ctx context.Context, query querybus.Query) (interface{}, error) {
+			statsQuery, ok := query.(queries.GetGraphStatsQuery)
+			if !ok {
+				return nil, fmt.Errorf("invalid query type")
+			}
+			return getGraphStatsHandler.Handle(ctx, statsQuery)
+		},
+	})
+
+	// Register operation queries
+	RegisterOperationQueries(queryBus, operationStore, logger)
 
 	return queryBus
 }

@@ -54,6 +54,31 @@ type Edge struct {
 	CreatedAt     time.Time
 }
 
+// EdgeCandidate represents a potential edge between nodes
+type EdgeCandidate struct {
+	SourceID   valueobjects.NodeID
+	TargetID   valueobjects.NodeID
+	Type       entities.EdgeType
+	Similarity float64
+	Reason     string
+}
+
+// EdgeDiscoveryService interface for edge discovery operations
+// This interface is implemented by domain services to avoid circular dependencies
+type EdgeDiscoveryService interface {
+	DiscoverPotentialEdges(node *entities.Node, graph *Graph) []EdgeCandidate
+	RankEdges(candidates []EdgeCandidate) []EdgeCandidate
+	FilterEdges(candidates []EdgeCandidate, maxEdges int, minSimilarity float64) []EdgeCandidate
+	ClassifyEdgeType(similarity float64) entities.EdgeType
+}
+
+// SimilarityCalculator interface for similarity calculations
+// This interface is implemented by domain services to avoid circular dependencies
+type SimilarityCalculator interface {
+	Calculate(node1, node2 *entities.Node) float64
+	CalculateBatch(source *entities.Node, candidates []*entities.Node) map[string]float64
+}
+
 // GraphMetadata contains graph-level information
 type GraphMetadata struct {
 	NodeCount    int
@@ -698,4 +723,170 @@ func (g *Graph) dfs(nodeID valueobjects.NodeID, visited map[valueobjects.NodeID]
 	}
 
 	return cluster
+}
+
+// Business Methods for Rich Domain Model
+
+// DiscoverAndConnectEdges discovers and creates edges for a node using domain services
+func (g *Graph) DiscoverAndConnectEdges(
+	node *entities.Node,
+	discoveryService EdgeDiscoveryService,
+	maxSyncEdges int,
+) (syncEdges []EdgeCandidate, asyncCandidates []EdgeCandidate, err error) {
+	if node == nil || discoveryService == nil {
+		return nil, nil, fmt.Errorf("node and discovery service are required")
+	}
+
+	// Ensure node is in the graph
+	if !g.HasNode(node.ID()) {
+		return nil, nil, fmt.Errorf("node %s is not in the graph", node.ID())
+	}
+
+	// Discover potential edges
+	candidates := discoveryService.DiscoverPotentialEdges(node, g)
+	if len(candidates) == 0 {
+		return nil, nil, nil
+	}
+
+	// Rank candidates by importance
+	rankedCandidates := discoveryService.RankEdges(candidates)
+
+	// Filter based on business rules
+	filteredCandidates := discoveryService.FilterEdges(
+		rankedCandidates,
+		g.config.MaxConnectionsPerNode,
+		g.config.MinSimilarityThreshold,
+	)
+
+	// Split into sync and async based on the limit
+	if len(filteredCandidates) <= maxSyncEdges {
+		syncEdges = filteredCandidates
+	} else {
+		syncEdges = filteredCandidates[:maxSyncEdges]
+		asyncCandidates = filteredCandidates[maxSyncEdges:]
+	}
+
+	// Create synchronous edges immediately
+	for _, candidate := range syncEdges {
+		edge, err := g.ConnectNodes(candidate.SourceID, candidate.TargetID, candidate.Type)
+		if err != nil {
+			// Log but don't fail the entire operation
+			continue
+		}
+		// Set the weight based on similarity
+		edge.Weight = candidate.Similarity
+	}
+
+	g.incrementVersion()
+	return syncEdges, asyncCandidates, nil
+}
+
+// GetSimilarNodes finds nodes similar to the given node
+func (g *Graph) GetSimilarNodes(
+	node *entities.Node,
+	similarityCalculator SimilarityCalculator,
+	threshold float64,
+) ([]*entities.Node, error) {
+	if node == nil || similarityCalculator == nil {
+		return nil, fmt.Errorf("node and similarity calculator are required")
+	}
+
+	similarNodes := make([]*entities.Node, 0)
+	
+	// Get all nodes in the graph
+	allNodes, err := g.GetNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate similarities
+	similarities := similarityCalculator.CalculateBatch(node, allNodes)
+
+	// Filter by threshold
+	for _, n := range allNodes {
+		if n.ID() == node.ID() {
+			continue
+		}
+		
+		if sim, exists := similarities[n.ID().String()]; exists && sim >= threshold {
+			similarNodes = append(similarNodes, n)
+		}
+	}
+
+	return similarNodes, nil
+}
+
+// AutoConnect automatically creates edges for a node based on similarity
+func (g *Graph) AutoConnect(
+	node *entities.Node,
+	discoveryService EdgeDiscoveryService,
+	maxEdges int,
+) error {
+	if node == nil || discoveryService == nil {
+		return fmt.Errorf("node and discovery service are required")
+	}
+
+	// Discover edges
+	syncEdges, _, err := g.DiscoverAndConnectEdges(node, discoveryService, maxEdges)
+	if err != nil {
+		return fmt.Errorf("failed to auto-connect node: %w", err)
+	}
+
+	// Raise domain event
+	g.addEvent(events.NewNodesAutoConnected(
+		node.ID(),
+		string(g.id),
+		len(syncEdges),
+		"similarity-based",
+		time.Now(),
+	))
+
+	return nil
+}
+
+// CalculateGraphDensity calculates the density of the graph (edges / potential edges)
+func (g *Graph) CalculateGraphDensity() float64 {
+	nodeCount := len(g.nodes)
+	if nodeCount <= 1 {
+		return 0.0
+	}
+
+	// Maximum possible edges in a directed graph
+	maxEdges := nodeCount * (nodeCount - 1)
+	actualEdges := len(g.edges)
+
+	return float64(actualEdges) / float64(maxEdges)
+}
+
+// GetNodeConnectivity returns the number of edges connected to a node
+func (g *Graph) GetNodeConnectivity(nodeID valueobjects.NodeID) int {
+	count := 0
+	for _, edge := range g.edges {
+		if edge.SourceID.Equals(nodeID) || edge.TargetID.Equals(nodeID) {
+			count++
+		}
+	}
+	return count
+}
+
+// IsWellConnected checks if the graph meets minimum connectivity requirements
+func (g *Graph) IsWellConnected() bool {
+	if len(g.nodes) <= 1 {
+		return true // Single node or empty graph is considered well-connected
+	}
+
+	// Check if each node has at least one edge
+	for nodeID := range g.nodes {
+		if g.GetNodeConnectivity(nodeID) == 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+// incrementVersion increases the version number for optimistic locking
+func (g *Graph) incrementVersion() {
+	g.version++
+	g.updatedAt = time.Now()
 }

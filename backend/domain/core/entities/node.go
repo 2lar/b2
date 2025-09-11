@@ -47,24 +47,18 @@ type EdgeReference struct {
 	Type     EdgeType
 }
 
-// EdgeType defines the type of relationship
-type EdgeType string
-
-const (
-	EdgeTypeReference   EdgeType = "reference"
-	EdgeTypeParentChild EdgeType = "parent_child"
-	EdgeTypeSimilar     EdgeType = "similar"
-	EdgeTypeSequential  EdgeType = "sequential"
-)
+// EdgeType is now defined in edge_types.go
 
 // Metadata contains additional node information
 type Metadata struct {
 	Tags       []string
 	Categories []string
+	Category   string                 // Single category for backward compatibility
+	URL        string                 // URL if this node represents a web resource
 	Color      string
 	Icon       string
 	Priority   int
-	Custom     map[string]interface{}
+	Properties map[string]interface{} // Additional custom properties
 }
 
 // NewNode creates a new node with full business rule validation
@@ -83,7 +77,9 @@ func NewNode(userID string, content valueobjects.NodeContent, position valueobje
 		userID:    userID,
 		content:   content,
 		position:  position,
-		metadata:  Metadata{Custom: make(map[string]interface{})},
+		metadata:  Metadata{
+			Properties: make(map[string]interface{}),
+		},
 		edges:     []EdgeReference{},
 		createdAt: now,
 		updatedAt: now,
@@ -430,6 +426,27 @@ func (n *Node) GetTags() []string {
 	return tags
 }
 
+// GetMetadata returns the node's metadata as a map
+func (n *Node) GetMetadata() map[string]interface{} {
+	// Convert Metadata struct to map for external use
+	result := make(map[string]interface{})
+	result["tags"] = n.GetTags()
+	if n.metadata.Category != "" {
+		result["category"] = n.metadata.Category
+	}
+	if n.metadata.URL != "" {
+		result["url"] = n.metadata.URL
+	}
+	if n.metadata.Color != "" {
+		result["color"] = n.metadata.Color
+	}
+	// Add any custom properties
+	for k, v := range n.metadata.Properties {
+		result[k] = v
+	}
+	return result
+}
+
 // CreatedAt returns when the node was created
 func (n *Node) CreatedAt() time.Time {
 	return n.createdAt
@@ -488,4 +505,232 @@ func extractKeywords(text string) []string {
 	}
 
 	return keywords
+}
+
+// Business Methods for Rich Domain Model
+
+// IsSimilarTo checks if this node is similar to another based on content
+func (n *Node) IsSimilarTo(other *Node, threshold float64) bool {
+	if other == nil || n.id.Equals(other.id) {
+		return false
+	}
+	
+	// Simple similarity check based on keyword overlap
+	myKeywords := extractKeywords(n.content.Title() + " " + n.content.Body())
+	otherKeywords := extractKeywords(other.content.Title() + " " + other.content.Body())
+	
+	if len(myKeywords) == 0 || len(otherKeywords) == 0 {
+		return false
+	}
+	
+	// Calculate Jaccard similarity
+	intersection := 0
+	keywordSet := make(map[string]bool)
+	for _, kw := range myKeywords {
+		keywordSet[kw] = true
+	}
+	
+	for _, kw := range otherKeywords {
+		if keywordSet[kw] {
+			intersection++
+		}
+	}
+	
+	union := len(myKeywords) + len(otherKeywords) - intersection
+	if union == 0 {
+		return false
+	}
+	
+	similarity := float64(intersection) / float64(union)
+	return similarity >= threshold
+}
+
+// CanConnectTo validates if this node can connect to another
+func (n *Node) CanConnectTo(targetID valueobjects.NodeID, cfg *config.DomainConfig) error {
+	if cfg == nil {
+		cfg = config.DefaultDomainConfig()
+	}
+	
+	// Check status
+	if n.status == StatusArchived {
+		return pkgerrors.NewValidationError("cannot connect from archived node")
+	}
+	
+	// Check for self-reference
+	if !cfg.AllowSelfConnections && n.id.Equals(targetID) {
+		return pkgerrors.NewValidationError("cannot connect node to itself")
+	}
+	
+	// Check connection limit
+	if len(n.edges) >= cfg.MaxConnectionsPerNode {
+		return fmt.Errorf("maximum connections reached: %d", cfg.MaxConnectionsPerNode)
+	}
+	
+	return nil
+}
+
+// HasConnectionTo checks if this node has a connection to the target
+func (n *Node) HasConnectionTo(targetID valueobjects.NodeID) bool {
+	for _, edge := range n.edges {
+		if edge.TargetID.Equals(targetID) {
+			return true
+		}
+	}
+	return false
+}
+
+// GetConnectionType returns the edge type for a connection if it exists
+func (n *Node) GetConnectionType(targetID valueobjects.NodeID) (EdgeType, bool) {
+	for _, edge := range n.edges {
+		if edge.TargetID.Equals(targetID) {
+			return edge.Type, true
+		}
+	}
+	return "", false
+}
+
+// IsPublished checks if the node is in published state
+func (n *Node) IsPublished() bool {
+	return n.status == StatusPublished
+}
+
+// IsArchived checks if the node is in archived state
+func (n *Node) IsArchived() bool {
+	return n.status == StatusArchived
+}
+
+// IsDraft checks if the node is in draft state
+func (n *Node) IsDraft() bool {
+	return n.status == StatusDraft
+}
+
+// SetMetadataProperty sets a custom property in the metadata
+func (n *Node) SetMetadataProperty(key string, value interface{}) {
+	if n.metadata.Properties == nil {
+		n.metadata.Properties = make(map[string]interface{})
+	}
+	n.metadata.Properties[key] = value
+	n.updatedAt = time.Now()
+}
+
+// GetMetadataProperty retrieves a custom property from metadata
+func (n *Node) GetMetadataProperty(key string) (interface{}, bool) {
+	if n.metadata.Properties == nil {
+		return nil, false
+	}
+	val, exists := n.metadata.Properties[key]
+	return val, exists
+}
+
+// SetURL sets the URL metadata for the node
+func (n *Node) SetURL(url string) {
+	n.metadata.URL = url
+	n.updatedAt = time.Now()
+}
+
+// GetURL returns the URL metadata for the node
+func (n *Node) GetURL() string {
+	return n.metadata.URL
+}
+
+// SetColor sets the color metadata for visual representation
+func (n *Node) SetColor(color string) {
+	n.metadata.Color = color
+	n.updatedAt = time.Now()
+}
+
+// GetColor returns the color metadata
+func (n *Node) GetColor() string {
+	return n.metadata.Color
+}
+
+// SetIcon sets the icon metadata for visual representation
+func (n *Node) SetIcon(icon string) {
+	n.metadata.Icon = icon
+	n.updatedAt = time.Now()
+}
+
+// GetIcon returns the icon metadata
+func (n *Node) GetIcon() string {
+	return n.metadata.Icon
+}
+
+// SetPriority sets the priority of the node
+func (n *Node) SetPriority(priority int) {
+	n.metadata.Priority = priority
+	n.updatedAt = time.Now()
+}
+
+// GetPriority returns the priority of the node
+func (n *Node) GetPriority() int {
+	return n.metadata.Priority
+}
+
+// AddCategory adds a category to the node
+func (n *Node) AddCategory(category string) error {
+	if category == "" {
+		return pkgerrors.NewValidationError("category cannot be empty")
+	}
+	
+	// Check for duplicate
+	for _, c := range n.metadata.Categories {
+		if c == category {
+			return nil // Already exists
+		}
+	}
+	
+	n.metadata.Categories = append(n.metadata.Categories, category)
+	n.updatedAt = time.Now()
+	return nil
+}
+
+// RemoveCategory removes a category from the node
+func (n *Node) RemoveCategory(category string) error {
+	newCategories := []string{}
+	found := false
+	
+	for _, c := range n.metadata.Categories {
+		if c != category {
+			newCategories = append(newCategories, c)
+		} else {
+			found = true
+		}
+	}
+	
+	if !found {
+		return pkgerrors.NewNotFoundError("category")
+	}
+	
+	n.metadata.Categories = newCategories
+	n.updatedAt = time.Now()
+	return nil
+}
+
+// GetCategories returns all categories
+func (n *Node) GetCategories() []string {
+	// Return a copy to maintain encapsulation
+	categories := make([]string, len(n.metadata.Categories))
+	copy(categories, n.metadata.Categories)
+	return categories
+}
+
+// HasTag checks if the node has a specific tag
+func (n *Node) HasTag(tag string) bool {
+	for _, t := range n.metadata.Tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// HasCategory checks if the node has a specific category
+func (n *Node) HasCategory(category string) bool {
+	for _, c := range n.metadata.Categories {
+		if c == category {
+			return true
+		}
+	}
+	// Also check the legacy single category field
+	return n.metadata.Category == category
 }

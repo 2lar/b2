@@ -8,7 +8,11 @@ package di
 
 import (
 	"backend/application/commands/bus"
+	"backend/application/events"
+	"backend/application/events/listeners"
+	"backend/application/mediator"
 	"backend/application/ports"
+	"backend/application/projections"
 	bus2 "backend/application/queries/bus"
 	"backend/infrastructure/config"
 	"backend/pkg/auth"
@@ -44,22 +48,32 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 	metrics := ProvideMetrics(cloudwatchClient, cfg)
 	commandBus := ProvideCommandBus(unitOfWork, nodeRepository, edgeRepository, graphRepository, eventStore, eventBus, eventPublisher, distributedLock, metrics, cfg, logger)
 	cache := ProvideInMemoryCache()
-	queryBus := ProvideQueryBus(graphRepository, nodeRepository, edgeRepository, cache, logger)
+	operationStore := ProvideOperationStore()
+	queryBus := ProvideQueryBus(graphRepository, nodeRepository, edgeRepository, cache, operationStore, logger)
 	distributedRateLimiter := ProvideDistributedRateLimiter(client, cfg)
+	mediator := ProvideMediator(commandBus, queryBus, metrics, logger)
+	handlerRegistry := ProvideEventHandlerRegistry(logger)
+	operationEventListener := ProvideOperationEventListener(operationStore, logger)
+	graphStatsProjection := ProvideGraphStatsProjection(cache, logger)
 	container := &Container{
-		Config:      cfg,
-		Logger:      logger,
-		NodeRepo:    nodeRepository,
-		GraphRepo:   graphRepository,
-		EdgeRepo:    edgeRepository,
-		EventBus:    eventBus,
-		EventStore:  eventStore,
-		UnitOfWork:  unitOfWork,
-		CommandBus:  commandBus,
-		QueryBus:    queryBus,
-		Cache:       cache,
-		Metrics:     metrics,
-		RateLimiter: distributedRateLimiter,
+		Config:                 cfg,
+		Logger:                 logger,
+		NodeRepo:               nodeRepository,
+		GraphRepo:              graphRepository,
+		EdgeRepo:               edgeRepository,
+		EventBus:               eventBus,
+		EventStore:             eventStore,
+		UnitOfWork:             unitOfWork,
+		CommandBus:             commandBus,
+		QueryBus:               queryBus,
+		Cache:                  cache,
+		Metrics:                metrics,
+		RateLimiter:            distributedRateLimiter,
+		OperationStore:         operationStore,
+		Mediator:               mediator,
+		EventHandlerRegistry:   handlerRegistry,
+		OperationEventListener: operationEventListener,
+		GraphStatsProjection:   graphStatsProjection,
 	}
 	return container, nil
 }
@@ -68,19 +82,24 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 
 // Container holds all application dependencies
 type Container struct {
-	Config      *config.Config
-	Logger      *zap.Logger
-	NodeRepo    ports.NodeRepository
-	GraphRepo   ports.GraphRepository
-	EdgeRepo    ports.EdgeRepository
-	EventBus    ports.EventBus
-	EventStore  ports.EventStore
-	UnitOfWork  ports.UnitOfWork
-	CommandBus  *bus.CommandBus
-	QueryBus    *bus2.QueryBus
-	Cache       ports.Cache
-	Metrics     *observability.Metrics
-	RateLimiter *auth.DistributedRateLimiter
+	Config                 *config.Config
+	Logger                 *zap.Logger
+	NodeRepo               ports.NodeRepository
+	GraphRepo              ports.GraphRepository
+	EdgeRepo               ports.EdgeRepository
+	EventBus               ports.EventBus
+	EventStore             ports.EventStore
+	UnitOfWork             ports.UnitOfWork
+	CommandBus             *bus.CommandBus
+	QueryBus               *bus2.QueryBus
+	Cache                  ports.Cache
+	Metrics                *observability.Metrics
+	RateLimiter            *auth.DistributedRateLimiter
+	OperationStore         ports.OperationStore
+	Mediator               *mediator.Mediator
+	EventHandlerRegistry   *events.HandlerRegistry
+	OperationEventListener *listeners.OperationEventListener
+	GraphStatsProjection   *projections.GraphStatsProjection
 }
 
 // SuperSet is the main provider set containing all providers
@@ -103,5 +122,10 @@ var SuperSet = wire.NewSet(
 	ProvideEdgeService,
 	ProvideCommandBus,
 	ProvideQueryBus,
-	ProvideInMemoryCache, wire.Struct(new(Container), "*"),
+	ProvideInMemoryCache,
+	ProvideOperationStore,
+	ProvideEventHandlerRegistry,
+	ProvideOperationEventListener,
+	ProvideGraphStatsProjection,
+	ProvideMediator, wire.Struct(new(Container), "*"),
 )

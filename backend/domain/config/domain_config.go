@@ -14,6 +14,7 @@ type DomainConfig struct {
 	MaxEdgesPerQuery          int
 	MaxSimilarityCalculations int
 	SimilarityThreshold       float64
+	MinSimilarityThreshold    float64
 
 	// Node constraints
 	MaxConnectionsPerNode int
@@ -39,6 +40,9 @@ type DomainConfig struct {
 	AllowSelfConnections    bool
 	AllowDuplicateEdges     bool
 
+	// Bulk operation settings
+	MaxBulkOperationSize int
+
 	// Feature flags
 	EnableAutoTagging    bool
 	EnableSemanticSearch bool
@@ -59,6 +63,7 @@ func DefaultDomainConfig() *DomainConfig {
 		MaxEdgesPerQuery:          5000,
 		MaxSimilarityCalculations: 100,
 		SimilarityThreshold:       0.3,
+		MinSimilarityThreshold:    0.3,
 
 		// Node constraints
 		MaxConnectionsPerNode: 50,
@@ -83,6 +88,9 @@ func DefaultDomainConfig() *DomainConfig {
 		RequireUniqueNodeTitles: false,
 		AllowSelfConnections:    false,
 		AllowDuplicateEdges:     false,
+
+		// Bulk operation settings
+		MaxBulkOperationSize: 100,
 
 		// Feature flags
 		EnableAutoTagging:    false,

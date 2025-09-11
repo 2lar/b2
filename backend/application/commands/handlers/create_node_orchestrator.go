@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"backend/application/commands"
@@ -14,6 +13,7 @@ import (
 	"backend/domain/core/entities"
 	"backend/domain/core/valueobjects"
 	"backend/domain/events"
+	domainservices "backend/domain/services"
 	"backend/infrastructure/config"
 	"backend/infrastructure/persistence/dynamodb"
 )
@@ -65,28 +65,29 @@ func NewCreateNodeOrchestrator(
 }
 
 // Handle orchestrates the node creation process
-func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.CreateNodeCommand) (*entities.Node, error) {
+// Following CQRS pattern, this method returns void (only error) and publishes events for state changes
+func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.CreateNodeCommand) error {
 	// Validate command
 	if err := o.validateCommand(cmd); err != nil {
-		return nil, fmt.Errorf("invalid command: %w", err)
+		return fmt.Errorf("invalid command: %w", err)
 	}
 
 	// Start unit of work transaction
 	if err := o.uow.Begin(ctx); err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer o.uow.Rollback() // Will be no-op if commit succeeds
 
 	// Step 1: Ensure graph exists or create it
 	graph, err := o.ensureGraphExists(ctx, cmd.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to ensure graph exists: %w", err)
+		return fmt.Errorf("failed to ensure graph exists: %w", err)
 	}
 
 	// Step 2: Create the node
 	node, err := o.createNode(ctx, cmd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create node: %w", err)
+		return fmt.Errorf("failed to create node: %w", err)
 	}
 
 	// Step 3: Set the GraphID on the node BEFORE saving
@@ -95,17 +96,19 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 
 	// Step 4: Save the node now that it has a GraphID
 	if err := o.saveNodeWithUoW(ctx, node); err != nil {
-		return nil, fmt.Errorf("failed to save node: %w", err)
+		return fmt.Errorf("failed to save node: %w", err)
 	}
 
 	// Step 5: Add node to graph first (before creating edges)
 	if err := graph.AddNode(node); err != nil {
-		return nil, fmt.Errorf("failed to add node to graph: %w", err)
+		return fmt.Errorf("failed to add node to graph: %w", err)
 	}
 
-	// Step 6: Hybrid edge creation - sync for critical edges, async for the rest
-	var syncEdges []services.EdgeCandidate
-	var asyncCandidates []services.EdgeCandidate
+	// Step 6: Hybrid edge creation using domain service
+	var syncEdges []aggregates.EdgeCandidate
+	var asyncCandidates []aggregates.EdgeCandidate
+	
+	// Use the domain's edge discovery method
 	syncEdges, asyncCandidates, err = o.edgeService.DiscoverEdges(
 		ctx, node, graph, o.config.SyncEdgeLimit,
 	)
@@ -116,23 +119,27 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 		)
 		// Don't fail node creation if edge discovery fails
 	} else {
-		// Create high-priority edges synchronously
-		for _, edgeCandidate := range syncEdges {
-			edge, err := graph.ConnectNodes(
-				edgeCandidate.SourceID,
-				edgeCandidate.TargetID,
-				edgeCandidate.Type,
-			)
-			if err != nil {
-				o.logger.Error("Failed to create sync edge",
-					"error", err,
-					"source", edgeCandidate.SourceID.String(),
-					"target", edgeCandidate.TargetID.String(),
+		// Create high-priority edges synchronously using domain method
+		if len(syncEdges) > 0 {
+			// Use the Graph's DiscoverAndConnectEdges method for sync edges
+			// This leverages the domain logic for creating edges
+			for _, edgeCandidate := range syncEdges {
+				edge, err := graph.ConnectNodes(
+					edgeCandidate.SourceID,
+					edgeCandidate.TargetID,
+					edgeCandidate.Type,
 				)
-				continue
+				if err != nil {
+					o.logger.Error("Failed to create sync edge",
+						"error", err,
+						"source", edgeCandidate.SourceID.String(),
+						"target", edgeCandidate.TargetID.String(),
+					)
+					continue
+				}
+				// Set the weight based on similarity
+				edge.Weight = edgeCandidate.Similarity
 			}
-			// Set the weight based on similarity
-			edge.Weight = edgeCandidate.Similarity
 		}
 
 		o.logger.Info("Synchronous edges created",
@@ -141,19 +148,17 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 			"asyncPending", len(asyncCandidates),
 		)
 
-		// If async is enabled and there are more edges to create,
-		// they will be handled by the connect-node Lambda via events
-		// The event system will include metadata about pending edges
+		// Async edges will be handled by the connect-node Lambda via events
 	}
 
 	// Step 7: Save the graph with all nodes and edges
 	if err := o.saveGraphWithUoW(ctx, graph); err != nil {
-		return nil, fmt.Errorf("failed to update graph: %w", err)
+		return fmt.Errorf("failed to update graph: %w", err)
 	}
 
 	// Commit transaction
 	if err := o.uow.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	// Publish domain events after successful commit
@@ -173,9 +178,10 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 			}
 		}
 
-		// Extract keywords from node content
+		// Use domain service for keyword extraction
 		nodeContent := node.Content()
-		keywords := o.extractKeywords(nodeContent.Title() + " " + nodeContent.Body())
+		textAnalyzer := domainservices.NewDefaultTextAnalyzer()
+		keywords := textAnalyzer.ExtractKeywords(nodeContent.Title() + " " + nodeContent.Body())
 		
 		// Create enhanced event with pending edges
 		enhancedEvent := events.NewNodeCreatedWithPendingEdges(
@@ -234,7 +240,7 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 		"totalGraphNodes", nodeCount,
 	)
 
-	return node, nil
+	return nil
 }
 
 // validateCommand validates the create node command
@@ -358,30 +364,6 @@ func (o *CreateNodeOrchestrator) createNode(ctx context.Context, cmd commands.Cr
 
 // Helper methods for UoW operations
 
-// extractKeywords extracts keywords from text (simple word extraction)
-func (o *CreateNodeOrchestrator) extractKeywords(text string) []string {
-	// Simple word extraction - can be enhanced with NLP later
-	words := strings.Fields(strings.ToLower(text))
-	seen := make(map[string]bool)
-	var keywords []string
-	
-	for _, word := range words {
-		// Clean word of common punctuation
-		cleaned := strings.Trim(word, ".,!?;:\"'()[]{}#@$%^&*+=<>/\\|`~")
-		// Skip short words and duplicates
-		if len(cleaned) > 3 && !seen[cleaned] {
-			seen[cleaned] = true
-			keywords = append(keywords, cleaned)
-		}
-	}
-	
-	// Limit to reasonable number of keywords
-	if len(keywords) > 20 {
-		keywords = keywords[:20]
-	}
-	
-	return keywords
-}
 
 func (o *CreateNodeOrchestrator) saveNodeWithUoW(ctx context.Context, node *entities.Node) error {
 	// Check if repository supports UoW

@@ -35,6 +35,29 @@ type NodeRepository interface {
 
 	// DeleteBatch removes multiple nodes in a batch operation
 	DeleteBatch(ctx context.Context, nodeIDs []valueobjects.NodeID) error
+
+	// Domain-specific query methods
+
+	// FindByTags finds nodes that have any of the specified tags
+	FindByTags(ctx context.Context, userID string, tags []string) ([]*entities.Node, error)
+
+	// FindConnectedNodes finds all nodes connected to a given node up to a certain depth
+	FindConnectedNodes(ctx context.Context, nodeID valueobjects.NodeID, maxDepth int) ([]*entities.Node, error)
+
+	// FindOrphanedNodes finds nodes with no edges in a graph
+	FindOrphanedNodes(ctx context.Context, graphID string) ([]*entities.Node, error)
+
+	// FindRecentlyUpdated finds nodes updated within a time range
+	FindRecentlyUpdated(ctx context.Context, userID string, limit int) ([]*entities.Node, error)
+
+	// FindByContentPattern finds nodes with content matching a pattern
+	FindByContentPattern(ctx context.Context, userID string, pattern string) ([]*entities.Node, error)
+
+	// CountByStatus counts nodes by their status
+	CountByStatus(ctx context.Context, userID string) (map[entities.NodeStatus]int, error)
+
+	// GetMostConnected finds the most connected nodes in a graph
+	GetMostConnected(ctx context.Context, graphID string, limit int) ([]*entities.Node, error)
 }
 
 // EdgeRepository defines the interface for edge persistence
@@ -56,6 +79,23 @@ type EdgeRepository interface {
 
 	// DeleteByNodeIDs removes all edges connected to multiple nodes
 	DeleteByNodeIDs(ctx context.Context, graphID string, nodeIDs []string) error
+
+	// Domain-specific query methods
+
+	// FindByType finds edges of a specific type
+	FindByType(ctx context.Context, graphID string, edgeType entities.EdgeType) ([]*aggregates.Edge, error)
+
+	// FindStrongConnections finds edges with weight above threshold
+	FindStrongConnections(ctx context.Context, graphID string, minWeight float64) ([]*aggregates.Edge, error)
+
+	// FindBidirectionalEdges finds all bidirectional edges in a graph
+	FindBidirectionalEdges(ctx context.Context, graphID string) ([]*aggregates.Edge, error)
+
+	// CountByType counts edges by their type
+	CountByType(ctx context.Context, graphID string) (map[entities.EdgeType]int, error)
+
+	// GetEdgesBetweenNodes finds edges between a set of nodes
+	GetEdgesBetweenNodes(ctx context.Context, graphID string, nodeIDs []valueobjects.NodeID) ([]*aggregates.Edge, error)
 }
 
 // GraphRepository defines the interface for graph persistence
@@ -83,6 +123,33 @@ type GraphRepository interface {
 
 	// Delete removes a graph and all its nodes
 	Delete(ctx context.Context, id aggregates.GraphID) error
+
+	// Domain-specific query methods
+
+	// FindByNodeCount finds graphs with node count in range
+	FindByNodeCount(ctx context.Context, userID string, minNodes, maxNodes int) ([]*aggregates.Graph, error)
+
+	// FindMostActive finds the most recently updated graphs
+	FindMostActive(ctx context.Context, userID string, limit int) ([]*aggregates.Graph, error)
+
+	// FindPublicGraphs finds all public graphs
+	FindPublicGraphs(ctx context.Context, limit int) ([]*aggregates.Graph, error)
+
+	// GetGraphStatistics gets statistics for a graph
+	GetGraphStatistics(ctx context.Context, graphID aggregates.GraphID) (GraphStatistics, error)
+
+	// CountUserGraphs counts graphs for a user
+	CountUserGraphs(ctx context.Context, userID string) (int, error)
+}
+
+// GraphStatistics holds statistical information about a graph
+type GraphStatistics struct {
+	NodeCount          int
+	EdgeCount          int
+	OrphanedNodeCount  int
+	AverageConnections float64
+	MaxConnections     int
+	ClusterCount       int
 }
 
 // EventStore defines the interface for event persistence

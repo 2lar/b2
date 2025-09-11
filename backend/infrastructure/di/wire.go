@@ -7,7 +7,11 @@ import (
 	"context"
 
 	"backend/application/commands/bus"
+	appevents "backend/application/events"
+	"backend/application/events/listeners"
+	"backend/application/mediator"
 	"backend/application/ports"
+	"backend/application/projections"
 	querybus "backend/application/queries/bus"
 	"backend/infrastructure/config"
 	"backend/pkg/auth"
@@ -18,19 +22,24 @@ import (
 
 // Container holds all application dependencies
 type Container struct {
-	Config      *config.Config
-	Logger      *zap.Logger
-	NodeRepo    ports.NodeRepository
-	GraphRepo   ports.GraphRepository
-	EdgeRepo    ports.EdgeRepository
-	EventBus    ports.EventBus
-	EventStore  ports.EventStore
-	UnitOfWork  ports.UnitOfWork
-	CommandBus  *bus.CommandBus
-	QueryBus    *querybus.QueryBus
-	Cache       ports.Cache
-	Metrics     *observability.Metrics
-	RateLimiter *auth.DistributedRateLimiter
+	Config                 *config.Config
+	Logger                 *zap.Logger
+	NodeRepo               ports.NodeRepository
+	GraphRepo              ports.GraphRepository
+	EdgeRepo               ports.EdgeRepository
+	EventBus               ports.EventBus
+	EventStore             ports.EventStore
+	UnitOfWork             ports.UnitOfWork
+	CommandBus             *bus.CommandBus
+	QueryBus               *querybus.QueryBus
+	Cache                  ports.Cache
+	Metrics                *observability.Metrics
+	RateLimiter            *auth.DistributedRateLimiter
+	OperationStore         ports.OperationStore
+	Mediator               *mediator.Mediator
+	EventHandlerRegistry   *appevents.HandlerRegistry
+	OperationEventListener *listeners.OperationEventListener
+	GraphStatsProjection   *projections.GraphStatsProjection
 }
 
 // SuperSet is the main provider set containing all providers
@@ -54,6 +63,11 @@ var SuperSet = wire.NewSet(
 	ProvideCommandBus,
 	ProvideQueryBus,
 	ProvideInMemoryCache,
+	ProvideOperationStore,
+	ProvideEventHandlerRegistry,
+	ProvideOperationEventListener,
+	ProvideGraphStatsProjection,
+	ProvideMediator,
 	wire.Struct(new(Container), "*"),
 )
 

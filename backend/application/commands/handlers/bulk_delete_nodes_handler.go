@@ -45,10 +45,10 @@ func NewBulkDeleteNodesHandler(
 }
 
 // Handle executes the bulk delete command with transactional safety (all-or-nothing)
-func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDeleteNodesCommand) (*commands.BulkDeleteNodesResult, error) {
+func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDeleteNodesCommand) error {
 	// Validate command
 	if err := cmd.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid command: %w", err)
+		return fmt.Errorf("invalid command: %w", err)
 	}
 
 	// Convert node ID strings to value objects and validate them upfront
@@ -64,18 +64,25 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 		nodeIDs = append(nodeIDs, nodeID)
 	}
 
-	// If all node IDs are invalid, return early
+	// If all node IDs are invalid, emit event and return
 	if len(nodeIDs) == 0 {
-		return &commands.BulkDeleteNodesResult{
-			DeletedCount: 0,
-			FailedIDs:    invalidIDs,
-			Errors:       []string{"All provided node IDs are invalid"},
-		}, nil
+		// Emit failure event
+		event := events.NewBulkNodesDeletedEvent(
+			cmd.OperationID,
+			cmd.UserID,
+			0,
+			cmd.NodeIDs,
+			[]string{},
+			invalidIDs,
+			[]string{"All provided node IDs are invalid"},
+		)
+		h.eventBus.Publish(ctx, event)
+		return fmt.Errorf("all node IDs are invalid")
 	}
 
 	// Start transaction for atomic bulk delete
 	if err := h.uow.Begin(ctx); err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer h.uow.Rollback() // Will be no-op if commit succeeds
 
@@ -106,13 +113,20 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 		})
 	}
 
-	// If no valid nodes to delete, rollback and return
+	// If no valid nodes to delete, emit event and return
 	if len(validNodes) == 0 {
-		return &commands.BulkDeleteNodesResult{
-			DeletedCount: 0,
-			FailedIDs:    append(invalidIDs, failedIDs...),
-			Errors:       errors,
-		}, nil
+		// Emit event with no deletions
+		event := events.NewBulkNodesDeletedEvent(
+			cmd.OperationID,
+			cmd.UserID,
+			0,
+			cmd.NodeIDs,
+			[]string{},
+			append(invalidIDs, failedIDs...),
+			errors,
+		)
+		h.eventBus.Publish(ctx, event)
+		return fmt.Errorf("no valid nodes to delete")
 	}
 
 	// Collect graph IDs for publishing events
@@ -130,7 +144,7 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 	}
 
 	if err := h.nodeRepo.DeleteBatch(ctx, nodeIDsToDelete); err != nil {
-		return nil, fmt.Errorf("failed to delete nodes in batch: %w", err)
+		return fmt.Errorf("failed to delete nodes in batch: %w", err)
 	}
 
 	// NEW: Immediately delete associated edges using batch operation
@@ -153,7 +167,7 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 
 	// Commit the transaction
 	if err := h.uow.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("failed to commit bulk delete transaction: %w", err)
+		return fmt.Errorf("failed to commit bulk delete transaction: %w", err)
 	}
 
 	// Publish deletion events for async cleanup of edges and events
@@ -181,23 +195,39 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 		}
 	}
 
-	// Edge and event cleanup will happen asynchronously via the cleanup handler
-
-	result := &commands.BulkDeleteNodesResult{
-		DeletedCount: len(validNodes),
-		FailedIDs:    append(invalidIDs, failedIDs...),
-		Errors:       errors,
+	// Emit bulk deletion completed event
+	deletedIDs := make([]string, len(validNodes))
+	for i, info := range validNodes {
+		deletedIDs[i] = info.nodeID.String()
 	}
 
-	h.logger.Info("Bulk delete completed, async cleanup initiated",
+	event := events.NewBulkNodesDeletedEvent(
+		cmd.OperationID,
+		cmd.UserID,
+		len(validNodes),
+		cmd.NodeIDs,
+		deletedIDs,
+		append(invalidIDs, failedIDs...),
+		errors,
+	)
+
+	if err := h.eventBus.Publish(ctx, event); err != nil {
+		h.logger.Error("Failed to publish bulk delete event",
+			zap.String("operationID", cmd.OperationID),
+			zap.Error(err),
+		)
+	}
+
+	h.logger.Info("Bulk delete completed, event published",
+		zap.String("operationID", cmd.OperationID),
 		zap.String("userID", cmd.UserID),
 		zap.Int("requested", len(cmd.NodeIDs)),
-		zap.Int("deleted", result.DeletedCount),
-		zap.Int("failed", len(result.FailedIDs)),
+		zap.Int("deleted", len(validNodes)),
+		zap.Int("failed", len(append(invalidIDs, failedIDs...))),
 		zap.Int("affectedGraphs", len(nodesByGraph)),
 	)
 
-	return result, nil
+	return nil
 }
 
 // nodeValidationInfo holds information about a validated node

@@ -21,6 +21,7 @@ import (
 type DynamoDBEventStore struct {
 	client    *dynamodb.Client
 	tableName string
+	eventTTL  time.Duration // Configurable TTL for events
 }
 
 // PublishStatus represents the publishing status of an event
@@ -40,8 +41,8 @@ type EventRecord struct {
 	EventType     string                 `dynamodbav:"EventType"`
 	AggregateID   string                 `dynamodbav:"AggregateID"`
 	AggregateType string                 `dynamodbav:"AggregateType"`
-	EventData     map[string]interface{} `dynamodbav:"EventData"`
-	Metadata      map[string]interface{} `dynamodbav:"Metadata"`
+	EventData     map[string]any `dynamodbav:"EventData"`
+	Metadata      map[string]any `dynamodbav:"Metadata"`
 	Timestamp     string                 `dynamodbav:"Timestamp"`
 	Version       int                    `dynamodbav:"Version"`
 	UserID        string                 `dynamodbav:"UserID"`
@@ -68,7 +69,14 @@ func NewDynamoDBEventStore(client *dynamodb.Client, tableName string) *DynamoDBE
 	return &DynamoDBEventStore{
 		client:    client,
 		tableName: tableName,
+		eventTTL:  1 * time.Hour, // Default to 1 HR TTL for all events
 	}
+}
+
+// WithEventTTL sets a custom TTL for events
+func (es *DynamoDBEventStore) WithEventTTL(ttl time.Duration) *DynamoDBEventStore {
+	es.eventTTL = ttl
+	return es
 }
 
 // SaveEvents persists domain events to the event store
@@ -99,10 +107,7 @@ func (es *DynamoDBEventStore) SaveEvents(ctx context.Context, domainEvents []eve
 
 	// Batch write events (DynamoDB limit is 25 items per batch)
 	for i := 0; i < len(writeRequests); i += 25 {
-		end := i + 25
-		if end > len(writeRequests) {
-			end = len(writeRequests)
-		}
+		end := min(i+25, len(writeRequests))
 
 		batch := writeRequests[i:end]
 		input := &dynamodb.BatchWriteItemInput{
@@ -292,7 +297,7 @@ func (es *DynamoDBEventStore) PrepareEventItem(event events.DomainEvent) (types.
 // eventToRecord converts a domain event to a DynamoDB record
 func (es *DynamoDBEventStore) eventToRecord(event events.DomainEvent) (*EventRecord, error) {
 	// Get event data as a map
-	eventData := make(map[string]interface{})
+	eventData := make(map[string]any)
 
 	// Try to marshal the event to JSON and then to a map
 	// This allows us to store the event data in a flexible format
@@ -309,9 +314,9 @@ func (es *DynamoDBEventStore) eventToRecord(event events.DomainEvent) (*EventRec
 	// Generate a unique event ID since DomainEvent doesn't have GetEventID
 	eventID := uuid.New().String()
 
-	// Calculate TTL (optional - events older than 1 year are automatically deleted)
-	// You can adjust or remove this based on your requirements
-	ttl := timestamp.Add(365 * 24 * time.Hour).Unix()
+	// Calculate TTL using configurable duration (default 12 hours)
+	// All events will be automatically deleted after this period
+	ttl := timestamp.Add(es.eventTTL).Unix()
 
 	// Extract user ID from event data if available
 	userID := ""
@@ -337,7 +342,7 @@ func (es *DynamoDBEventStore) eventToRecord(event events.DomainEvent) (*EventRec
 		AggregateID:   event.GetAggregateID(),
 		AggregateType: aggregateType,
 		EventData:     eventData,
-		Metadata:      make(map[string]interface{}), // Events don't have metadata method
+		Metadata:      make(map[string]any), // Events don't have metadata method
 		Timestamp:     timestamp.Format(time.RFC3339),
 		Version:       event.GetVersion(),
 		UserID:        userID,
@@ -404,7 +409,7 @@ func (es *DynamoDBEventStore) recordToEvent(record EventRecord) (events.DomainEv
 
 		// Handle keywords and tags arrays
 		var keywords []string
-		if kwInterface, ok := record.EventData["keywords"].([]interface{}); ok {
+		if kwInterface, ok := record.EventData["keywords"].([]any); ok {
 			for _, kw := range kwInterface {
 				if str, ok := kw.(string); ok {
 					keywords = append(keywords, str)
@@ -413,7 +418,7 @@ func (es *DynamoDBEventStore) recordToEvent(record EventRecord) (events.DomainEv
 		}
 
 		var tags []string
-		if tagsInterface, ok := record.EventData["tags"].([]interface{}); ok {
+		if tagsInterface, ok := record.EventData["tags"].([]any); ok {
 			for _, tag := range tagsInterface {
 				if str, ok := tag.(string); ok {
 					tags = append(tags, str)
@@ -503,7 +508,7 @@ type EventSnapshot struct {
 	AggregateID   string                 `dynamodbav:"AggregateID"`
 	AggregateType string                 `dynamodbav:"AggregateType"`
 	Version       int                    `dynamodbav:"Version"`
-	State         map[string]interface{} `dynamodbav:"State"`
+	State         map[string]any `dynamodbav:"State"`
 	Timestamp     string                 `dynamodbav:"Timestamp"`
 }
 
@@ -608,7 +613,7 @@ func (es *DynamoDBEventStore) MarkEventAsFailed(ctx context.Context, eventPK, ev
 func (es *DynamoDBEventStore) DeleteEvents(ctx context.Context, aggregateID string) error {
 	// First, query all events for this aggregate
 	pk := fmt.Sprintf("EVENTS#%s", aggregateID)
-	
+
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(es.tableName),
 		KeyConditionExpression: aws.String("PK = :pk"),
@@ -643,10 +648,7 @@ func (es *DynamoDBEventStore) DeleteEvents(ctx context.Context, aggregateID stri
 
 	// Delete events in batches (DynamoDB limit is 25 items per batch)
 	for i := 0; i < len(keysToDelete); i += 25 {
-		end := i + 25
-		if end > len(keysToDelete) {
-			end = len(keysToDelete)
-		}
+		end := min(i+25, len(keysToDelete))
 
 		batch := keysToDelete[i:end]
 		writeRequests := make([]types.WriteRequest, 0, len(batch))

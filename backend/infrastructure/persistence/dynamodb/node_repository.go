@@ -246,7 +246,7 @@ func (c *NodeEntityConfig) ParseItem(item map[string]types.AttributeValue) (*Nod
 // NewNodeRepository creates a new node repository
 func NewNodeRepository(client *dynamodb.Client, tableName, gsi1IndexName, gsi2IndexName string, logger *zap.Logger) ports.NodeRepository {
 	config := &NodeEntityConfig{}
-	genericRepo := NewGenericRepository[*NodeEntity](client, tableName, gsi1IndexName, config, logger)
+	genericRepo := NewGenericRepository(client, tableName, gsi1IndexName, config, logger)
 
 	return &NodeRepository{
 		GenericRepository: genericRepo,
@@ -547,7 +547,7 @@ func (r *NodeRepository) FindSimilarNodes(ctx context.Context, nodeID valueobjec
 		return []*entities.Node{}, nil
 	}
 
-	return r.FindByTags(ctx, tags)
+	return r.FindByTags(ctx, node.UserID(), tags)
 }
 
 // FindOrphanedNodes finds nodes that have no edges
@@ -570,7 +570,7 @@ func (r *NodeRepository) FindOrphanedNodes(ctx context.Context, graphID string) 
 }
 
 // FindByTags finds nodes by their tags
-func (r *NodeRepository) FindByTags(ctx context.Context, tags []string) ([]*entities.Node, error) {
+func (r *NodeRepository) FindByTags(ctx context.Context, userID string, tags []string) ([]*entities.Node, error) {
 	if len(tags) == 0 {
 		return []*entities.Node{}, nil
 	}

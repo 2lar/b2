@@ -11,6 +11,8 @@ import (
 
 	"backend/infrastructure/config"
 	"backend/infrastructure/di"
+	"backend/infrastructure/messaging"
+	"backend/infrastructure/messaging/eventbridge"
 	"backend/interfaces/http/rest"
 
 	"go.uber.org/zap"
@@ -33,10 +35,27 @@ func main() {
 		log.Fatalf("Failed to initialize container: %v", err)
 	}
 
-	// Create router
+	// Wire event handlers
+	err = di.WireEventHandlers(
+		container.EventHandlerRegistry,
+		container.OperationEventListener,
+		container.GraphStatsProjection,
+		container.Logger,
+	)
+	if err != nil {
+		log.Fatalf("Failed to wire event handlers: %v", err)
+	}
+
+	// Set up local event dispatcher for EventBridge
+	if eventBus, ok := container.EventBus.(*eventbridge.EventBridgePublisher); ok {
+		dispatcher := messaging.NewEventDispatcher(container.EventHandlerRegistry, container.Logger)
+		eventBus.SetLocalDispatcher(dispatcher)
+		container.Logger.Info("Local event dispatcher configured")
+	}
+
+	// Create router using mediator
 	router := rest.NewRouter(
-		container.CommandBus,
-		container.QueryBus,
+		container.Mediator,
 		container.Logger,
 	)
 

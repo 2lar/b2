@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"backend/application/commands"
-	"backend/application/commands/bus"
+	"backend/application/mediator"
 	"backend/pkg/auth"
 	"backend/pkg/utils"
 
@@ -17,15 +17,15 @@ import (
 
 // EdgeHandler handles edge-related HTTP requests
 type EdgeHandler struct {
-	commandBus *bus.CommandBus
-	logger     *zap.Logger
+	mediator mediator.IMediator
+	logger   *zap.Logger
 }
 
 // NewEdgeHandler creates a new edge handler
-func NewEdgeHandler(commandBus *bus.CommandBus, logger *zap.Logger) *EdgeHandler {
+func NewEdgeHandler(med mediator.IMediator, logger *zap.Logger) *EdgeHandler {
 	return &EdgeHandler{
-		commandBus: commandBus,
-		logger:     logger,
+		mediator: med,
+		logger:   logger,
 	}
 }
 
@@ -80,7 +80,7 @@ func (h *EdgeHandler) CreateEdge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute command
-	if err := h.commandBus.Send(r.Context(), cmd); err != nil {
+	if err := h.mediator.Send(r.Context(), cmd); err != nil {
 		h.logger.Error("Failed to create edge",
 			zap.String("userID", userCtx.UserID),
 			zap.String("sourceID", req.SourceID),
@@ -134,7 +134,7 @@ func (h *EdgeHandler) DeleteEdge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute command
-	if err := h.commandBus.Send(r.Context(), cmd); err != nil {
+	if err := h.mediator.Send(r.Context(), cmd); err != nil {
 		h.logger.Error("Failed to delete edge",
 			zap.String("edgeID", edgeID),
 			zap.String("userID", userCtx.UserID),

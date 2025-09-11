@@ -66,8 +66,7 @@ func init() {
 
 	// Create router
 	router := rest.NewRouter(
-		container.CommandBus,
-		container.QueryBus,
+		container.Mediator,
 		container.Logger,
 	)
 

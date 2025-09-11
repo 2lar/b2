@@ -2,15 +2,15 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"backend/application/commands"
-	"backend/application/commands/bus"
+	"backend/application/mediator"
 	"backend/application/queries"
-	querybus "backend/application/queries/bus"
 	"backend/pkg/auth"
 	"backend/pkg/utils"
 
@@ -21,21 +21,18 @@ import (
 
 // NodeHandler handles node-related HTTP requests
 type NodeHandler struct {
-	commandBus *bus.CommandBus
-	queryBus   *querybus.QueryBus
-	logger     *zap.Logger
+	mediator mediator.IMediator
+	logger   *zap.Logger
 }
 
 // NewNodeHandler creates a new node handler
 func NewNodeHandler(
-	commandBus *bus.CommandBus,
-	queryBus *querybus.QueryBus,
+	med mediator.IMediator,
 	logger *zap.Logger,
 ) *NodeHandler {
 	return &NodeHandler{
-		commandBus: commandBus,
-		queryBus:   queryBus,
-		logger:     logger,
+		mediator: med,
+		logger:   logger,
 	}
 }
 
@@ -148,7 +145,7 @@ func (h *NodeHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute command
-	if err := h.commandBus.Send(r.Context(), cmd); err != nil {
+	if err := h.mediator.Send(r.Context(), cmd); err != nil {
 		h.logger.Error("Failed to create node",
 			zap.String("userID", userCtx.UserID),
 			zap.Error(err),
@@ -198,7 +195,7 @@ func (h *NodeHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute query
-	result, err := h.queryBus.Ask(r.Context(), query)
+	result, err := h.mediator.Query(r.Context(), query)
 	if err != nil {
 		h.logger.Error("Failed to get node",
 			zap.String("nodeID", nodeID),
@@ -263,7 +260,7 @@ func (h *NodeHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute command
-	if err := h.commandBus.Send(r.Context(), cmd); err != nil {
+	if err := h.mediator.Send(r.Context(), cmd); err != nil {
 		h.logger.Error("Failed to update node",
 			zap.String("nodeID", nodeID),
 			zap.String("userID", userCtx.UserID),
@@ -310,16 +307,21 @@ func (h *NodeHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate operation ID for async tracking
+	operationID := uuid.New().String()
+
 	// Use the bulk delete command handler
 	bulkDeleteCmd := commands.BulkDeleteNodesCommand{
-		UserID:  userCtx.UserID,
-		NodeIDs: req.NodeIDs,
+		OperationID: operationID,
+		UserID:      userCtx.UserID,
+		NodeIDs:     req.NodeIDs,
 	}
 
-	// Send command to the bulk delete handler
-	result, err := h.commandBus.SendWithResult(r.Context(), bulkDeleteCmd)
+	// Send command (returns void per CQRS)
+	err = h.mediator.Send(r.Context(), bulkDeleteCmd)
 	if err != nil {
 		h.logger.Error("Failed to execute bulk delete",
+			zap.String("operationID", operationID),
 			zap.String("userID", userCtx.UserID),
 			zap.Int("nodeCount", len(req.NodeIDs)),
 			zap.Error(err),
@@ -328,22 +330,15 @@ func (h *NodeHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Type assert the result
-	bulkResult, ok := result.(*commands.BulkDeleteNodesResult)
-	if !ok {
-		h.logger.Error("Invalid result type from bulk delete handler")
-		h.respondError(w, http.StatusInternalServerError, "Failed to process bulk delete result")
-		return
-	}
-
-	// Build response from the actual result
+	// Return 202 Accepted with operation ID for async tracking
 	response := map[string]interface{}{
-		"deleted_count": bulkResult.DeletedCount,
-		"failed_ids":    bulkResult.FailedIDs,
-		"errors":        bulkResult.Errors,
+		"operation_id": operationID,
+		"status":       "pending",
+		"message":      "Bulk delete operation initiated",
+		"status_url":   fmt.Sprintf("/api/v1/operations/%s", operationID),
 	}
 
-	h.respondJSON(w, http.StatusOK, response)
+	h.respondJSON(w, http.StatusAccepted, response)
 }
 
 // DeleteNode handles DELETE /nodes/{nodeID}
@@ -374,7 +369,7 @@ func (h *NodeHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute command
-	if err := h.commandBus.Send(r.Context(), cmd); err != nil {
+	if err := h.mediator.Send(r.Context(), cmd); err != nil {
 		h.logger.Error("Failed to delete node",
 			zap.String("nodeID", nodeID),
 			zap.String("userID", userCtx.UserID),
@@ -416,7 +411,7 @@ func (h *NodeHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute query
-	result, err := h.queryBus.Ask(r.Context(), query)
+	result, err := h.mediator.Query(r.Context(), query)
 	if err != nil {
 		h.logger.Error("Failed to list nodes",
 			zap.String("userID", userCtx.UserID),

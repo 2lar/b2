@@ -8,6 +8,7 @@ import (
 
 	"backend/application/ports"
 	"backend/domain/events"
+	"backend/infrastructure/messaging"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
@@ -17,10 +18,11 @@ import (
 
 // EventBridgePublisher implements the EventBus interface using AWS EventBridge
 type EventBridgePublisher struct {
-	client       *eventbridge.Client
-	eventBusName string
-	source       string
-	logger       *zap.Logger
+	client          *eventbridge.Client
+	eventBusName    string
+	source          string
+	logger          *zap.Logger
+	localDispatcher *messaging.EventDispatcher // Optional local event dispatcher
 }
 
 // NewEventBridgePublisher creates a new EventBridge publisher
@@ -35,6 +37,11 @@ func NewEventBridgePublisher(
 		source:       events.SourceBackend, // Use constant from events package
 		logger:       logger,
 	}
+}
+
+// SetLocalDispatcher sets the local event dispatcher for in-process event handling
+func (p *EventBridgePublisher) SetLocalDispatcher(dispatcher *messaging.EventDispatcher) {
+	p.localDispatcher = dispatcher
 }
 
 // Publish sends a single event to EventBridge
@@ -128,6 +135,16 @@ func (p *EventBridgePublisher) publishBatch(ctx context.Context, domainEvents []
 		zap.Int("count", len(entries)),
 		zap.String("eventBus", p.eventBusName),
 	)
+
+	// Also dispatch to local handlers if configured
+	if p.localDispatcher != nil {
+		go func() {
+			// Dispatch locally in background to avoid blocking
+			if err := p.localDispatcher.DispatchBatchLocal(context.Background(), domainEvents); err != nil {
+				p.logger.Warn("Failed to dispatch events locally", zap.Error(err))
+			}
+		}()
+	}
 
 	return nil
 }

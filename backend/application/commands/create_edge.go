@@ -116,7 +116,7 @@ func (h *CreateEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 	// Create the edge in the graph aggregate
 	edgeType := entities.EdgeType(createCmd.Type)
 	if edgeType == "" {
-		edgeType = entities.EdgeTypeSimilar
+		edgeType = entities.EdgeTypeNormal
 	}
 
 	edge, err := graph.ConnectNodes(sourceID, targetID, edgeType)

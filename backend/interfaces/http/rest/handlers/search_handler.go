@@ -6,22 +6,22 @@ import (
 	"strconv"
 	"strings"
 
+	"backend/application/mediator"
 	"backend/application/queries"
-	querybus "backend/application/queries/bus"
 	"backend/pkg/auth"
 	"go.uber.org/zap"
 )
 
 // SearchHandler handles search-related HTTP requests
 type SearchHandler struct {
-	queryBus *querybus.QueryBus
+	mediator mediator.IMediator
 	logger   *zap.Logger
 }
 
 // NewSearchHandler creates a new search handler
-func NewSearchHandler(queryBus *querybus.QueryBus, logger *zap.Logger) *SearchHandler {
+func NewSearchHandler(mediator mediator.IMediator, logger *zap.Logger) *SearchHandler {
 	return &SearchHandler{
-		queryBus: queryBus,
+		mediator: mediator,
 		logger:   logger,
 	}
 }
@@ -71,7 +71,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute query
-	result, err := h.queryBus.Ask(r.Context(), &searchQuery)
+	result, err := h.mediator.Query(r.Context(), &searchQuery)
 	if err != nil {
 		h.logger.Error("Search failed",
 			zap.String("query", query),

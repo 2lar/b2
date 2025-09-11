@@ -7,8 +7,9 @@ import (
 
 // BulkDeleteNodesCommand represents a command to delete multiple nodes
 type BulkDeleteNodesCommand struct {
-	UserID  string   `json:"user_id"`
-	NodeIDs []string `json:"node_ids"`
+	OperationID string   `json:"operation_id"` // For async operation tracking
+	UserID      string   `json:"user_id"`
+	NodeIDs     []string `json:"node_ids"`
 }
 
 // Validate validates the bulk delete command

@@ -154,6 +154,15 @@ type NodesConnected struct {
 	EdgeType string              `json:"edge_type"`
 }
 
+// NodesAutoConnected is raised when nodes are automatically connected via edge discovery
+type NodesAutoConnected struct {
+	BaseEvent
+	NodeID          valueobjects.NodeID `json:"node_id"`
+	GraphID         string              `json:"graph_id"`
+	ConnectionCount int                 `json:"connection_count"`
+	Algorithm       string              `json:"algorithm"`
+}
+
 // NewNodesConnected creates a NodesConnected event
 func NewNodesConnected(sourceID, targetID valueobjects.NodeID, edgeType string, timestamp time.Time) NodesConnected {
 	return NodesConnected{
@@ -166,6 +175,22 @@ func NewNodesConnected(sourceID, targetID valueobjects.NodeID, edgeType string, 
 		SourceID: sourceID,
 		TargetID: targetID,
 		EdgeType: edgeType,
+	}
+}
+
+// NewNodesAutoConnected creates a NodesAutoConnected event
+func NewNodesAutoConnected(nodeID valueobjects.NodeID, graphID string, connectionCount int, algorithm string, timestamp time.Time) NodesAutoConnected {
+	return NodesAutoConnected{
+		BaseEvent: BaseEvent{
+			AggregateID: nodeID.String(),
+			EventType:   "nodes.auto_connected",
+			Timestamp:   timestamp,
+			Version:     1,
+		},
+		NodeID:          nodeID,
+		GraphID:         graphID,
+		ConnectionCount: connectionCount,
+		Algorithm:       algorithm,
 	}
 }
 

@@ -22,16 +22,10 @@ type CommandHandler interface {
 	Handle(ctx context.Context, cmd Command) error
 }
 
-// CommandHandlerWithResult handles a command and returns a result
-type CommandHandlerWithResult interface {
-	HandleWithResult(ctx context.Context, cmd Command) (interface{}, error)
-}
-
 // CommandBus dispatches commands to their handlers
 type CommandBus struct {
-	handlers       map[reflect.Type]CommandHandler
-	resultHandlers map[reflect.Type]CommandHandlerWithResult
-	mu             sync.RWMutex
+	handlers map[reflect.Type]CommandHandler
+	mu       sync.RWMutex
 	// Optional dependencies for advanced features
 	uow     ports.UnitOfWork
 	metrics *observability.Metrics
@@ -40,18 +34,16 @@ type CommandBus struct {
 // NewCommandBus creates a new command bus
 func NewCommandBus() *CommandBus {
 	return &CommandBus{
-		handlers:       make(map[reflect.Type]CommandHandler),
-		resultHandlers: make(map[reflect.Type]CommandHandlerWithResult),
+		handlers: make(map[reflect.Type]CommandHandler),
 	}
 }
 
 // NewCommandBusWithDependencies creates a command bus with UoW and metrics
 func NewCommandBusWithDependencies(uow ports.UnitOfWork, metrics *observability.Metrics) *CommandBus {
 	return &CommandBus{
-		handlers:       make(map[reflect.Type]CommandHandler),
-		resultHandlers: make(map[reflect.Type]CommandHandlerWithResult),
-		uow:            uow,
-		metrics:        metrics,
+		handlers: make(map[reflect.Type]CommandHandler),
+		uow:      uow,
+		metrics:  metrics,
 	}
 }
 
@@ -69,19 +61,6 @@ func (b *CommandBus) Register(cmdType Command, handler CommandHandler) error {
 	return nil
 }
 
-// RegisterWithResult registers a handler that returns a result for a command type
-func (b *CommandBus) RegisterWithResult(cmdType Command, handler CommandHandlerWithResult) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	t := reflect.TypeOf(cmdType)
-	if _, exists := b.resultHandlers[t]; exists {
-		return fmt.Errorf("result handler already registered for command type %s", t.Name())
-	}
-
-	b.resultHandlers[t] = handler
-	return nil
-}
 
 // Send dispatches a command to its handler
 func (b *CommandBus) Send(ctx context.Context, cmd Command) error {
@@ -120,42 +99,6 @@ func (b *CommandBus) Send(ctx context.Context, cmd Command) error {
 	return nil
 }
 
-// SendWithResult dispatches a command to its handler and returns the result
-func (b *CommandBus) SendWithResult(ctx context.Context, cmd Command) (interface{}, error) {
-	// Validate command
-	if err := cmd.Validate(); err != nil {
-		return nil, fmt.Errorf("command validation failed: %w", err)
-	}
-
-	b.mu.RLock()
-	handler, exists := b.resultHandlers[reflect.TypeOf(cmd)]
-	b.mu.RUnlock()
-
-	if !exists {
-		return nil, fmt.Errorf("no result handler registered for command type %T", cmd)
-	}
-
-	// Track metrics if available
-	var start time.Time
-	if b.metrics != nil {
-		start = time.Now()
-	}
-
-	// Execute handler
-	result, err := handler.HandleWithResult(ctx, cmd)
-
-	// Record metrics if available
-	if b.metrics != nil {
-		cmdName := reflect.TypeOf(cmd).Name()
-		b.metrics.RecordCommandExecution(ctx, cmdName, time.Since(start), err)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("command handler failed: %w", err)
-	}
-
-	return result, nil
-}
 
 // SendWithTransaction executes a command within a transaction
 func (b *CommandBus) SendWithTransaction(ctx context.Context, cmd Command) error {
