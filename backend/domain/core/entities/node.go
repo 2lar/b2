@@ -604,6 +604,12 @@ func (n *Node) IsDraft() bool {
 	return n.status == StatusDraft
 }
 
+// SetMetadata is a convenience method for setting metadata properties
+// It's an alias for SetMetadataProperty for compatibility with external adapters
+func (n *Node) SetMetadata(key string, value interface{}) {
+	n.SetMetadataProperty(key, value)
+}
+
 // SetMetadataProperty sets a custom property in the metadata
 func (n *Node) SetMetadataProperty(key string, value interface{}) {
 	if n.metadata.Properties == nil {

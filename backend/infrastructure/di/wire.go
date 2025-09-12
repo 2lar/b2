@@ -13,6 +13,7 @@ import (
 	"backend/application/ports"
 	"backend/application/projections"
 	querybus "backend/application/queries/bus"
+	"backend/application/services"
 	"backend/infrastructure/config"
 	"backend/pkg/auth"
 	"backend/pkg/observability"
@@ -40,6 +41,8 @@ type Container struct {
 	EventHandlerRegistry   *appevents.HandlerRegistry
 	OperationEventListener *listeners.OperationEventListener
 	GraphStatsProjection   *projections.GraphStatsProjection
+	GraphLazyService       *services.GraphLazyService
+	GraphLoader            *services.GraphLoader
 }
 
 // SuperSet is the main provider set containing all providers
@@ -52,6 +55,8 @@ var SuperSet = wire.NewSet(
 	ProvideNodeRepository,
 	ProvideGraphRepository,
 	ProvideEdgeRepository,
+	ProvideGraphLazyService,
+	ProvideGraphLoader,
 	ProvideEventBus,
 	ProvideEventPublisher,
 	ProvideEventStore,

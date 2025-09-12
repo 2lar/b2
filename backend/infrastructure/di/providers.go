@@ -106,8 +106,29 @@ func ProvideEdgeRepository(
 	return dynamodb.NewEdgeRepository(
 		client,
 		cfg.DynamoDBTable,
+		cfg.GSI3IndexName,
 		logger,
 	)
+}
+
+// ProvideGraphLoader creates a graph loader for batch loading
+func ProvideGraphLoader(
+	graphRepo ports.GraphRepository,
+	nodeRepo ports.NodeRepository,
+	edgeRepo ports.EdgeRepository,
+	logger *zap.Logger,
+) *services.GraphLoader {
+	return services.NewGraphLoader(graphRepo, nodeRepo, edgeRepo, logger)
+}
+
+// ProvideGraphLazyService creates a service for managing lazy-loaded graphs
+func ProvideGraphLazyService(
+	nodeRepo ports.NodeRepository,
+	edgeRepo ports.EdgeRepository,
+	cfg *config.Config,
+	logger *zap.Logger,
+) *services.GraphLazyService {
+	return services.NewGraphLazyService(nodeRepo, edgeRepo, cfg, logger)
 }
 
 // ProvideEventBus creates an event bus
@@ -226,6 +247,7 @@ func ProvideCommandBus(
 	nodeRepo ports.NodeRepository,
 	edgeRepo ports.EdgeRepository,
 	graphRepo ports.GraphRepository,
+	graphLazyService *services.GraphLazyService,
 	eventStore ports.EventStore,
 	eventBus ports.EventBus,
 	eventPublisher ports.EventPublisher,
@@ -253,9 +275,11 @@ func ProvideCommandBus(
 		graphRepo,
 		edgeRepo,
 		edgeService,
+		graphLazyService,
 		eventPublisher,
 		distributedLock,
 		&cfg.EdgeCreation,
+		cfg,
 		&zapLoggerAdapter{logger},
 	)
 

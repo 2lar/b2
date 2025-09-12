@@ -29,6 +29,8 @@ type Config struct {
 	DynamoDBTable string
 	IndexName     string // GSI1 - for user-level queries
 	GSI2IndexName string // GSI2 - for direct NodeID lookups
+	GSI3IndexName string // GSI3 - for target node lookups in edges
+	GSI4IndexName string // GSI4 - for tag-based queries
 	EventBusName  string
 
 	// Lambda configuration
@@ -48,9 +50,10 @@ type Config struct {
 	JWTIssuer string
 
 	// Feature flags
-	EnableMetrics bool
-	EnableTracing bool
-	EnableCORS    bool
+	EnableMetrics    bool
+	EnableTracing    bool
+	EnableCORS       bool
+	EnableLazyLoading bool // Enable lazy loading for graph aggregates
 
 	// Edge creation configuration
 	EdgeCreation EdgeCreationConfig
@@ -65,6 +68,8 @@ func LoadConfig() (*Config, error) {
 		DynamoDBTable: getEnv("TABLE_NAME", getEnv("DYNAMODB_TABLE", "brain2")),
 		IndexName:     getEnv("INDEX_NAME", "KeywordIndex"),   // GSI1
 		GSI2IndexName: getEnv("GSI2_INDEX_NAME", "EdgeIndex"), // GSI2 - Used for both node and edge lookups
+		GSI3IndexName: getEnv("GSI3_INDEX_NAME", "TargetNodeIndex"), // GSI3 - For target node lookups
+		GSI4IndexName: getEnv("GSI4_INDEX_NAME", "TagIndex"), // GSI4 - For tag-based queries
 		EventBusName:  getEnv("EVENT_BUS_NAME", "brain2-events"),
 
 		// Lambda configuration
@@ -81,10 +86,11 @@ func LoadConfig() (*Config, error) {
 		JWTIssuer: getEnv("JWT_ISSUER", "brain2-backend2"),
 
 		// Logging and features
-		LogLevel:      getEnv("LOG_LEVEL", "info"),
-		EnableMetrics: getEnvBool("ENABLE_METRICS", false),
-		EnableTracing: getEnvBool("ENABLE_TRACING", false),
-		EnableCORS:    getEnvBool("ENABLE_CORS", true),
+		LogLevel:         getEnv("LOG_LEVEL", "info"),
+		EnableMetrics:    getEnvBool("ENABLE_METRICS", false),
+		EnableTracing:    getEnvBool("ENABLE_TRACING", false),
+		EnableCORS:       getEnvBool("ENABLE_CORS", true),
+		EnableLazyLoading: getEnvBool("ENABLE_LAZY_LOADING", true), // Default to true for better performance
 
 		// Edge creation configuration
 		EdgeCreation: EdgeCreationConfig{

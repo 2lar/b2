@@ -299,12 +299,7 @@ else
     echo -e "${GREEN}  ✓ Domain configuration found${NC}"
 fi
 
-# Check for repository abstractions
-if [ -d "$PROJECT_ROOT/infrastructure/persistence/abstractions" ]; then
-    echo -e "${GREEN}  ✓ Repository abstractions found${NC}"
-else
-    echo -e "${YELLOW}⚠️  Repository abstractions not found${NC}"
-fi
+# Repository interfaces are in application/ports (following clean architecture)
 
 # Check for extension points
 if [ -f "$PROJECT_ROOT/pkg/extensions/hooks.go" ]; then

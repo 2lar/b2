@@ -3,6 +3,7 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"backend/application/ports"
@@ -19,17 +20,23 @@ import (
 
 // EdgeRepository implements the EdgeRepository interface using DynamoDB
 type EdgeRepository struct {
-	client    *dynamodb.Client
-	tableName string
-	logger    *zap.Logger
+	client        *dynamodb.Client
+	tableName     string
+	gsi3IndexName string // GSI3 for target node lookups
+	logger        *zap.Logger
 }
 
+// Compile-time interface checks
+var _ ports.EdgeRepository = (*EdgeRepository)(nil)
+var _ aggregates.EdgeLoader = (*EdgeRepository)(nil)
+
 // NewEdgeRepository creates a new EdgeRepository
-func NewEdgeRepository(client *dynamodb.Client, tableName string, logger *zap.Logger) ports.EdgeRepository {
+func NewEdgeRepository(client *dynamodb.Client, tableName string, gsi3IndexName string, logger *zap.Logger) ports.EdgeRepository {
 	return &EdgeRepository{
-		client:    client,
-		tableName: tableName,
-		logger:    logger,
+		client:        client,
+		tableName:     tableName,
+		gsi3IndexName: gsi3IndexName,
+		logger:        logger,
 	}
 }
 
@@ -52,6 +59,10 @@ type edgeItem struct {
 	// GSI attributes for querying by node
 	GSI2PK string `dynamodbav:"GSI2PK,omitempty"` // NODE#nodeId for source
 	GSI2SK string `dynamodbav:"GSI2SK,omitempty"` // EDGE#edgeId
+	
+	// GSI3 attributes for querying by target node
+	GSI3PK string `dynamodbav:"GSI3PK,omitempty"` // TARGET#nodeId for target
+	GSI3SK string `dynamodbav:"GSI3SK,omitempty"` // EDGE#edgeId
 }
 
 // Save persists an edge to DynamoDB
@@ -81,6 +92,8 @@ func (r *EdgeRepository) Save(ctx context.Context, graphID string, edge *aggrega
 		UpdatedAt:     time.Now().Format(time.RFC3339),
 		GSI2PK:        fmt.Sprintf("NODE#%s", edge.SourceID.String()),
 		GSI2SK:        fmt.Sprintf("EDGE#%s", edge.ID),
+		GSI3PK:        fmt.Sprintf("TARGET#%s", edge.TargetID.String()),
+		GSI3SK:        fmt.Sprintf("EDGE#%s", edge.ID),
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -149,6 +162,8 @@ func (r *EdgeRepository) SaveWithUoW(ctx context.Context, graphID string, edge *
 		UpdatedAt:     time.Now().Format(time.RFC3339),
 		GSI2PK:        fmt.Sprintf("NODE#%s", edge.SourceID.String()),
 		GSI2SK:        fmt.Sprintf("EDGE#%s", edge.ID),
+		GSI3PK:        fmt.Sprintf("TARGET#%s", edge.TargetID.String()),
+		GSI3SK:        fmt.Sprintf("EDGE#%s", edge.ID),
 	}
 
 	av, err := attributevalue.MarshalMap(item)
@@ -257,39 +272,43 @@ func (r *EdgeRepository) GetByNodeID(ctx context.Context, nodeID string) ([]*agg
 		}
 	}
 
-	// For target edges, we need to scan since GSI2PK only stores source node
-	// This is inefficient but necessary without a second GSI
-	// We'll scan with a filter expression to find edges where target matches
-	scanInput := &dynamodb.ScanInput{
-		TableName:        aws.String(r.tableName),
-		FilterExpression: aws.String("EntityType = :entityType AND TargetID = :targetID"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":entityType": &types.AttributeValueMemberS{Value: "EDGE"},
-			":targetID":   &types.AttributeValueMemberS{Value: nodeID},
-		},
-	}
+	// Query for target edges using GSI3 (if available)
+	if r.gsi3IndexName != "" {
+		targetInput := &dynamodb.QueryInput{
+			TableName:              aws.String(r.tableName),
+			IndexName:              aws.String(r.gsi3IndexName),
+			KeyConditionExpression: aws.String("GSI3PK = :pk"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":pk": &types.AttributeValueMemberS{Value: fmt.Sprintf("TARGET#%s", nodeID)},
+			},
+		}
 
-	scanResult, err := r.client.Scan(ctx, scanInput)
-	if err != nil {
-		r.logger.Warn("Failed to scan for target edges",
-			zap.String("nodeID", nodeID),
-			zap.Error(err),
-		)
-		// Don't fail completely, return what we have
-		return edges, nil
-	}
-
-	// Process target edges
-	for _, item := range scanResult.Items {
-		edge, err := r.parseEdgeItem(item)
+		targetResult, err := r.client.Query(ctx, targetInput)
 		if err != nil {
-			r.logger.Warn("Failed to parse target edge item", zap.Error(err))
-			continue
+			r.logger.Warn("GSI3 query failed for target edges",
+				zap.String("nodeID", nodeID),
+				zap.Error(err),
+			)
+			// Don't fail completely, return what we have
+			return edges, nil
 		}
-		if !edgeMap[edge.ID] {
-			edges = append(edges, edge)
-			edgeMap[edge.ID] = true
+
+		// Process target edges
+		for _, item := range targetResult.Items {
+			edge, err := r.parseEdgeItem(item)
+			if err != nil {
+				r.logger.Warn("Failed to parse target edge item", zap.Error(err))
+				continue
+			}
+			if !edgeMap[edge.ID] {
+				edges = append(edges, edge)
+				edgeMap[edge.ID] = true
+			}
 		}
+	} else {
+		r.logger.Warn("GSI3 not configured, skipping target edge lookup",
+			zap.String("nodeID", nodeID),
+		)
 	}
 
 	r.logger.Debug("Found edges for node",
@@ -497,4 +516,100 @@ func (r *EdgeRepository) batchDeleteEdges(ctx context.Context, edgeKeys []map[st
 	}
 
 	return nil
+}
+
+// EdgeLoader interface implementation for lazy loading
+
+// LoadEdge implements aggregates.EdgeLoader interface - loads a single edge by key
+func (r *EdgeRepository) LoadEdge(ctx context.Context, edgeKey string) (*aggregates.Edge, error) {
+	// Parse edge key (format: "sourceID->targetID")
+	// This is a simple implementation - in production you might want more robust parsing
+	parts := strings.Split(edgeKey, "->")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid edge key format: %s", edgeKey)
+	}
+	
+	sourceID := parts[0]
+	targetID := parts[1]
+	
+	// Query for the specific edge
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(r.tableName),
+		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPH#%s", sourceID)}, // This needs graph context
+			":sk": &types.AttributeValueMemberS{Value: fmt.Sprintf("EDGE#%s", targetID)},
+		},
+		Limit: aws.Int32(1),
+	}
+	
+	result, err := r.client.Query(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query edge: %w", err)
+	}
+	
+	if len(result.Items) == 0 {
+		return nil, fmt.Errorf("edge not found: %s", edgeKey)
+	}
+	
+	var item edgeItem
+	if err := attributevalue.UnmarshalMap(result.Items[0], &item); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal edge: %w", err)
+	}
+	
+	// Convert item to Edge
+	sourceNodeID, err := valueobjects.NewNodeIDFromString(item.SourceID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source node ID: %w", err)
+	}
+	
+	targetNodeID, err := valueobjects.NewNodeIDFromString(item.TargetID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid target node ID: %w", err)
+	}
+	
+	createdAt, _ := time.Parse(time.RFC3339, item.CreatedAt)
+	
+	edge := &aggregates.Edge{
+		ID:            item.EdgeID,
+		SourceID:      sourceNodeID,
+		TargetID:      targetNodeID,
+		Type:          entities.EdgeType(item.Type),
+		Weight:        item.Weight,
+		Bidirectional: item.Bidirectional,
+		Metadata:      item.Metadata,
+		CreatedAt:     createdAt,
+	}
+	
+	return edge, nil
+}
+
+// LoadEdges implements aggregates.EdgeLoader interface - loads multiple edges by keys
+func (r *EdgeRepository) LoadEdges(ctx context.Context, edgeKeys []string) ([]*aggregates.Edge, error) {
+	if len(edgeKeys) == 0 {
+		return []*aggregates.Edge{}, nil
+	}
+	
+	edges := make([]*aggregates.Edge, 0, len(edgeKeys))
+	
+	// Load edges one by one (can be optimized with batch get if needed)
+	for _, edgeKey := range edgeKeys {
+		edge, err := r.LoadEdge(ctx, edgeKey)
+		if err != nil {
+			r.logger.Warn("Failed to load edge in batch",
+				zap.String("edgeKey", edgeKey),
+				zap.Error(err))
+			// Continue loading other edges even if some fail
+			continue
+		}
+		edges = append(edges, edge)
+	}
+	
+	return edges, nil
+}
+
+// LoadEdgesByNodeID implements aggregates.EdgeLoader interface - loads edges for a node
+func (r *EdgeRepository) LoadEdgesByNodeID(ctx context.Context, nodeID valueobjects.NodeID) ([]*aggregates.Edge, error) {
+	// This delegates to the existing GetByNodeID method
+	return r.GetByNodeID(ctx, nodeID.String())
 }

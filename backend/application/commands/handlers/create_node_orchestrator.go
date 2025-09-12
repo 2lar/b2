@@ -28,15 +28,17 @@ type Logger interface {
 // CreateNodeOrchestrator orchestrates the complex node creation process
 // It breaks down the monolithic CreateNodeCommand into smaller, focused operations
 type CreateNodeOrchestrator struct {
-	uow             ports.UnitOfWork
-	nodeRepo        ports.NodeRepository
-	graphRepo       ports.GraphRepository
-	edgeRepo        ports.EdgeRepository
-	edgeService     *services.EdgeService
-	eventPublisher  ports.EventPublisher
-	distributedLock *dynamodb.DistributedLock
-	config          *config.EdgeCreationConfig
-	logger          Logger
+	uow              ports.UnitOfWork
+	nodeRepo         ports.NodeRepository
+	graphRepo        ports.GraphRepository
+	edgeRepo         ports.EdgeRepository
+	edgeService      *services.EdgeService
+	graphLazyService *services.GraphLazyService
+	eventPublisher   ports.EventPublisher
+	distributedLock  *dynamodb.DistributedLock
+	config           *config.EdgeCreationConfig
+	appConfig        *config.Config
+	logger           Logger
 }
 
 // NewCreateNodeOrchestrator creates a new orchestrator instance
@@ -46,21 +48,25 @@ func NewCreateNodeOrchestrator(
 	graphRepo ports.GraphRepository,
 	edgeRepo ports.EdgeRepository,
 	edgeService *services.EdgeService,
+	graphLazyService *services.GraphLazyService,
 	eventPublisher ports.EventPublisher,
 	distributedLock *dynamodb.DistributedLock,
-	config *config.EdgeCreationConfig,
+	edgeConfig *config.EdgeCreationConfig,
+	appConfig *config.Config,
 	logger Logger,
 ) *CreateNodeOrchestrator {
 	return &CreateNodeOrchestrator{
-		uow:             uow,
-		nodeRepo:        nodeRepo,
-		graphRepo:       graphRepo,
-		edgeRepo:        edgeRepo,
-		edgeService:     edgeService,
-		eventPublisher:  eventPublisher,
-		distributedLock: distributedLock,
-		config:          config,
-		logger:          logger,
+		uow:              uow,
+		nodeRepo:         nodeRepo,
+		graphRepo:        graphRepo,
+		edgeRepo:         edgeRepo,
+		edgeService:      edgeService,
+		graphLazyService: graphLazyService,
+		eventPublisher:   eventPublisher,
+		distributedLock:  distributedLock,
+		config:           edgeConfig,
+		appConfig:        appConfig,
+		logger:           logger,
 	}
 }
 
@@ -78,10 +84,58 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 	}
 	defer o.uow.Rollback() // Will be no-op if commit succeeds
 
-	// Step 1: Ensure graph exists or create it
-	graph, err := o.ensureGraphExists(ctx, cmd.UserID)
-	if err != nil {
-		return fmt.Errorf("failed to ensure graph exists: %w", err)
+	// Step 1: Determine graph loading strategy and get/create graph
+	var graphID string
+	var graph *aggregates.Graph
+	var lazyGraph *aggregates.GraphLazy
+	isLazyMode := o.appConfig.EnableLazyLoading && o.graphLazyService != nil
+	
+	if isLazyMode {
+		// Use lazy-loaded graph for better performance
+		o.logger.Info("Using lazy-loaded graph for node creation",
+			"userID", cmd.UserID,
+			"lazyLoading", true,
+		)
+		
+		// For lazy loading, we don't need to load the entire graph
+		// Just ensure we have a graph ID from the repository
+		defaultGraph, err := o.graphRepo.GetUserDefaultGraph(ctx, cmd.UserID)
+		if err != nil {
+			// If no default graph, create one
+			defaultGraph, err = o.graphRepo.GetOrCreateDefaultGraph(ctx, cmd.UserID)
+			if err != nil {
+				return fmt.Errorf("failed to get or create default graph: %w", err)
+			}
+		}
+		graphID = string(defaultGraph.ID())
+		graph = defaultGraph // Keep reference for later use
+		
+		// Register the graph with lazy service for future operations
+		lazyGraph, err = o.graphLazyService.GetOrCreateForUser(ctx, cmd.UserID, graphID)
+		if err != nil {
+			o.logger.Error("Failed to register graph with lazy service, falling back to regular graph",
+				"error", err,
+			)
+			// Fall back to regular graph
+			isLazyMode = false
+			graph, err = o.ensureGraphExists(ctx, cmd.UserID)
+			if err != nil {
+				return fmt.Errorf("failed to ensure graph exists: %w", err)
+			}
+			graphID = string(graph.ID())
+		}
+	} else {
+		// Use regular graph loading (current behavior)
+		o.logger.Debug("Using standard graph loading",
+			"userID", cmd.UserID,
+			"lazyLoading", false,
+		)
+		var err error
+		graph, err = o.ensureGraphExists(ctx, cmd.UserID)
+		if err != nil {
+			return fmt.Errorf("failed to ensure graph exists: %w", err)
+		}
+		graphID = string(graph.ID())
 	}
 
 	// Step 2: Create the node
@@ -92,68 +146,92 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 
 	// Step 3: Set the GraphID on the node BEFORE saving
 	// This is critical - the repository requires nodes to have a GraphID before saving
-	node.SetGraphID(string(graph.ID()))
+	node.SetGraphID(graphID)
 
 	// Step 4: Save the node now that it has a GraphID
 	if err := o.saveNodeWithUoW(ctx, node); err != nil {
 		return fmt.Errorf("failed to save node: %w", err)
 	}
 
-	// Step 5: Add node to graph first (before creating edges)
-	if err := graph.AddNode(node); err != nil {
-		return fmt.Errorf("failed to add node to graph: %w", err)
-	}
-
-	// Step 6: Hybrid edge creation using domain service
+	// Step 5: Add node to graph and handle edge discovery
 	var syncEdges []aggregates.EdgeCandidate
 	var asyncCandidates []aggregates.EdgeCandidate
 	
-	// Use the domain's edge discovery method
-	syncEdges, asyncCandidates, err = o.edgeService.DiscoverEdges(
-		ctx, node, graph, o.config.SyncEdgeLimit,
-	)
-	if err != nil {
-		o.logger.Error("Failed to discover edges",
-			"error", err,
+	if isLazyMode && lazyGraph != nil {
+		// For lazy loading, we handle edges differently
+		// The node is already saved to the repository, so we just need to track it
+		// Add node ID to lazy graph for tracking
+		if err := lazyGraph.AddNodeID(node.ID()); err != nil {
+			o.logger.Info("Failed to add node to lazy graph",
+				"error", err,
+				"nodeID", node.ID().String(),
+			)
+		}
+		
+		// For lazy loading, we can still discover edges but in a more efficient way
+		// The edges will be created asynchronously or on-demand
+		o.logger.Info("Node added to lazy graph, edge discovery will be handled asynchronously",
 			"nodeID", node.ID().String(),
+			"graphID", graphID,
 		)
-		// Don't fail node creation if edge discovery fails
+		
+		// TODO: Implement lazy edge discovery if needed
+		// For now, edges will be discovered when nodes are actually loaded
+		
 	} else {
-		// Create high-priority edges synchronously using domain method
-		if len(syncEdges) > 0 {
-			// Use the Graph's DiscoverAndConnectEdges method for sync edges
-			// This leverages the domain logic for creating edges
-			for _, edgeCandidate := range syncEdges {
-				edge, err := graph.ConnectNodes(
-					edgeCandidate.SourceID,
-					edgeCandidate.TargetID,
-					edgeCandidate.Type,
-				)
-				if err != nil {
-					o.logger.Error("Failed to create sync edge",
-						"error", err,
-						"source", edgeCandidate.SourceID.String(),
-						"target", edgeCandidate.TargetID.String(),
+		// Regular graph handling (current behavior)
+		// Add node to graph first (before creating edges)
+		if err := graph.AddNode(node); err != nil {
+			return fmt.Errorf("failed to add node to graph: %w", err)
+		}
+		
+		// Use the domain's edge discovery method
+		syncEdges, asyncCandidates, err = o.edgeService.DiscoverEdges(
+			ctx, node, graph, o.config.SyncEdgeLimit,
+		)
+		if err != nil {
+			o.logger.Error("Failed to discover edges",
+				"error", err,
+				"nodeID", node.ID().String(),
+			)
+			// Don't fail node creation if edge discovery fails
+		} else {
+			// Create high-priority edges synchronously using domain method
+			if len(syncEdges) > 0 {
+				// Use the Graph's DiscoverAndConnectEdges method for sync edges
+				// This leverages the domain logic for creating edges
+				for _, edgeCandidate := range syncEdges {
+					edge, err := graph.ConnectNodes(
+						edgeCandidate.SourceID,
+						edgeCandidate.TargetID,
+						edgeCandidate.Type,
 					)
-					continue
+					if err != nil {
+						o.logger.Error("Failed to create sync edge",
+							"error", err,
+							"source", edgeCandidate.SourceID.String(),
+							"target", edgeCandidate.TargetID.String(),
+						)
+						continue
+					}
+					// Set the weight based on similarity
+					edge.Weight = edgeCandidate.Similarity
 				}
-				// Set the weight based on similarity
-				edge.Weight = edgeCandidate.Similarity
 			}
+
+			o.logger.Info("Synchronous edges created",
+				"nodeID", node.ID().String(),
+				"syncEdgeCount", len(syncEdges),
+				"asyncPending", len(asyncCandidates),
+			)
+
+			// Async edges will be handled by the connect-node Lambda via events
 		}
 
-		o.logger.Info("Synchronous edges created",
-			"nodeID", node.ID().String(),
-			"syncEdgeCount", len(syncEdges),
-			"asyncPending", len(asyncCandidates),
-		)
-
-		// Async edges will be handled by the connect-node Lambda via events
-	}
-
-	// Step 7: Save the graph with all nodes and edges
-	if err := o.saveGraphWithUoW(ctx, graph); err != nil {
-		return fmt.Errorf("failed to update graph: %w", err)
+		// Step 6: Save the graph with all nodes and edges
+		if err := o.saveGraphWithUoW(ctx, graph); err != nil {
+			return fmt.Errorf("failed to update graph: %w", err)
+		}
 	}
 
 	// Commit transaction
@@ -163,7 +241,11 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 
 	// Publish domain events after successful commit
 	domainEvents := node.GetUncommittedEvents()
-	domainEvents = append(domainEvents, graph.GetUncommittedEvents()...)
+	
+	// Only append graph events if we have a regular graph (not lazy mode)
+	if !isLazyMode && graph != nil {
+		domainEvents = append(domainEvents, graph.GetUncommittedEvents()...)
+	}
 
 	// If there are async edge candidates, create enhanced event
 	if len(asyncCandidates) > 0 && o.config.AsyncEnabled {
@@ -186,7 +268,7 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 		// Create enhanced event with pending edges
 		enhancedEvent := events.NewNodeCreatedWithPendingEdges(
 			node.ID(),
-			string(graph.ID()),
+			graphID,
 			cmd.UserID,
 			nodeContent.Title(),
 			keywords,
@@ -208,36 +290,49 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 		} else {
 			// Mark events as committed after successful publishing
 			node.MarkEventsAsCommitted()
-			graph.MarkEventsAsCommitted()
+			if !isLazyMode && graph != nil {
+				graph.MarkEventsAsCommitted()
+			}
 		}
 	}
 
 	// Get node count safely for logging
-	nodes, nodeErr := graph.Nodes()
 	nodeCount := 0
-	if nodeErr != nil {
-		nodeCount = -1 // Indicate large graph
-	} else {
-		nodeCount = len(nodes)
+	edgeCount := 0
+	
+	if isLazyMode && lazyGraph != nil {
+		// For lazy mode, use the lazy graph's count methods
+		nodeCount = lazyGraph.NodeCount()
+		edgeCount = lazyGraph.EdgeCount()
+	} else if graph != nil {
+		// For regular mode, count from the loaded graph
+		nodes, nodeErr := graph.Nodes()
+		if nodeErr != nil {
+			nodeCount = -1 // Indicate large graph
+		} else {
+			nodeCount = len(nodes)
+		}
+		edgeCount = len(graph.GetEdges())
 	}
 
 	// Update graph metadata after transaction commits
 	// This ensures we count the actual committed data
-	if err := o.graphRepo.UpdateGraphMetadata(ctx, string(graph.ID())); err != nil {
+	if err := o.graphRepo.UpdateGraphMetadata(ctx, graphID); err != nil {
 		o.logger.Error("Failed to update graph metadata after commit",
 			"error", err,
-			"graphID", string(graph.ID()),
+			"graphID", graphID,
 			"nodeCount", nodeCount,
-			"edgeCount", len(graph.GetEdges()),
+			"edgeCount", edgeCount,
 		)
 		// Don't fail the operation if metadata update fails
 	}
 
 	o.logger.Info("Node created successfully",
 		"nodeID", node.ID().String(),
-		"graphID", string(graph.ID()),
+		"graphID", graphID,
 		"userID", cmd.UserID,
 		"totalGraphNodes", nodeCount,
+		"lazyMode", isLazyMode,
 	)
 
 	return nil

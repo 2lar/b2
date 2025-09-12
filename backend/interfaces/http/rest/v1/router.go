@@ -34,9 +34,8 @@ func NewRouter(
 		r.Put("/nodes/{id}", nodeHandler.UpdateNode)
 		r.Delete("/nodes/{id}", nodeHandler.DeleteNode)
 		r.Post("/nodes/bulk-delete", nodeHandler.BulkDeleteNodes)
-		// TODO: Implement node connection endpoints
-		// r.Post("/nodes/{id}/connect", nodeHandler.ConnectNodes)
-		// r.Post("/nodes/{id}/disconnect", nodeHandler.DisconnectNodes)
+		r.Post("/nodes/{id}/connect", nodeHandler.ConnectNodes)
+		r.Post("/nodes/{id}/disconnect", nodeHandler.DisconnectNodes)
 
 		// Graph endpoints
 		// TODO: Implement graph CRUD operations

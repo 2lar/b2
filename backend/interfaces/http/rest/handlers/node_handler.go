@@ -434,6 +434,133 @@ func (h *NodeHandler) respondJSON(w http.ResponseWriter, status int, data interf
 	}
 }
 
+// ConnectNodes handles POST /nodes/{id}/connect
+func (h *NodeHandler) ConnectNodes(w http.ResponseWriter, r *http.Request) {
+	sourceNodeID := chi.URLParam(r, "id")
+	if sourceNodeID == "" {
+		h.respondError(w, http.StatusBadRequest, "Source node ID is required")
+		return
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(sourceNodeID); err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid source node ID format")
+		return
+	}
+
+	var req struct {
+		TargetNodeID string  `json:"targetNodeId" validate:"required,uuid"`
+		EdgeType     string  `json:"edgeType,omitempty" validate:"omitempty,oneof=similarity semantic reference dependency"`
+		Weight       float64 `json:"weight,omitempty" validate:"omitempty,min=0,max=1"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
+
+	// Validate request
+	if err := utils.ValidateStruct(req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
+		return
+	}
+
+	// Get user context
+	userCtx, err := auth.GetUserFromContext(r.Context())
+	if err != nil {
+		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// Default edge type if not provided
+	if req.EdgeType == "" {
+		req.EdgeType = "reference"
+	}
+
+	// Create edge command
+	edgeID := uuid.New().String()
+	cmd := commands.CreateEdgeCommand{
+		EdgeID:   edgeID,
+		UserID:   userCtx.UserID,
+		GraphID:  "", // Will be determined from nodes
+		SourceID: sourceNodeID,
+		TargetID: req.TargetNodeID,
+		Type:     req.EdgeType,
+		Weight:   req.Weight,
+	}
+
+	// Execute command
+	if err := h.mediator.Send(r.Context(), cmd); err != nil {
+		h.logger.Error("Failed to connect nodes",
+			zap.String("userID", userCtx.UserID),
+			zap.String("sourceNodeID", sourceNodeID),
+			zap.String("targetNodeID", req.TargetNodeID),
+			zap.Error(err),
+		)
+		if strings.Contains(err.Error(), "not found") {
+			h.respondError(w, http.StatusNotFound, "Node not found")
+		} else if strings.Contains(err.Error(), "already exists") {
+			h.respondError(w, http.StatusConflict, "Edge already exists")
+		} else {
+			h.respondError(w, http.StatusInternalServerError, "Failed to connect nodes")
+		}
+		return
+	}
+
+	h.respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"message": "Nodes connected successfully",
+		"edge": map[string]interface{}{
+			"sourceNodeId": sourceNodeID,
+			"targetNodeId": req.TargetNodeID,
+			"type":         req.EdgeType,
+			"weight":       req.Weight,
+		},
+	})
+}
+
+// DisconnectNodes handles POST /nodes/{id}/disconnect
+// Note: This is a simplified implementation that requires the edge ID to be computed
+// In production, you might want to create a specific DisconnectNodesCommand
+func (h *NodeHandler) DisconnectNodes(w http.ResponseWriter, r *http.Request) {
+	sourceNodeID := chi.URLParam(r, "id")
+	if sourceNodeID == "" {
+		h.respondError(w, http.StatusBadRequest, "Source node ID is required")
+		return
+	}
+
+	// Validate UUID format
+	if _, err := uuid.Parse(sourceNodeID); err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid source node ID format")
+		return
+	}
+
+	var req struct {
+		TargetNodeID string `json:"targetNodeId" validate:"required,uuid"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
+
+	// Validate request
+	if err := utils.ValidateStruct(req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
+		return
+	}
+
+	// Get user context
+	_, err := auth.GetUserFromContext(r.Context())
+	if err != nil {
+		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// TODO: Query for the edge between these nodes to get the edge ID
+	// For now, return not implemented
+	h.respondError(w, http.StatusNotImplemented, "Disconnect nodes endpoint not fully implemented yet")
+}
+
 func (h *NodeHandler) respondError(w http.ResponseWriter, status int, message string) {
 	h.respondJSON(w, status, map[string]interface{}{
 		"error":   true,

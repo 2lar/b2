@@ -15,12 +15,11 @@ import (
 // decoupling the presentation layer from the application layer
 type IMediator interface {
 	// Send dispatches a command and returns an error
+	// Following CQRS: commands only perform actions, never return data
 	Send(ctx context.Context, command commandbus.Command) error
 	
-	// SendWithResult dispatches a command that returns a result (for special cases)
-	SendWithResult(ctx context.Context, command commandbus.Command) (interface{}, error)
-	
 	// Query dispatches a query and returns the result
+	// Following CQRS: queries only read data, never modify state
 	Query(ctx context.Context, query querybus.Query) (interface{}, error)
 }
 
@@ -82,44 +81,6 @@ func (m *Mediator) Send(ctx context.Context, command commandbus.Command) error {
 		zap.Duration("duration", time.Since(startTime)))
 	
 	return nil
-}
-
-// SendWithResult dispatches a command that returns a result
-// This is for special cases where a command needs to return data (e.g., created ID)
-func (m *Mediator) SendWithResult(ctx context.Context, command commandbus.Command) (interface{}, error) {
-	startTime := time.Now()
-	
-	// Apply pre-processing behaviors
-	for _, behavior := range m.behaviors {
-		if err := behavior.PreProcess(ctx, command); err != nil {
-			m.logger.Error("Pre-processing behavior failed",
-				zap.String("command", fmt.Sprintf("%T", command)),
-				zap.Error(err),
-				zap.Duration("duration", time.Since(startTime)))
-			return nil, err
-		}
-	}
-	
-	// For now, we'll use the standard Send since commands return only errors
-	// In the future, we could extend this if needed
-	err := m.commandBus.Send(ctx, command)
-	
-	// Apply post-processing behaviors
-	for _, behavior := range m.behaviors {
-		behavior.PostProcess(ctx, command, err)
-	}
-	
-	if err != nil {
-		m.logger.Error("Command execution failed",
-			zap.String("command", fmt.Sprintf("%T", command)),
-			zap.Error(err),
-			zap.Duration("duration", time.Since(startTime)))
-		return nil, err
-	}
-	
-	// For create commands, the ID should be extracted from the command
-	// This requires type assertion to the specific command type
-	return nil, nil
 }
 
 // Query dispatches a query through the pipeline

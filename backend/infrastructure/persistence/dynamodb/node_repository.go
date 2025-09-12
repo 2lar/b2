@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"backend/application/ports"
+	"backend/domain/core/aggregates"
 	"backend/domain/core/entities"
 	"backend/domain/core/valueobjects"
-	"backend/infrastructure/persistence/abstractions"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -25,9 +25,11 @@ type NodeRepository struct {
 	gsi2IndexName string // For direct NodeID lookups
 }
 
-// Compile-time interface checks
+// Compile-time interface check
 var _ ports.NodeRepository = (*NodeRepository)(nil)
-var _ abstractions.NodeRepositoryAbstraction = (*NodeRepository)(nil)
+
+// NodeLoader interface implementation for lazy loading
+var _ aggregates.NodeLoader = (*NodeRepository)(nil)
 
 // NodeEntity is a wrapper to satisfy the Entity interface
 type NodeEntity struct {
@@ -576,11 +578,13 @@ func (r *NodeRepository) FindByTags(ctx context.Context, userID string, tags []s
 	}
 
 	tableName := r.GenericRepository.tableName
+	indexName := r.GenericRepository.indexName
 
-	// Build filter expression for tags
+	// Use GSI1 to query by user first, then filter by tags
 	filterParts := make([]string, len(tags))
 	expAttrValues := map[string]types.AttributeValue{
-		":type": &types.AttributeValueMemberS{Value: "NODE"},
+		":pk": &types.AttributeValueMemberS{Value: fmt.Sprintf("USER#%s", userID)},
+		":sk": &types.AttributeValueMemberS{Value: "NODE#"},
 	}
 
 	for i, tag := range tags {
@@ -589,15 +593,17 @@ func (r *NodeRepository) FindByTags(ctx context.Context, userID string, tags []s
 		expAttrValues[key] = &types.AttributeValueMemberS{Value: tag}
 	}
 
-	filterExpr := fmt.Sprintf("EntityType = :type AND (%s)", strings.Join(filterParts, " OR "))
+	filterExpr := strings.Join(filterParts, " OR ")
 
-	input := &dynamodb.ScanInput{
+	input := &dynamodb.QueryInput{
 		TableName:                 &tableName,
+		IndexName:                 &indexName,
+		KeyConditionExpression:    aws.String("GSI1PK = :pk AND begins_with(GSI1SK, :sk)"),
 		FilterExpression:          aws.String(filterExpr),
 		ExpressionAttributeValues: expAttrValues,
 	}
 
-	result, err := r.GenericRepository.client.Scan(ctx, input)
+	result, err := r.GenericRepository.client.Query(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find nodes by tags: %w", err)
 	}
@@ -615,6 +621,8 @@ func (r *NodeRepository) FindByTags(ctx context.Context, userID string, tags []s
 }
 
 // SearchByContent searches nodes by content
+// TODO: Replace with ElasticSearch or OpenSearch for production use
+// Current implementation uses Scan which is inefficient for large datasets
 func (r *NodeRepository) SearchByContent(ctx context.Context, query string, limit int) ([]*entities.Node, error) {
 	if query == "" {
 		return []*entities.Node{}, nil
@@ -622,7 +630,8 @@ func (r *NodeRepository) SearchByContent(ctx context.Context, query string, limi
 
 	tableName := r.GenericRepository.tableName
 
-	// Simple content search - in production, use a search service like Elasticsearch
+	// WARNING: This uses Scan operation - inefficient for large tables
+	// In production, index content in ElasticSearch/OpenSearch
 	input := &dynamodb.ScanInput{
 		TableName:        &tableName,
 		FilterExpression: aws.String("EntityType = :type AND (contains(Title, :query) OR contains(Content, :query))"),
@@ -758,4 +767,36 @@ func (r *NodeRepository) GetConnectedNodes(ctx context.Context, nodeID valueobje
 	}
 
 	return connectedNodes, nil
+}
+
+// NodeLoader interface implementation for lazy loading
+
+// LoadNode implements aggregates.NodeLoader interface - loads a single node
+func (r *NodeRepository) LoadNode(ctx context.Context, nodeID valueobjects.NodeID) (*entities.Node, error) {
+	// Simply delegate to existing GetByID method
+	return r.GetByID(ctx, nodeID)
+}
+
+// LoadNodes implements aggregates.NodeLoader interface - loads multiple nodes
+func (r *NodeRepository) LoadNodes(ctx context.Context, nodeIDs []valueobjects.NodeID) ([]*entities.Node, error) {
+	if len(nodeIDs) == 0 {
+		return []*entities.Node{}, nil
+	}
+
+	// Load nodes one by one (can be optimized with batch get if needed)
+	nodes := make([]*entities.Node, 0, len(nodeIDs))
+	
+	for _, nodeID := range nodeIDs {
+		node, err := r.GetByID(ctx, nodeID)
+		if err != nil {
+			r.logger.Warn("Failed to load node in batch", 
+				zap.String("nodeID", nodeID.String()),
+				zap.Error(err))
+			// Continue loading other nodes even if some fail
+			continue
+		}
+		nodes = append(nodes, node)
+	}
+	
+	return nodes, nil
 }

@@ -14,6 +14,7 @@ import (
 	"backend/application/ports"
 	"backend/application/projections"
 	bus2 "backend/application/queries/bus"
+	"backend/application/services"
 	"backend/infrastructure/config"
 	"backend/pkg/auth"
 	"backend/pkg/observability"
@@ -43,10 +44,11 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 	eventStore := ProvideEventStore(client, cfg)
 	eventPublisher := ProvideEventPublisher(eventBus)
 	unitOfWork := ProvideUnitOfWork(client, nodeRepository, edgeRepository, graphRepository, eventStore, eventPublisher)
+	graphLazyService := ProvideGraphLazyService(nodeRepository, edgeRepository, cfg, logger)
 	distributedLock := ProvideDistributedLock(client, cfg, logger)
 	cloudwatchClient := ProvideCloudWatchClient(awsConfig)
 	metrics := ProvideMetrics(cloudwatchClient, cfg)
-	commandBus := ProvideCommandBus(unitOfWork, nodeRepository, edgeRepository, graphRepository, eventStore, eventBus, eventPublisher, distributedLock, metrics, cfg, logger)
+	commandBus := ProvideCommandBus(unitOfWork, nodeRepository, edgeRepository, graphRepository, graphLazyService, eventStore, eventBus, eventPublisher, distributedLock, metrics, cfg, logger)
 	cache := ProvideInMemoryCache()
 	operationStore := ProvideOperationStore()
 	queryBus := ProvideQueryBus(graphRepository, nodeRepository, edgeRepository, cache, operationStore, logger)
@@ -55,6 +57,7 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 	handlerRegistry := ProvideEventHandlerRegistry(logger)
 	operationEventListener := ProvideOperationEventListener(operationStore, logger)
 	graphStatsProjection := ProvideGraphStatsProjection(cache, logger)
+	graphLoader := ProvideGraphLoader(graphRepository, nodeRepository, edgeRepository, logger)
 	container := &Container{
 		Config:                 cfg,
 		Logger:                 logger,
@@ -74,6 +77,8 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 		EventHandlerRegistry:   handlerRegistry,
 		OperationEventListener: operationEventListener,
 		GraphStatsProjection:   graphStatsProjection,
+		GraphLazyService:       graphLazyService,
+		GraphLoader:            graphLoader,
 	}
 	return container, nil
 }
@@ -100,6 +105,8 @@ type Container struct {
 	EventHandlerRegistry   *events.HandlerRegistry
 	OperationEventListener *listeners.OperationEventListener
 	GraphStatsProjection   *projections.GraphStatsProjection
+	GraphLazyService       *services.GraphLazyService
+	GraphLoader            *services.GraphLoader
 }
 
 // SuperSet is the main provider set containing all providers
@@ -112,6 +119,8 @@ var SuperSet = wire.NewSet(
 	ProvideNodeRepository,
 	ProvideGraphRepository,
 	ProvideEdgeRepository,
+	ProvideGraphLazyService,
+	ProvideGraphLoader,
 	ProvideEventBus,
 	ProvideEventPublisher,
 	ProvideEventStore,
