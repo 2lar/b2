@@ -18,6 +18,18 @@ type EdgeCreationConfig struct {
 	AsyncEnabled bool
 }
 
+// Features holds feature flags for the application
+type Features struct {
+	// EnableSagaOrchestrator enables saga pattern for complex operations
+	EnableSagaOrchestrator bool `json:"enable_saga_orchestrator"`
+	// EnableAsyncDeletion enables async deletion of nodes
+	EnableAsyncDeletion bool `json:"enable_async_deletion"`
+	// EnableAutoConnect enables automatic edge discovery
+	EnableAutoConnect bool `json:"enable_auto_connect"`
+	// EnableWebSocket enables WebSocket support
+	EnableWebSocket bool `json:"enable_websocket"`
+}
+
 // Config holds all application configuration
 type Config struct {
 	// Server configuration
@@ -50,13 +62,16 @@ type Config struct {
 	JWTIssuer string
 
 	// Feature flags
-	EnableMetrics    bool
-	EnableTracing    bool
-	EnableCORS       bool
+	EnableMetrics     bool
+	EnableTracing     bool
+	EnableCORS        bool
 	EnableLazyLoading bool // Enable lazy loading for graph aggregates
 
 	// Edge creation configuration
 	EdgeCreation EdgeCreationConfig
+
+	// Feature flags
+	Features Features
 }
 
 // LoadConfig loads configuration from environment variables
@@ -66,10 +81,10 @@ func LoadConfig() (*Config, error) {
 		Environment:   getEnv("ENVIRONMENT", "development"),
 		AWSRegion:     getEnv("AWS_REGION", "us-west-2"),
 		DynamoDBTable: getEnv("TABLE_NAME", getEnv("DYNAMODB_TABLE", "brain2")),
-		IndexName:     getEnv("INDEX_NAME", "KeywordIndex"),   // GSI1
-		GSI2IndexName: getEnv("GSI2_INDEX_NAME", "EdgeIndex"), // GSI2 - Used for both node and edge lookups
+		IndexName:     getEnv("INDEX_NAME", "KeywordIndex"),         // GSI1
+		GSI2IndexName: getEnv("GSI2_INDEX_NAME", "EdgeIndex"),       // GSI2 - Used for both node and edge lookups
 		GSI3IndexName: getEnv("GSI3_INDEX_NAME", "TargetNodeIndex"), // GSI3 - For target node lookups
-		GSI4IndexName: getEnv("GSI4_INDEX_NAME", "TagIndex"), // GSI4 - For tag-based queries
+		GSI4IndexName: getEnv("GSI4_INDEX_NAME", "TagIndex"),        // GSI4 - For tag-based queries
 		EventBusName:  getEnv("EVENT_BUS_NAME", "brain2-events"),
 
 		// Lambda configuration
@@ -86,10 +101,10 @@ func LoadConfig() (*Config, error) {
 		JWTIssuer: getEnv("JWT_ISSUER", "brain2-backend2"),
 
 		// Logging and features
-		LogLevel:         getEnv("LOG_LEVEL", "info"),
-		EnableMetrics:    getEnvBool("ENABLE_METRICS", false),
-		EnableTracing:    getEnvBool("ENABLE_TRACING", false),
-		EnableCORS:       getEnvBool("ENABLE_CORS", true),
+		LogLevel:          getEnv("LOG_LEVEL", "info"),
+		EnableMetrics:     getEnvBool("ENABLE_METRICS", false),
+		EnableTracing:     getEnvBool("ENABLE_TRACING", false),
+		EnableCORS:        getEnvBool("ENABLE_CORS", true),
 		EnableLazyLoading: getEnvBool("ENABLE_LAZY_LOADING", true), // Default to true for better performance
 
 		// Edge creation configuration
@@ -98,6 +113,14 @@ func LoadConfig() (*Config, error) {
 			SimilarityThreshold: getEnvFloat("EDGE_SIMILARITY_THRESHOLD", 0.3),
 			MaxEdgesPerNode:     getEnvInt("EDGE_MAX_PER_NODE", 100),
 			AsyncEnabled:        getEnvBool("EDGE_ASYNC_ENABLED", true),
+		},
+
+		// Feature flags
+		Features: Features{
+			EnableSagaOrchestrator: getEnvBool("FEATURE_SAGA_ORCHESTRATOR", true),
+			EnableAsyncDeletion:    getEnvBool("FEATURE_ASYNC_DELETION", true),
+			EnableAutoConnect:      getEnvBool("FEATURE_AUTO_CONNECT", true),
+			EnableWebSocket:        getEnvBool("FEATURE_WEBSOCKET", false),
 		},
 	}
 

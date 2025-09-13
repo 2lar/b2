@@ -156,10 +156,10 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 	// Step 5: Add node to graph and handle edge discovery
 	var syncEdges []aggregates.EdgeCandidate
 	var asyncCandidates []aggregates.EdgeCandidate
-	
+
 	if isLazyMode && lazyGraph != nil {
-		// For lazy loading, we handle edges differently
-		// The node is already saved to the repository, so we just need to track it
+		// For lazy loading, we still need to discover and create sync edges
+		// This ensures immediate connectivity for new nodes
 		// Add node ID to lazy graph for tracking
 		if err := lazyGraph.AddNodeID(node.ID()); err != nil {
 			o.logger.Info("Failed to add node to lazy graph",
@@ -167,17 +167,69 @@ func (o *CreateNodeOrchestrator) Handle(ctx context.Context, cmd commands.Create
 				"nodeID", node.ID().String(),
 			)
 		}
-		
-		// For lazy loading, we can still discover edges but in a more efficient way
-		// The edges will be created asynchronously or on-demand
-		o.logger.Info("Node added to lazy graph, edge discovery will be handled asynchronously",
-			"nodeID", node.ID().String(),
-			"graphID", graphID,
-		)
-		
-		// TODO: Implement lazy edge discovery if needed
-		// For now, edges will be discovered when nodes are actually loaded
-		
+
+		// IMPORTANT: Even in lazy mode, we need to discover edges for immediate connectivity
+		// We need to load existing nodes to discover edges
+		existingNodes, err := o.nodeRepo.GetByGraphID(ctx, graphID)
+		if err != nil {
+			o.logger.Error("Failed to load nodes for edge discovery in lazy mode",
+				"error", err,
+				"graphID", graphID,
+			)
+		} else if len(existingNodes) > 0 {
+			// Create a temporary graph for edge discovery
+			tempGraph, err := aggregates.NewGraph(cmd.UserID, "temp")
+			if err == nil {
+				// Add existing nodes to temp graph
+				for _, existingNode := range existingNodes {
+					tempGraph.AddNode(existingNode)
+				}
+				// Add the new node
+				tempGraph.AddNode(node)
+
+				// Discover edges using the temp graph
+				syncEdges, asyncCandidates, err = o.edgeService.DiscoverEdges(
+					ctx, node, tempGraph, o.config.SyncEdgeLimit,
+				)
+				if err != nil {
+					o.logger.Error("Failed to discover edges in lazy mode",
+						"error", err,
+						"nodeID", node.ID().String(),
+					)
+				} else {
+					// Create sync edges directly in the repository
+					for _, edgeCandidate := range syncEdges {
+						edge := &aggregates.Edge{
+							ID:       fmt.Sprintf("EDGE#%s#%s", edgeCandidate.SourceID.String(), edgeCandidate.TargetID.String()),
+							SourceID: edgeCandidate.SourceID,
+							TargetID: edgeCandidate.TargetID,
+							Type:     edgeCandidate.Type,
+							Weight:   edgeCandidate.Similarity,
+							CreatedAt: time.Now(),
+						}
+
+						// Save edge directly using edge repository
+						if edgeRepoWithUoW, ok := o.edgeRepo.(interface {
+							SaveWithUoW(context.Context, string, *aggregates.Edge, interface{}) error
+						}); ok {
+							if err := edgeRepoWithUoW.SaveWithUoW(ctx, graphID, edge, o.uow); err != nil {
+								o.logger.Error("Failed to save sync edge in lazy mode",
+									"error", err,
+									"edgeID", edge.ID,
+								)
+							}
+						}
+					}
+
+					o.logger.Info("Synchronous edges created in lazy mode",
+						"nodeID", node.ID().String(),
+						"syncEdgeCount", len(syncEdges),
+						"asyncPending", len(asyncCandidates),
+					)
+				}
+			}
+		}
+
 	} else {
 		// Regular graph handling (current behavior)
 		// Add node to graph first (before creating edges)

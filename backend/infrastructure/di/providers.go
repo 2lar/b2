@@ -268,29 +268,61 @@ func ProvideCommandBus(
 		logger,
 	)
 
-	// Create orchestrator for complex commands
-	orchestrator := commands_handlers.NewCreateNodeOrchestrator(
-		uow,
-		nodeRepo,
-		graphRepo,
-		edgeRepo,
-		edgeService,
-		graphLazyService,
-		eventPublisher,
-		distributedLock,
-		&cfg.EdgeCreation,
-		cfg,
-		&zapLoggerAdapter{logger},
-	)
+	// Create the appropriate handler based on feature flag
+	var createNodeHandler interface {
+		Handle(context.Context, commands.CreateNodeCommand) error
+	}
+	
+	// Check if saga orchestrator is enabled
+	if cfg.Features.EnableSagaOrchestrator {
+		// Use saga-based handler
+		logger.Info("Using saga-based CreateNode handler")
+		
+		// Get operation store for saga (it's already provided in the container)
+		operationStore := ProvideOperationStore()
+		
+		sagaHandler := commands_handlers.NewCreateNodeSagaHandler(
+			uow,
+			nodeRepo,
+			graphRepo,
+			edgeRepo,
+			edgeService,
+			graphLazyService,
+			eventPublisher,
+			distributedLock,
+			operationStore,
+			&cfg.EdgeCreation,
+			cfg,
+			logger,
+		)
+		createNodeHandler = sagaHandler
+	} else {
+		// Use traditional orchestrator
+		logger.Info("Using traditional CreateNode orchestrator")
+		orchestrator := commands_handlers.NewCreateNodeOrchestrator(
+			uow,
+			nodeRepo,
+			graphRepo,
+			edgeRepo,
+			edgeService,
+			graphLazyService,
+			eventPublisher,
+			distributedLock,
+			&cfg.EdgeCreation,
+			cfg,
+			&zapLoggerAdapter{logger},
+		)
+		createNodeHandler = orchestrator
+	}
 
-	// Register CreateNodeCommand with orchestrator
+	// Register CreateNodeCommand with the selected handler
 	commandBus.Register(commands.CreateNodeCommand{}, &CommandHandlerAdapter{
 		handler: func(ctx context.Context, cmd bus.Command) error {
 			createCmd, ok := cmd.(commands.CreateNodeCommand)
 			if !ok {
 				return fmt.Errorf("invalid command type")
 			}
-			return orchestrator.Handle(ctx, createCmd)
+			return createNodeHandler.Handle(ctx, createCmd)
 		},
 	})
 
