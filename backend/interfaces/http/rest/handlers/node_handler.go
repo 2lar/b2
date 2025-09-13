@@ -12,6 +12,7 @@ import (
 	"backend/application/mediator"
 	"backend/application/queries"
 	"backend/pkg/auth"
+	"backend/pkg/errors"
 	"backend/pkg/utils"
 
 	"github.com/go-chi/chi/v5"
@@ -21,18 +22,21 @@ import (
 
 // NodeHandler handles node-related HTTP requests
 type NodeHandler struct {
-	mediator mediator.IMediator
-	logger   *zap.Logger
+	mediator     mediator.IMediator
+	logger       *zap.Logger
+	errorHandler *errors.ErrorHandler
 }
 
 // NewNodeHandler creates a new node handler
 func NewNodeHandler(
 	med mediator.IMediator,
 	logger *zap.Logger,
+	errorHandler *errors.ErrorHandler,
 ) *NodeHandler {
 	return &NodeHandler{
-		mediator: med,
-		logger:   logger,
+		mediator:     med,
+		logger:       logger,
+		errorHandler: errorHandler,
 	}
 }
 
@@ -69,20 +73,20 @@ type CreateNodeResponse struct {
 func (h *NodeHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	var req CreateNodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid request body: "+err.Error()))
 		return
 	}
 
 	// Validate request
 	if err := utils.ValidateStruct(req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Validation error: "+err.Error()))
 		return
 	}
 
 	// Get user context from auth middleware
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -151,9 +155,9 @@ func (h *NodeHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 			zap.Error(err),
 		)
 		if strings.Contains(err.Error(), "validation") {
-			h.respondError(w, http.StatusBadRequest, err.Error())
+			h.errorHandler.Handle(w, r, errors.NewValidationError(err.Error()))
 		} else {
-			h.respondError(w, http.StatusInternalServerError, "Failed to create node")
+			h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to create node").WithCause(err))
 		}
 		return
 	}
@@ -171,20 +175,20 @@ func (h *NodeHandler) CreateNode(w http.ResponseWriter, r *http.Request) {
 func (h *NodeHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	nodeID := chi.URLParam(r, "nodeID")
 	if nodeID == "" {
-		h.respondError(w, http.StatusBadRequest, "Node ID is required")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Node ID is required"))
 		return
 	}
 
 	// Validate UUID format
 	if _, err := uuid.Parse(nodeID); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid node ID format")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid node ID format"))
 		return
 	}
 
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -203,9 +207,9 @@ func (h *NodeHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 			zap.Error(err),
 		)
 		if strings.Contains(err.Error(), "not found") {
-			h.respondError(w, http.StatusNotFound, "Node not found")
+			h.errorHandler.Handle(w, r, errors.NewNotFoundError("Node not found"))
 		} else {
-			h.respondError(w, http.StatusInternalServerError, "Failed to retrieve node")
+			h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to retrieve node").WithCause(err))
 		}
 		return
 	}
@@ -217,32 +221,32 @@ func (h *NodeHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 func (h *NodeHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 	nodeID := chi.URLParam(r, "nodeID")
 	if nodeID == "" {
-		h.respondError(w, http.StatusBadRequest, "Node ID is required")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Node ID is required"))
 		return
 	}
 
 	// Validate UUID format
 	if _, err := uuid.Parse(nodeID); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid node ID format")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid node ID format"))
 		return
 	}
 
 	var req UpdateNodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid request body: "+err.Error()))
 		return
 	}
 
 	// Validate request
 	if err := utils.ValidateStruct(req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Validation error: "+err.Error()))
 		return
 	}
 
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -267,11 +271,11 @@ func (h *NodeHandler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 			zap.Error(err),
 		)
 		if strings.Contains(err.Error(), "not found") {
-			h.respondError(w, http.StatusNotFound, "Node not found")
+			h.errorHandler.Handle(w, r, errors.NewNotFoundError("Node not found"))
 		} else if strings.Contains(err.Error(), "validation") {
-			h.respondError(w, http.StatusBadRequest, err.Error())
+			h.errorHandler.Handle(w, r, errors.NewValidationError(err.Error()))
 		} else {
-			h.respondError(w, http.StatusInternalServerError, "Failed to update node")
+			h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to update node").WithCause(err))
 		}
 		return
 	}
@@ -290,20 +294,20 @@ func (h *NodeHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid request body")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid request body"))
 		return
 	}
 
 	// Validate request
 	if err := utils.ValidateStruct(req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Validation error: "+err.Error()))
 		return
 	}
 
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -326,7 +330,7 @@ func (h *NodeHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) {
 			zap.Int("nodeCount", len(req.NodeIDs)),
 			zap.Error(err),
 		)
-		h.respondError(w, http.StatusInternalServerError, "Failed to delete nodes")
+		h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to delete nodes").WithCause(err))
 		return
 	}
 
@@ -345,20 +349,20 @@ func (h *NodeHandler) BulkDeleteNodes(w http.ResponseWriter, r *http.Request) {
 func (h *NodeHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 	nodeID := chi.URLParam(r, "nodeID")
 	if nodeID == "" {
-		h.respondError(w, http.StatusBadRequest, "Node ID is required")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Node ID is required"))
 		return
 	}
 
 	// Validate UUID format
 	if _, err := uuid.Parse(nodeID); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid node ID format")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid node ID format"))
 		return
 	}
 
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -376,9 +380,9 @@ func (h *NodeHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 			zap.Error(err),
 		)
 		if strings.Contains(err.Error(), "not found") {
-			h.respondError(w, http.StatusNotFound, "Node not found")
+			h.errorHandler.Handle(w, r, errors.NewNotFoundError("Node not found"))
 		} else {
-			h.respondError(w, http.StatusInternalServerError, "Failed to delete node")
+			h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to delete node").WithCause(err))
 		}
 		return
 	}
@@ -391,7 +395,7 @@ func (h *NodeHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -417,7 +421,7 @@ func (h *NodeHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 			zap.String("userID", userCtx.UserID),
 			zap.Error(err),
 		)
-		h.respondError(w, http.StatusInternalServerError, "Failed to list nodes")
+		h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to list nodes").WithCause(err))
 		return
 	}
 
@@ -438,13 +442,13 @@ func (h *NodeHandler) respondJSON(w http.ResponseWriter, status int, data interf
 func (h *NodeHandler) ConnectNodes(w http.ResponseWriter, r *http.Request) {
 	sourceNodeID := chi.URLParam(r, "id")
 	if sourceNodeID == "" {
-		h.respondError(w, http.StatusBadRequest, "Source node ID is required")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Source node ID is required"))
 		return
 	}
 
 	// Validate UUID format
 	if _, err := uuid.Parse(sourceNodeID); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid source node ID format")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid source node ID format"))
 		return
 	}
 
@@ -455,20 +459,20 @@ func (h *NodeHandler) ConnectNodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid request body: "+err.Error()))
 		return
 	}
 
 	// Validate request
 	if err := utils.ValidateStruct(req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Validation error: "+err.Error()))
 		return
 	}
 
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -498,11 +502,11 @@ func (h *NodeHandler) ConnectNodes(w http.ResponseWriter, r *http.Request) {
 			zap.Error(err),
 		)
 		if strings.Contains(err.Error(), "not found") {
-			h.respondError(w, http.StatusNotFound, "Node not found")
+			h.errorHandler.Handle(w, r, errors.NewNotFoundError("Node not found"))
 		} else if strings.Contains(err.Error(), "already exists") {
-			h.respondError(w, http.StatusConflict, "Edge already exists")
+			h.errorHandler.Handle(w, r, errors.NewConflictError("Edge already exists"))
 		} else {
-			h.respondError(w, http.StatusInternalServerError, "Failed to connect nodes")
+			h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to connect nodes").WithCause(err))
 		}
 		return
 	}
@@ -524,13 +528,13 @@ func (h *NodeHandler) ConnectNodes(w http.ResponseWriter, r *http.Request) {
 func (h *NodeHandler) DisconnectNodes(w http.ResponseWriter, r *http.Request) {
 	sourceNodeID := chi.URLParam(r, "id")
 	if sourceNodeID == "" {
-		h.respondError(w, http.StatusBadRequest, "Source node ID is required")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Source node ID is required"))
 		return
 	}
 
 	// Validate UUID format
 	if _, err := uuid.Parse(sourceNodeID); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid source node ID format")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid source node ID format"))
 		return
 	}
 
@@ -539,32 +543,25 @@ func (h *NodeHandler) DisconnectNodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid request body: "+err.Error()))
 		return
 	}
 
 	// Validate request
 	if err := utils.ValidateStruct(req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Validation error: "+err.Error()))
 		return
 	}
 
 	// Get user context
 	_, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
 	// TODO: Query for the edge between these nodes to get the edge ID
 	// For now, return not implemented
-	h.respondError(w, http.StatusNotImplemented, "Disconnect nodes endpoint not fully implemented yet")
+	h.errorHandler.HandleStatus(w, r, http.StatusNotImplemented, "Disconnect nodes endpoint not fully implemented yet")
 }
 
-func (h *NodeHandler) respondError(w http.ResponseWriter, status int, message string) {
-	h.respondJSON(w, status, map[string]interface{}{
-		"error":   true,
-		"message": message,
-		"code":    status,
-	})
-}

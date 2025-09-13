@@ -9,6 +9,7 @@ import (
 	"backend/application/mediator"
 	"backend/application/queries"
 	"backend/pkg/auth"
+	"backend/pkg/errors"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -16,15 +17,17 @@ import (
 
 // GraphHandler handles graph-related HTTP requests
 type GraphHandler struct {
-	mediator mediator.IMediator
-	logger   *zap.Logger
+	mediator     mediator.IMediator
+	logger       *zap.Logger
+	errorHandler *errors.ErrorHandler
 }
 
 // NewGraphHandler creates a new graph handler
-func NewGraphHandler(med mediator.IMediator, logger *zap.Logger) *GraphHandler {
+func NewGraphHandler(med mediator.IMediator, logger *zap.Logger, errorHandler *errors.ErrorHandler) *GraphHandler {
 	return &GraphHandler{
-		mediator: med,
-		logger:   logger,
+		mediator:     med,
+		logger:       logger,
+		errorHandler: errorHandler,
 	}
 }
 
@@ -32,14 +35,14 @@ func NewGraphHandler(med mediator.IMediator, logger *zap.Logger) *GraphHandler {
 func (h *GraphHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
 	graphID := chi.URLParam(r, "graphID")
 	if graphID == "" {
-		h.respondError(w, http.StatusBadRequest, "Graph ID is required")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Graph ID is required"))
 		return
 	}
 
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -57,7 +60,7 @@ func (h *GraphHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
 			zap.String("userID", userCtx.UserID),
 			zap.Error(err),
 		)
-		h.respondError(w, http.StatusNotFound, "Graph not found")
+		h.errorHandler.Handle(w, r, errors.NewNotFoundError("Graph not found"))
 		return
 	}
 
@@ -69,7 +72,7 @@ func (h *GraphHandler) ListGraphs(w http.ResponseWriter, r *http.Request) {
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -95,7 +98,7 @@ func (h *GraphHandler) ListGraphs(w http.ResponseWriter, r *http.Request) {
 			zap.String("userID", userCtx.UserID),
 			zap.Error(err),
 		)
-		h.respondError(w, http.StatusInternalServerError, "Failed to list graphs")
+		h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to list graphs").WithCause(err))
 		return
 	}
 
@@ -107,7 +110,7 @@ func (h *GraphHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -128,7 +131,7 @@ func (h *GraphHandler) GetGraphData(w http.ResponseWriter, r *http.Request) {
 			zap.String("graphID", graphID),
 			zap.Error(err),
 		)
-		h.respondError(w, http.StatusInternalServerError, "Failed to get graph data")
+		h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to get graph data").WithCause(err))
 		return
 	}
 
@@ -149,14 +152,14 @@ func (h *GraphHandler) respondJSON(w http.ResponseWriter, status int, data inter
 func (h *GraphHandler) GetGraphStats(w http.ResponseWriter, r *http.Request) {
 	graphID := chi.URLParam(r, "graphID")
 	if graphID == "" {
-		h.respondError(w, http.StatusBadRequest, "Graph ID is required")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Graph ID is required"))
 		return
 	}
 
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -174,11 +177,11 @@ func (h *GraphHandler) GetGraphStats(w http.ResponseWriter, r *http.Request) {
 			zap.Error(err),
 		)
 		if strings.Contains(err.Error(), "not found") {
-			h.respondError(w, http.StatusNotFound, "Graph not found")
+			h.errorHandler.Handle(w, r, errors.NewNotFoundError("Graph not found"))
 		} else if strings.Contains(err.Error(), "unauthorized") {
-			h.respondError(w, http.StatusForbidden, "Access denied")
+			h.errorHandler.Handle(w, r, errors.NewForbiddenError("Access denied"))
 		} else {
-			h.respondError(w, http.StatusInternalServerError, "Failed to retrieve graph statistics")
+			h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to retrieve graph statistics").WithCause(err))
 		}
 		return
 	}
@@ -186,10 +189,3 @@ func (h *GraphHandler) GetGraphStats(w http.ResponseWriter, r *http.Request) {
 	h.respondJSON(w, http.StatusOK, result)
 }
 
-func (h *GraphHandler) respondError(w http.ResponseWriter, status int, message string) {
-	h.respondJSON(w, status, map[string]interface{}{
-		"error":   true,
-		"message": message,
-		"code":    status,
-	})
-}

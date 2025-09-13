@@ -18,6 +18,7 @@ import (
 	"backend/infrastructure/messaging/eventbridge"
 	"backend/infrastructure/persistence/dynamodb"
 	"backend/pkg/auth"
+	"backend/pkg/errors"
 	"backend/pkg/observability"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -44,6 +45,12 @@ func ProvideLogger(cfg *config.Config) (*zap.Logger, error) {
 	}
 
 	return logger, nil
+}
+
+// ProvideErrorHandler creates a centralized error handler
+func ProvideErrorHandler(logger *zap.Logger, cfg *config.Config) *errors.ErrorHandler {
+	debug := cfg.Environment != "production"
+	return errors.NewErrorHandler(logger, debug)
 }
 
 // ProvideAWSConfig creates AWS configuration

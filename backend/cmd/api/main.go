@@ -57,6 +57,7 @@ func main() {
 	router := rest.NewRouter(
 		container.Mediator,
 		container.Logger,
+		container.ErrorHandler,
 	)
 
 	// Setup routes

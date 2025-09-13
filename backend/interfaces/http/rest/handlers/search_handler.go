@@ -9,20 +9,23 @@ import (
 	"backend/application/mediator"
 	"backend/application/queries"
 	"backend/pkg/auth"
+	"backend/pkg/errors"
 	"go.uber.org/zap"
 )
 
 // SearchHandler handles search-related HTTP requests
 type SearchHandler struct {
-	mediator mediator.IMediator
-	logger   *zap.Logger
+	mediator     mediator.IMediator
+	logger       *zap.Logger
+	errorHandler *errors.ErrorHandler
 }
 
 // NewSearchHandler creates a new search handler
-func NewSearchHandler(mediator mediator.IMediator, logger *zap.Logger) *SearchHandler {
+func NewSearchHandler(mediator mediator.IMediator, logger *zap.Logger, errorHandler *errors.ErrorHandler) *SearchHandler {
 	return &SearchHandler{
-		mediator: mediator,
-		logger:   logger,
+		mediator:     mediator,
+		logger:       logger,
+		errorHandler: errorHandler,
 	}
 }
 
@@ -30,14 +33,14 @@ func NewSearchHandler(mediator mediator.IMediator, logger *zap.Logger) *SearchHa
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	if query == "" {
-		h.respondError(w, http.StatusBadRequest, "Search query is required")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Search query is required"))
 		return
 	}
 
 	// Get user from context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -66,7 +69,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	// Validate query
 	if err := searchQuery.Validate(); err != nil {
-		h.respondError(w, http.StatusBadRequest, err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError(err.Error()))
 		return
 	}
 
@@ -78,14 +81,14 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 			zap.String("userID", userCtx.UserID),
 			zap.Error(err),
 		)
-		h.respondError(w, http.StatusInternalServerError, "Search failed")
+		h.errorHandler.Handle(w, r, errors.NewInternalError("Search failed").WithCause(err))
 		return
 	}
 
 	// Format response
 	searchResult, ok := result.(*queries.SearchNodesResult)
 	if !ok {
-		h.respondError(w, http.StatusInternalServerError, "Invalid search result")
+		h.errorHandler.Handle(w, r, errors.NewInternalError("Invalid search result"))
 		return
 	}
 
@@ -112,6 +115,3 @@ func (h *SearchHandler) respondJSON(w http.ResponseWriter, status int, data inte
 	}
 }
 
-func (h *SearchHandler) respondError(w http.ResponseWriter, status int, message string) {
-	h.respondJSON(w, status, map[string]string{"error": message})
-}

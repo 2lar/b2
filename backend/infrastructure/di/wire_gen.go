@@ -17,6 +17,7 @@ import (
 	"backend/application/services"
 	"backend/infrastructure/config"
 	"backend/pkg/auth"
+	"backend/pkg/errors"
 	"backend/pkg/observability"
 	"context"
 	"github.com/google/wire"
@@ -31,6 +32,7 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 	if err != nil {
 		return nil, err
 	}
+	errorHandler := ProvideErrorHandler(logger, cfg)
 	awsConfig, err := ProvideAWSConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -61,6 +63,7 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 	container := &Container{
 		Config:                 cfg,
 		Logger:                 logger,
+		ErrorHandler:           errorHandler,
 		NodeRepo:               nodeRepository,
 		GraphRepo:              graphRepository,
 		EdgeRepo:               edgeRepository,
@@ -89,6 +92,7 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 type Container struct {
 	Config                 *config.Config
 	Logger                 *zap.Logger
+	ErrorHandler           *errors.ErrorHandler
 	NodeRepo               ports.NodeRepository
 	GraphRepo              ports.GraphRepository
 	EdgeRepo               ports.EdgeRepository
@@ -112,6 +116,7 @@ type Container struct {
 // SuperSet is the main provider set containing all providers
 var SuperSet = wire.NewSet(
 	ProvideLogger,
+	ProvideErrorHandler,
 	ProvideAWSConfig,
 	ProvideDynamoDBClient,
 	ProvideEventBridgeClient,

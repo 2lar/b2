@@ -16,6 +16,7 @@ import (
 	"backend/application/services"
 	"backend/infrastructure/config"
 	"backend/pkg/auth"
+	"backend/pkg/errors"
 	"backend/pkg/observability"
 	"github.com/google/wire"
 	"go.uber.org/zap"
@@ -25,6 +26,7 @@ import (
 type Container struct {
 	Config                 *config.Config
 	Logger                 *zap.Logger
+	ErrorHandler           *errors.ErrorHandler
 	NodeRepo               ports.NodeRepository
 	GraphRepo              ports.GraphRepository
 	EdgeRepo               ports.EdgeRepository
@@ -48,6 +50,7 @@ type Container struct {
 // SuperSet is the main provider set containing all providers
 var SuperSet = wire.NewSet(
 	ProvideLogger,
+	ProvideErrorHandler,
 	ProvideAWSConfig,
 	ProvideDynamoDBClient,
 	ProvideEventBridgeClient,

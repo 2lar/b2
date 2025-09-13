@@ -8,6 +8,7 @@ import (
 	"backend/application/commands"
 	"backend/application/mediator"
 	"backend/pkg/auth"
+	"backend/pkg/errors"
 	"backend/pkg/utils"
 
 	"github.com/go-chi/chi/v5"
@@ -17,15 +18,17 @@ import (
 
 // EdgeHandler handles edge-related HTTP requests
 type EdgeHandler struct {
-	mediator mediator.IMediator
-	logger   *zap.Logger
+	mediator     mediator.IMediator
+	logger       *zap.Logger
+	errorHandler *errors.ErrorHandler
 }
 
 // NewEdgeHandler creates a new edge handler
-func NewEdgeHandler(med mediator.IMediator, logger *zap.Logger) *EdgeHandler {
+func NewEdgeHandler(med mediator.IMediator, logger *zap.Logger, errorHandler *errors.ErrorHandler) *EdgeHandler {
 	return &EdgeHandler{
-		mediator: med,
-		logger:   logger,
+		mediator:     med,
+		logger:       logger,
+		errorHandler: errorHandler,
 	}
 }
 
@@ -41,20 +44,20 @@ type CreateEdgeRequest struct {
 func (h *EdgeHandler) CreateEdge(w http.ResponseWriter, r *http.Request) {
 	var req CreateEdgeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid request body: "+err.Error()))
 		return
 	}
 
 	// Validate request
 	if err := utils.ValidateStruct(req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Validation error: "+err.Error())
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Validation error: "+err.Error()))
 		return
 	}
 
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -88,13 +91,13 @@ func (h *EdgeHandler) CreateEdge(w http.ResponseWriter, r *http.Request) {
 			zap.Error(err),
 		)
 		if strings.Contains(err.Error(), "validation") {
-			h.respondError(w, http.StatusBadRequest, err.Error())
+			h.errorHandler.Handle(w, r, errors.NewValidationError(err.Error()))
 		} else if strings.Contains(err.Error(), "not found") {
-			h.respondError(w, http.StatusNotFound, "One or both nodes not found")
+			h.errorHandler.Handle(w, r, errors.NewNotFoundError("One or both nodes not found"))
 		} else if strings.Contains(err.Error(), "already exists") {
-			h.respondError(w, http.StatusConflict, "Edge already exists")
+			h.errorHandler.Handle(w, r, errors.NewConflictError("Edge already exists"))
 		} else {
-			h.respondError(w, http.StatusInternalServerError, "Failed to create edge")
+			h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to create edge").WithCause(err))
 		}
 		return
 	}
@@ -110,20 +113,20 @@ func (h *EdgeHandler) CreateEdge(w http.ResponseWriter, r *http.Request) {
 func (h *EdgeHandler) DeleteEdge(w http.ResponseWriter, r *http.Request) {
 	edgeID := chi.URLParam(r, "edgeID")
 	if edgeID == "" {
-		h.respondError(w, http.StatusBadRequest, "Edge ID is required")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Edge ID is required"))
 		return
 	}
 
 	// Validate UUID format
 	if _, err := uuid.Parse(edgeID); err != nil {
-		h.respondError(w, http.StatusBadRequest, "Invalid edge ID format")
+		h.errorHandler.Handle(w, r, errors.NewValidationError("Invalid edge ID format"))
 		return
 	}
 
 	// Get user context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
-		h.respondError(w, http.StatusUnauthorized, "Unauthorized")
+		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
@@ -141,9 +144,9 @@ func (h *EdgeHandler) DeleteEdge(w http.ResponseWriter, r *http.Request) {
 			zap.Error(err),
 		)
 		if strings.Contains(err.Error(), "not found") {
-			h.respondError(w, http.StatusNotFound, "Edge not found")
+			h.errorHandler.Handle(w, r, errors.NewNotFoundError("Edge not found"))
 		} else {
-			h.respondError(w, http.StatusInternalServerError, "Failed to delete edge")
+			h.errorHandler.Handle(w, r, errors.NewInternalError("Failed to delete edge").WithCause(err))
 		}
 		return
 	}
@@ -161,10 +164,3 @@ func (h *EdgeHandler) respondJSON(w http.ResponseWriter, status int, data interf
 	}
 }
 
-func (h *EdgeHandler) respondError(w http.ResponseWriter, status int, message string) {
-	h.respondJSON(w, status, map[string]interface{}{
-		"error":   true,
-		"message": message,
-		"code":    status,
-	})
-}
