@@ -14,12 +14,14 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.39.3
 	github.com/aws/aws-xray-sdk-go v1.8.5
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/go-chi/cors v1.2.1
 	github.com/go-playground/validator/v10 v10.27.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/zap v1.27.0
 )

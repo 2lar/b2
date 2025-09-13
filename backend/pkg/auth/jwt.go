@@ -286,3 +286,74 @@ func randomString(length int) string {
 	}
 	return string(b)
 }
+
+// JWTService provides JWT token generation and validation
+type JWTService struct {
+	validator *JWTValidator
+	secretKey []byte
+	issuer    string
+	audience  []string
+	ttl       time.Duration
+}
+
+// NewJWTService creates a new JWT service
+func NewJWTService(secret string, issuer string, audience []string, ttl time.Duration) *JWTService {
+	config := JWTConfig{
+		SigningMethod: "HS256",
+		SecretKey:     secret,
+		Issuer:        issuer,
+		Audience:      audience,
+	}
+
+	validator, _ := NewJWTValidator(config)
+
+	return &JWTService{
+		validator: validator,
+		secretKey: []byte(secret),
+		issuer:    issuer,
+		audience:  audience,
+		ttl:       ttl,
+	}
+}
+
+// GenerateToken generates a new JWT token for a user
+func (s *JWTService) GenerateToken(userID string, email string, roles []string) (string, error) {
+	now := time.Now()
+	claims := Claims{
+		UserID: userID,
+		Email:  email,
+		Roles:  roles,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    s.issuer,
+			Subject:   userID,
+			Audience:  s.audience,
+			ExpiresAt: jwt.NewNumericDate(now.Add(s.ttl)),
+			NotBefore: jwt.NewNumericDate(now),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ID:        randomString(16),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(s.secretKey)
+}
+
+// ValidateToken validates a JWT token and returns the claims
+func (s *JWTService) ValidateToken(tokenString string) (jwt.MapClaims, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return s.secretKey, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, ErrInvalidToken
+}

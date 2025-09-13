@@ -1,0 +1,30 @@
+{
+  "features": {
+    "enableSagaOrchestrator": true,
+    "enableAsyncDeletion": false,
+    "enableAutoConnect": true,
+    "enableWebSocket": true
+  },
+  "limits": {
+    "syncEdgeLimit": 20,
+    "maxNodesPerGraph": 10000,
+    "maxEdgesPerNode": 1000,
+    "maxGraphsPerUser": 100
+  },
+  "dataloader": {
+    "enabled": true,
+    "batchWindow": 10,
+    "maxBatchSize": 25
+  },
+  "websocket": {
+    "enabled": true,
+    "maxConnections": 10000,
+    "heartbeatInterval": 30,
+    "messageQueueSize": 1000
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2024-01-13T10:00:00Z",
+    "updatedBy": "system"
+  }
+}

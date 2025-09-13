@@ -613,3 +613,33 @@ func (r *EdgeRepository) LoadEdgesByNodeID(ctx context.Context, nodeID valueobje
 	// This delegates to the existing GetByNodeID method
 	return r.GetByNodeID(ctx, nodeID.String())
 }
+
+// GetEdgesByNodeIDs retrieves edges for multiple nodes in a batch operation
+func (r *EdgeRepository) GetEdgesByNodeIDs(ctx context.Context, nodeIDs []string) (map[string][]*aggregates.Edge, error) {
+	if len(nodeIDs) == 0 {
+		return make(map[string][]*aggregates.Edge), nil
+	}
+
+	result := make(map[string][]*aggregates.Edge)
+
+	// For each node ID, query its edges
+	// This could be optimized with parallel queries if needed
+	for _, nodeID := range nodeIDs {
+		edges, err := r.GetByNodeID(ctx, nodeID)
+		if err != nil {
+			r.logger.Debug("Failed to get edges for node",
+				zap.String("nodeID", nodeID),
+				zap.Error(err))
+			// Initialize with empty slice even on error
+			result[nodeID] = []*aggregates.Edge{}
+			continue
+		}
+		result[nodeID] = edges
+	}
+
+	r.logger.Debug("Batch loaded edges",
+		zap.Int("nodes", len(nodeIDs)),
+		zap.Int("found", len(result)))
+
+	return result, nil
+}
