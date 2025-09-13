@@ -367,7 +367,7 @@ func ProvideCommandBus(
 	}
 
 	// Register CreateEdgeCommand handler
-	createEdgeHandler := commands.NewCreateEdgeHandler(nodeRepo, graphRepo, eventBus)
+	createEdgeHandler := commands_handlers.NewCreateEdgeHandler(uow, nodeRepo, graphRepo, edgeRepo, eventBus)
 	commandBus.Register(commands.CreateEdgeCommand{}, &CommandHandlerAdapter{
 		handler: func(ctx context.Context, cmd bus.Command) error {
 			edgeCmd, ok := cmd.(commands.CreateEdgeCommand)
@@ -379,7 +379,7 @@ func ProvideCommandBus(
 	})
 
 	// Register CleanupNodeResourcesCommand handler
-	cleanupHandler := commands.NewCleanupNodeResourcesHandler()
+	cleanupHandler := commands_handlers.NewCleanupNodeResourcesHandler()
 	commandBus.Register(&commands.CleanupNodeResourcesCommand{}, &CommandHandlerAdapter{
 		handler: func(ctx context.Context, cmd bus.Command) error {
 			cleanupCmd, ok := cmd.(*commands.CleanupNodeResourcesCommand)
