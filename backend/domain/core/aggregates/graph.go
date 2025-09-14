@@ -417,6 +417,51 @@ func (g *Graph) ConnectNodes(sourceID, targetID valueobjects.NodeID, edgeType en
 	return edge, nil
 }
 
+// DisconnectNodes removes an edge between two nodes
+func (g *Graph) DisconnectNodes(sourceID, targetID valueobjects.NodeID) (*Edge, error) {
+	// Validate nodes exist
+	sourceNode, sourceExists := g.nodes[sourceID]
+	_, targetExists := g.nodes[targetID]
+
+	if !sourceExists || !targetExists {
+		return nil, pkgerrors.NewValidationError("both nodes must exist in graph")
+	}
+
+	// Find the edge
+	edgeKey := g.makeEdgeKey(sourceID, targetID)
+	edge, exists := g.edges[edgeKey]
+	if !exists {
+		return nil, pkgerrors.NewNotFoundError("edge")
+	}
+
+	// Disconnect the nodes
+	if err := sourceNode.Disconnect(targetID); err != nil {
+		return nil, fmt.Errorf("failed to disconnect source node: %w", err)
+	}
+
+	// Remove the edge from graph
+	delete(g.edges, edgeKey)
+	g.metadata.EdgeCount--
+	g.updatedAt = time.Now()
+	g.version++
+
+	// Create a copy of the edge to return before it's removed
+	edgeCopy := *edge
+
+	g.addEvent(events.NodesDisconnected{
+		BaseEvent: events.BaseEvent{
+			AggregateID: g.id.String(),
+			EventType:   "graph.nodes_disconnected",
+			Timestamp:   g.updatedAt,
+			Version:     1,
+		},
+		SourceID: sourceID,
+		TargetID: targetID,
+	})
+
+	return &edgeCopy, nil
+}
+
 // LoadEdge loads an existing edge into the graph (used for repository reconstruction)
 // This method bypasses validation since we're loading already-persisted edges
 func (g *Graph) LoadEdge(edge *Edge) error {

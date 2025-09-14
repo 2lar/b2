@@ -137,7 +137,7 @@ func (h *CreateNodeSagaHandler) shouldUseSaga() bool {
 }
 
 // fallbackToOrchestrator falls back to the original CreateNodeOrchestrator
-func (h *CreateNodeSagaHandler) fallbackToOrchestrator(ctx context.Context, cmd commands.CreateNodeCommand) error {
+func (h *CreateNodeSagaHandler) fallbackToOrchestrator(_ context.Context, cmd commands.CreateNodeCommand) error {
 	// This would call the original CreateNodeOrchestrator
 	// For now, return an error indicating fallback is needed
 	h.logger.Warn("Fallback to original orchestrator not implemented",

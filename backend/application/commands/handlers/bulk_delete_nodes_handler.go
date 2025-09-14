@@ -76,7 +76,7 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 			invalidIDs,
 			[]string{"All provided node IDs are invalid"},
 		)
-		h.eventBus.Publish(ctx, event)
+		h.eventBus.PublishBatch(ctx, []events.DomainEvent{event})
 		return fmt.Errorf("all node IDs are invalid")
 	}
 
@@ -125,7 +125,7 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 			append(invalidIDs, failedIDs...),
 			errors,
 		)
-		h.eventBus.Publish(ctx, event)
+		h.eventBus.PublishBatch(ctx, []events.DomainEvent{event})
 		return fmt.Errorf("no valid nodes to delete")
 	}
 
@@ -170,13 +170,16 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 		return fmt.Errorf("failed to commit bulk delete transaction: %w", err)
 	}
 
-	// Publish deletion events for async cleanup of edges and events
+	// Collect all events for batch publishing
+	var allEvents []events.DomainEvent
+
+	// Collect individual deletion events for async cleanup
 	for _, info := range validNodes {
 		content := ""
 		if nodeEntity, ok := info.node.(interface{ Content() interface{ Title() string } }); ok {
 			content = nodeEntity.Content().Title()
 		}
-		
+
 		event := events.NewNodeDeletedEvent(
 			info.nodeID,
 			cmd.UserID,
@@ -186,22 +189,16 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 			[]string{}, // Keywords
 			time.Now(),
 		)
-		
-		if err := h.eventBus.Publish(ctx, event); err != nil {
-			h.logger.Warn("Failed to publish deletion event for node",
-				zap.String("nodeID", info.nodeID.String()),
-				zap.Error(err),
-			)
-		}
+		allEvents = append(allEvents, event)
 	}
 
-	// Emit bulk deletion completed event
+	// Add bulk deletion completed event
 	deletedIDs := make([]string, len(validNodes))
 	for i, info := range validNodes {
 		deletedIDs[i] = info.nodeID.String()
 	}
 
-	event := events.NewBulkNodesDeletedEvent(
+	bulkEvent := events.NewBulkNodesDeletedEvent(
 		cmd.OperationID,
 		cmd.UserID,
 		len(validNodes),
@@ -210,10 +207,13 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 		append(invalidIDs, failedIDs...),
 		errors,
 	)
+	allEvents = append(allEvents, bulkEvent)
 
-	if err := h.eventBus.Publish(ctx, event); err != nil {
-		h.logger.Error("Failed to publish bulk delete event",
+	// Publish all events in batch
+	if err := h.eventBus.PublishBatch(ctx, allEvents); err != nil {
+		h.logger.Error("Failed to publish bulk delete events",
 			zap.String("operationID", cmd.OperationID),
+			zap.Int("eventCount", len(allEvents)),
 			zap.Error(err),
 		)
 	}
@@ -233,6 +233,6 @@ func (h *BulkDeleteNodesHandler) Handle(ctx context.Context, cmd commands.BulkDe
 // nodeValidationInfo holds information about a validated node
 type nodeValidationInfo struct {
 	nodeID  valueobjects.NodeID
-	node    interface{} // We don't use the full node object after validation
+	node    any // We don't use the full node object after validation
 	graphID string
 }

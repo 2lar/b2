@@ -16,7 +16,6 @@
 #
 # Build specific component only:
 #   ./build.sh --component api
-#   ./build.sh --component migrate
 #   ./build.sh --component worker
 #
 # Build with race detection (for debugging):
@@ -35,7 +34,6 @@
 # ====================
 # Local Services:
 # • api               - Main REST API server (DDD/CQRS handlers)
-# • migrate           - Database migration tool
 # • worker            - Background job processor for async operations
 #
 # Lambda Functions:
@@ -118,7 +116,6 @@ while [[ $# -gt 0 ]]; do
             echo "Available Components:"
             echo "  Local Services:"
             echo "    • api               - REST API server"
-            echo "    • migrate           - Database migration tool"
             echo "    • worker            - Background job processor"
             echo "  Lambda Functions:"
             echo "    • cleanup-handler   - Async cleanup handler"
@@ -431,10 +428,10 @@ for component in $components; do
     
     # Determine build type and binary name
     # Lambda functions: cleanup-handler, connect-node, ws-*
-    # Local services: api, worker, migrate
-    
+    # Local services: api, worker
+
     LAMBDA_COMPONENTS="lambda cleanup-handler connect-node ws-connect ws-disconnect ws-send-message"
-    LOCAL_COMPONENTS="api worker migrate"
+    LOCAL_COMPONENTS="api worker"
     
     IS_LAMBDA=false
     for lambda_comp in $LAMBDA_COMPONENTS; do
@@ -564,9 +561,6 @@ echo -e "${BLUE}🚀 Next steps:${NC}"
 if [[ " $components " =~ " api " ]]; then
     echo "  • Run API server: ./build/api/api"
     echo "  • Or use: make run"
-fi
-if [[ " $components " =~ " migrate " ]]; then
-    echo "  • Run migrations: ./build/migrate/migrate up"
 fi
 if [[ " $components " =~ " worker " ]]; then
     echo "  • Start worker: ./build/worker/worker"

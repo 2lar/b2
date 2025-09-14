@@ -27,6 +27,11 @@ func NewGetNodeHandler(nodeRepo ports.NodeRepository, logger *zap.Logger) *GetNo
 
 // Handle executes the get node query
 func (h *GetNodeHandler) Handle(ctx context.Context, query queries.GetNodeQuery) (*queries.GetNodeResult, error) {
+	// Validate UserID first
+	if query.UserID == "" {
+		return nil, fmt.Errorf("invalid node ID: user ID is required")
+	}
+
 	// Create NodeID value object from string
 	nodeID, err := valueobjects.NewNodeIDFromString(query.NodeID)
 	if err != nil {

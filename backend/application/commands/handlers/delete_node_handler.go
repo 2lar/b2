@@ -95,7 +95,7 @@ func (h *DeleteNodeHandler) Handle(ctx context.Context, cmd commands.DeleteNodeC
 		node.UpdatedAt(),
 	)
 
-	if err := h.eventBus.Publish(ctx, event); err != nil {
+	if err := h.eventBus.PublishBatch(ctx, []events.DomainEvent{event}); err != nil {
 		h.logger.Warn("Failed to publish deletion event", zap.Error(err))
 	}
 

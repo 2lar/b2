@@ -55,7 +55,17 @@ func (id *NodeID) UnmarshalJSON(data []byte) error {
 	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
 		return pkgerrors.NewValidationError("NodeID must be a string")
 	}
-	id.value = string(data[1 : len(data)-1])
+	value := string(data[1 : len(data)-1])
+
+	// Validate the UUID - empty or invalid UUIDs should fail
+	if value == "" {
+		return pkgerrors.NewValidationError("node ID cannot be empty")
+	}
+	if !isValidUUID(value) {
+		return pkgerrors.NewValidationError("node ID must be a valid UUID")
+	}
+
+	id.value = value
 	return nil
 }
 

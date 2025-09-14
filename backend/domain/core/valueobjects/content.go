@@ -109,7 +109,9 @@ func (c NodeContent) Summary(maxLength int) string {
 
 	combined := c.title
 	if c.body != "" {
-		combined += ": " + c.body
+		// For multiline body, take only the first line
+		firstLine := strings.Split(c.body, "\n")[0]
+		combined += ": " + firstLine
 	}
 
 	if utf8.RuneCountInString(combined) <= maxLength {

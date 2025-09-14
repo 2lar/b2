@@ -429,22 +429,27 @@ func (o *CreateNodeOrchestrator) ensureGraphExists(ctx context.Context, userID s
 
 	// Graph doesn't exist, need to create it with distributed locking
 	// to prevent race conditions when multiple requests try to create the same graph
-	lockResource := fmt.Sprintf("default_graph_creation_%s", userID)
-	lockDuration := 30 * time.Second // Lock for up to 30 seconds
-	lockTimeout := 5 * time.Second   // Wait up to 5 seconds to acquire lock
+	var lock *dynamodb.Lock
+	if o.distributedLock != nil {
+		lockResource := fmt.Sprintf("default_graph_creation_%s", userID)
+		lockDuration := 30 * time.Second // Lock for up to 30 seconds
+		lockTimeout := 5 * time.Second   // Wait up to 5 seconds to acquire lock
 
-	lock, err := o.distributedLock.TryAcquireLock(ctx, lockResource, userID, lockDuration, lockTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("failed to acquire lock for graph creation: %w", err)
-	}
-	defer func() {
-		if releaseErr := lock.Release(ctx); releaseErr != nil {
-			o.logger.Error("Failed to release distributed lock",
-				"resource", lockResource,
-				"error", releaseErr,
-			)
+		acquiredLock, err := o.distributedLock.TryAcquireLock(ctx, lockResource, userID, lockDuration, lockTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("failed to acquire lock for graph creation: %w", err)
 		}
-	}()
+		lock = acquiredLock
+		defer func() {
+			if releaseErr := lock.Release(ctx); releaseErr != nil {
+				o.logger.Error("Failed to release distributed lock",
+					"resource", lockResource,
+					"error", releaseErr,
+				)
+			}
+		}()
+	}
+	// If distributedLock is nil (e.g., in tests), proceed without locking
 
 	// Double-check if graph was created by another process while we were waiting for the lock
 	graph, err = o.graphRepo.GetUserDefaultGraph(ctx, userID)
@@ -469,7 +474,7 @@ func (o *CreateNodeOrchestrator) ensureGraphExists(ctx context.Context, userID s
 }
 
 // createNode creates a new node with the provided details
-func (o *CreateNodeOrchestrator) createNode(ctx context.Context, cmd commands.CreateNodeCommand) (*entities.Node, error) {
+func (o *CreateNodeOrchestrator) createNode(_ context.Context, cmd commands.CreateNodeCommand) (*entities.Node, error) {
 	// Create value objects
 	content, err := valueobjects.NewNodeContent(cmd.Title, cmd.Content, valueobjects.FormatMarkdown)
 	if err != nil {
@@ -535,13 +540,3 @@ func (o *CreateNodeOrchestrator) saveGraphWithUoW(ctx context.Context, graph *ag
 	return fmt.Errorf("repository does not support unit of work transactions")
 }
 
-func (o *CreateNodeOrchestrator) saveEdgeWithUoW(ctx context.Context, graphID string, edge *aggregates.Edge) error {
-	// Check if repository supports UoW
-	if repoWithUoW, ok := o.edgeRepo.(interface {
-		SaveWithUoW(context.Context, string, *aggregates.Edge, interface{}) error
-	}); ok {
-		return repoWithUoW.SaveWithUoW(ctx, graphID, edge, o.uow)
-	}
-	// If UoW is required but not supported, fail fast
-	return fmt.Errorf("repository does not support unit of work transactions")
-}

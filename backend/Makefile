@@ -19,7 +19,6 @@ SRC_DIR := .
 BUILD_DIR := build
 COVERAGE_DIR := coverage
 CMD_API := cmd/api
-CMD_MIGRATE := cmd/migrate
 CMD_WORKER := cmd/worker
 
 # Build variables
@@ -58,7 +57,6 @@ help:
 	@echo "  all              - Clean, build, and test everything"
 	@echo "  build            - Build all components"
 	@echo "  build-api        - Build API server only"
-	@echo "  build-migrate    - Build migration tool only"
 	@echo "  build-worker     - Build worker service only"
 	@echo "  clean            - Clean build artifacts"
 	@echo "  deps             - Download and verify dependencies"
@@ -76,8 +74,6 @@ help:
 	@echo "$(GREEN)Development targets:$(NC)"
 	@echo "  run              - Run API server locally"
 	@echo "  dev              - Run in development mode with hot reload"
-	@echo "  migrate-up       - Run database migrations"
-	@echo "  migrate-down     - Rollback database migrations"
 	@echo "  worker           - Run worker service"
 	@echo ""
 	@echo "$(GREEN)Code quality targets:$(NC)"
@@ -86,6 +82,12 @@ help:
 	@echo "  vet              - Run go vet"
 	@echo "  sec              - Run security checks"
 	@echo "  mocks            - Generate mocks"
+	@echo ""
+	@echo "$(GREEN)Documentation targets:$(NC)"
+	@echo "  swagger          - Generate Swagger/OpenAPI documentation"
+	@echo "  swagger-fmt      - Format Swagger annotations"
+	@echo "  swagger-validate - Validate generated Swagger docs"
+	@echo "  docs             - Generate all documentation"
 	@echo ""
 	@echo "$(GREEN)Docker targets:$(NC)"
 	@echo "  docker-build     - Build Docker images"
@@ -120,7 +122,7 @@ wire:
 	@echo "$(GREEN)✅ Wire code generated$(NC)"
 
 # Build targets
-build: build-api build-migrate build-worker
+build: build-api build-worker
 	@echo "$(GREEN)✅ All components built successfully$(NC)"
 
 build-api: wire
@@ -129,15 +131,6 @@ build-api: wire
 	@$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/api/api $(CMD_API)
 	@echo "$(GREEN)✅ API server built: $(BUILD_DIR)/api/api$(NC)"
 
-build-migrate:
-	@echo "$(YELLOW)🏗️  Building migration tool...$(NC)"
-	@mkdir -p $(BUILD_DIR)/migrate
-	@if [ -f "$(CMD_MIGRATE)/main.go" ]; then \
-		$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/migrate/migrate $(CMD_MIGRATE); \
-		echo "$(GREEN)✅ Migration tool built: $(BUILD_DIR)/migrate/migrate$(NC)"; \
-	else \
-		echo "$(YELLOW)⚠️  Migration tool not implemented yet$(NC)"; \
-	fi
 
 build-worker:
 	@echo "$(YELLOW)🏗️  Building worker service...$(NC)"
@@ -206,21 +199,6 @@ dev:
 	fi
 	@air -c .air.toml
 
-migrate-up: build-migrate
-	@echo "$(BLUE)⬆️  Running migrations...$(NC)"
-	@if [ -f "$(BUILD_DIR)/migrate/migrate" ]; then \
-		./$(BUILD_DIR)/migrate/migrate up; \
-	else \
-		echo "$(RED)❌ Migration tool not found. Run 'make build-migrate' first$(NC)"; \
-	fi
-
-migrate-down: build-migrate
-	@echo "$(BLUE)⬇️  Rolling back migrations...$(NC)"
-	@if [ -f "$(BUILD_DIR)/migrate/migrate" ]; then \
-		./$(BUILD_DIR)/migrate/migrate down; \
-	else \
-		echo "$(RED)❌ Migration tool not found. Run 'make build-migrate' first$(NC)"; \
-	fi
 
 worker: build-worker
 	@echo "$(BLUE)⚙️  Starting worker service...$(NC)"
@@ -229,6 +207,38 @@ worker: build-worker
 	else \
 		echo "$(RED)❌ Worker service not found. Run 'make build-worker' first$(NC)"; \
 	fi
+
+# Documentation targets
+swagger:
+	@echo "$(YELLOW)📚 Generating Swagger documentation...$(NC)"
+	@if ! command -v swag &> /dev/null; then \
+		echo "$(YELLOW)Installing swag...$(NC)"; \
+		go install github.com/swaggo/swag/cmd/swag@latest; \
+	fi
+	@mkdir -p docs/api
+	@swag init -g docs/swagger/main.go -o docs/api --parseDependency --parseInternal
+	@echo "$(GREEN)✅ Swagger documentation generated: docs/api/$(NC)"
+
+swagger-fmt:
+	@echo "$(YELLOW)✨ Formatting Swagger annotations...$(NC)"
+	@if ! command -v swag &> /dev/null; then \
+		echo "$(YELLOW)Installing swag...$(NC)"; \
+		go install github.com/swaggo/swag/cmd/swag@latest; \
+	fi
+	@swag fmt
+	@echo "$(GREEN)✅ Swagger annotations formatted$(NC)"
+
+swagger-validate: swagger
+	@echo "$(YELLOW)🔍 Validating Swagger documentation...$(NC)"
+	@if [ -f "docs/api/swagger.json" ]; then \
+		echo "$(GREEN)✅ Swagger documentation exists at docs/api/swagger.json$(NC)"; \
+		echo "$(YELLOW)📝 To validate online, visit: https://editor.swagger.io/$(NC)"; \
+	else \
+		echo "$(RED)❌ Swagger documentation not found. Run 'make swagger' first$(NC)"; \
+	fi
+
+docs: swagger
+	@echo "$(GREEN)✅ All documentation generated$(NC)"
 
 # Code quality targets
 fmt:
@@ -309,7 +319,6 @@ check: fmt vet lint test-unit
 	@echo "$(GREEN)✅ All checks passed$(NC)"
 
 # Quick shortcuts
-.PHONY: api migrate work
+.PHONY: api work
 api: run
-migrate: migrate-up
 work: worker

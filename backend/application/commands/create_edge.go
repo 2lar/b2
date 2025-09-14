@@ -41,14 +41,18 @@ func (c CreateEdgeCommand) Validate() error {
 
 // DeleteEdgeCommand represents a command to delete an edge between two nodes
 type DeleteEdgeCommand struct {
-	UserID string `json:"user_id"`
-	EdgeID string `json:"edge_id"`
+	UserID  string `json:"user_id"`
+	GraphID string `json:"graph_id"`
+	EdgeID  string `json:"edge_id"`
 }
 
 // Validate validates the command
 func (c DeleteEdgeCommand) Validate() error {
 	if c.UserID == "" {
 		return fmt.Errorf("user ID is required")
+	}
+	if c.GraphID == "" {
+		return fmt.Errorf("graph ID is required")
 	}
 	if c.EdgeID == "" {
 		return fmt.Errorf("edge ID is required")

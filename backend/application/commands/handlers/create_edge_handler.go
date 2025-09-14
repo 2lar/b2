@@ -50,6 +50,15 @@ func (h *CreateEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 		return fmt.Errorf("invalid command: %w", err)
 	}
 
+	// Validate edge type
+	edgeType := entities.EdgeType(createCmd.Type)
+	if edgeType == "" {
+		edgeType = entities.EdgeTypeNormal
+	}
+	if !edgeType.IsValid() {
+		return fmt.Errorf("invalid edge type: %s", createCmd.Type)
+	}
+
 	// Parse node IDs
 	sourceID, err := valueobjects.NewNodeIDFromString(createCmd.SourceID)
 	if err != nil {
@@ -96,10 +105,7 @@ func (h *CreateEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 	}
 
 	// Create the edge in the graph aggregate
-	edgeType := entities.EdgeType(createCmd.Type)
-	if edgeType == "" {
-		edgeType = entities.EdgeTypeNormal
-	}
+	// edgeType was already validated and normalized above
 
 	edge, err := graph.ConnectNodes(sourceID, targetID, edgeType)
 	if err != nil {
@@ -127,15 +133,7 @@ func (h *CreateEdgeHandler) Handle(ctx context.Context, cmd interface{}) error {
 		return fmt.Errorf("graph repository does not support unit of work")
 	}
 
-	// Also connect the nodes themselves
-	if err := sourceNode.ConnectTo(targetID, edgeType); err != nil {
-		return fmt.Errorf("failed to connect source node: %w", err)
-	}
-	if err := targetNode.ConnectTo(sourceID, edgeType); err != nil {
-		return fmt.Errorf("failed to connect target node: %w", err)
-	}
-
-	// Save the updated nodes using UoW
+	// Save the updated nodes using UoW (they were already connected via graph.ConnectNodes)
 	if nodeRepoWithUoW, ok := h.nodeRepo.(interface {
 		SaveWithUoW(context.Context, *entities.Node, interface{}) error
 	}); ok {

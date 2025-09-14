@@ -52,7 +52,7 @@ func (h *GetGraphHandler) Handle(ctx context.Context, query queries.GetGraphByID
 	}
 
 	// Get all nodes for this graph
-	nodes, err := h.nodeRepo.GetByUserID(ctx, query.UserID)
+	nodes, err := h.nodeRepo.GetByGraphID(ctx, query.GraphID)
 	if err != nil {
 		h.logger.Warn("Failed to get nodes for graph", zap.Error(err))
 		nodes = []*entities.Node{}

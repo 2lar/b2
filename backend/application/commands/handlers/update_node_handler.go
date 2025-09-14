@@ -135,10 +135,9 @@ func (h *UpdateNodeHandler) Handle(ctx context.Context, cmd commands.UpdateNodeC
 	}
 
 	// Store and publish events
-	for _, event := range node.GetUncommittedEvents() {
-		if err := h.eventBus.Publish(ctx, event); err != nil {
-			h.logger.Warn("Failed to publish event", zap.Error(err))
-		}
+	events := node.GetUncommittedEvents()
+	if err := h.eventBus.PublishBatch(ctx, events); err != nil {
+		h.logger.Warn("Failed to publish events", zap.Error(err))
 	}
 
 	// Mark events as committed
