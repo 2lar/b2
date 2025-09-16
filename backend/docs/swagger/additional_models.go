@@ -1,3 +1,10 @@
+//go:build swagger
+// +build swagger
+
+// ⚠️ DOCUMENTATION GENERATION ONLY - NOT RUNTIME CODE
+// This file is used solely for OpenAPI spec generation
+// See backend/docs/swagger/DOCUMENTATION_ONLY.md for details
+
 package docs
 
 // Additional request/response models for API documentation
