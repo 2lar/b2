@@ -251,58 +251,66 @@ func (s *GraphValidationService) ValidateNodeConnection(
 
 ## 📊 CQRS & Event Sourcing
 
-### 📖 **Lesson 7: Command Handlers**
+### 📖 **Lesson 7: Command Handlers (Create Node Saga)**
 
-**File to Study**: `application/commands/handlers/create_node_orchestrator.go`
+**Files to Study**:
+- `application/commands/handlers/create_node_saga_handler.go`
+- `application/sagas/create_node_saga.go`
+- `infrastructure/di/providers.go`
 
 ```go
-// Commands change state
-type CreateNodeOrchestrator struct {
-    nodeRepo         ports.NodeRepository
-    graphService     *services.GraphLazyService
-    eventPublisher   ports.EventPublisher
-    unitOfWork       ports.UnitOfWork
+// Saga handler is the live path (flagged by FEATURE_SAGA_ORCHESTRATOR).
+type CreateNodeSagaHandler struct {
+    saga           *sagas.CreateNodeSaga
+    operationStore ports.OperationStore
+    config         *config.Config
+    logger         *zap.Logger
 }
 
-func (o *CreateNodeOrchestrator) Handle(
-    ctx context.Context,
-    cmd commands.CreateNodeCommand,
-) error {
-    // 1. Start transaction
-    uow := o.unitOfWork.Begin()
-    defer uow.Rollback()
-
-    // 2. Load aggregate
-    graph, err := o.graphService.GetOrCreateGraph(ctx, cmd.UserID)
-    if err != nil {
-        return err
+func (h *CreateNodeSagaHandler) Handle(ctx context.Context, cmd commands.CreateNodeCommand) error {
+    operationID := uuid.New().String()
+    sagaData := &sagas.CreateNodeSagaData{
+        UserID: cmd.UserID,
+        Title:  cmd.Title,
+        Content: cmd.Content,
+        Tags:   cmd.Tags,
+        X: cmd.X, Y: cmd.Y, Z: cmd.Z,
+        OperationID: operationID,
+        StartTime:   time.Now(),
     }
 
-    // 3. Execute domain logic
-    node := entities.NewNode(cmd.Title, cmd.Content)
-    if err := graph.AddNode(node); err != nil {
-        return err
+    if !h.config.Features.EnableSagaOrchestrator {
+        return h.fallbackToOrchestrator(ctx, cmd) // legacy escape hatch
     }
 
-    // 4. Persist changes
-    uow.RegisterNew(node)
-    uow.RegisterDirty(graph)
+    return h.saga.Execute(ctx, sagaData)
+}
+```
 
-    // 5. Commit transaction
-    if err := uow.Commit(); err != nil {
-        return err
-    }
-
-    // 6. Publish events
-    return o.eventPublisher.PublishBatch(ctx, graph.Events())
+```go
+// Saga coordinates multi-step node creation with compensations.
+func (cns *CreateNodeSaga) BuildSaga(operationID string) *Saga {
+    return NewSagaBuilder("CreateNode", cns.logger).
+        WithStep("ValidateInput", cns.validateInput).
+        WithCompensableStep("BeginTransaction", cns.beginTransaction, cns.rollbackTransaction).
+        WithCompensableStep("EnsureGraph", cns.ensureGraph, cns.compensateGraph).
+        WithCompensableStep("CreateNode", cns.createNode, cns.compensateNode).
+        WithCompensableStep("SaveNode", cns.saveNode, cns.compensateSaveNode).
+        WithRetryableStep("DiscoverEdges", cns.discoverEdges, 3, 2*time.Second).
+        WithCompensableStep("CreateSyncEdges", cns.createSyncEdges, cns.compensateEdges).
+        WithCompensableStep("UpdateGraph", cns.updateGraph, cns.compensateGraphUpdate).
+        WithStep("CommitTransaction", cns.commitTransaction).
+        WithRetryableStep("PublishEvents", cns.publishEvents, 3, 1*time.Second).
+        WithStep("UpdateMetadata", cns.updateMetadata).
+        Build()
 }
 ```
 
 **Key Learnings**:
-- **Commands** are intentions to change state
-- **Orchestrators** coordinate complex operations
-- **Unit of Work** ensures transactional consistency
-- **Event publishing** happens after commit
+- The saga handler is the default live path; DI selects it when `FEATURE_SAGA_ORCHESTRATOR=true` (the default).
+- Saga steps split the operation into compensable units with retries and explicit rollback hooks.
+- The legacy `CreateNodeOrchestrator` sticks around only as a feature-flagged fallback for emergencies.
+- Operation tracking (via `OperationStore`) and edge discovery live inside the saga data, enabling progress reporting.
 
 ### 📖 **Lesson 8: Query Handlers**
 
@@ -443,49 +451,42 @@ func (r *GenericRepository[T]) Save(ctx context.Context, entity T) error {
 **File to Study**: `infrastructure/persistence/dynamodb/unit_of_work.go`
 
 ```go
-// Tracks changes and commits atomically
+// Tracks changes and commits atomically across repositories
 type DynamoDBUnitOfWork struct {
-    transactItems   []types.TransactWriteItem
-    pendingEvents   []events.DomainEvent
+    client         *dynamodb.Client
+    transactItems  []types.TransactWriteItem
+    pendingEvents  []events.DomainEvent
     rollbackActions []func() error
+    inTransaction  bool
 }
 
-func (uow *DynamoDBUnitOfWork) RegisterNew(entity Entity) {
-    // Track for insertion
-    item := buildTransactPutItem(entity)
-    uow.transactItems = append(uow.transactItems, item)
+func (uow *DynamoDBUnitOfWork) Begin(ctx context.Context) error {
+    if uow.inTransaction {
+        return fmt.Errorf("transaction already in progress")
+    }
+    uow.inTransaction = true
+    uow.Clear()
+    return nil
 }
 
-func (uow *DynamoDBUnitOfWork) RegisterDirty(entity Entity) {
-    // Track for update
-    item := buildTransactUpdateItem(entity)
+func (uow *DynamoDBUnitOfWork) RegisterSave(item types.TransactWriteItem) error {
+    if !uow.inTransaction {
+        return fmt.Errorf("no transaction in progress")
+    }
     uow.transactItems = append(uow.transactItems, item)
+    return nil
 }
 
 func (uow *DynamoDBUnitOfWork) Commit(ctx context.Context) error {
-    // Execute all changes in single transaction
-    _, err := uow.client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
-        TransactItems: uow.transactItems,
-    })
-
-    if err != nil {
-        // Rollback on failure
-        for _, action := range uow.rollbackActions {
-            action()
-        }
-        return err
-    }
-
-    // Publish events after successful commit
-    return uow.publishEvents(ctx)
+    // Adds pending event items (when supported) and executes a TransactWriteItems call.
+    // Events are persisted with "pending" status; an outbox processor publishes them later.
 }
 ```
 
 **Key Learnings**:
-- **Change tracking** pattern
-- **Transactional consistency**
-- **Event publishing** after commit
-- **Rollback capability**
+- `Begin(ctx)`/`Commit(ctx)` guard the transaction boundary—always handle their errors.
+- Repositories build `types.TransactWriteItem` payloads and pass them via `RegisterSave`/`RegisterDelete` (older `RegisterNew` APIs are gone).
+- Domain events are staged inside the same transaction, but publishing now happens asynchronously via the outbox processor.
 
 ### 📖 **Lesson 12: Event Store**
 
@@ -669,28 +670,29 @@ func LoadConfig() (*Config, error) {
 
 ### 📖 **Lesson 16: Middleware Chain**
 
-**File to Study**: `interfaces/http/rest/middleware/chain.go`
+**File to Study**: `interfaces/http/rest/router.go`
 
 ```go
-// Composable middleware
-func Chain(middlewares ...func(http.Handler) http.Handler) func(http.Handler) http.Handler {
-    return func(final http.Handler) http.Handler {
-        for i := len(middlewares) - 1; i >= 0; i-- {
-            final = middlewares[i](final)
-        }
-        return final
-    }
-}
+router := chi.NewRouter()
 
-// Usage
-handler := Chain(
-    AuthMiddleware(jwtService),
-    RateLimitMiddleware(limiter),
-    TracingMiddleware(tracer),
-    LoggingMiddleware(logger),
-    RecoveryMiddleware(),
-)(actualHandler)
+router.Use(chimiddleware.RequestID)
+router.Use(chimiddleware.RealIP)
+router.Use(chimiddleware.Recoverer)
+router.Use(middleware.Logger(rt.logger))
+router.Use(versionMiddleware)
+
+router.Use(cors.Handler(cors.Options{ /* ... */ }))
+
+router.Route("/api/v1", func(r chi.Router) {
+    r.Use(middleware.Authenticate())
+    // register handlers...
+})
 ```
+
+**Key Learnings**:
+- Chi's `router.Use` handles middleware composition; the bespoke `Chain` helper is gone.
+- The logging middleware wraps the shared zap logger, surfacing request ID, latency, and user agent.
+- Route-scoped middleware keeps cross-cutting concerns targeted (auth only on `/api/v1`, for example).
 
 ### 📖 **Lesson 17: Graceful Shutdown**
 
@@ -1135,7 +1137,7 @@ func (saga *OrderSaga) Execute() error {
 
 ---
 
-## 🎯 Realistic Career Progression
+## 🎯 Realistic Career Progression - Tehcnila aspects
 
 ### **What This Backend Teaches You**
 
@@ -1149,8 +1151,6 @@ You'll master:
 - Proper error handling
 - Clean architecture principles
 
-**Salary Impact**: $70-90k → $100-120k
-
 #### **Mid-Level → Senior (Achievable)**
 **Timeline**: 6-12 months of study + application
 
@@ -1160,8 +1160,6 @@ You'll understand:
 - Making architectural trade-offs
 - Performance optimization strategies
 - Complex pattern implementation
-
-**Salary Impact**: $100-120k → $140-160k+
 
 #### **Senior → Staff (Partial Foundation)**
 **Timeline**: Not directly achievable through code study alone

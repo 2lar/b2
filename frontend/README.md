@@ -1,432 +1,191 @@
-# Frontend - Brain2 React Application
+# Frontend
 
-This is the frontend React application for Brain2, built with Vite, TypeScript, and modern React patterns. The application provides an intuitive interface for managing knowledge graphs, memories, and categories.
+Brain2's frontend is a Vite-powered React 19 single-page application written in TypeScript. It provides authenticated graph exploration, memory management, and category tooling backed by Supabase auth, the backend REST API, and a real-time WebSocket channel. This document explains how the project is organised, how data flows through the app, and which commands you need for development, testing, and production builds.
 
-## Overview
+## Quick Start
 
-Brain2's frontend is a modern single-page application (SPA) that features:
+1. **Prerequisites**
+   - Node.js 20.x (LTS) or newer and npm 10+
+   - Access to the shared `openapi.yaml` in the repository root
+   - Supabase credentials and backend/API URLs exposed as environment variables
 
-- **Graph-based Knowledge Management**: Interactive visualization using Cytoscape.js
-- **Memory Recording**: Rich text input with intelligent categorization
-- **Real-time Collaboration**: WebSocket integration for live updates
-- **Responsive Design**: Works seamlessly across desktop and mobile devices
-- **Optimized Performance**: Advanced code splitting and bundle optimization
+2. **Install dependencies**
+   ```bash
+   cd frontend
+   npm install
+   ```
 
-## Architecture
+3. **Configure environment**
+   - Create an `.env.local` (or `.env.development`) in the repository root and prefix frontend variables with `VITE_` (see [Environment Variables](#environment-variables)).
+   - Optionally load environment files via `../scripts/load-env.sh`:
+     ```bash
+     source ../scripts/load-env.sh frontend
+     ```
 
-### Technology Stack
+4. **Generate API types**
+   ```bash
+   npm run generate-api-types   # runs openapi-typescript on ../openapi.yaml
+   ```
 
-- **React 19** - Modern React with concurrent features
-- **TypeScript** - Type-safe development
-- **Vite** - Fast build tool and development server
-- **Zustand** - Lightweight state management
-- **TanStack Query** - Data fetching and caching
-- **Cytoscape.js** - Graph visualization
-- **Supabase** - Authentication and real-time features
-- **React Router** - Client-side routing
+5. **Run the development server**
+   ```bash
+   npm run dev                  # serves src/ through Vite (default mode)
+   npm run dev:with-env         # loads env vars via scripts/load-env.sh first
+   ```
 
-### Project Structure
+6. **Type-check / tests**
+   ```bash
+   npm run test                 # runs TypeScript (tsc --noEmit)
+   ```
 
-```
-src/
-├── app/                    # Application root and routing
-├── common/                 # Shared components and utilities
-├── features/               # Feature-specific components and logic
-│   ├── dashboard/         # Main dashboard view
-│   ├── categories/        # Category management
-│   ├── graph/             # Graph visualization
-│   └── memories/          # Memory recording and management
-├── services/              # API clients and external integrations
-└── types/                 # TypeScript type definitions
-```
+7. **Build for production**
+   ```bash
+   npm run build                # clean, reinstall deps, generate types, tsc, vite build
+   npm run build:with-env       # same, but loads env vars beforehand
+   npm run preview              # serve the built dist/ bundle locally
+   ```
 
-## Performance Optimization
+The compiled assets are emitted to `frontend/dist` and can be hosted on any static CDN (e.g. S3 + CloudFront) as long as SPA routing is supported.
 
-### Code Splitting Strategy
+## Tech Stack & Architecture
 
-The application uses advanced **code splitting** to optimize loading performance and reduce initial bundle size. Code splitting is the practice of breaking your application bundle into smaller chunks that can be loaded on demand.
+- **React 19** with Suspense/`lazy` for route-level code splitting
+- **TypeScript 5** with strict mode enforced during builds (`tsc --noEmit`)
+- **Vite 5** (rooted at `src/`) for lightning-fast dev server and Rollup-based builds
+- **React Router 7** for client-side routing
+- **TanStack Query 5** for server-state caching, mutations, and optimistic updates
+- **Zustand 5** (+ `persist` and `devtools`) for long-lived graph state and UI flags
+- **Supabase JS 2** for authentication/session handling
+- **Cytoscape.js + cola layout** for graph visualisation
+- **Framer Motion** for micro-interactions
+- **web-vitals** instrumentation hooks for runtime performance measurement
 
-#### 1. Manual Vendor Chunking
-
-We use **manual chunking** in `vite.config.ts` to group related libraries into optimized vendor bundles:
-
-```typescript
-manualChunks: {
-  // React ecosystem (core functionality)
-  'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-  
-  // State management and data fetching
-  'state-vendor': ['zustand', '@tanstack/react-query'],
-  
-  // Visualization libraries (heaviest dependencies)
-  'graph-vendor': ['cytoscape', 'cytoscape-cola'],
-  
-  // Utilities
-  'utils-vendor': ['lodash-es'],
-  
-  // Authentication
-  'auth-vendor': ['@supabase/supabase-js']
-}
-```
-
-**Benefits:**
-- **Better Caching**: Users don't re-download React when your app code changes
-- **Parallel Loading**: Browser can download multiple chunks simultaneously  
-- **Logical Separation**: Related libraries are grouped together
-- **Size Optimization**: Largest libraries (like Cytoscape) are isolated
-
-#### 2. Route-Based Code Splitting (Lazy Loading)
-
-We use **React.lazy()** for route-based code splitting in `App.tsx`:
-
-```typescript
-// Lazy load heavy components
-const Dashboard = lazy(() => import('../features/dashboard').then(module => ({ default: module.Dashboard })));
-const CategoriesList = lazy(() => import('../features/categories').then(module => ({ default: module.CategoriesList })));
-const CategoryDetail = lazy(() => import('../features/categories').then(module => ({ default: module.CategoryDetail })));
-```
-
-**Benefits:**
-- **Faster Initial Load**: Only loads the current route's code
-- **On-Demand Loading**: Additional routes load when needed
-- **Memory Efficiency**: Unused components aren't loaded into memory
-- **Progressive Enhancement**: App becomes more responsive as user navigates
-
-#### 3. Dynamic Chunk Naming
-
-Custom chunk file naming for better debugging and cache optimization:
-
-```typescript
-chunkFileNames: (chunkInfo) => {
-  const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split('/').pop() : 'chunk'
-  return `assets/[name]-${facadeModuleId}-[hash].js`
-}
-```
-
-### Build Output Analysis
-
-When you run `npm run build`, you'll see output similar to:
+## Project Structure
 
 ```
-dist/assets/
-├── index-a1b2c3d4.css           # Main stylesheet
-├── index-e5f6g7h8.js            # App entry point (small)
-├── react-vendor-i9j0k1l2.js     # React libraries (~150KB)
-├── graph-vendor-m3n4o5p6.js     # Cytoscape libraries (~800KB)
-├── state-vendor-q7r8s9t0.js     # Zustand + TanStack Query
-├── utils-vendor-u1v2w3x4.js     # Lodash utilities
-├── auth-vendor-y5z6a7b8.js      # Supabase authentication
-├── Dashboard-c9d0e1f2.js        # Dashboard component (lazy)
-├── CategoriesList-g3h4i5j6.js   # Categories list (lazy)
-└── CategoryDetail-k7l8m9n0.js   # Category detail (lazy)
+frontend/
+├── public/                           # Static assets served as-is (currently empty)
+├── src/                              # Vite root
+│   ├── app/                          # Application shell, routing, error boundaries
+│   ├── common/                       # Shared UI primitives, constants, hooks
+│   ├── components/                   # Cross-feature presentation components
+│   ├── features/                     # Feature-specific modules
+│   │   ├── auth/                     # Supabase session hooks & AuthSection UI
+│   │   ├── dashboard/                # Graph dashboard views + API hooks
+│   │   ├── memories/                 # Memory CRUD flows and TanStack Query logic
+│   │   └── categories/               # Category list/detail UI and data hooks
+│   ├── hooks/                        # Reusable React hooks (non-feature specific)
+│   ├── services/                     # API/auth/WebSocket clients and helpers
+│   ├── stores/                       # Zustand stores (e.g. graphStore.ts)
+│   ├── styles/                       # Feature-level stylesheets
+│   ├── types/                        # Domain typings + generated OpenAPI types
+│   └── utils/                        # Utility helpers (formatting, guards, etc.)
+├── dist/                             # Build output (gitignored)
+├── node_modules/
+├── package.json                      # Scripts, dependencies, and build pipeline
+├── package-lock.json
+├── tsconfig.json                     # TypeScript configuration shared across scripts
+└── vite.config.ts                    # Vite/Rollup configuration (manual chunking, aliases)
 ```
 
-### Performance Monitoring
+### Routing & App Shell (`src/app`)
+`main.tsx` instantiates a `QueryClient` and renders `<App />` within `QueryClientProvider`, attaching `ReactQueryDevtools` in development. `App.tsx` manages authentication-aware routing, lazy-loads feature bundles, and coordinates WebSocket lifecycle events through `webSocketClient` and the persisted Zustand graph store.
 
-#### Bundle Size Analysis
+### State & Data Flow
+- **Server state** lives in TanStack Query caches. Hooks inside `features/**/hooks` wrap queries/mutations for specific resources (nodes, categories, memories) and handle optimistic updates.
+- **Client state** (selected graph nodes, UI toggles, caches) is stored in `useGraphStore` (Zustand + `persist`). Actions inside the store call the typed API client and reconcile results with optimistic updates and caches.
+- **Events**: `services/webSocketClient.ts` dispatches `CustomEvent('graph-update-event', …)` on `document`, enabling listeners anywhere in the app to react to real-time updates.
 
-To analyze your bundle composition:
+## API Integration & Generated Types
 
-```bash
-# Build with bundle analysis
-npm run build
+`npm run generate-api-types` executes `openapi-typescript` on `../openapi.yaml`, emitting `src/types/generated/generated-types.ts`. All service modules import types from this file to ensure request/response payloads stay aligned with backend contracts.
 
-# The build output shows chunk sizes and warns about large chunks
-# Chunks over 600KB will show warnings (configured in vite.config.ts)
-```
+`services/apiClient.ts` centralises authenticated fetch calls. It:
+- Resolves the base URL from `VITE_API_BASE_URL` (or `VITE_API_BASE_URL_LOCAL` if toggled)
+- Retrieves JWTs from Supabase (`authClient.getJwtToken()`)
+- Implements retry/backoff logic and meaningful error messages for auth, rate limits, and cold starts
+- Exposes typed helpers for graph/memory/category endpoints consumed by features and the Zustand store
 
-#### Runtime Performance
+## Authentication & Session Management
 
-The app includes performance monitoring:
+`services/authClient.ts` wraps Supabase auth:
+- Validates `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` at startup
+- Exposes `auth.getSession()`, `auth.signIn`, `auth.signOut`, and token refresh with exponential backoff
+- Provides `auth.getJwtToken()` used by the API and WebSocket clients
+- `features/auth` surfaces hooks/components (`useAuth`, `AuthSection`) for the UI
 
-```typescript
-// Built-in Web Vitals reporting
-import { onCLS, onINP, onFCP, onLCP, onTTFB } from 'web-vitals';
+## Real-Time Updates
 
-// Automatically reported in development console
-```
+`services/webSocketClient.ts` handles connection logic against `VITE_WEBSOCKET_URL`:
+- Attaches the Supabase JWT as a query parameter for authentication
+- Reconnects automatically with exponential backoff on failures
+- Emits DOM events for node/edge updates that the graph store can consume
+- Cleans up connections when a user signs out or their session expires
 
-### Optimizing Bundle Size
+For more advanced batching and throttling, `services/optimizedWebSocketClient.ts` provides an alternate implementation ready to be wired in when needed.
 
-#### Adding New Vendor Chunks
+## Styling & UI Conventions
 
-When adding heavy new dependencies, consider creating dedicated chunks:
+- Global styles reside in `src/style.css` and `src/new-layout.css`
+- Feature-scoped styles (e.g. document editor) live under `src/styles`
+- Components prefer CSS Modules or scoped class names; ensure new global styles do not conflict across features
+- `common` contains shared layout components and error boundaries reused throughout the app
 
-```typescript
-// In vite.config.ts manualChunks
-manualChunks: {
-  // ... existing chunks
-  'chart-vendor': ['chart.js', 'd3'],  // New chart libraries
-  'editor-vendor': ['monaco-editor'],   // Heavy editor
-}
-```
+## Build & Performance Configuration
 
-#### Guidelines for Chunk Organization
+`vite.config.ts` customises the build to keep interactive load times low:
+- **Root** is set to `src/` while `envDir` points to the repo root so Vite loads `.env*` files alongside backend/infra configs
+- **Manual Rollup chunks** create dedicated bundles for React, state/query libraries, graph libs, utilities, and Supabase to improve caching
+- **Custom chunk naming** (`assets/[name]-<facade>-<[hash]>.js`) simplifies debugging and cache inspection
+- `chunkSizeWarningLimit` raises the threshold to account for Cytoscape bundles
+- `optimizeDeps.include` pre-bundles heavy packages during dev for faster HMR
+- Source maps (`sourcemap: true`) and esbuild minification are enabled by default for production diagnostics
 
-1. **Size Considerations**:
-   - Keep chunks between 100KB - 600KB when possible
-   - Isolate very large libraries (>500KB) into separate chunks
-   - Group small related libraries together
+## Environment Variables
 
-2. **Usage Patterns**:
-   - Libraries used on every page → Core vendor chunk
-   - Libraries used on specific features → Feature-specific chunk
-   - Libraries loaded conditionally → Separate chunk
+Define the following (prefix with `VITE_`) in the repository root `.env` files:
 
-3. **Update Frequency**:
-   - Stable libraries (React) → Vendor chunks (better caching)
-   - Frequently updated code → App chunks
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_SUPABASE_URL` | ✅ | Supabase project URL for auth requests |
+| `VITE_SUPABASE_ANON_KEY` | ✅ | Supabase anonymous key used by the browser client |
+| `VITE_API_BASE_URL` | ✅ | HTTPS endpoint for the backend API (used in production builds and by default in dev) |
+| `VITE_API_BASE_URL_LOCAL` | ⭕️ | Optional local/dev API endpoint; enable in `apiClient` when running the Go API locally |
+| `VITE_WEBSOCKET_URL` | ⭕️ | WebSocket endpoint for real-time graph updates |
+| `VITE_FORCE_PRODUCTION_API` | ⭕️ | When `true`, forces production API usage even if local endpoints are configured |
 
-#### Tree Shaking Optimization
+Remember that Vite only exposes variables beginning with `VITE_` to the browser bundle.
 
-Ensure optimal tree shaking:
+## Development Workflow
 
-```typescript
-// Good: Import only what you need
-import { debounce } from 'lodash-es';
+1. Source environment variables (`source ../scripts/load-env.sh frontend`) if you keep secrets outside `.env.local`.
+2. Start Supabase / backend services (local or remote) as needed.
+3. Run `npm run dev`. Vite serves from `src/index.html`; HMR keeps component updates instant.
+4. Inspect TanStack Query cache with React Query Devtools (press > button in dev tools dock) and check the console for any token refresh logs.
+5. For WebSocket testing, ensure `VITE_WEBSOCKET_URL` points to a reachable endpoint—the app will automatically connect after login.
+6. Use `npm run test` before committing to guarantee the TypeScript compiler remains happy.
 
-// Avoid: Importing entire libraries
-import * as _ from 'lodash-es';
-```
+## Testing & Quality Gates
 
-## Environment Configuration
-
-The frontend uses environment variables for configuration. See the [Environment Setup Guide](../docs/ENVIRONMENT_SETUP.md) for details.
-
-### Required Variables
-
-```bash
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-VITE_API_BASE_URL=https://your-api-gateway-url
-```
-
-### Development vs Production
-
-The build system automatically configures environment-specific settings:
-
-- **Development**: API calls to `VITE_API_BASE_URL_LOCAL` (usually localhost)
-- **Production**: API calls to `VITE_API_BASE_URL` (deployed API Gateway)
-
-## Development
-
-### Quick Start
-
-```bash
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-
-# Or with environment loading
-npm run dev:with-env
-```
-
-### Available Scripts
-
-```bash
-npm run dev              # Start development server
-npm run dev:with-env     # Start with environment variables loaded
-npm run build            # Production build with optimization
-npm run build:with-env   # Build with environment variables loaded
-npm run preview          # Preview production build
-npm run test             # Run TypeScript type checking
-npm run clean            # Clean node_modules and dist
-```
-
-### Development Features
-
-- **Hot Module Replacement**: Instant updates without losing state
-- **TypeScript Integration**: Full type checking and IntelliSense
-- **Source Maps**: Easy debugging in production builds
-- **Path Aliases**: Clean imports using `@app`, `@features`, etc.
-
-### Code Organization
-
-#### Feature-Based Architecture
-
-Each feature is self-contained with its own:
-
-```
-features/memories/
-├── components/          # React components
-├── hooks/              # Custom React hooks  
-├── services/           # API calls and business logic
-├── types/              # TypeScript types
-└── index.ts            # Public API exports
-```
-
-#### Shared Resources
-
-```
-common/
-├── components/         # Reusable UI components
-├── hooks/             # Shared React hooks
-├── utils/             # Pure utility functions
-└── constants/         # App constants
-```
-
-## API Integration
-
-### Data Fetching Strategy
-
-We use **TanStack Query** for efficient data fetching:
-
-```typescript
-// Automatic caching, background updates, and error handling
-const { data: memories, isLoading } = useQuery({
-  queryKey: ['memories'],
-  queryFn: () => apiClient.getMemories()
-});
-```
-
-### Real-time Updates
-
-WebSocket integration provides real-time collaboration:
-
-```typescript
-// Automatic connection management based on auth state
-useEffect(() => {
-  if (user) {
-    webSocketClient.connect(user.access_token);
-  } else {
-    webSocketClient.disconnect();
-  }
-}, [user]);
-```
-
-## Build and Deployment
-
-### Production Build
-
-```bash
-# Full production build
-npm run build
-
-# Output goes to frontend/dist/
-# Ready for deployment to any static hosting
-```
-
-### Build Optimizations
-
-The production build includes:
-
-- **Minification**: JavaScript and CSS compression with esbuild
-- **Tree Shaking**: Removes unused code
-- **Asset Hashing**: Cache-busting for updated files
-- **Source Maps**: For production debugging
-- **Chunk Splitting**: Optimized loading performance
-
-### Deployment
-
-The built application is a static SPA that can be deployed to:
-
-- **AWS S3 + CloudFront** (configured in `../infra/`)
-- **Vercel**, **Netlify**, or similar static hosts
-- **Traditional web servers** with proper SPA routing setup
+- `npm run test` (default script) type-checks the entire project via `tsc --noEmit`.
+- When integrating with backend changes, re-run `npm run generate-api-types` to catch contract regressions early.
+- Consider adding Vitest or Cypress tests under `src/__tests__` / `cypress/` respectively; existing scripts act as placeholders for now.
 
 ## Troubleshooting
 
-### Common Issues
+- **Environment variables missing**: Ensure `.env` lives in the repo root (because `envDir` is `../`). Variables must be prefixed with `VITE_`.
+- **Manual chunk warnings**: Review `vite.config.ts` if any vendor chunk exceeds the 600 KB warning, and split further if necessary.
+- **WebSocket auth errors**: Confirm the Supabase session is valid and that the backend accepts the JWT in query params. Re-check `VITE_WEBSOCKET_URL`.
+- **Slow builds**: The default `build` script reinstalls dependencies for reproducibility. For local faster builds you can temporarily run `vite build` directly (but keep the scripted build for CI).
+- **Type generation failures**: Verify `openapi-typescript` is installed (`npm install`) and that `../openapi.yaml` is accessible.
 
-#### Environment Variables Not Loading
-```bash
-# Ensure variables are prefixed with VITE_
-VITE_API_BASE_URL=https://api.example.com
+## Contributing Guidelines
 
-# Check that .env file exists in project root
-ls -la ../.env
-```
+- Follow feature-based organisation—new functionality belongs under `src/features/<feature-name>` with colocated hooks/components/types.
+- Use TypeScript everywhere; prefer explicit types for public APIs and exported hooks.
+- Keep state mutations inside zustand actions or TanStack Query mutations to centralise side effects.
+- Reuse `common` components and utilities before introducing new primitives.
+- Document significant UI or architectural changes in this README (and/or `docs/`) and include screenshots or screen recordings when altering user-facing flows.
+- Run `npm run generate-api-types` after backend contract updates and commit the resulting file when appropriate.
 
-#### Bundle Size Warnings
-```bash
-# If chunks are too large, consider splitting them
-# Check vite.config.ts manualChunks configuration
-# Use browser dev tools to analyze which libraries are largest
-```
-
-#### Route Loading Issues
-```bash
-# Ensure lazy-loaded components export default
-export default function MyComponent() { ... }
-
-# Check that Suspense wrapper exists in App.tsx
-<Suspense fallback={<LoadingFallback />}>
-  <Routes>...</Routes>
-</Suspense>
-```
-
-### Performance Debugging
-
-#### Analyzing Bundle Size
-
-1. **Build Analysis**: Check build output for large chunks
-2. **Browser DevTools**: Use Network tab to see actual load times
-3. **Bundle Analyzer**: Consider adding webpack-bundle-analyzer equivalent
-
-#### Monitoring Runtime Performance
-
-```typescript
-// Check for performance issues
-import { getCLS, getFID, getFCP, getLCP, getTTFB } from 'web-vitals';
-
-getCLS(console.log);  // Cumulative Layout Shift
-getFID(console.log);  // First Input Delay
-getFCP(console.log);  // First Contentful Paint
-getLCP(console.log);  // Largest Contentful Paint
-getTTFB(console.log); // Time to First Byte
-```
-
-## Contributing
-
-### Code Style
-
-- Use **TypeScript** for all new code
-- Follow **React Hooks** patterns
-- Implement **proper error boundaries**
-- Add **JSDoc comments** for complex functions
-- Use **feature-based** file organization
-
-### Performance Guidelines
-
-1. **Lazy load** heavy components and routes
-2. **Memoize** expensive calculations with useMemo
-3. **Debounce** user input for API calls
-4. **Optimize** images and assets
-5. **Monitor** bundle size with each change
-
-### Testing
-
-```bash
-# Type checking (acts as basic testing)
-npm run test
-
-# For integration testing, ensure backend is running
-# Frontend tests interact with real API endpoints
-```
-
-## Architecture Decisions
-
-### Why Vite over Create React App?
-
-- **Faster development**: ES modules + esbuild
-- **Better tree shaking**: More efficient bundling
-- **Modern tooling**: Native TypeScript support
-- **Flexible configuration**: Easy to customize build process
-
-### Why Zustand over Redux?
-
-- **Simplicity**: Less boilerplate code
-- **Performance**: Fine-grained reactivity
-- **TypeScript**: Excellent type inference
-- **Bundle size**: Smaller footprint
-
-### Why Manual Chunking?
-
-- **Control**: Precise control over bundle splitting
-- **Caching**: Optimized cache invalidation strategy
-- **Performance**: Tailored to our specific dependencies
-- **Debugging**: Predictable chunk names and contents
-
-This frontend architecture prioritizes performance, maintainability, and developer experience while providing a solid foundation for the Brain2 knowledge management application.
+This frontend is intentionally modular. Extending it with new surfaces (e.g. GraphQL clients, alternative visualisations, or collaborative features) should plug into the existing service/adaptor layer and reuse the domain-specific hooks provided in `features/`.

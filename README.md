@@ -1,211 +1,234 @@
 # Brain2 - Your Second Brain
 
-A graph-based personal knowledge management system that automatically connects your memories, thoughts, and ideas based on their content. Built with a modern, event-driven, serverless architecture on AWS.
+A **graph-based personal knowledge management system** that automatically connects your memories, thoughts, and ideas based on their content.
+Built with a **modern, event-driven, serverless architecture** on AWS.
 
-## Features
+---
 
--   **Automatic Memory Connections**: Write a memory, and the system automatically connects it to related memories using keyword extraction.
--   **Interactive Knowledge Graph**: Visualize all your memories as an interactive graph showing connections, powered by Cytoscape.js.
--   **Secure & Private**: Each user's data is completely isolated with JWT-based authentication provided by Supabase.
--   **Real-time Updates**: The graph updates instantly as you add new memories, powered by WebSockets.
--   **Scalable Architecture**: Built on AWS serverless technologies (Lambda, DynamoDB, API Gateway) for automatic scaling.
--   **Bulk Operations**: Efficiently delete multiple memories at once.
--   **Inline Editing**: Edit your memories directly in the list view.
+## ✨ Features
 
-## Architecture
+* **Automatic Memory Connections**: Nodes (memories) are connected via keyword and similarity analysis using NLP services.
+* **Interactive Knowledge Graph**: Visualize your memories as an interactive graph powered by Cytoscape.js.
+* **Secure & Private**: JWT authentication powered by Supabase, per-user isolation, distributed rate limiting.
+* **Real-time Collaboration**: Live graph updates via WebSockets.
+* **Scalable Serverless Backend**: Go services on AWS Lambda with DynamoDB single-table design.
+* **Bulk Operations & Editing**: Efficiently delete or update multiple memories at once.
+* **Monitoring & Tracing**: CloudWatch metrics, AWS X-Ray distributed tracing, and structured logging.
+* **CI/CD**: Automated pipelines for backend and frontend with GitHub Actions.
 
-### Technology Stack
+---
 
--   **Frontend**: Vanilla TypeScript, HTML5, CSS3, Vite, and Cytoscape.js
--   **Authentication**: Supabase Auth (JWT provider)
--   **Backend**: Go on AWS Lambda
--   **Database**: AWS DynamoDB (Single-table design)
--   **API**: AWS API Gateway (HTTP and WebSocket APIs)
--   **Hosting**: AWS S3 + CloudFront
--   **Infrastructure**: AWS CDK (TypeScript)
--   **CI/CD**: GitHub Actions
+## 🏗️ Architecture Overview
 
-### System Design
+Brain2 follows **Domain-Driven Design (DDD)** and **CQRS (Command Query Responsibility Segregation)** principles.
+
+### Frontend
+
+* React 19 + TypeScript + Vite
+* Zustand for state management
+* TanStack Query for data fetching
+* Cytoscape.js for graph visualization
+* Framer Motion for animations
+* Supabase client for authentication
+
+### Backend (Go)
+
+* Organized by layers: `application`, `domain`, `infrastructure`, `interfaces`
+* **CQRS**: commands (create, update, delete) vs queries (fetch, list)
+* **Domain models**: Graph, Node, Edge as entities and value objects
+* **Event-driven design**: application events, sagas, projections
+* **Security**: JWT validation and distributed rate limiting via DynamoDB
+* **Persistence**: repository pattern for DynamoDB
+* **Real-time**: WebSocket Hub for live updates
+* **Observability**: CloudWatch metrics, AWS X-Ray tracing
+
+### Infrastructure (AWS CDK - TypeScript)
+
+* **Stacks**:
+
+  * Database: DynamoDB (memories, connections)
+  * Compute: Lambda functions for API, WebSockets, cleanup, background workers
+  * API: API Gateway (HTTP + WebSocket)
+  * Frontend: S3 + CloudFront
+  * Monitoring: CloudWatch dashboards, alarms, X-Ray integration
+* **Testing**: Unit tests for CDK constructs and stacks
+
+### CI/CD
+
+* **Backend**: Build, lint, test (unit + integration), deploy to AWS Lambda
+* **Frontend**: Build, test (planned), deploy to S3 + CloudFront
+* **Infrastructure**: CDK synth + deploy
+
+---
+
+## 📂 Repository Layout
+
+```
+b2-main/
+├── backend/      # Go backend (CQRS, domain, infra, interfaces)
+├── frontend/     # React + Vite frontend (SPA)
+├── infra/        # AWS CDK stacks (TypeScript)
+├── docs/         # Architecture, design notes, evaluations
+├── scripts/      # Build & environment helpers
+├── .github/      # CI/CD workflows
+└── openapi.yaml  # API specification
+```
+
+---
+
+## 🌐 System Design (High-Level)
+
+### Overview
+
+Brain2 is built as a **serverless event-driven system** with clear separation between frontend, backend services, and infrastructure. It leverages AWS managed services for scalability and real-time updates.
 
 ```
                            🌐 Brain2 - Event-Driven Architecture
-                                                                    
+
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐          
 │  CloudFront │────▶│      S3      │     │  Supabase   │          
 │    (CDN)    │     │  (Frontend)  │     │    Auth     │          
 └─────────────┘     └──────────────┘     └──────┬───────┘          
        │                                         │ JWT              
        │            📡 Real-time Updates         │                  
-       │                                         │                  
-┌──────▼──────┐                           ┌──────▼──────┐          
-│   Client    │◀────── WebSocket ────────▶│ API Gateway │          
-│  (Browser)  │        Connection         │ (HTTP + WS) │          
-└─────────────┘                           └──────┬───────┘          
-       │                                         │                  
-       │ HTTP API Calls                          │                  
-       │                                         │                  
-       └─────────────────────────────────────────┘                  
-                                                 │                  
-                              ┌──────────────────┼──────────────────┐
-                              │                  │                  │
-                     ┌────────▼────────┐ ┌──────▼──────┐ ┌────────▼────────┐
-                     │  Memory Lambda  │ │ Auth Lambda │ │ WebSocket Lambda│
-                     │  (CRUD + NLP)   │ │ (JWT Valid) │ │ (Real-time)     │
-                     └────────┬────────┘ └─────────────┘ └────────┬────────┘
-                              │                                   │         
-                              │          🎯 Event-Driven          │         
-                              │                                   │         
-                     ┌────────▼────────┐                 ┌────────▼────────┐
-                     │  EventBridge    │                 │ Connection Mgmt │
-                     │ (Event Router)  │                 │   (DynamoDB)    │
-                     └────────┬────────┘                 └─────────────────┘
-                              │                                             
-                              │                                             
-                     ┌────────▼────────┐                                    
-                     │   DynamoDB      │                                    
-                     │ ┌─────────────┐ │                                    
-                     │ │ Graph Nodes │ │                                    
-                     │ │ + Keywords  │ │                                    
-                     │ │ + Edges     │ │                                    
-                     │ │ + Users     │ │                                    
-                     │ └─────────────┘ │                                    
-                     └─────────────────┘                                    
+       ▼                                         ▼                  
+┌──────────────────────────────────────────────────────────────────┐
+│                          API Gateway                              │
+│                (HTTP + WebSocket APIs w/ JWT)                     │
+└──────────────────────────────────────────────────────────────────┘
+       │                          │                                
+       ▼                          ▼                                
+┌───────────────┐         ┌───────────────┐                        
+│   HTTP Routes │         │  WebSocket Hub │                        
+│   (REST API)  │         │ (Connections)  │                        
+└───────────────┘         └───────────────┘                        
+       │                          │                                
+       ▼                          ▼                                
+┌──────────────────┐       ┌────────────────────┐                   
+│  Backend Lambdas │       │   WS Lambdas       │                   
+│ (Go CQRS Handlers│       │ (Connect, Message, │                   
+│  Commands/Queries)│       │  Disconnect)       │                   
+└──────────────────┘       └────────────────────┘                   
+       │                                                          
+       ▼                                                          
+┌───────────────────────────────────────────┐                     
+│                DynamoDB                   │                     
+│   (Memories, Nodes, Edges, Connections)   │                     
+└───────────────────────────────────────────┘                     
+       │                                                          
+       ▼                                                          
+┌───────────────────────────────────────────┐                     
+│           CloudWatch & X-Ray              │                     
+│  (Metrics, Logs, Distributed Tracing)     │                     
+└───────────────────────────────────────────┘                     
 ```
 
-## Prerequisites
+### Key Flows
 
-- AWS Account (free tier eligible)
-- Supabase Account (free tier)
-- Node.js 20+ and npm
-- Go 1.21+
-- AWS CLI configured
-- AWS CDK CLI (`npm install -g aws-cdk`)
+1. **User Authentication** → Supabase issues JWT → API Gateway verifies JWT.
+2. **REST Request** → Routed to Lambda (Go handler) → Command/Query → Domain → DynamoDB.
+3. **WebSocket Connection** → User connects via API Gateway WS → Hub registers client → Events broadcast in real time.
+4. **Persistence** → Nodes/Edges stored in DynamoDB with single-table design + GSIs.
+5. **Observability** → Metrics sent to CloudWatch; traces recorded in X-Ray.
 
-## Setup
+---
 
-1.  **Clone the repository**:
-    ```bash
-    git clone [https://github.com/your-username/brain2.git](https://github.com/your-username/brain2.git)
-    cd brain2
-    ```
+## 🚀 Quickstart
 
-2.  **Set up Supabase**:
-    -   Create a new project in your Supabase dashboard.
-    -   In your Supabase project, go to **Authentication -> Providers** and make sure **Email** is enabled.
-    -   Go to **Project Settings -> API**. You will need the **Project URL**, the **`anon` (public) key**, and the **`service_role` key**.
+### Prerequisites
 
-3.  **Configure Environment Variables**:
-    -   Create a `.env` file in the `infra` directory (`infra/.env`). **Do not** include the `/auth/v1` path in the URL.
-        ```bash
-        # infra/.env
-        SUPABASE_URL=https://<your-project-id>.supabase.co
-        SUPABASE_SERVICE_ROLE_KEY=<your-supabase-service-role-key>
-        ```
-    -   Create a `.env` file in the `frontend` directory (`frontend/.env`).
-        ```bash
-        # frontend/.env
-        VITE_SUPABASE_URL=https://<your-project-id>.supabase.co
-        VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
-        ```
+* Node.js 20+
+* Go 1.23+
+* AWS CLI configured
+* Supabase project (for auth)
 
-4.  **Build the application**:
-    -   From the root of the project, run the build script. This will build the Go Lambdas, the Lambda authorizer, and the frontend application.
-    ```bash
-    chmod +x build.sh
-    ./build.sh
-    ```
+### 1. Clone & Configure Environment
 
-5.  **Deploy the Infrastructure**:
-    -   Navigate to the `infra` directory and deploy the CDK stack. This will provision all the necessary AWS resources.
-    ```bash
-    cd infra
-    npm install
-    npx cdk deploy --all --require-approval never --outputs-file outputs.json
-    ```
-    -   After deployment, the CDK will create an `outputs.json` file in the `infra` directory.
+```bash
+git clone https://github.com/your-org/b2-main.git
+cd b2-main
+cp .env.example .env
+```
 
-6.  **Update Frontend with Deployed Endpoints**:
-    -   Open the `infra/outputs.json` file.
-    -   Find the `HttpApiUrl` and `WebSocketApiUrl` values.
-    -   Update your `frontend/.env` file with these values:
-        ```bash
-        # frontend/.env
-        VITE_API_BASE_URL=<your-HttpApiUrl-value>
-        VITE_WEBSOCKET_URL=<your-WebSocketApiUrl-value>
-        ```
+Edit `.env` with your AWS and Supabase keys. See [docs/ENVIRONMENT\_SETUP.md](docs/ENVIRONMENT_SETUP.md).
 
-7.  **Re-deploy the Frontend**:
-    -   Since the frontend environment variables have changed, you need to rebuild and redeploy it.
-    -   From the project root, run the build script again:
-        ```bash
-        ./build.sh
-        ```
-    -   From the `infra` directory, run `cdk deploy` again. The CDK is smart enough to only update the changed resources (in this case, the S3 bucket content).
-        ```bash
-        cd infra
-        npx cdk deploy
-        ```
+### 2. Build All Components
 
-## Security
+```bash
+./build.sh
+```
 
-- JWT-based authentication with Supabase
-- User data isolation at the database level
-- HTTPS everywhere (CloudFront + API Gateway)
-- No cross-user data access possible
+Or build individually:
 
-## Cost Optimization
+```bash
+cd frontend && npm run dev
+cd backend && ./run-local.sh
+cd infra && npm run deploy
+```
 
-Designed for AWS free tier:
-- DynamoDB: On-demand billing
-- Lambda: 1M free requests/month
-- API Gateway: 1M free API calls/month
-- S3 & CloudFront: Minimal storage and transfer costs
+### 3. Running Locally
 
-## License
+* **Backend**: `./backend/run-local.sh` → runs API locally on port 8080.
+* **Frontend**: `cd frontend && npm run dev` → runs Vite dev server.
+* **Infrastructure**: `cd infra && npm run deploy` → deploy to AWS dev environment.
 
-MIT License
+---
 
-### Development and Build Commands
+## 📖 Documentation
 
-This section outlines the essential commands and scripts for developing, building, and deploying the Brain2 application components.
+* [docs/ENVIRONMENT\_SETUP.md](docs/ENVIRONMENT_SETUP.md) → Environment setup
+* [docs/backend-architecture-plan.md](docs/backend-architecture-plan.md) → Backend design & CQRS patterns
+* [docs/domain-model-design.md](docs/domain-model-design.md) → Domain models (Node, Graph, Edge)
+* [docs/performance-optimized-architecture.md](docs/performance-optimized-architecture.md) → Performance tuning
+* [docs/plans/](docs/plans/) → Historical architecture plans and improvements
 
-#### Root Project Commands
+Component READMEs:
 
-*   `chmod +x build.sh && ./build.sh`: This script orchestrates the build process for both the backend Go Lambdas and the frontend application. It's typically run from the project root.
+* [frontend/README.md](frontend/README.md)
+* [backend/README.md](backend/README.md)
+* [infra/README.md](infra/README.md)
 
-#### Frontend (`frontend/` directory)
+---
 
-Navigate to the `frontend/` directory to run these commands.
+## 🧪 Testing
 
-*   `npm install`: Installs all necessary Node.js dependencies.
-*   `npm run dev`: Starts the development server with hot-reloading for local development.
-*   `npm run build`: Cleans the `dist` directory, reinstalls dependencies, generates API types from `openapi.yaml`, performs TypeScript type checking, and then builds the production-ready frontend assets.
-*   `npm run preview`: Serves the production build locally for testing.
-*   `npm run generate-api-types`: Generates TypeScript types for the API client based on `openapi.yaml`. This ensures type safety between the frontend and backend.
-*   `npm test`: Runs TypeScript type checking (`tsc --noEmit`) to catch type-related errors. (Note: This project currently lacks comprehensive unit/integration tests for the frontend beyond type checking.)
-*   `npm run clean`: Removes `node_modules` and `dist` directories.
+* **Backend (Go)**:
 
-#### Backend (`backend/` directory)
+```bash
+cd backend
+go test ./...
+```
 
-Navigate to the `backend/` directory to run these commands.
+* **Infra (CDK)**:
 
-*   `./build.sh`: Builds all Lambda functions for deployment to AWS, creating binaries in the `build/` directory.
-*   `./run-local.sh`: Runs the backend API server locally on port 8080 for development and debugging.
-*   **Wire (Dependency Injection) Commands:**
-    *   `go install github.com/google/wire/cmd/wire@latest`: Installs the Wire code generation tool.
-    *   `go generate ./infrastructure/di`: Generates dependency injection code based on `wire` directives.
-*   `go mod tidy`: Cleans up unused dependencies and adds missing ones in `go.mod` and `go.sum`.
-*   `go test ./...`: Runs all tests within the backend project.
-*   `go fmt ./...`: Formats all Go code to match the standard Go formatting conventions.
-*   `go vet ./...`: Runs Go's built-in static analyzer to find potential issues in the code.
+```bash
+cd infra
+npm test
+```
 
-#### Infrastructure (`infra/` directory)
+* **Frontend (React)**:
+  Tests are planned. Suggested tools: Vitest + React Testing Library + Playwright.
 
-Navigate to the `infra/` directory to run these commands.
+---
 
-*   `npm install`: Installs all necessary Node.js dependencies for the AWS CDK project.
-*   `npx cdk deploy [STACK_NAME]`: Deploys the specified CDK stack (e.g., `npx cdk deploy Brain2Stack`). Use `--all` to deploy all stacks.
-*   `npx cdk synth [STACK_NAME]`: Synthesizes the CDK application into CloudFormation templates. This shows you what AWS resources will be created.
-*   `npx cdk diff [STACK_NAME]`: Compares the current CDK stack definition with the already deployed CloudFormation stack, showing proposed changes.
-*   `npx cdk destroy [STACK_NAME]`: Destroys the specified deployed CDK stack and all its resources. **Use with extreme caution!**
-*   `npm test`: Runs Jest tests for the infrastructure code.
+## 🧭 Learning Roadmap (for contributors)
+
+1. Start with the **Frontend** → run locally, explore graph visualization.
+2. Study the **Backend HTTP handlers** → see how requests map to commands/queries.
+3. Dive into **Domain Models** → understand Node, Graph, Edge.
+4. Explore **Infrastructure** → CDK stacks and how deployment works.
+5. Learn advanced patterns → mediator, sagas, projections, observability.
+
+---
+
+## 📌 Status
+
+* ✅ Stable backend and infrastructure
+* ⚠️ Frontend tests missing
+* ⚙️ Documentation being expanded
+
+---
+
+## 📜 License
+
+MIT
