@@ -37,10 +37,10 @@ type Batcher[K comparable, V any] struct {
 	timer   *time.Timer
 
 	// Metrics
-	totalBatches   int64
-	totalRequests  int64
-	batchSizeSum   int64
-	mu_metrics     sync.RWMutex
+	totalBatches  int64
+	totalRequests int64
+	batchSizeSum  int64
+	mu_metrics    sync.RWMutex
 
 	logger *zap.Logger
 }
@@ -185,15 +185,27 @@ func (b *Batcher[K, V]) dispatch() {
 		zap.Float64("avgBatchSize", avgBatchSize),
 	)
 
-	// Create a context that respects all pending request contexts
+	// Build a context for the batch that won't be cancelled by the shortest-lived request.
+	// We still respect request cancellations individually when delivering results.
 	ctx := context.Background()
+	activeFound := false
 	for _, reqs := range requests {
 		for _, req := range reqs {
 			if req.ctx.Err() == nil {
-				ctx = req.ctx
+				ctx = context.WithoutCancel(req.ctx)
+				activeFound = true
 				break
 			}
 		}
+		if activeFound {
+			break
+		}
+	}
+
+	// All requests were cancelled before dispatch fired; nothing to do.
+	if !activeFound {
+		b.logger.Debug("Skipping batch execution; all requests cancelled")
+		return
 	}
 
 	// Execute batch function

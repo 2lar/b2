@@ -837,6 +837,58 @@ When reviewing code in this project, check:
 - **Domain-Driven Design** by Eric Evans
 - **Implementing Domain-Driven Design** by Vaughn Vernon
 - **Clean Architecture** by Robert Martin
+
+---
+
+## 📈 Growth Roadmap: What To Learn Next
+
+Focus on these areas to level up with this codebase and as a backend engineer:
+
+- Core Architecture
+  - DDD + Aggregates: boundaries, invariants, value objects (see `domain/core/*`).
+  - CQRS: split commands/queries (see `application/commands/...`, `application/queries/...`).
+  - Saga pattern: compensations, retries (see `application/sagas/*`, CreateNode saga).
+
+- Data & Storage
+  - DynamoDB single-table design: keys, GSIs, access patterns (`infrastructure/persistence/dynamodb/*`).
+  - Outbox pattern: persist-then-publish with TTL/retries (`infrastructure/persistence/dynamodb/event_store.go`).
+  - Concurrency & idempotency: optimistic versioning and retries (repos + UoW).
+
+- Resilience & Integration
+  - Unit of Work: DynamoDB TransactWrite orchestration (`infrastructure/persistence/dynamodb/unit_of_work.go`).
+  - Distributed primitives: locks and rate limiting (`pkg/auth/distributed_rate_limiter.go`).
+  - Feature flags/dynamic config: safe rollouts (`infrastructure/config/*`).
+
+- Go Proficiency
+  - Context & cancellation: handlers/sagas and HTTP lifecycle (`cmd/api/main.go`).
+  - Dependency Injection with Wire: providers, sets, generated wiring (`infrastructure/di/*`).
+  - HTTP middleware with chi: auth/logging/CORS composition (`interfaces/http/rest/router.go`).
+
+- Observability & Ops
+  - Structured logging with zap, request context (logging middleware and zap usage across handlers).
+  - Metrics/tracing: where and what to instrument (`pkg/observability`).
+  - Testing: table-driven unit tests and targeted integration (`backend/tests/unit/*`).
+
+- Security
+  - JWT validation (issuer/audience/expiry) and auth context (`pkg/auth/jwt.go`, auth middleware).
+  - Defense-in-depth: rate limiting strategies, fail-open vs fail-closed decisions.
+
+Suggested sequence (6 weeks)
+- Week 1: Go context, interfaces, error handling; Wire basics.
+- Week 2: DDD/CQRS/Sagas; implement a small compensating saga.
+- Week 3: DynamoDB modeling; add a new GSI-backed query.
+- Week 4: Observability; add logs/metrics to a hot path and validate.
+- Week 5: Security; extend claims/scope checks and harden auth middleware.
+- Week 6: Testing; add table-driven entity tests and a saga step test.
+
+Recommended Resources
+- DDD/CQRS/Sagas: Chris Richardson “Microservices Patterns” + saga talks; Vaughn Vernon “Implementing DDD”.
+- Go design: Ardan Labs “Ultimate Go”; Bill Kennedy on context/concurrency.
+- Wire: Google Wire docs/tutorials.
+- DynamoDB: Alex DeBrie “The DynamoDB Book” + blog; AWS re:Invent NoSQL modeling talks.
+- Outbox/eventing: Martin Fowler/Pat Helland on transactional outbox; Debezium outbox pattern.
+- Observability: Honeycomb playlists on structured logging/SLOs; “Distributed Tracing in Practice”.
+- Security: Auth0 JWT best practices; OWASP ASVS auth/rate-limiting sections.
 - **Building Microservices** by Sam Newman
 
 ### Patterns to Study

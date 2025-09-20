@@ -1,6 +1,7 @@
 aws/
 frontend/node_modules/
 infra/node_modules/
+.cache/
 
 # Build artifacts
 backend/build/
