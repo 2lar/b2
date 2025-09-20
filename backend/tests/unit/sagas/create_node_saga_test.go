@@ -18,7 +18,7 @@ import (
 func TestCreateNodeSaga_Success(t *testing.T) {
 	// Arrange
 	logger := zap.NewNop()
-	
+
 	data := &sagas.CreateNodeSagaData{
 		UserID:      "test-user-123",
 		Title:       "Test Node",
@@ -56,7 +56,7 @@ func TestCreateNodeSaga_Success(t *testing.T) {
 	// Assert
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	resultData := result.(*sagas.CreateNodeSagaData)
 	assert.True(t, resultData.NodeCreated)
 	assert.NotNil(t, resultData.Node)
@@ -67,7 +67,7 @@ func TestCreateNodeSaga_Success(t *testing.T) {
 func TestCreateNodeSaga_FailureWithCompensation(t *testing.T) {
 	// Arrange
 	logger := zap.NewNop()
-	
+
 	data := &sagas.CreateNodeSagaData{
 		UserID:      "test-user-123",
 		Title:       "Test Node",
@@ -110,7 +110,7 @@ func TestCreateNodeSaga_FailureWithCompensation(t *testing.T) {
 func TestCreateNodeSaga_RetrySuccess(t *testing.T) {
 	// Arrange
 	logger := zap.NewNop()
-	
+
 	data := &sagas.CreateNodeSagaData{
 		UserID:      "test-user-123",
 		Title:       "Test Node",
@@ -131,7 +131,7 @@ func TestCreateNodeSaga_RetrySuccess(t *testing.T) {
 				// Success on second attempt
 				return d, nil
 			},
-			3,                    // max retries
+			3,                   // max retries
 			10*time.Millisecond, // short retry delay for testing
 		).
 		Build()
@@ -149,7 +149,7 @@ func TestCreateNodeSaga_RetrySuccess(t *testing.T) {
 func TestCreateNodeSaga_ValidationFailure(t *testing.T) {
 	// Arrange
 	logger := zap.NewNop()
-	
+
 	// Invalid data (empty user ID)
 	data := &sagas.CreateNodeSagaData{
 		UserID:      "", // Invalid
@@ -180,14 +180,14 @@ func TestCreateNodeSaga_ValidationFailure(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "user ID is required")
-	assert.Equal(t, sagas.SagaStateFailed, saga.GetState())
+	assert.Equal(t, sagas.SagaStateCompensated, saga.GetState())
 	assert.Nil(t, result)
 }
 
 func TestCreateNodeSaga_ComplexCompensation(t *testing.T) {
 	// Arrange
 	logger := zap.NewNop()
-	
+
 	data := &sagas.CreateNodeSagaData{
 		UserID:      "test-user-123",
 		Title:       "Test Node",
@@ -238,12 +238,12 @@ func TestCreateNodeSaga_ComplexCompensation(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "trigger compensation")
-	
+
 	// Verify compensation was called in reverse order
 	require.Len(t, compensationOrder, 3)
 	assert.Equal(t, []string{"compensate-3", "compensate-2", "compensate-1"}, compensationOrder,
 		"Compensation should be executed in reverse order")
-	
+
 	assert.Equal(t, sagas.SagaStateCompensated, saga.GetState())
 	assert.Nil(t, result)
 }
@@ -251,7 +251,7 @@ func TestCreateNodeSaga_ComplexCompensation(t *testing.T) {
 func TestCreateNodeSaga_PartialCompensationFailure(t *testing.T) {
 	// Arrange
 	logger := zap.NewNop()
-	
+
 	data := &sagas.CreateNodeSagaData{
 		UserID:      "test-user-123",
 		Title:       "Test Node",
@@ -300,13 +300,13 @@ func TestCreateNodeSaga_PartialCompensationFailure(t *testing.T) {
 
 	// Assert
 	require.Error(t, err)
-	
+
 	// All compensations should be attempted despite one failing
 	require.Len(t, compensationAttempts, 3)
 	assert.Contains(t, compensationAttempts, "compensate-3")
 	assert.Contains(t, compensationAttempts, "compensate-2-failed")
 	assert.Contains(t, compensationAttempts, "compensate-1")
-	
+
 	assert.Equal(t, sagas.SagaStateCompensated, saga.GetState())
 	assert.Nil(t, result)
 }

@@ -259,28 +259,25 @@ func (s *GraphValidationService) ValidateNodeConnection(
 - `infrastructure/di/providers.go`
 
 ```go
-// Saga handler is the live path (flagged by FEATURE_SAGA_ORCHESTRATOR).
+// Saga handler is the live path.
 type CreateNodeSagaHandler struct {
     saga           *sagas.CreateNodeSaga
     operationStore ports.OperationStore
-    config         *config.Config
     logger         *zap.Logger
 }
 
 func (h *CreateNodeSagaHandler) Handle(ctx context.Context, cmd commands.CreateNodeCommand) error {
     operationID := uuid.New().String()
     sagaData := &sagas.CreateNodeSagaData{
-        UserID: cmd.UserID,
-        Title:  cmd.Title,
-        Content: cmd.Content,
-        Tags:   cmd.Tags,
-        X: cmd.X, Y: cmd.Y, Z: cmd.Z,
+        UserID:      cmd.UserID,
+        Title:       cmd.Title,
+        Content:     cmd.Content,
+        Tags:        cmd.Tags,
+        X:           cmd.X,
+        Y:           cmd.Y,
+        Z:           cmd.Z,
         OperationID: operationID,
         StartTime:   time.Now(),
-    }
-
-    if !h.config.Features.EnableSagaOrchestrator {
-        return h.fallbackToOrchestrator(ctx, cmd) // legacy escape hatch
     }
 
     return h.saga.Execute(ctx, sagaData)
@@ -307,9 +304,8 @@ func (cns *CreateNodeSaga) BuildSaga(operationID string) *Saga {
 ```
 
 **Key Learnings**:
-- The saga handler is the default live path; DI selects it when `FEATURE_SAGA_ORCHESTRATOR=true` (the default).
+- The saga handler is the sole live path now; the orchestrator remains only as a documented legacy reference.
 - Saga steps split the operation into compensable units with retries and explicit rollback hooks.
-- The legacy `CreateNodeOrchestrator` sticks around only as a feature-flagged fallback for emergencies.
 - Operation tracking (via `OperationStore`) and edge discovery live inside the saga data, enabling progress reporting.
 
 ### 📖 **Lesson 8: Query Handlers**
@@ -650,9 +646,7 @@ type Config struct {
 func LoadConfig() (*Config, error) {
     cfg := &Config{
         Environment: getEnv("ENVIRONMENT", "dev"),
-        Features: Features{
-            EnableSaga: getEnvBool("ENABLE_SAGA", true),
-        },
+        // Feature flags such as async deletion are loaded here.
     }
 
     // Validate configuration
@@ -684,7 +678,7 @@ router.Use(versionMiddleware)
 router.Use(cors.Handler(cors.Options{ /* ... */ }))
 
 router.Route("/api/v1", func(r chi.Router) {
-    r.Use(middleware.Authenticate())
+    r.Use(authMiddleware) // injected via DI
     // register handlers...
 })
 ```
@@ -693,6 +687,7 @@ router.Route("/api/v1", func(r chi.Router) {
 - Chi's `router.Use` handles middleware composition; the bespoke `Chain` helper is gone.
 - The logging middleware wraps the shared zap logger, surfacing request ID, latency, and user agent.
 - Route-scoped middleware keeps cross-cutting concerns targeted (auth only on `/api/v1`, for example).
+- Auth middleware is built once in DI, so expensive dependencies (JWT validator, rate limiters) are shared.
 
 ### 📖 **Lesson 17: Graceful Shutdown**
 

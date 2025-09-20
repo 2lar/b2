@@ -22,6 +22,7 @@ import (
 	"context"
 	"github.com/google/wire"
 	"go.uber.org/zap"
+	"net/http"
 )
 
 // Injectors from wire.go:
@@ -60,6 +61,10 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 	operationEventListener := ProvideOperationEventListener(operationStore, logger)
 	graphStatsProjection := ProvideGraphStatsProjection(cache, logger)
 	graphLoader := ProvideGraphLoader(graphRepository, nodeRepository, edgeRepository, logger)
+	v, err := ProvideAuthMiddleware(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
 	container := &Container{
 		Config:                 cfg,
 		Logger:                 logger,
@@ -82,6 +87,7 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 		GraphStatsProjection:   graphStatsProjection,
 		GraphLazyService:       graphLazyService,
 		GraphLoader:            graphLoader,
+		AuthMiddleware:         v,
 	}
 	return container, nil
 }
@@ -111,6 +117,7 @@ type Container struct {
 	GraphStatsProjection   *projections.GraphStatsProjection
 	GraphLazyService       *services.GraphLazyService
 	GraphLoader            *services.GraphLoader
+	AuthMiddleware         func(http.Handler) http.Handler
 }
 
 // SuperSet is the main provider set containing all providers
@@ -141,5 +148,6 @@ var SuperSet = wire.NewSet(
 	ProvideEventHandlerRegistry,
 	ProvideOperationEventListener,
 	ProvideGraphStatsProjection,
-	ProvideMediator, wire.Struct(new(Container), "*"),
+	ProvideMediator,
+	ProvideAuthMiddleware, wire.Struct(new(Container), "*"),
 )

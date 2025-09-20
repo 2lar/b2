@@ -155,8 +155,17 @@ func TestNode_PublishChangesStatus(t *testing.T) {
 }
 
 func TestNode_DomainEvents(t *testing.T) {
-	// Arrange & Act
-	node := createTestNode(t)
+	// Arrange - create node without clearing initial events
+	content, err := valueobjects.NewNodeContent(
+		"Test Node",
+		"Test content",
+		valueobjects.FormatMarkdown,
+	)
+	require.NoError(t, err)
+	position, err := valueobjects.NewPosition2D(0, 0)
+	require.NoError(t, err)
+	node, err := entities.NewNode("test-user", content, position)
+	require.NoError(t, err)
 
 	// Assert - should have creation event
 	events := node.GetUncommittedEvents()

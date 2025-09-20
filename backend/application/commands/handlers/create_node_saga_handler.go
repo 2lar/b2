@@ -19,7 +19,6 @@ import (
 type CreateNodeSagaHandler struct {
 	saga           *sagas.CreateNodeSaga
 	operationStore ports.OperationStore
-	config         *config.Config
 	logger         *zap.Logger
 }
 
@@ -56,7 +55,6 @@ func NewCreateNodeSagaHandler(
 	return &CreateNodeSagaHandler{
 		saga:           saga,
 		operationStore: operationStore,
-		config:         appConfig,
 		logger:         logger,
 	}
 }
@@ -93,13 +91,6 @@ func (h *CreateNodeSagaHandler) Handle(ctx context.Context, cmd commands.CreateN
 		StartTime:   startTime,
 	}
 
-	// Check if saga should be used (feature flag)
-	if !h.shouldUseSaga() {
-		// Fall back to original orchestrator
-		h.logger.Debug("Saga disabled by feature flag, using original orchestrator")
-		return h.fallbackToOrchestrator(ctx, cmd)
-	}
-
 	// Execute saga
 	h.logger.Info("Executing CreateNode saga",
 		zap.String("operation_id", operationID),
@@ -125,37 +116,11 @@ func (h *CreateNodeSagaHandler) Handle(ctx context.Context, cmd commands.CreateN
 	return nil
 }
 
-// shouldUseSaga checks if saga pattern should be used based on feature flags
-func (h *CreateNodeSagaHandler) shouldUseSaga() bool {
-	// Check feature flag from config
-	if h.config == nil {
-		return false
-	}
-
-	// Check for saga feature flag
-	return h.config.Features.EnableSagaOrchestrator
-}
-
-// fallbackToOrchestrator falls back to the original CreateNodeOrchestrator
-func (h *CreateNodeSagaHandler) fallbackToOrchestrator(_ context.Context, cmd commands.CreateNodeCommand) error {
-	// This would call the original CreateNodeOrchestrator
-	// For now, return an error indicating fallback is needed
-	h.logger.Warn("Fallback to original orchestrator not implemented",
-		zap.String("user_id", cmd.UserID),
-		zap.String("title", cmd.Title),
-	)
-	
-	// In production, you would instantiate and call the original orchestrator here
-	// return h.orchestrator.Handle(ctx, cmd)
-	
-	return nil
-}
-
 // GetOperationStatus returns the status of an async operation
 func (h *CreateNodeSagaHandler) GetOperationStatus(ctx context.Context, operationID string) (*ports.OperationResult, error) {
 	if h.operationStore == nil {
 		return nil, nil
 	}
-	
+
 	return h.operationStore.Get(ctx, operationID)
 }

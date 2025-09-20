@@ -26,11 +26,11 @@ type ConfigWatcher struct {
 
 // DynamicConfig represents runtime-changeable configuration
 type DynamicConfig struct {
-	Features Features               `json:"features"`
-	Limits   Limits                 `json:"limits"`
-	DataLoader DataLoaderConfig     `json:"dataloader"`
-	WebSocket WebSocketConfig       `json:"websocket"`
-	Metadata ConfigMetadata         `json:"metadata"`
+	Features   Features         `json:"features"`
+	Limits     Limits           `json:"limits"`
+	DataLoader DataLoaderConfig `json:"dataloader"`
+	WebSocket  WebSocketConfig  `json:"websocket"`
+	Metadata   ConfigMetadata   `json:"metadata"`
 }
 
 // Limits holds application limits
@@ -44,7 +44,7 @@ type Limits struct {
 // DataLoaderConfig holds DataLoader configuration
 type DataLoaderConfig struct {
 	Enabled      bool `json:"enabled"`
-	BatchWindow  int  `json:"batchWindow"`  // milliseconds
+	BatchWindow  int  `json:"batchWindow"` // milliseconds
 	MaxBatchSize int  `json:"maxBatchSize"`
 }
 
@@ -227,7 +227,7 @@ func (w *ConfigWatcher) logConfigChanges(oldConfig, newConfig *DynamicConfig) {
 
 	// Check feature changes
 	if oldConfig.Features.EnableSagaOrchestrator != newConfig.Features.EnableSagaOrchestrator {
-		changes = append(changes, fmt.Sprintf("EnableSagaOrchestrator: %v -> %v",
+		changes = append(changes, fmt.Sprintf("EnableSagaOrchestrator (deprecated): %v -> %v (ignored)",
 			oldConfig.Features.EnableSagaOrchestrator, newConfig.Features.EnableSagaOrchestrator))
 	}
 

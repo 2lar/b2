@@ -21,6 +21,7 @@ type EdgeCreationConfig struct {
 // Features holds feature flags for the application
 type Features struct {
 	// EnableSagaOrchestrator enables saga pattern for complex operations
+	// Deprecated: the saga handler is always enabled; this flag is ignored.
 	EnableSagaOrchestrator bool `json:"enable_saga_orchestrator"`
 	// EnableAsyncDeletion enables async deletion of nodes
 	EnableAsyncDeletion bool `json:"enable_async_deletion"`
@@ -117,7 +118,7 @@ func LoadConfig() (*Config, error) {
 
 		// Feature flags
 		Features: Features{
-			EnableSagaOrchestrator: getEnvBool("FEATURE_SAGA_ORCHESTRATOR", true),
+			EnableSagaOrchestrator: true, // Deprecated toggle – saga handler is always enabled
 			EnableAsyncDeletion:    getEnvBool("FEATURE_ASYNC_DELETION", true),
 			EnableAutoConnect:      getEnvBool("FEATURE_AUTO_CONNECT", true),
 			EnableWebSocket:        getEnvBool("FEATURE_WEBSOCKET", false),

@@ -58,6 +58,7 @@ func main() {
 		container.Mediator,
 		container.Logger,
 		container.ErrorHandler,
+		container.AuthMiddleware,
 	)
 
 	// Setup routes

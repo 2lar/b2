@@ -16,9 +16,10 @@ import (
 
 // Router creates and configures the HTTP router
 type Router struct {
-	mediator     mediator.IMediator
-	logger       *zap.Logger
-	errorHandler *errors.ErrorHandler
+	mediator       mediator.IMediator
+	logger         *zap.Logger
+	errorHandler   *errors.ErrorHandler
+	authMiddleware func(http.Handler) http.Handler
 }
 
 // NewRouter creates a new router instance
@@ -26,11 +27,16 @@ func NewRouter(
 	med mediator.IMediator,
 	logger *zap.Logger,
 	errorHandler *errors.ErrorHandler,
+	authMiddleware func(http.Handler) http.Handler,
 ) *Router {
+	if authMiddleware == nil {
+		authMiddleware = func(next http.Handler) http.Handler { return next }
+	}
 	return &Router{
-		mediator:     med,
-		logger:       logger,
-		errorHandler: errorHandler,
+		mediator:       med,
+		logger:         logger,
+		errorHandler:   errorHandler,
+		authMiddleware: authMiddleware,
 	}
 }
 
@@ -62,7 +68,7 @@ func (rt *Router) Setup() http.Handler {
 	// API v1 routes
 	router.Route("/api/v1", func(r chi.Router) {
 		// Apply authentication middleware for API routes
-		r.Use(middleware.Authenticate())
+		r.Use(rt.authMiddleware)
 
 		// Node endpoints
 		r.Route("/nodes", func(r chi.Router) {

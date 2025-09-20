@@ -69,6 +69,7 @@ func init() {
 		container.Mediator,
 		container.Logger,
 		container.ErrorHandler,
+		container.AuthMiddleware,
 	)
 
 	// Setup routes

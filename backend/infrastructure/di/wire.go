@@ -5,6 +5,7 @@ package di
 
 import (
 	"context"
+	"net/http"
 
 	"backend/application/commands/bus"
 	appevents "backend/application/events"
@@ -45,6 +46,7 @@ type Container struct {
 	GraphStatsProjection   *projections.GraphStatsProjection
 	GraphLazyService       *services.GraphLazyService
 	GraphLoader            *services.GraphLoader
+	AuthMiddleware         func(http.Handler) http.Handler
 }
 
 // SuperSet is the main provider set containing all providers
@@ -76,6 +78,7 @@ var SuperSet = wire.NewSet(
 	ProvideOperationEventListener,
 	ProvideGraphStatsProjection,
 	ProvideMediator,
+	ProvideAuthMiddleware,
 	wire.Struct(new(Container), "*"),
 )
 

@@ -146,10 +146,11 @@ func (m *DynamicConfigManager) handleConfigChange(newConfig *DynamicConfig) {
 
 	// Log significant changes
 	if oldFeatures.EnableSagaOrchestrator != newConfig.Features.EnableSagaOrchestrator {
-		m.logger.Info("Saga orchestrator feature toggled",
-			zap.Bool("enabled", newConfig.Features.EnableSagaOrchestrator),
+		m.logger.Warn("EnableSagaOrchestrator flag is deprecated and will be forced on",
+			zap.Bool("requested_enabled", newConfig.Features.EnableSagaOrchestrator),
 		)
 	}
+	m.staticConfig.Features.EnableSagaOrchestrator = true
 
 	if oldFeatures.EnableWebSocket != newConfig.Features.EnableWebSocket {
 		m.logger.Info("WebSocket feature toggled",

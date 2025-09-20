@@ -3,6 +3,7 @@ package di
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"backend/application/commands"
@@ -17,6 +18,7 @@ import (
 	"backend/infrastructure/config"
 	"backend/infrastructure/messaging/eventbridge"
 	"backend/infrastructure/persistence/dynamodb"
+	"backend/interfaces/http/rest/middleware"
 	"backend/pkg/auth"
 	"backend/pkg/errors"
 	"backend/pkg/observability"
@@ -176,6 +178,34 @@ func (a *CommandHandlerAdapter) Handle(ctx context.Context, cmd bus.Command) err
 	return a.handler(ctx, cmd)
 }
 
+// ProvideAuthMiddleware constructs the HTTP authentication middleware with shared dependencies
+func ProvideAuthMiddleware(cfg *config.Config, logger *zap.Logger) (func(http.Handler) http.Handler, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is required for auth middleware")
+	}
+
+	if cfg.IsLambda {
+		return middleware.AuthenticateForLambda(), nil
+	}
+
+	secret := cfg.JWTSecret
+	if secret == "" {
+		secret = "development-secret-change-in-production"
+		logger.Warn("JWT_SECRET not configured; using development fallback secret")
+	}
+
+	validator, err := auth.NewJWTValidator(auth.JWTConfig{
+		SigningMethod: "HS256",
+		SecretKey:     secret,
+		Issuer:        cfg.JWTIssuer,
+		Audience:      []string{"brain2-api"},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct JWT validator: %w", err)
+	}
+
+	return middleware.AuthenticateWithConfig(validator, logger), nil
+}
 
 // ProvideUnitOfWork creates a unit of work for transactions
 func ProvideUnitOfWork(
@@ -275,52 +305,24 @@ func ProvideCommandBus(
 		logger,
 	)
 
-	// Create the appropriate handler based on feature flag
-	var createNodeHandler interface {
-		Handle(context.Context, commands.CreateNodeCommand) error
-	}
-	
-	// Check if saga orchestrator is enabled
-	if cfg.Features.EnableSagaOrchestrator {
-		// Use saga-based handler
-		logger.Info("Using saga-based CreateNode handler")
-		
-		// Get operation store for saga (it's already provided in the container)
-		operationStore := ProvideOperationStore()
-		
-		sagaHandler := commands_handlers.NewCreateNodeSagaHandler(
-			uow,
-			nodeRepo,
-			graphRepo,
-			edgeRepo,
-			edgeService,
-			graphLazyService,
-			eventPublisher,
-			distributedLock,
-			operationStore,
-			&cfg.EdgeCreation,
-			cfg,
-			logger,
-		)
-		createNodeHandler = sagaHandler
-	} else {
-		// Use traditional orchestrator
-		logger.Info("Using traditional CreateNode orchestrator")
-		orchestrator := commands_handlers.NewCreateNodeOrchestrator(
-			uow,
-			nodeRepo,
-			graphRepo,
-			edgeRepo,
-			edgeService,
-			graphLazyService,
-			eventPublisher,
-			distributedLock,
-			&cfg.EdgeCreation,
-			cfg,
-			&zapLoggerAdapter{logger},
-		)
-		createNodeHandler = orchestrator
-	}
+	logger.Info("Using saga-based CreateNode handler")
+
+	operationStore := ProvideOperationStore()
+
+	createNodeHandler := commands_handlers.NewCreateNodeSagaHandler(
+		uow,
+		nodeRepo,
+		graphRepo,
+		edgeRepo,
+		edgeService,
+		graphLazyService,
+		eventPublisher,
+		distributedLock,
+		operationStore,
+		&cfg.EdgeCreation,
+		cfg,
+		logger,
+	)
 
 	// Register CreateNodeCommand with the selected handler
 	commandBus.Register(commands.CreateNodeCommand{}, &CommandHandlerAdapter{
@@ -360,7 +362,7 @@ func ProvideCommandBus(
 
 	// Register BulkDeleteNodesCommand handler (now returns void per CQRS)
 	bulkDeleteHandler := commands_handlers.NewBulkDeleteNodesHandler(uow, nodeRepo, edgeRepo, graphRepo, eventStore, eventBus, logger)
-	
+
 	if err := commandBus.Register(commands.BulkDeleteNodesCommand{}, &CommandHandlerAdapter{
 		handler: func(ctx context.Context, cmd bus.Command) error {
 			bulkCmd, ok := cmd.(commands.BulkDeleteNodesCommand)
