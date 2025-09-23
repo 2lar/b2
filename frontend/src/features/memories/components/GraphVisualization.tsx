@@ -937,7 +937,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                     width={graphContainerRef.current?.clientWidth}
                     height={graphContainerRef.current?.clientHeight}
                     starCount={200}
-                    animate={true}
+                    animate={!prefersReducedMotion}
                 />
                 <div ref={containerRef} className={styles.cytoscapeContainer}></div>
                 
