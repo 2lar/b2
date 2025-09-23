@@ -1,7 +1,7 @@
 import type { components } from '../types/generated/generated-types';
 
 // Barrel export for all services
-export { api } from './apiClient';
+export { api, ApiError } from './apiClient';
 export { auth } from './authClient';
 export { webSocketClient } from './optimizedWebSocketClient';
 export { webSocketClient as legacyWebSocketClient } from './webSocketClient';

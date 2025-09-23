@@ -1,31 +1,3 @@
-/**
- * LeftPanel Component - Unified Tabbed Sidebar
- * 
- * Purpose:
- * Provides a unified left panel with tabbed interface for File Explorer and Memory List.
- * Supports collapsed state for space efficiency and maintains proper height constraints.
- * 
- * Key Features:
- * - Tabbed interface switching between File Explorer and Memory List
- * - Collapsible with smooth animations
- * - Height-constrained to match main content area
- * - Consistent styling with rest of application
- * - Keyboard navigation support for tabs
- * 
- * Tab Types:
- * - File Explorer: Category-based file system view
- * - Memory List: Flat paginated list of all memories
- * 
- * State Management:
- * - activeTab: Currently selected tab ('explorer' | 'memories')
- * - isCollapsed: Whether panel is in collapsed state
- * 
- * Integration:
- * - Contains FileSystemSidebar and MemoryList components
- * - Passes through all necessary props to child components
- * - Coordinates with Dashboard for state management
- */
-
 import React, { useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { FileSystemSidebar, MemoryList } from '../../features/memories';
