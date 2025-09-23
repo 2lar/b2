@@ -43,13 +43,16 @@ interface StarFieldProps {
     starCount?: number;
     /** Whether animations are enabled */
     animate?: boolean;
+    /** Optional class name for the canvas */
+    className?: string;
 }
 
 const StarField: React.FC<StarFieldProps> = ({
     width,
     height,
     starCount = 200,
-    animate = true
+    animate = true,
+    className
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const animationRef = useRef<number | undefined>(undefined);
@@ -141,7 +144,7 @@ const StarField: React.FC<StarFieldProps> = ({
             
             if (animate) {
                 // Slowly move stars (slower for distant stars)
-                const moveSpeed = star.type === 'distant' ? 0.02 : star.type === 'bright' ? 0.08 : 0.05;
+                const moveSpeed = star.type === 'distant' ? 0.01 : star.type === 'bright' ? 0.035 : 0.02;
                 star.y -= moveSpeed;
                 
                 // Reset stars that go off screen
@@ -198,21 +201,7 @@ const StarField: React.FC<StarFieldProps> = ({
         };
     }, [width, height, starCount, animate]);
 
-    return (
-        <canvas
-            ref={canvasRef}
-            className="star-background"
-            style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none',
-                zIndex: 0,
-            }}
-        />
-    );
+    return <canvas ref={canvasRef} className={className} />;
 };
 
 export default memo(StarField);

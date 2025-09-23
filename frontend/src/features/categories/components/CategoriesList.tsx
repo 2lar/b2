@@ -1,53 +1,9 @@
-/**
- * CategoriesList Component - Category Management Grid View
- *
- * Purpose:
- * Provides a comprehensive grid-based interface for viewing, creating, and managing categories.
- * Displays all user categories in an organized card layout with creation and navigation functionality.
- *
- * Key Features:
- * - Grid layout displaying category cards with metadata
- * - Inline category creation form with title and description
- * - Navigation to individual category detail views
- * - Category card display with creation dates and descriptions
- * - Loading states and empty state handling
- * - Responsive grid layout that adapts to screen size
- * - Integration with routing for category navigation
- *
- * Category Creation:
- * - Toggle-able creation form with title and description fields
- * - Form validation and submission handling
- * - Loading states during category creation
- * - Automatic refresh after successful creation
- * - Error handling for failed operations
- *
- * Category Display:
- * - Card-based layout with hover effects
- * - Category title and description display
- * - Creation date formatting and display
- * - Click-to-navigate to category detail view
- * - Empty state messaging for new users
- *
- * State Management:
- * - categories: Array of category objects
- * - isLoading: Loading state for initial data fetch
- * - showCreateForm: Toggle for creation form visibility
- * - newCategoryTitle/Description: Form input values
- * - isCreating: Loading state during category creation
- *
- * Integration:
- * - Can be used standalone or with callback for category selection
- * - Integrates with React Router for navigation
- * - Uses API client for category operations
- * - Accessible from main navigation and dashboard
- */
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { categoriesApi } from '../api/categories';
 import type { Category } from '../../../services';
-import { useGraphStore } from '../../../stores/graphStore';
+import { useLayoutStore } from '../../../stores/layoutStore';
 
 interface CategoriesListProps {
     /** Optional callback when category is selected instead of navigation */
@@ -57,7 +13,8 @@ interface CategoriesListProps {
 const CategoriesList: React.FC<CategoriesListProps> = ({ onCategorySelect }) => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const { isSidebarOpen, toggleSidebar } = useGraphStore();
+    const isAppSidebarOpen = useLayoutStore(state => state.isAppSidebarOpen);
+    const toggleAppSidebar = useLayoutStore(state => state.toggleAppSidebar);
 
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [newCategoryTitle, setNewCategoryTitle] = useState('');
@@ -108,9 +65,9 @@ const CategoriesList: React.FC<CategoriesListProps> = ({ onCategorySelect }) => 
                 <div>
                     <button
                         className="secondary-btn"
-                        onClick={toggleSidebar}
+                        onClick={toggleAppSidebar}
                     >
-                        {isSidebarOpen ? 'Close' : 'Open'} Sidebar (Zustand)
+                        {isAppSidebarOpen ? 'Hide' : 'Show'} App Navigation
                     </button>
                     <button
                         className="primary-btn create-category-btn"

@@ -24,6 +24,7 @@ export interface PanelHeaderProps {
     title: string;
     onClose: () => void;
     onMouseDown: (event: React.MouseEvent) => void;
+    onTouchStart?: (event: React.TouchEvent) => void;
     onDoubleClick: () => void;
     isDragging: boolean;
     onDocumentMode?: () => void;

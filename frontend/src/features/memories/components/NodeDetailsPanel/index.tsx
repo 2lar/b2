@@ -146,6 +146,7 @@ const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
                     title="Memory Details"
                     onClose={onClose}
                     onMouseDown={onMouseDown}
+                    onTouchStart={onTouchStart}
                     onDoubleClick={handleHeaderDoubleClick}
                     isDragging={isDragging}
                     onDocumentMode={handleDocumentMode}

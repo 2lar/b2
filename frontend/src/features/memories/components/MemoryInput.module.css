@@ -1,0 +1,213 @@
+.fullContainer {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+}
+
+.fullHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.fullBody {
+    border-radius: 10px;
+    background: rgba(148, 163, 184, 0.08);
+    padding: 0.75rem;
+}
+
+.compactContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 620px;
+    margin: 0 auto;
+    padding: 1rem 1.25rem;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    background: rgba(15, 23, 42, 0.92);
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: blur(10px);
+    color: var(--text-primary);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+@supports not ((-webkit-backdrop-filter: blur(10px)) or (backdrop-filter: blur(10px))) {
+    .compactContainer {
+        background: rgba(15, 23, 42, 0.97);
+    }
+}
+
+.compactForm {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.compactRow {
+    display: flex;
+    gap: 0.75rem;
+    align-items: stretch;
+}
+
+.textarea {
+    flex: 1;
+    min-height: 3rem;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 10px;
+    padding: 0.75rem 0.9rem;
+    background: rgba(15, 23, 42, 0.75);
+    color: inherit;
+    resize: vertical;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.textarea:focus {
+    outline: none;
+    border-color: rgba(59, 130, 246, 0.75);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
+}
+
+.submitButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 10px;
+    background: var(--primary-color);
+    color: #fff;
+    border: none;
+    font-size: 1.15rem;
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.submitButton:hover:not(:disabled),
+.submitButton:focus-visible:not(:disabled) {
+    background: var(--primary-hover, #2563eb);
+    transform: translateY(-1px);
+}
+
+.submitButton:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.tagPill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: rgba(59, 130, 246, 0.25);
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 0.8rem;
+    letter-spacing: 0.01em;
+}
+
+.tagRemove {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    border-radius: 50%;
+    width: 1.1rem;
+    height: 1.1rem;
+}
+
+.tagInputRow {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.tagInput {
+    flex: 1;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    background: rgba(15, 23, 42, 0.75);
+    color: inherit;
+}
+
+.footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.documentButton {
+    background: rgba(148, 163, 184, 0.2);
+    color: inherit;
+    padding: 0.45rem 0.9rem;
+    border-radius: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.documentButton:hover:not(:disabled),
+.documentButton:focus-visible:not(:disabled) {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(59, 130, 246, 0.35);
+}
+
+.status {
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 0.4rem 0.75rem;
+    border-radius: 8px;
+}
+
+.statusSuccess {
+    color: var(--success);
+}
+
+.statusError {
+    color: var(--error);
+}
+
+.modalBackdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(2px);
+    z-index: 50;
+}
+
+.documentContainer {
+    position: relative;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 1rem;
+    box-shadow: var(--shadow-lg);
+}
+
+.mobileOptimized textarea,
+.mobileOptimized input {
+    font-size: 16px;
+}
+
+.mobileOptimized {
+    max-width: none;
+    padding: 0.75rem 0.85rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: none;
+    backdrop-filter: none;
+}

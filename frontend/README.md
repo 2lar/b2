@@ -76,7 +76,7 @@ frontend/
 │   │   └── categories/               # Category list/detail UI and data hooks
 │   ├── hooks/                        # Reusable React hooks (non-feature specific)
 │   ├── services/                     # API/auth/WebSocket clients and helpers
-│   ├── stores/                       # Zustand stores (e.g. graphStore.ts)
+│   ├── stores/                       # Zustand stores (application layout state)
 │   ├── styles/                       # Feature-level stylesheets
 │   ├── types/                        # Domain typings + generated OpenAPI types
 │   └── utils/                        # Utility helpers (formatting, guards, etc.)
@@ -89,11 +89,11 @@ frontend/
 ```
 
 ### Routing & App Shell (`src/app`)
-`main.tsx` instantiates a `QueryClient` and renders `<App />` within `QueryClientProvider`, attaching `ReactQueryDevtools` in development. `App.tsx` manages authentication-aware routing, lazy-loads feature bundles, and coordinates WebSocket lifecycle events through `webSocketClient` and the persisted Zustand graph store.
+`main.tsx` instantiates a `QueryClient` and renders `<App />` within `QueryClientProvider`, attaching `ReactQueryDevtools` in development. `App.tsx` manages authentication-aware routing, lazy-loads feature bundles, and coordinates WebSocket lifecycle events through `webSocketClient` and the layout store.
 
 ### State & Data Flow
-- **Server state** lives in TanStack Query caches. Hooks inside `features/**/hooks` wrap queries/mutations for specific resources (nodes, categories, memories) and handle optimistic updates.
-- **Client state** (selected graph nodes, UI toggles, caches) is stored in `useGraphStore` (Zustand + `persist`). Actions inside the store call the typed API client and reconcile results with optimistic updates and caches.
+- **Server state** lives in TanStack Query caches. Hooks inside `features/**/hooks` wrap queries/mutations for specific resources (memories, categories, graph data) and handle optimistic refetches or pagination.
+- **Client state** (layout toggles, modal visibility) is stored in `useLayoutStore` (Zustand). Feature components own short-lived editing/selection state locally.
 - **Events**: `services/webSocketClient.ts` dispatches `CustomEvent('graph-update-event', …)` on `document`, enabling listeners anywhere in the app to react to real-time updates.
 
 ## API Integration & Generated Types
@@ -104,7 +104,7 @@ frontend/
 - Resolves the base URL from `VITE_API_BASE_URL` (or `VITE_API_BASE_URL_LOCAL` if toggled)
 - Retrieves JWTs from Supabase (`authClient.getJwtToken()`)
 - Implements retry/backoff logic and meaningful error messages for auth, rate limits, and cold starts
-- Exposes typed helpers for graph/memory/category endpoints consumed by features and the Zustand store
+- Exposes typed helpers for graph/memory/category endpoints consumed by feature hooks
 
 ## Authentication & Session Management
 
@@ -126,9 +126,9 @@ For more advanced batching and throttling, `services/optimizedWebSocketClient.ts
 
 ## Styling & UI Conventions
 
-- Global styles reside in `src/style.css` and `src/new-layout.css`
-- Feature-scoped styles (e.g. document editor) live under `src/styles`
-- Components prefer CSS Modules or scoped class names; ensure new global styles do not conflict across features
+- Theme tokens and resets live in `src/styles/base.css`
+- Feature-scoped styles rely on CSS Modules (`AppShell.module.css`, `LeftPanel.module.css`, `MemoryInput.module.css`, etc.)
+- Legacy global styles (e.g., `src/styles/document-editor.css`) support the rich document editor; prefer CSS Modules for new work
 - `common` contains shared layout components and error boundaries reused throughout the app
 
 ## Build & Performance Configuration
@@ -167,9 +167,11 @@ Remember that Vite only exposes variables beginning with `VITE_` to the browser 
 
 ## Testing & Quality Gates
 
-- `npm run test` (default script) type-checks the entire project via `tsc --noEmit`.
-- When integrating with backend changes, re-run `npm run generate-api-types` to catch contract regressions early.
-- Consider adding Vitest or Cypress tests under `src/__tests__` / `cypress/` respectively; existing scripts act as placeholders for now.
+- `npm run typecheck` — TypeScript strict mode (no emit) for the app code.
+- `npm run lint` / `npm run lint:fix` — ESLint + Prettier with React, Hooks, and TypeScript rules.
+- `npm test` / `npm run test:watch` — Vitest unit tests (with jsdom) and coverage.
+- `npm run generate-api-types` — Rebuild OpenAPI-generated types after backend contract changes.
+- Use the [frontend QA checklist](docs/frontend-qa-checklist.md) before promoting builds to staging/production.
 
 ## Troubleshooting
 

@@ -1,32 +1,8 @@
-/**
- * MemoryInput Component - Enhanced Memory Creation Interface
- * 
- * Purpose:
- * Provides an intelligent memory creation interface that automatically adapts to content length.
- * Uses SmartMemoryInput for auto-transition between simple input and rich document editing.
- * Maintains backward compatibility while offering enhanced user experience.
- * 
- * Key Features:
- * - Smart auto-transition between input modes based on content length
- * - Traditional compact mode for overlay use cases
- * - Enhanced document editing for longer content
- * - Auto-categorization and tag management
- * - Real-time content analysis and suggestions
- * 
- * Display Modes:
- * - Smart mode: Auto-transitions between simple and document editing
- * - Compact mode: Traditional streamlined interface for overlays
- * 
- * Integration:
- * - Backward compatible with existing usage patterns
- * - Enhanced with new document editing capabilities
- * - Maintains all existing callback patterns
- */
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { SmartMemoryInput } from '../../../components/SmartMemoryInput';
 import { DocumentEditor } from '../../../components/DocumentEditor';
 import { nodesApi } from '../api/nodes';
+import styles from './MemoryInput.module.css';
 
 interface MemoryInputProps {
     /** Callback function called after successful memory creation */
@@ -48,26 +24,11 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [status, setStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isDocumentMode, setIsDocumentMode] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
 
     const showStatus = (message: string, type: 'success' | 'error') => {
         setStatus({ message, type });
         setTimeout(() => setStatus(null), 3000);
     };
-
-    // Add/remove class on parent when document mode changes
-    useEffect(() => {
-        if (isCompact && containerRef.current) {
-            const parent = containerRef.current.closest('.memory-input-overlay');
-            if (parent) {
-                if (isDocumentMode) {
-                    parent.classList.add('document-mode-active');
-                } else {
-                    parent.classList.remove('document-mode-active');
-                }
-            }
-        }
-    }, [isDocumentMode, isCompact]);
 
     // Document mode handlers (used by compact mode)
     const openDocumentMode = () => {
@@ -83,7 +44,6 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = 
     };
 
     const handleDocumentSave = async (savedContent: string, savedTitle?: string) => {
-        console.log('DEBUG MemoryInput.handleDocumentSave - savedTitle:', JSON.stringify(savedTitle));
         setContent(savedContent);
         setTitle(savedTitle || '');
         
@@ -114,15 +74,15 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = 
         }
     };
 
-    // For non-compact mode, use the new SmartMemoryInput
+    // For non-compact mode, render full editor layout
     if (!isCompact) {
         return (
-            <div className="dashboard-container" id="input-container" data-container="input">
-                <div className="container-header" data-drag-handle>
-                    <span className="container-title">Create a Memory</span>
-                    <span className="drag-handle">⋮⋮</span>
+            <div className={styles.fullContainer}>
+                <div className={styles.fullHeader}>
+                    <span>Create a memory</span>
+                    <span aria-hidden>⋮⋮</span>
                 </div>
-                <div className="container-content">
+                <div className={styles.fullBody}>
                     <SmartMemoryInput onMemoryCreated={onMemoryCreated} />
                 </div>
             </div>
@@ -197,30 +157,18 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = 
         }
     };
 
-    if (isCompact) {
-        const isDevelopment = process.env.NODE_ENV === 'development';
-        
-        return (
-            <>
-                {/* Backdrop for document mode */}
-                {isDocumentMode && (
-                    <div 
-                        className="document-modal-backdrop" 
-                        onClick={(e) => {
-                            if (e.target === e.currentTarget) {
-                                handleDocumentClose(content, title);
-                            }
-                        }}
-                        style={isDevelopment ? { border: '3px solid blue' } : undefined}
-                    />
-                )}
-                
-                {/* Morphing container - single container that transforms */}
-                <div ref={containerRef}
-                     className={`memory-input-morph-container ${isDocumentMode ? 'document-state' : 'compact-state'} ${isMobile ? 'mobile-optimized' : ''}`}
-                     style={isDevelopment && isDocumentMode ? { border: '2px solid red' } : undefined}>
-                    {isDocumentMode ? (
-                        // Document editor mode
+    return (
+        <>
+            {isDocumentMode && (
+                <div
+                    className={styles.modalBackdrop}
+                    onClick={(event) => {
+                        if (event.target === event.currentTarget) {
+                            handleDocumentClose(content, title);
+                        }
+                    }}
+                >
+                    <div className={`${styles.documentContainer} ${isMobile ? styles.mobileOptimized : ''}`}>
                         <DocumentEditor
                             initialContent={content}
                             initialTitle={title}
@@ -228,90 +176,84 @@ const MemoryInput: React.FC<MemoryInputProps> = ({ onMemoryCreated, isCompact = 
                             onSave={handleDocumentSave}
                             mode="embedded"
                         />
-                    ) : (
-                        // Compact input mode
-                        <>
-                            <form onSubmit={handleSubmit} className="compact-form">
-                                <div className="input-row">
-                                    <textarea 
-                                        value={content}
-                                        onChange={(e) => setContent(e.target.value)}
-                                        onKeyDown={handleKeyDown}
-                                        placeholder={isMobile ? "What's on your mind?" : "Write a memory, thought, or idea..."}
-                                        rows={isMobile ? 1 : 2}
-                                        required
-                                        disabled={isSubmitting}
-                                        className="compact-textarea"
-                                        style={isMobile ? { fontSize: '16px' } : {}} // Prevent zoom on iOS
-                                    />
-                                    <button 
-                                        type="submit" 
-                                        className="compact-submit-btn"
-                                        disabled={isSubmitting || !content.trim()}
-                                        title="Save Memory"
-                                    >
-                                        {isSubmitting ? '⏳' : '✓'}
-                                    </button>
-                                </div>
-                                
-                                {tags.length > 0 && (
-                                    <div className="compact-tags">
-                                        {tags.map((tag, index) => (
-                                            <span key={index} className="tag-pill-compact">
-                                                {tag}
-                                                <button
-                                                    type="button"
-                                                    className="tag-remove-compact"
-                                                    onClick={() => removeTag(tag)}
-                                                    disabled={isSubmitting}
-                                                >
-                                                    ×
-                                                </button>
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                                
-                                <div className="compact-tag-input">
-                                    <input
-                                        type="text"
-                                        value={tagInput}
-                                        onChange={(e) => setTagInput(e.target.value)}
-                                        onKeyDown={handleTagInputKeyDown}
-                                        placeholder="Add tags..."
-                                        disabled={isSubmitting}
-                                        className="tag-input-compact"
-                                        style={isMobile ? { fontSize: '16px' } : {}} // Prevent zoom on iOS
-                                    />
-                                </div>
-                                
-                                {/* Action Footer - New Addition */}
-                                <div className="compact-footer">
+                    </div>
+                </div>
+            )}
+
+            <div className={`${styles.compactContainer} ${isMobile ? styles.mobileOptimized : ''}`}>
+                <form onSubmit={handleSubmit} className={styles.compactForm}>
+                    <div className={styles.compactRow}>
+                        <textarea
+                            className={styles.textarea}
+                            value={content}
+                            onChange={(event) => setContent(event.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder={isMobile ? "What's on your mind?" : 'Write a memory, thought, or idea…'}
+                            rows={isMobile ? 1 : 2}
+                            required
+                            disabled={isSubmitting}
+                        />
+                        <button
+                            type="submit"
+                            className={styles.submitButton}
+                            disabled={isSubmitting || !content.trim()}
+                            title="Save memory"
+                        >
+                            {isSubmitting ? '⏳' : '✓'}
+                        </button>
+                    </div>
+
+                    {tags.length > 0 && (
+                        <div className={styles.tags}>
+                            {tags.map((tag, index) => (
+                                <span key={`${tag}-${index}`} className={styles.tagPill}>
+                                    #{tag}
                                     <button
                                         type="button"
-                                        onClick={openDocumentMode}
-                                        className="document-mode-btn-compact"
+                                        className={styles.tagRemove}
+                                        onClick={() => removeTag(tag)}
                                         disabled={isSubmitting}
-                                        title="Open document editor for longer content"
+                                        aria-label={`Remove tag ${tag}`}
                                     >
-                                        📄 Document Mode
+                                        ×
                                     </button>
-                                </div>
-                            </form>
-                            {status && (
-                                <div className={`status-message-compact ${status.type}`}>
-                                    {status.message}
-                                </div>
-                            )}
-                        </>
+                                </span>
+                            ))}
+                        </div>
                     )}
-                </div>
-            </>
-        );
-    }
 
-    // This should never be reached since compact mode is handled above
-    return null;
+                    <div className={styles.tagInputRow}>
+                        <input
+                            type="text"
+                            value={tagInput}
+                            onChange={(event) => setTagInput(event.target.value)}
+                            onKeyDown={handleTagInputKeyDown}
+                            placeholder="Add tags…"
+                            disabled={isSubmitting}
+                            className={styles.tagInput}
+                        />
+                    </div>
+
+                    <div className={styles.footer}>
+                        <button
+                            type="button"
+                            className={styles.documentButton}
+                            onClick={openDocumentMode}
+                            disabled={isSubmitting}
+                        >
+                            📄 Document mode
+                        </button>
+                    </div>
+                </form>
+
+                {status && (
+                    <div className={`${styles.status} ${status.type === 'success' ? styles.statusSuccess : styles.statusError}`}>
+                        {status.message}
+                    </div>
+                )}
+            </div>
+        </>
+    );
 };
 
 export default MemoryInput;

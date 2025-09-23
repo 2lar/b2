@@ -20,6 +20,7 @@
  */
 
 import React, { memo } from 'react';
+import styles from './GraphControls.module.css';
 
 interface GraphControlsProps {
     /** Whether to render as overlay controls */
@@ -49,34 +50,34 @@ const GraphControls: React.FC<GraphControlsProps> = ({
 }) => {
     if (isOverlay) {
         return (
-            <div className="graph-controls-overlay">
-                <button 
-                    className="graph-control-btn"
+            <div className={styles.overlay}>
+                <button
+                    className={styles.overlayButton}
                     onClick={onRefresh}
-                    title="Refresh Graph"
+                    title="Refresh graph"
                 >
                     🔄
                 </button>
                 {onFitToScreen && (
-                    <button 
-                        className="graph-control-btn"
+                    <button
+                        className={styles.overlayButton}
                         onClick={onFitToScreen}
-                        title="Fit to Screen"
+                        title="Fit to screen"
                     >
                         ⌂
                     </button>
                 )}
                 {onResetZoom && (
-                    <button 
-                        className="graph-control-btn"
+                    <button
+                        className={styles.overlayButton}
                         onClick={onResetZoom}
-                        title="Reset Zoom"
+                        title="Reset zoom"
                     >
                         🔍
                     </button>
                 )}
-                <button 
-                    className="graph-control-btn"
+                <button
+                    className={styles.overlayButton}
                     onClick={onToggleFullscreen}
                     title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
                 >
@@ -87,42 +88,42 @@ const GraphControls: React.FC<GraphControlsProps> = ({
     }
 
     return (
-        <div className="container-header" data-drag-handle>
-            <span className="container-title">{title}</span>
-            <div className="container-controls">
-                <button 
-                    className="secondary-btn"
+        <div className={styles.header} data-drag-handle>
+            <span className={styles.headerTitle}>{title}</span>
+            <div className={styles.headerControls}>
+                <button
+                    className={styles.secondaryButton}
                     onClick={onRefresh}
-                    title="Refresh Graph"
+                    title="Refresh graph"
                 >
                     Refresh
                 </button>
                 {onFitToScreen && (
-                    <button 
-                        className="secondary-btn"
+                    <button
+                        className={styles.secondaryButton}
                         onClick={onFitToScreen}
-                        title="Fit to Screen"
+                        title="Fit to screen"
                     >
                         Fit
                     </button>
                 )}
                 {onResetZoom && (
-                    <button 
-                        className="secondary-btn"
+                    <button
+                        className={styles.secondaryButton}
                         onClick={onResetZoom}
-                        title="Reset Zoom"
+                        title="Reset zoom"
                     >
                         Reset
                     </button>
                 )}
-                <button 
-                    className="fullscreen-btn"
+                <button
+                    className={styles.fullscreenButton}
                     onClick={onToggleFullscreen}
                     title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
                 >
                     {isFullscreen ? '🗗 Exit Fullscreen' : '⛶ Fullscreen'}
                 </button>
-                <span className="drag-handle">⋮⋮</span>
+                <span className={styles.dragHandle}>⋮⋮</span>
             </div>
         </div>
     );

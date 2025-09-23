@@ -1,62 +1,25 @@
-/**
- * Header Component - Application Navigation Bar
- * 
- * Purpose:
- * Provides the top navigation bar with user controls, application-wide settings,
- * and quick access to main features like sidebar and memory list toggles.
- * 
- * Key Features:
- * - Dark/Light theme toggle with persistence
- * - User profile dropdown with email display
- * - Sign-out functionality
- * - Sidebar collapse/expand toggle
- * - Memory counter display in center
- * - Responsive design that adapts to screen size
- * - Click-outside detection for dropdown management
- * 
- * Theme Management:
- * - Persists theme preference in localStorage
- * - Applies theme changes to document root element
- * - Defaults to dark theme for new users
- * 
- * State Management:
- * - theme: Current theme setting ('dark' | 'light')
- * - isDropdownOpen: Controls visibility of user dropdown menu
- * 
- * Integration:
- * - Receives user email and controls from parent Dashboard
- * - Calls callback for sidebar toggle
- * - Displays live memory count
- * - Works with CSS custom properties for theming
- */
-
 import React, { useState, useEffect } from 'react';
+import styles from './Header.module.css';
 
 interface HeaderProps {
-    /** Email address of the authenticated user */
     userEmail: string;
-    /** Callback function to handle user sign-out */
     onSignOut: () => void;
-    /** Callback to toggle sidebar visibility */
     onToggleSidebar?: () => void;
-    /** Whether sidebar is currently collapsed */
     isSidebarCollapsed?: boolean;
-    /** Total number of memories for display */
     memoryCount?: number;
 }
 
-const Header: React.FC<HeaderProps> = ({ 
-    userEmail, 
-    onSignOut, 
-    onToggleSidebar, 
-    isSidebarCollapsed, 
-    memoryCount 
+const Header: React.FC<HeaderProps> = ({
+    userEmail,
+    onSignOut,
+    onToggleSidebar,
+    isSidebarCollapsed,
+    memoryCount,
 }) => {
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
     useEffect(() => {
-        // Get saved theme or default to dark
         const savedTheme = (localStorage.getItem('theme') as 'dark' | 'light') || 'dark';
         setTheme(savedTheme);
         document.documentElement.setAttribute('data-theme', savedTheme);
@@ -78,76 +41,76 @@ const Header: React.FC<HeaderProps> = ({
     };
 
     return (
-        <header>
-            {/* Mobile Menu Button */}
-            <div className="header-left">
+        <header className={styles.root}>
+            <div className={styles.mobileControls}>
                 {onToggleSidebar && (
-                    <button 
-                        className="mobile-menu-toggle" 
+                    <button
+                        type="button"
+                        className={styles.menuToggle}
                         onClick={onToggleSidebar}
-                        title={isSidebarCollapsed ? 'Open Menu' : 'Close Menu'}
-                        aria-label={isSidebarCollapsed ? 'Open Menu' : 'Close Menu'}
+                        title={isSidebarCollapsed ? 'Open navigation' : 'Close navigation'}
+                        aria-label={isSidebarCollapsed ? 'Open navigation' : 'Close navigation'}
                     >
-                        <span className="hamburger-icon">
-                            <span></span>
-                            <span></span>
-                            <span></span>
+                        <span className={styles.hamburger}>
+                            <span />
+                            <span />
+                            <span />
                         </span>
                     </button>
                 )}
-            </div>
-
-            <div className="header-center">
-                <h1>Memory Book</h1>
-                {memoryCount !== undefined && (
-                    <span className="memory-counter-mobile">{memoryCount}</span>
-                )}
-            </div>
-            
-            <div className="header-actions">
-                <button 
-                    className="theme-toggle" 
+                <button
+                    type="button"
+                    className={styles.themeToggle}
                     onClick={toggleTheme}
+                    aria-pressed={theme === 'dark'}
+                    aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
                 >
                     {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
                 </button>
-                
-                <div className="user-dropdown">
-                    <button 
-                        className="user-dropdown-toggle"
-                        onClick={toggleDropdown}
-                    >
-                        <span className="user-email">{userEmail}</span>
-                        <span className="dropdown-arrow">{isDropdownOpen ? '▲' : '▼'}</span>
+            </div>
+
+            <div className={`${styles.brand} ${styles.center}`}>
+                <h1 className={styles.heading}>Memory Book</h1>
+                {typeof memoryCount === 'number' && (
+                    <span className={styles.countBadge}>{memoryCount} memories</span>
+                )}
+            </div>
+
+            <div className={styles.actions}>
+                <div className={styles.userDropdown}>
+                    <button type="button" className={styles.dropdownToggle} onClick={toggleDropdown}>
+                        <span className={styles.email}>{userEmail}</span>
+                        <span aria-hidden>{isDropdownOpen ? '▲' : '▼'}</span>
                     </button>
-                    
+
                     {isDropdownOpen && (
-                        <div className="user-dropdown-menu">
-                            <button className="dropdown-item" onClick={closeDropdown}>
-                                <span className="dropdown-icon">👤</span>
+                        <div className={styles.menu}>
+                            <button type="button" className={styles.menuButton} onClick={closeDropdown}>
+                                <span aria-hidden>👤</span>
                                 Profile
                             </button>
-                            <button className="dropdown-item" onClick={closeDropdown}>
-                                <span className="dropdown-icon">⚙️</span>
+                            <button type="button" className={styles.menuButton} onClick={closeDropdown}>
+                                <span aria-hidden>⚙️</span>
                                 Settings
                             </button>
-                            <button className="dropdown-item" onClick={closeDropdown}>
-                                <span className="dropdown-icon">📊</span>
+                            <button type="button" className={styles.menuButton} onClick={closeDropdown}>
+                                <span aria-hidden>📊</span>
                                 Analytics
                             </button>
-                            <button className="dropdown-item" onClick={closeDropdown}>
-                                <span className="dropdown-icon">💡</span>
+                            <button type="button" className={styles.menuButton} onClick={closeDropdown}>
+                                <span aria-hidden>💡</span>
                                 Help
                             </button>
-                            <div className="dropdown-divider"></div>
-                            <button 
-                                className="dropdown-item sign-out-item" 
+                            <div className={styles.divider} />
+                            <button
+                                type="button"
+                                className={styles.menuButton}
                                 onClick={() => {
                                     closeDropdown();
                                     onSignOut();
                                 }}
                             >
-                                <span className="dropdown-icon">🚪</span>
+                                <span aria-hidden>🚪</span>
                                 Sign Out
                             </button>
                         </div>

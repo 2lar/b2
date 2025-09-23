@@ -4,6 +4,8 @@ import { User } from '@supabase/supabase-js';
 import { Header, LeftPanel, NotificationBanner } from '../../../common';
 import { GraphVisualization, type GraphVisualizationRef, MemoryInput } from '../../memories';
 import { useDashboardData } from '../hooks/useDashboardData';
+import { useLayoutStore } from '../../../stores/layoutStore';
+import styles from './Dashboard.module.css';
 
 interface DashboardProps {
     user: User;
@@ -13,21 +15,20 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     const navigate = useNavigate();
     const graphRef = React.useRef<GraphVisualizationRef>(null);
-    const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = React.useState(() => {
-        if (typeof window === 'undefined') {
-            return false;
-        }
-        return window.innerWidth <= 768;
-    });
+    const isLeftPanelOpen = useLayoutStore(state => state.isLeftPanelOpen);
+    const toggleLeftPanel = useLayoutStore(state => state.toggleLeftPanel);
+    const setLeftPanelOpen = useLayoutStore(state => state.setLeftPanelOpen);
 
     const {
         memories,
-        pagination,
+        totalMemories,
         isLoading,
+        isFetchingMore,
+        hasMore,
+        loadMore,
         error,
         graphRefreshKey,
         sidebarRefreshKey,
-        onPageChange,
         onMemoryCreated,
         onMemoryDeleted,
         onMemoryUpdated,
@@ -35,8 +36,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     } = useDashboardData();
 
     const handleToggleLeftPanel = React.useCallback(() => {
-        setIsLeftPanelCollapsed(previous => !previous);
-    }, []);
+        toggleLeftPanel();
+    }, [toggleLeftPanel]);
+
+    React.useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+        setLeftPanelOpen(window.innerWidth > 768);
+    }, [setLeftPanelOpen]);
 
     const handleViewInGraph = React.useCallback((nodeId: string) => {
         if (!graphRef.current) {
@@ -52,10 +60,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
         graphRef.current?.hideNodeDetails();
     }, []);
 
-    const handlePageChange = React.useCallback((page: number) => {
-        onPageChange(page);
-    }, [onPageChange]);
-
     const handleCreateMemory = React.useCallback(() => {
         void onMemoryCreated();
     }, [onMemoryCreated]);
@@ -69,35 +73,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
     }, [onMemoryUpdated]);
 
     return (
-        <div className="app-container">
+        <div className={styles.page}>
             <Header
                 userEmail={user.email || ''}
                 onSignOut={onSignOut}
                 onToggleSidebar={handleToggleLeftPanel}
-                isSidebarCollapsed={isLeftPanelCollapsed}
-                memoryCount={pagination.totalMemories}
+                isSidebarCollapsed={!isLeftPanelOpen}
+                memoryCount={totalMemories}
             />
 
-            <main className="dashboard-layout-mobile-ready">
+            <main className={isLeftPanelOpen ? styles.layout : styles.layoutCollapsed}>
                 <LeftPanel
-                    user={user}
-                    isCollapsed={isLeftPanelCollapsed}
+                    isCollapsed={!isLeftPanelOpen}
                     onToggleCollapse={handleToggleLeftPanel}
                     onMemorySelect={handleViewInGraph}
                     onCategorySelect={(categoryId) => navigate(`/categories/${categoryId}`)}
                     refreshTrigger={sidebarRefreshKey}
                     memories={memories}
-                    totalMemories={pagination.totalMemories}
-                    currentPage={pagination.currentPage}
-                    totalPages={pagination.totalPages}
                     isLoading={isLoading}
-                    onPageChange={handlePageChange}
                     onMemoryDeleted={handleDeleteMemory}
                     onMemoryUpdated={handleUpdateMemory}
-                    useVirtualScrolling={pagination.totalMemories > 100}
+                    totalMemories={totalMemories}
+                    hasMore={hasMore}
+                    isFetchingMore={isFetchingMore}
+                    onLoadMore={loadMore}
+                    useVirtualScrolling={totalMemories > 100}
                 />
 
-                <div className="main-content-area">
+                <div className={styles.main}>
                     {error && (
                         <NotificationBanner
                             variant="error"
@@ -106,16 +109,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                         />
                     )}
 
-                    <div className="graph-container">
+                    <div className={styles.graphSection}>
                         <GraphVisualization
                             ref={graphRef}
                             refreshTrigger={graphRefreshKey}
                             hasOverlayInput={true}
                         />
-                    </div>
-
-                    <div className="memory-input-container">
-                        <div className="memory-input-overlay desktop-input">
+                        <div className={styles.memoryInputOverlay}>
                             <MemoryInput
                                 onMemoryCreated={handleCreateMemory}
                                 isCompact={true}
@@ -124,7 +124,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                         </div>
                     </div>
 
-                    <div className="mobile-memory-input">
+                    <div className={styles.mobileInput}>
                         <MemoryInput
                             onMemoryCreated={handleCreateMemory}
                             isCompact={true}

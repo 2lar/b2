@@ -2,31 +2,32 @@ import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { useAuth, AuthSection } from '../features/auth';
 import { webSocketClient } from '../services';
-import { useGraphStore } from '../stores/graphStore';
 import { ErrorBoundary, LoadingScreen } from '../common';
+import { useLayoutStore } from '../stores/layoutStore';
+import styles from './AppShell.module.css';
 
 const Dashboard = lazy(() => import('../features/dashboard').then(module => ({ default: module.Dashboard })));
 const CategoriesList = lazy(() => import('../features/categories').then(module => ({ default: module.CategoriesList })));
 const CategoryDetail = lazy(() => import('../features/categories').then(module => ({ default: module.CategoryDetail })));
 
-const AppSidebar: React.FC = () => {
+const AppSidebar: React.FC<{ isVisible: boolean }> = ({ isVisible }) => {
+    const sidebarClassName = [
+        styles.sidebar,
+        !isVisible ? styles.sidebarCollapsed : '',
+    ].filter(Boolean).join(' ');
+
+    const linkClassName = ({ isActive }: { isActive: boolean }) => (
+        [styles.link, isActive ? styles.linkActive : ''].filter(Boolean).join(' ')
+    );
+
     return (
-        <aside className="app-shell__sidebar">
-            <div className="app-sidebar__header">
-                <span className="app-sidebar__brand">Brain2</span>
-            </div>
-            <nav className="app-sidebar__nav" aria-label="Primary navigation">
-                <NavLink
-                    to="/"
-                    end
-                    className={({ isActive }) => `app-sidebar__link${isActive ? ' app-sidebar__link--active' : ''}`}
-                >
+        <aside className={sidebarClassName}>
+            <div className={styles.brand}>Brain2</div>
+            <nav className={styles.nav} aria-label="Primary navigation">
+                <NavLink to="/" end className={linkClassName}>
                     Dashboard
                 </NavLink>
-                <NavLink
-                    to="/categories"
-                    className={({ isActive }) => `app-sidebar__link${isActive ? ' app-sidebar__link--active' : ''}`}
-                >
+                <NavLink to="/categories" className={linkClassName}>
                     Categories
                 </NavLink>
             </nav>
@@ -36,7 +37,8 @@ const AppSidebar: React.FC = () => {
 
 const App: React.FC = () => {
     const { session, loading, auth } = useAuth();
-    const { isSidebarOpen } = useGraphStore();
+    const isAppSidebarOpen = useLayoutStore(state => state.isAppSidebarOpen);
+    const initializeFromViewport = useLayoutStore(state => state.initializeFromViewport);
 
     React.useEffect(() => {
         if (session) {
@@ -53,6 +55,10 @@ const App: React.FC = () => {
         });
     }, [auth]);
 
+    React.useEffect(() => {
+        initializeFromViewport();
+    }, [initializeFromViewport]);
+
     if (loading) {
         return <LoadingScreen fullScreen message="Preparing your workspace…" />;
     }
@@ -65,9 +71,10 @@ const App: React.FC = () => {
             }}
         >
             <Router>
-                <div className={`app-shell${isSidebarOpen ? ' app-shell--with-sidebar' : ''}`}>
-                    {isSidebarOpen && <AppSidebar />}
-                    <div className="app-shell__content">
+                <a href="#main-content" className={styles.skipLink}>Skip to main content</a>
+                <div className={styles.shell}>
+                    <AppSidebar isVisible={isAppSidebarOpen} />
+                    <main id="main-content" className={styles.content}>
                         {session && session.user?.email ? (
                             <ErrorBoundary name="Authenticated Routes">
                                 <Suspense fallback={<LoadingScreen fullScreen message="Loading application…" />}>
@@ -105,7 +112,7 @@ const App: React.FC = () => {
                                 <AuthSection />
                             </ErrorBoundary>
                         )}
-                    </div>
+                    </main>
                 </div>
             </Router>
         </ErrorBoundary>

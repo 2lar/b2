@@ -1,49 +1,3 @@
-/**
- * GraphVisualization Component - Interactive Memory Network Visualization
- * 
- * Purpose:
- * Provides an interactive graph visualization of memory connections using Cytoscape.js.
- * Displays memories as nodes and their relationships as edges with advanced physics simulation
- * and rich interactive features including node details panels and navigation controls.
- * 
- * Key Features:
- * - Interactive node-link diagram with physics-based layout
- * - Cosmic-themed visual design with animated star background
- * - Node details panel showing content, tags, and connected memories
- * - Click-to-navigate between connected memories
- * - Fullscreen mode with responsive resizing
- * - Dynamic node coloring based on connectivity
- * - Smooth animations and drag interactions
- * - Advanced physics simulation for realistic movement
- * 
- * Visualization Features:
- * - Cosmic color palette with vibrant space colors
- * - Node size and color reflect connection strength
- * - Animated star field background with parallax effect
- * - Smooth zoom, pan, and selection animations
- * - Drag-to-move nodes with connected node physics
- * - Hover effects and selection highlighting
- * 
- * Node Details Panel:
- * - Shows full memory content and metadata
- * - Lists all connected memories with click navigation
- * - Displays creation timestamp and tags
- * - Provides direct links to related memories
- * - Floating panel with close/minimize controls
- * 
- * Layout Algorithm:
- * - Uses Cola.js force-directed layout for organic clustering
- * - Dynamic edge lengths based on connection strength
- * - Gravity and repulsion forces for natural spreading
- * - Interactive physics that respond to user manipulation
- * 
- * Integration:
- * - Exposes selectAndCenterNode method for external navigation
- * - Receives refresh triggers from Dashboard
- * - Integrates with memory selection from sidebar and list views
- * - Positioned in center panel of Dashboard layout
- */
-
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, memo, useMemo, useCallback } from 'react';
 import cytoscape, { Core, ElementDefinition, NodeSingular, NodeCollection } from 'cytoscape';
 import cola from 'cytoscape-cola';
@@ -55,6 +9,7 @@ import GraphControls from './GraphControls';
 import NodeDetailsPanel from './NodeDetailsPanel';
 import DocumentModeView from './NodeDetailsPanel/DocumentModeView';
 import StarField from './StarField';
+import styles from './GraphVisualization.module.css';
 
 // Register the cola layout
 cytoscape.use(cola);
@@ -850,11 +805,8 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         // This function is kept for backward compatibility but does nothing
     }, []);
 
-    const containerClass = hasOverlayInput ? "graph-main-container" : "dashboard-container";
-    const contentClass = hasOverlayInput ? "graph-main-content" : "container-content graph-content";
-    
     return (
-        <div className={containerClass} id="graph-container" data-container="graph" ref={graphContainerRef}>
+        <div className={styles.container} id="graph-container" data-container="graph" ref={graphContainerRef}>
             <GraphControls
                 isOverlay={hasOverlayInput}
                 isFullscreen={isFullscreen}
@@ -874,14 +826,15 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                 }}
             />
             
-            <div className={contentClass}>
-                <StarField 
+            <div className={styles.content}>
+                <StarField
+                    className={styles.starfield}
                     width={graphContainerRef.current?.clientWidth}
                     height={graphContainerRef.current?.clientHeight}
                     starCount={200}
                     animate={true}
                 />
-                <div ref={containerRef} className="cytoscape-container"></div>
+                <div ref={containerRef} className={styles.cytoscapeContainer}></div>
                 
                 <NodeDetailsPanel
                     selectedNode={selectedNode}

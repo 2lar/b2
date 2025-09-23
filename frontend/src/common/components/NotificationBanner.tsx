@@ -1,4 +1,5 @@
 import React from 'react';
+import styles from './NotificationBanner.module.css';
 
 export type NotificationVariant = 'info' | 'success' | 'warning' | 'error';
 
@@ -16,16 +17,18 @@ const variantIcon: Record<NotificationVariant, string> = {
 };
 
 const NotificationBanner: React.FC<NotificationBannerProps> = ({ message, variant = 'info', onDismiss }) => {
+    const className = [styles.root, styles[variant]].join(' ');
+
     return (
-        <div className={`notification-banner notification-banner--${variant}`} role="alert">
-            <span className="notification-banner__icon" aria-hidden="true">
+        <div className={className} role="alert">
+            <span className={styles.icon} aria-hidden="true">
                 {variantIcon[variant]}
             </span>
-            <span className="notification-banner__message">{message}</span>
+            <span className={styles.message}>{message}</span>
             {onDismiss && (
                 <button
                     type="button"
-                    className="notification-banner__dismiss"
+                    className={styles.dismiss}
                     onClick={onDismiss}
                     aria-label="Dismiss notification"
                 >

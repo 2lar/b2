@@ -6,6 +6,7 @@ const PanelHeader: React.FC<PanelHeaderProps> = ({
     title,
     onClose,
     onMouseDown,
+    onTouchStart,
     onDoubleClick,
     isDragging,
     onDocumentMode,
@@ -15,6 +16,7 @@ const PanelHeader: React.FC<PanelHeaderProps> = ({
         <div 
             className="panel-header draggable-header"
             onMouseDown={onMouseDown}
+            onTouchStart={onTouchStart}
             onDoubleClick={onDoubleClick}
             style={{ cursor: isDragging ? 'move' : 'move' }}
             aria-label={ARIA_LABELS.DRAG_HANDLE}

@@ -1,38 +1,6 @@
-/**
- * AuthSection Component - User Authentication Interface
- * 
- * Purpose:
- * Provides the login and registration interface for users who are not authenticated.
- * Handles both sign-in and sign-up workflows with form validation and error handling.
- * 
- * Key Features:
- * - Toggle between sign-in and sign-up modes
- * - Email and password form validation
- * - Loading states during authentication requests
- * - Error message display with user-friendly messaging
- * - Responsive form design
- * - Integration with Supabase authentication
- * 
- * State Management:
- * - isSignUp: Controls whether showing login or registration form
- * - email/password: Form input values
- * - error: Error messages from authentication attempts
- * - isLoading: Loading state during API calls
- * 
- * Authentication Flow:
- * - Uses auth service for Supabase integration
- * - Successful authentication is handled by useAuth hook in App component
- * - Form resets and shows loading state during requests
- * - Displays specific error messages for failed attempts
- * 
- * Integration:
- * - Rendered by App component when user is not authenticated
- * - Works with useAuth hook for session state management
- * - Integrates with Supabase Auth for user management
- */
-
 import React, { useState } from 'react';
 import { auth } from '../api/auth';
+import styles from './AuthSection.module.css';
 
 const AuthSection: React.FC = () => {
     const [isSignUp, setIsSignUp] = useState(false);
@@ -67,44 +35,49 @@ const AuthSection: React.FC = () => {
     };
 
     return (
-        <div className="auth-container">
-            <div className="auth-box">
-                <h1>Brain2</h1>
-                <p className="tagline">Your Second Brain - Building Connections Between Memories</p>
-                
-                <div id="auth-form">
-                    <h2>{isSignUp ? 'Sign Up' : 'Sign In'}</h2>
-                    <form onSubmit={handleSubmit}>
-                        <input 
-                            type="email" 
-                            placeholder="Email" 
+        <div className={styles.container}>
+            <div className={styles.panel}>
+                <div>
+                    <h1 className={styles.title}>Brain2</h1>
+                    <p className={styles.tagline}>Your second brain for connected memories</p>
+                </div>
+                <div>
+                    <h2 className={styles.formHeading}>{isSignUp ? 'Create an account' : 'Welcome back'}</h2>
+                    <form className={styles.form} onSubmit={handleSubmit}>
+                        <input
+                            className={styles.input}
+                            type="email"
+                            placeholder="Email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            required 
+                            required
                         />
-                        <input 
-                            type="password" 
-                            placeholder="Password" 
+                        <input
+                            className={styles.input}
+                            type="password"
+                            placeholder="Password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            required 
+                            required
                         />
-                        <button 
-                            type="submit" 
-                            disabled={isLoading}
-                        >
-                            {isLoading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')}
+                        <button type="submit" className={styles.submit} disabled={isLoading}>
+                            {isLoading ? 'Loading…' : isSignUp ? 'Create account' : 'Sign in'}
                         </button>
                     </form>
-                    <p className="auth-switch">
-                        <span>
-                            {isSignUp ? 'Already have an account?' : "Don't have an account?"}
-                        </span>
-                        <a href="#" onClick={(e) => { e.preventDefault(); toggleMode(); }}>
-                            {isSignUp ? 'Sign In' : 'Sign Up'}
+                    <p className={styles.switchRow}>
+                        {isSignUp ? 'Already have an account?' : "Don't have an account?"}
+                        <a
+                            className={styles.switchLink}
+                            href="#"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                toggleMode();
+                            }}
+                        >
+                            {isSignUp ? 'Sign in' : 'Sign up'}
                         </a>
                     </p>
-                    {error && <div className="error-message">{error}</div>}
+                    {error && <div className={styles.error}>{error}</div>}
                 </div>
             </div>
         </div>

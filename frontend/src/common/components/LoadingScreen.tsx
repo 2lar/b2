@@ -1,21 +1,20 @@
 import React from 'react';
+import styles from './LoadingScreen.module.css';
 
 interface LoadingScreenProps {
-    /** Message shown under the spinner */
     message?: string;
-    /** Enable full-screen centering */
     fullScreen?: boolean;
 }
 
 const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading…', fullScreen = false }) => {
     return (
         <div
-            className={`loading-screen${fullScreen ? ' loading-screen--fullscreen' : ''}`}
+            className={`${styles.root}${fullScreen ? ` ${styles.fullScreen}` : ''}`}
             role="status"
             aria-live="polite"
         >
-            <span className="loading-screen__spinner" aria-hidden="true" />
-            <span className="loading-screen__message">{message}</span>
+            <span className={styles.spinner} aria-hidden="true" />
+            <span className={styles.message}>{message}</span>
         </div>
     );
 };

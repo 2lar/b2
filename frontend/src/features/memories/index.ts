@@ -16,5 +16,6 @@ export {
     useConditionalGraphQuery,
     useNodesQuery,
     useInfiniteNodesQuery,
-    useNodeQuery
+    useNodeQuery,
+    useMemoriesFeed
 } from './hooks';
