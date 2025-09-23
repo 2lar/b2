@@ -1,4 +1,4 @@
-import { auth as globalAuth } from '../../../services/authClient';
+import { auth as globalAuth } from '../../../services';
 
 export const auth = {
     signIn: globalAuth.signIn,

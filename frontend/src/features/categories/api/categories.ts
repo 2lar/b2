@@ -1,4 +1,4 @@
-import { api as globalApi } from '../../../services/apiClient';
+import { api as globalApi } from '../../../services';
 
 export const categoriesApi = {
     createCategory: globalApi.createCategory.bind(globalApi),

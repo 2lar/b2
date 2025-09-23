@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, memo, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, memo, useCallback } from 'react';
 import cytoscape, { Core, ElementDefinition, NodeSingular, NodeCollection } from 'cytoscape';
 import cola from 'cytoscape-cola';
 import { nodesApi } from '../api/nodes';
@@ -63,6 +63,12 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
     const [selectedNode, setSelectedNode] = useState<DisplayNode | null>(null);
     const [connectedMemories, setConnectedMemories] = useState<ConnectedMemory[]>([]);
     const [currentElementCount, setCurrentElementCount] = useState(0);
+    const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+    // Interval refs for cleanup
+    const viewportIntervalRef = useRef<number | null>(null);
+    const jitterIntervalRef = useRef<number | null>(null);
+    const pulseIntervalRef = useRef<number | null>(null);
     
     // Document mode state
     const [isDocumentMode, setIsDocumentMode] = useState(false);
@@ -110,6 +116,18 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         },
         hideNodeDetails
     }), [hideNodeDetails]);
+
+    // Respect reduced motion user preference
+    useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+            return;
+        }
+        const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const handler = () => setPrefersReducedMotion(mql.matches);
+        handler();
+        mql.addEventListener('change', handler);
+        return () => mql.removeEventListener('change', handler);
+    }, []);
 
     // Force resize on mobile to ensure proper dimensions
     useEffect(() => {
@@ -209,19 +227,35 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         }
 
         // Set up event handlers
-        setupEventHandlers(cy);
+        const teardownEvents = setupEventHandlers(cy);
 
         // Store global reference for legacy compatibility
         (window as any).cy = cy;
 
         // Prevent unwanted viewport resets
-        preventViewportReset(cy);
+        const teardownViewport = preventViewportReset(cy);
 
         return () => {
             if (cyRef.current) {
                 cyRef.current.destroy();
                 cyRef.current = null;
             }
+            // Clear any running intervals
+            if (viewportIntervalRef.current) {
+                window.clearInterval(viewportIntervalRef.current);
+                viewportIntervalRef.current = null;
+            }
+            if (jitterIntervalRef.current) {
+                window.clearInterval(jitterIntervalRef.current);
+                jitterIntervalRef.current = null;
+            }
+            if (pulseIntervalRef.current) {
+                window.clearInterval(pulseIntervalRef.current);
+                pulseIntervalRef.current = null;
+            }
+            // Additional teardown
+            teardownEvents?.();
+            teardownViewport?.();
         };
     }, []);
 
@@ -293,9 +327,10 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         };
         
         // Periodically check if view was reset unexpectedly
-        setInterval(() => {
+        viewportIntervalRef.current = window.setInterval(() => {
             // Don't restore during user interactions
             if (cy.nodes().filter(':grabbed').length > 0) return;
+            if (document.visibilityState !== 'visible') return;
             
             const currentZoom = cy.zoom();
             const currentPan = cy.pan();
@@ -314,13 +349,23 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         }, 200);
         
         // For zoom button handlers
-        cy.on('wheelzoom', (event) => {
+        const wheelHandler = (event: any) => {
             // Ensure zoom stays within bounds
             const zoom = cy.zoom();
             if (zoom <= cy.minZoom() || zoom >= cy.maxZoom()) {
                 event.preventDefault();
             }
-        });
+        };
+        cy.on('wheelzoom', wheelHandler);
+
+        // Teardown
+        return () => {
+            if (viewportIntervalRef.current) {
+                window.clearInterval(viewportIntervalRef.current);
+                viewportIntervalRef.current = null;
+            }
+            cy.off('wheelzoom', wheelHandler);
+        };
     };
 
     // Memoized graph manipulation functions
@@ -555,7 +600,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                 // Apply cola layout with advanced physics parameters
                 const layout = cy.layout({
                     name: 'cola',
-                    animate: true,
+                    animate: !prefersReducedMotion,
                     refresh: 1,
                     maxSimulationTime: 7000,
                     nodeSpacing: function() { return 50; },
@@ -579,7 +624,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                         enabled: true,          
                         friction: 0.6
                     },
-                    infinite: true, // Keep physics simulation running - CRITICAL for interactive feel
+                    infinite: prefersReducedMotion ? false : true,
                     stop: () => {
                         cy.animate({
                             fit: { eles: cy.elements(), padding: 30 },
@@ -596,8 +641,7 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
                 // Setup interactive drag behavior
                 setupDragBehavior(cy);
                 
-                // Add continuous node animations
-                animateNodes();
+                // Continuous node animations handled by effect with cleanup
             }
 
         } catch (error) {
@@ -804,6 +848,67 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         // Background effects are now handled by the StarField component
         // This function is kept for backward compatibility but does nothing
     }, []);
+
+    // Start/stop subtle animations once, with cleanup and guards
+    useEffect(() => {
+        if (!cyRef.current) return;
+        if (prefersReducedMotion) return;
+
+        const cy = cyRef.current;
+
+        // Apply subtle random movement to keep graph alive
+        jitterIntervalRef.current = window.setInterval(() => {
+            if (!cyRef.current) return;
+            if (document.visibilityState !== 'visible') return;
+            if (cy.nodes().filter(':grabbed').length > 0) return;
+
+            cy.nodes().forEach(node => {
+                if (Math.random() > 0.7) {
+                    const jitter = (Math.random() - 0.5) * 1;
+                    const pos = node.position();
+                    node.position({ x: pos.x + jitter, y: pos.y + jitter });
+                }
+            });
+        }, 2000);
+
+        // Occasionally add pulse effects to random nodes
+        pulseIntervalRef.current = window.setInterval(() => {
+            if (!cyRef.current) return;
+            if (document.visibilityState !== 'visible') return;
+            if (cy.nodes().filter(':grabbed').length > 0) return;
+
+            const nodes = cy.nodes();
+            if (nodes.length === 0) return;
+            const randomNodeIndex = Math.floor(Math.random() * nodes.length);
+            const randomNode = nodes[randomNodeIndex];
+            if (randomNode.selected() || randomNode.grabbed()) return;
+
+            const originalWidth = 25;
+            const originalHeight = 25;
+            randomNode.animate({
+                style: { 'width': originalWidth * 1.1, 'height': originalHeight * 1.1, 'border-width': 7 }
+            }, {
+                duration: 800,
+                easing: 'ease-in-sine',
+                complete: function() {
+                    randomNode.animate({
+                        style: { 'width': originalWidth, 'height': originalHeight, 'border-width': 2 }
+                    }, { duration: 800, easing: 'ease-out-sine' });
+                }
+            });
+        }, 700);
+
+        return () => {
+            if (jitterIntervalRef.current) {
+                window.clearInterval(jitterIntervalRef.current);
+                jitterIntervalRef.current = null;
+            }
+            if (pulseIntervalRef.current) {
+                window.clearInterval(pulseIntervalRef.current);
+                pulseIntervalRef.current = null;
+            }
+        };
+    }, [prefersReducedMotion]);
 
     return (
         <div className={styles.container} id="graph-container" data-container="graph" ref={graphContainerRef}>
