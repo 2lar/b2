@@ -54,7 +54,8 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 	commandBus := ProvideCommandBus(unitOfWork, nodeRepository, edgeRepository, graphRepository, graphLazyService, eventStore, eventBus, eventPublisher, distributedLock, metrics, cfg, logger)
 	cache := ProvideInMemoryCache()
 	operationStore := ProvideOperationStore()
-	queryBus := ProvideQueryBus(graphRepository, nodeRepository, edgeRepository, cache, operationStore, logger)
+	hybridSearchService := ProvideHybridSearchService(nodeRepository, cfg, logger)
+	queryBus := ProvideQueryBus(graphRepository, nodeRepository, edgeRepository, cache, operationStore, hybridSearchService, logger)
 	distributedRateLimiter := ProvideDistributedRateLimiter(client, cfg)
 	mediator := ProvideMediator(commandBus, queryBus, metrics, logger)
 	handlerRegistry := ProvideEventHandlerRegistry(logger)
@@ -120,34 +121,50 @@ type Container struct {
 	AuthMiddleware         func(http.Handler) http.Handler
 }
 
-// SuperSet is the main provider set containing all providers
+// SuperSet is the main provider set. Order here is for readability only;
+// Wire determines the actual initialization order from dependencies and
+// generates it in wire_gen.go. Grouped from leaves → higher-level wiring.
 var SuperSet = wire.NewSet(
+
 	ProvideLogger,
 	ProvideErrorHandler,
+
 	ProvideAWSConfig,
 	ProvideDynamoDBClient,
 	ProvideEventBridgeClient,
 	ProvideCloudWatchClient,
-	ProvideNodeRepository,
-	ProvideGraphRepository,
-	ProvideEdgeRepository,
-	ProvideGraphLazyService,
-	ProvideGraphLoader,
-	ProvideEventBus,
-	ProvideEventPublisher,
-	ProvideEventStore,
-	ProvideUnitOfWork,
-	ProvideMetrics,
-	ProvideDistributedRateLimiter,
-	ProvideDistributedLock,
-	ProvideEdgeService,
-	ProvideCommandBus,
-	ProvideQueryBus,
+
 	ProvideInMemoryCache,
 	ProvideOperationStore,
+
+	ProvideDistributedRateLimiter,
+	ProvideDistributedLock,
+
+	ProvideNodeRepository,
+	ProvideEdgeRepository,
+
+	ProvideGraphRepository,
+
+	ProvideEventStore,
+
+	ProvideEventBus,
+	ProvideEventPublisher,
+	ProvideMetrics,
+
+	ProvideUnitOfWork,
+
+	ProvideGraphLazyService,
+	ProvideGraphLoader,
+	ProvideEdgeService,
+	ProvideHybridSearchService,
+
+	ProvideCommandBus,
+	ProvideQueryBus,
+	ProvideMediator,
+
 	ProvideEventHandlerRegistry,
 	ProvideOperationEventListener,
 	ProvideGraphStatsProjection,
-	ProvideMediator,
+
 	ProvideAuthMiddleware, wire.Struct(new(Container), "*"),
 )

@@ -15,7 +15,9 @@ import (
 	queries_handlers "backend/application/queries/handlers"
 	"backend/application/services"
 	"backend/domain/events"
+	domainservices "backend/domain/services"
 	"backend/infrastructure/config"
+	"backend/infrastructure/embeddings"
 	"backend/infrastructure/messaging/eventbridge"
 	"backend/infrastructure/persistence/dynamodb"
 	"backend/interfaces/http/rest/middleware"
@@ -261,6 +263,41 @@ func ProvideDistributedLock(client *awsdynamodb.Client, cfg *config.Config, logg
 	return dynamodb.NewDistributedLock(client, cfg.DynamoDBTable, logger)
 }
 
+// ProvideHybridSearchService creates a hybrid search service for BM25 + semantic search.
+// If embedding is disabled in config, semantic search is skipped (BM25-only).
+func ProvideHybridSearchService(
+	nodeRepo ports.NodeRepository,
+	cfg *config.Config,
+	logger *zap.Logger,
+) *services.HybridSearchService {
+	textAnalyzer := domainservices.NewDefaultTextAnalyzer()
+	bm25 := domainservices.NewBM25Scorer(textAnalyzer)
+
+	// Embedding service is optional — search degrades to BM25-only when nil.
+	// For the API server, we create it if embedding is enabled in config.
+	var embeddingService domainservices.EmbeddingService
+	if cfg.Embedding.Enabled && cfg.Embedding.BaseURL != "" {
+		embeddingService = embeddings.NewOpenAICompatibleService(
+			&embeddings.OpenAICompatibleConfig{
+				BaseURL:    cfg.Embedding.BaseURL,
+				APIKey:     cfg.Embedding.APIKey,
+				Model:      cfg.Embedding.Model,
+				Dimensions: cfg.Embedding.Dimensions,
+				BatchSize:  1, // Search only embeds one query at a time
+				Timeout:    10 * time.Second,
+			},
+			logger,
+		)
+		logger.Info("Hybrid search: semantic search enabled",
+			zap.String("model", cfg.Embedding.Model),
+		)
+	} else {
+		logger.Info("Hybrid search: semantic search disabled, using BM25-only")
+	}
+
+	return services.NewHybridSearchService(bm25, embeddingService, textAnalyzer, nodeRepo, nil)
+}
+
 // ProvideEdgeService creates an EdgeService instance for edge operations
 func ProvideEdgeService(
 	nodeRepo ports.NodeRepository,
@@ -418,6 +455,7 @@ func ProvideQueryBus(
 	edgeRepo ports.EdgeRepository,
 	cache ports.Cache,
 	operationStore ports.OperationStore,
+	searchService *services.HybridSearchService,
 	logger *zap.Logger,
 ) *querybus.QueryBus {
 	queryBus := querybus.NewQueryBus()
@@ -515,6 +553,18 @@ func ProvideQueryBus(
 				return nil, fmt.Errorf("invalid query type")
 			}
 			return getGraphStatsHandler.Handle(ctx, statsQuery)
+		},
+	})
+
+	// Register HybridSearchQuery handler
+	hybridSearchHandler := queries.NewHybridSearchHandler(searchService)
+	queryBus.Register(&queries.HybridSearchQuery{}, &QueryHandlerAdapter{
+		handler: func(ctx context.Context, query querybus.Query) (interface{}, error) {
+			searchQuery, ok := query.(*queries.HybridSearchQuery)
+			if !ok {
+				return nil, fmt.Errorf("invalid query type")
+			}
+			return hybridSearchHandler.Handle(ctx, searchQuery)
 		},
 	})
 

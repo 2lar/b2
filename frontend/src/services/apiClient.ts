@@ -453,6 +453,18 @@ class ApiClient {
     }
 
     /**
+     * Search nodes using hybrid BM25 + semantic search
+     * @param query Search query string
+     * @param limit Maximum results to return (default 20)
+     * @param offset Results offset for pagination (default 0)
+     * @returns Promise resolving to search results with scores and source attribution
+     */
+    public async searchNodes(query: string, limit = 20, offset = 0): Promise<any> {
+        const params = new URLSearchParams({ q: query, limit: limit.toString(), offset: offset.toString() });
+        return this.request<any>('GET', `/api/v1/search?${params.toString()}`);
+    }
+
+    /**
      * Test API health endpoint (no authentication required)
      * @returns Promise resolving to health status
      */

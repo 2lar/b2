@@ -93,9 +93,10 @@ var SuperSet = wire.NewSet(
 
     // 8) Application services
     // Services depending on repos + cfg + logger
-    ProvideGraphLazyService, // deps: node repo, edge repo, config, logger
-    ProvideGraphLoader,      // deps: graph repo, node repo, edge repo, logger
-    ProvideEdgeService,      // deps: node repo, graph repo, edge repo, cfg.EdgeCreation, logger
+    ProvideGraphLazyService,    // deps: node repo, edge repo, config, logger
+    ProvideGraphLoader,         // deps: graph repo, node repo, edge repo, logger
+    ProvideEdgeService,         // deps: node repo, graph repo, edge repo, cfg.EdgeCreation, logger
+    ProvideHybridSearchService, // deps: node repo, config, logger
 
     // 9) CQRS buses and mediator
     // Command bus wires handlers requiring many deps (UoW, repos, services, events)

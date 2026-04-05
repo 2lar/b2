@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SearchBar } from '../../features/search';
 import styles from './Header.module.css';
 
 interface HeaderProps {
@@ -7,6 +8,7 @@ interface HeaderProps {
     onToggleSidebar?: () => void;
     isSidebarCollapsed?: boolean;
     memoryCount?: number;
+    onSearchSelect?: (nodeId: string) => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -15,6 +17,7 @@ const Header: React.FC<HeaderProps> = ({
     onToggleSidebar,
     isSidebarCollapsed,
     memoryCount,
+    onSearchSelect,
 }) => {
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -74,6 +77,10 @@ const Header: React.FC<HeaderProps> = ({
                 {typeof memoryCount === 'number' && (
                     <span className={styles.countBadge}>{memoryCount} memories</span>
                 )}
+            </div>
+
+            <div className={styles.searchArea}>
+                <SearchBar onNodeSelect={onSearchSelect} />
             </div>
 
             <div className={styles.actions}>

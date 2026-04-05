@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"backend/application/mediator"
 	"backend/application/queries"
@@ -29,7 +28,7 @@ func NewSearchHandler(mediator mediator.IMediator, logger *zap.Logger, errorHand
 	}
 }
 
-// Search handles GET /search
+// Search handles GET /search — hybrid BM25 + semantic search with RRF fusion
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	if query == "" {
@@ -37,44 +36,31 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get user from context
 	userCtx, err := auth.GetUserFromContext(r.Context())
 	if err != nil {
 		h.errorHandler.Handle(w, r, errors.NewUnauthorizedError("Unauthorized"))
 		return
 	}
 
-	// Parse query parameters
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit <= 0 {
 		limit = 20
 	}
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
-	// Parse tags from comma-separated list
-	tagsParam := r.URL.Query().Get("tags")
-	var tags []string
-	if tagsParam != "" {
-		tags = strings.Split(tagsParam, ",")
+	searchQuery := &queries.HybridSearchQuery{
+		UserID: userCtx.UserID,
+		Query:  query,
+		Limit:  limit,
+		Offset: offset,
 	}
 
-	// Create search query
-	searchQuery := queries.SearchNodesQuery{
-		UserID:   userCtx.UserID,
-		Keywords: strings.Fields(query), // Split query into keywords
-		Tags:     tags,
-		Limit:    limit,
-		Offset:   offset,
-	}
-
-	// Validate query
 	if err := searchQuery.Validate(); err != nil {
 		h.errorHandler.Handle(w, r, errors.NewValidationError(err.Error()))
 		return
 	}
 
-	// Execute query
-	result, err := h.mediator.Query(r.Context(), &searchQuery)
+	result, err := h.mediator.Query(r.Context(), searchQuery)
 	if err != nil {
 		h.logger.Error("Search failed",
 			zap.String("query", query),
@@ -85,33 +71,24 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Format response
-	searchResult, ok := result.(*queries.SearchNodesResult)
+	searchResult, ok := result.(*queries.HybridSearchResult)
 	if !ok {
 		h.errorHandler.Handle(w, r, errors.NewInternalError("Invalid search result"))
 		return
 	}
 
-	// Convert to API response format
 	response := map[string]interface{}{
-		"query":    query,
-		"results":  searchResult.Nodes,
-		"total":    searchResult.TotalCount,
-		"offset":   searchResult.Offset,
+		"query":    searchResult.Query,
+		"results":  searchResult.Results,
+		"total":    searchResult.Total,
+		"offset":   offset,
 		"limit":    limit,
-		"has_more": searchResult.Offset+limit < searchResult.TotalCount,
+		"has_more": offset+limit < searchResult.Total,
 	}
 
-	h.respondJSON(w, http.StatusOK, response)
-}
-
-// Helper methods
-
-func (h *SearchHandler) respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(data); err != nil {
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		h.logger.Error("Failed to encode response", zap.Error(err))
 	}
 }
-

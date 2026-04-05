@@ -82,6 +82,14 @@
     background: currentColor;
 }
 
+.searchArea {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+    max-width: 480px;
+}
+
 .actions {
     display: flex;
     align-items: center;

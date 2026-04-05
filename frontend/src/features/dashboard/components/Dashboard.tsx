@@ -80,6 +80,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onSignOut }) => {
                 onToggleSidebar={handleToggleLeftPanel}
                 isSidebarCollapsed={!isLeftPanelOpen}
                 memoryCount={totalMemories}
+                onSearchSelect={handleViewInGraph}
             />
 
             <main className={isLeftPanelOpen ? styles.layout : styles.layoutCollapsed}>
