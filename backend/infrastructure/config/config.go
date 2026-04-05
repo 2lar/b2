@@ -18,6 +18,15 @@ type EdgeCreationConfig struct {
 	AsyncEnabled bool
 }
 
+// EmbeddingConfig holds configuration for the embedding service.
+type EmbeddingConfig struct {
+	BaseURL    string  // OpenAI-compatible endpoint (e.g. "https://api.openai.com/v1")
+	APIKey     string  // API key (empty for local endpoints like Ollama)
+	Model      string  // Model name (e.g. "text-embedding-3-small")
+	Dimensions int     // Expected output dimensions
+	Enabled    bool    // Whether embedding generation is active
+}
+
 // Features holds feature flags for the application
 type Features struct {
 	// EnableSagaOrchestrator enables saga pattern for complex operations
@@ -71,6 +80,9 @@ type Config struct {
 	// Edge creation configuration
 	EdgeCreation EdgeCreationConfig
 
+	// Embedding configuration
+	Embedding EmbeddingConfig
+
 	// Feature flags
 	Features Features
 }
@@ -114,6 +126,15 @@ func LoadConfig() (*Config, error) {
 			SimilarityThreshold: getEnvFloat("EDGE_SIMILARITY_THRESHOLD", 0.3),
 			MaxEdgesPerNode:     getEnvInt("EDGE_MAX_PER_NODE", 100),
 			AsyncEnabled:        getEnvBool("EDGE_ASYNC_ENABLED", true),
+		},
+
+		// Embedding configuration
+		Embedding: EmbeddingConfig{
+			BaseURL:    getEnv("EMBEDDING_BASE_URL", "https://api.openai.com/v1"),
+			APIKey:     getEnv("EMBEDDING_API_KEY", ""),
+			Model:      getEnv("EMBEDDING_MODEL", "text-embedding-3-small"),
+			Dimensions: getEnvInt("EMBEDDING_DIMENSIONS", 1536),
+			Enabled:    getEnvBool("EMBEDDING_ENABLED", false),
 		},
 
 		// Feature flags
