@@ -39,6 +39,9 @@ type Node struct {
 	// Vector embedding for semantic similarity (nullable — computed async)
 	embedding *valueobjects.Embedding
 
+	// Community membership from Leiden detection (empty = unassigned)
+	communityID string
+
 	// Domain events that occurred during this aggregate's lifetime
 	events []events.DomainEvent
 }
@@ -215,6 +218,17 @@ func (n *Node) HasEmbedding() bool {
 // SetEmbedding sets the node's vector embedding.
 func (n *Node) SetEmbedding(embedding valueobjects.Embedding) {
 	n.embedding = &embedding
+	n.updatedAt = time.Now()
+}
+
+// CommunityID returns the node's community assignment (empty if unassigned).
+func (n *Node) CommunityID() string {
+	return n.communityID
+}
+
+// SetCommunityID assigns the node to a community.
+func (n *Node) SetCommunityID(communityID string) {
+	n.communityID = communityID
 	n.updatedAt = time.Now()
 }
 

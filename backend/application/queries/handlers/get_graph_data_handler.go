@@ -130,6 +130,7 @@ func (h *GetGraphDataHandler) Handle(ctx context.Context, query queries.GetGraph
 				"updated_at": node.UpdatedAt().Format(time.RFC3339),
 				"status":     string(node.Status()),
 			},
+			CommunityID: node.CommunityID(),
 		}
 		result.Nodes = append(result.Nodes, graphNode)
 	}

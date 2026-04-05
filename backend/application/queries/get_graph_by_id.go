@@ -36,12 +36,13 @@ type GetGraphByIDResult struct {
 
 // GraphNode represents a node in the graph result
 type GraphNode struct {
-	ID       string            `json:"id"`
-	Title    string            `json:"title"`
-	Content  string            `json:"content"`
-	Position Position          `json:"position"`
-	Tags     []string          `json:"tags"`
-	Metadata map[string]string `json:"metadata"`
+	ID          string            `json:"id"`
+	Title       string            `json:"title"`
+	Content     string            `json:"content"`
+	Position    Position          `json:"position"`
+	Tags        []string          `json:"tags"`
+	Metadata    map[string]string `json:"metadata"`
+	CommunityID string            `json:"community_id,omitempty"`
 }
 
 // GraphEdge represents an edge in the graph result

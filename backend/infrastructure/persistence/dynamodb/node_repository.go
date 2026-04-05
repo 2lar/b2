@@ -104,6 +104,11 @@ func (c *NodeEntityConfig) ToItem(entity *NodeEntity) (map[string]types.Attribut
 		item["Embedding"] = &types.AttributeValueMemberB{Value: node.Embedding().ToBytes()}
 	}
 
+	// Add community ID if assigned
+	if cid := node.CommunityID(); cid != "" {
+		item["CommunityID"] = &types.AttributeValueMemberS{Value: cid}
+	}
+
 	// Add tags if present
 	tags := node.GetTags()
 	if len(tags) > 0 {
@@ -244,6 +249,11 @@ func (c *NodeEntityConfig) ParseItem(item map[string]types.AttributeValue) (*Nod
 		if err == nil {
 			node.SetEmbedding(embedding)
 		}
+	}
+
+	// Restore community ID if present
+	if cidAttr, ok := item["CommunityID"].(*types.AttributeValueMemberS); ok && cidAttr.Value != "" {
+		node.SetCommunityID(cidAttr.Value)
 	}
 
 	// Add tags if present

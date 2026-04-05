@@ -298,6 +298,16 @@ func ProvideHybridSearchService(
 	return services.NewHybridSearchService(bm25, embeddingService, textAnalyzer, nodeRepo, nil)
 }
 
+// ProvideCommunityDetectionService creates the Leiden-based community detection service.
+func ProvideCommunityDetectionService(
+	graphRepo ports.GraphRepository,
+	nodeRepo ports.NodeRepository,
+	edgeRepo ports.EdgeRepository,
+	logger *zap.Logger,
+) *services.CommunityDetectionService {
+	return services.NewCommunityDetectionService(graphRepo, nodeRepo, edgeRepo, logger)
+}
+
 // ProvideEdgeService creates an EdgeService instance for edge operations
 func ProvideEdgeService(
 	nodeRepo ports.NodeRepository,

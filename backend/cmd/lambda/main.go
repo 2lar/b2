@@ -71,6 +71,7 @@ func init() {
 		container.ErrorHandler,
 		container.AuthMiddleware,
 	)
+	router.SetCommunityService(container.CommunityService)
 
 	// Setup routes
 	handler := router.Setup()

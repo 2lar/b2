@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"backend/application/mediator"
+	"backend/application/services"
 	"backend/interfaces/http/rest/handlers"
 	"backend/interfaces/http/rest/middleware"
 	"backend/pkg/errors"
@@ -16,10 +17,11 @@ import (
 
 // Router creates and configures the HTTP router
 type Router struct {
-	mediator       mediator.IMediator
-	logger         *zap.Logger
-	errorHandler   *errors.ErrorHandler
-	authMiddleware func(http.Handler) http.Handler
+	mediator         mediator.IMediator
+	logger           *zap.Logger
+	errorHandler     *errors.ErrorHandler
+	authMiddleware   func(http.Handler) http.Handler
+	communityService *services.CommunityDetectionService
 }
 
 // NewRouter creates a new router instance
@@ -39,6 +41,11 @@ func NewRouter(
 		errorHandler:   errorHandler,
 		authMiddleware: authMiddleware,
 	}
+}
+
+// SetCommunityService sets the optional community detection service.
+func (rt *Router) SetCommunityService(svc *services.CommunityDetectionService) {
+	rt.communityService = svc
 }
 
 // Setup configures all routes and middleware
@@ -117,6 +124,14 @@ func (rt *Router) Setup() http.Handler {
 
 		// Search endpoint
 		r.Get("/search", searchHandler.Search)
+
+		// Community detection endpoints
+		if rt.communityService != nil {
+			communityHandler := handlers.NewCommunityHandler(rt.communityService, rt.logger, rt.errorHandler)
+			r.Route("/communities", func(r chi.Router) {
+				r.Post("/recompute", communityHandler.Recompute)
+			})
+		}
 
 		// Graph data endpoint for visualization
 		r.Get("/graph-data", graphHandler.GetGraphData)

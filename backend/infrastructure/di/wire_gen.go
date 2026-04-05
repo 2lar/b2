@@ -62,6 +62,7 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 	operationEventListener := ProvideOperationEventListener(operationStore, logger)
 	graphStatsProjection := ProvideGraphStatsProjection(cache, logger)
 	graphLoader := ProvideGraphLoader(graphRepository, nodeRepository, edgeRepository, logger)
+	communityDetectionService := ProvideCommunityDetectionService(graphRepository, nodeRepository, edgeRepository, logger)
 	v, err := ProvideAuthMiddleware(cfg, logger)
 	if err != nil {
 		return nil, err
@@ -88,6 +89,7 @@ func InitializeContainer(ctx context.Context, cfg *config.Config) (*Container, e
 		GraphStatsProjection:   graphStatsProjection,
 		GraphLazyService:       graphLazyService,
 		GraphLoader:            graphLoader,
+		CommunityService:       communityDetectionService,
 		AuthMiddleware:         v,
 	}
 	return container, nil
@@ -118,6 +120,7 @@ type Container struct {
 	GraphStatsProjection   *projections.GraphStatsProjection
 	GraphLazyService       *services.GraphLazyService
 	GraphLoader            *services.GraphLoader
+	CommunityService       *services.CommunityDetectionService
 	AuthMiddleware         func(http.Handler) http.Handler
 }
 
@@ -157,6 +160,7 @@ var SuperSet = wire.NewSet(
 	ProvideGraphLoader,
 	ProvideEdgeService,
 	ProvideHybridSearchService,
+	ProvideCommunityDetectionService,
 
 	ProvideCommandBus,
 	ProvideQueryBus,
