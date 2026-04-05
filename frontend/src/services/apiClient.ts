@@ -1,5 +1,7 @@
 import { auth } from './authClient';
 import { components, operations } from '../types/generated/generated-types';
+import type { SearchResponse } from '../features/search/types/search';
+import type { ThoughtChainResult, ImpactAnalysis } from '../features/analysis/types';
 
 const isDevMode = import.meta.env.DEV;
 
@@ -459,25 +461,25 @@ class ApiClient {
      * @param offset Results offset for pagination (default 0)
      * @returns Promise resolving to search results with scores and source attribution
      */
-    public async searchNodes(query: string, limit = 20, offset = 0): Promise<any> {
+    public async searchNodes(query: string, limit = 20, offset = 0): Promise<SearchResponse> {
         const params = new URLSearchParams({ q: query, limit: limit.toString(), offset: offset.toString() });
-        return this.request<any>('GET', `/api/v1/search?${params.toString()}`);
+        return this.request<SearchResponse>('GET', `/api/v1/search?${params.toString()}`);
     }
 
     /**
      * Get thought chains starting from a node
      */
-    public async getThoughtChains(nodeID: string, maxDepth = 10, maxBranches = 4): Promise<any> {
+    public async getThoughtChains(nodeID: string, maxDepth = 10, maxBranches = 4): Promise<ThoughtChainResult> {
         const params = new URLSearchParams({ maxDepth: maxDepth.toString(), maxBranches: maxBranches.toString() });
-        return this.request<any>('GET', `/api/v1/nodes/${nodeID}/chains?${params.toString()}`);
+        return this.request<ThoughtChainResult>('GET', `/api/v1/nodes/${nodeID}/chains?${params.toString()}`);
     }
 
     /**
      * Get impact analysis for a node
      */
-    public async getImpactAnalysis(nodeID: string, maxDepth = 3): Promise<any> {
+    public async getImpactAnalysis(nodeID: string, maxDepth = 3): Promise<ImpactAnalysis> {
         const params = new URLSearchParams({ maxDepth: maxDepth.toString() });
-        return this.request<any>('GET', `/api/v1/nodes/${nodeID}/impact?${params.toString()}`);
+        return this.request<ImpactAnalysis>('GET', `/api/v1/nodes/${nodeID}/impact?${params.toString()}`);
     }
 
     /**

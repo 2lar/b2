@@ -223,8 +223,9 @@ func (s *GraphAnalyticsService) FindOrphanedNodes(graph *aggregates.Graph) ([]va
 	return orphaned, nil
 }
 
-// CalculateCentrality calculates the betweenness centrality for nodes
-// This identifies important nodes that act as bridges in the graph
+// CalculateCentrality calculates betweenness centrality using Brandes' algorithm.
+// Time complexity: O(V×E) vs the previous O(n⁴) naive implementation.
+// This identifies important nodes that act as bridges in the graph.
 func (s *GraphAnalyticsService) CalculateCentrality(
 	graph *aggregates.Graph,
 ) (map[valueobjects.NodeID]float64, error) {
@@ -233,45 +234,79 @@ func (s *GraphAnalyticsService) CalculateCentrality(
 		return nil, err
 	}
 
-	centrality := make(map[valueobjects.NodeID]float64)
+	// Build adjacency list once (treating edges as undirected for traversal)
+	adj := make(map[valueobjects.NodeID][]valueobjects.NodeID)
+	for _, edge := range graph.Edges() {
+		adj[edge.SourceID] = append(adj[edge.SourceID], edge.TargetID)
+		// Treat all edges as bidirectional for traversal (matching original behavior)
+		adj[edge.TargetID] = append(adj[edge.TargetID], edge.SourceID)
+	}
 
-	// Initialize all centralities to 0
+	centrality := make(map[valueobjects.NodeID]float64, len(nodes))
 	for nodeID := range nodes {
 		centrality[nodeID] = 0.0
 	}
 
-	// For each pair of nodes, find shortest paths and update centrality
-	nodeList := make([]valueobjects.NodeID, 0, len(nodes))
-	for nodeID := range nodes {
-		nodeList = append(nodeList, nodeID)
-	}
+	// Brandes' algorithm: single-source shortest paths from each node
+	for source := range nodes {
+		// BFS phase
+		stack := make([]valueobjects.NodeID, 0, len(nodes))
+		pred := make(map[valueobjects.NodeID][]valueobjects.NodeID, len(nodes))
+		sigma := make(map[valueobjects.NodeID]float64, len(nodes))
+		dist := make(map[valueobjects.NodeID]int, len(nodes))
 
-	for i, source := range nodeList {
-		for j, target := range nodeList {
-			if i >= j {
-				continue // Skip same node and already processed pairs
+		for nodeID := range nodes {
+			dist[nodeID] = -1
+		}
+
+		sigma[source] = 1.0
+		dist[source] = 0
+		queue := []valueobjects.NodeID{source}
+
+		for len(queue) > 0 {
+			v := queue[0]
+			queue = queue[1:]
+			stack = append(stack, v)
+
+			for _, w := range adj[v] {
+				// w found for the first time?
+				if dist[w] < 0 {
+					dist[w] = dist[v] + 1
+					queue = append(queue, w)
+				}
+				// Shortest path to w via v?
+				if dist[w] == dist[v]+1 {
+					sigma[w] += sigma[v]
+					pred[w] = append(pred[w], v)
+				}
 			}
+		}
 
-			path, err := s.FindPath(graph, source, target)
-			if err != nil {
-				continue // No path exists
+		// Back-propagation of dependencies
+		delta := make(map[valueobjects.NodeID]float64, len(nodes))
+		for i := len(stack) - 1; i >= 0; i-- {
+			w := stack[i]
+			for _, v := range pred[w] {
+				delta[v] += (sigma[v] / sigma[w]) * (1.0 + delta[w])
 			}
-
-			// Update centrality for intermediate nodes
-			for k := 1; k < len(path)-1; k++ {
-				centrality[path[k]] += 1.0
+			if !w.Equals(source) {
+				centrality[w] += delta[w]
 			}
 		}
 	}
 
-	// Normalize centrality values
+	// Divide by 2 for undirected graph (each pair counted from both directions)
+	for nodeID := range centrality {
+		centrality[nodeID] /= 2.0
+	}
+
+	// Normalize by max value (matching original behavior)
 	maxCentrality := 0.0
 	for _, value := range centrality {
 		if value > maxCentrality {
 			maxCentrality = value
 		}
 	}
-
 	if maxCentrality > 0 {
 		for nodeID := range centrality {
 			centrality[nodeID] /= maxCentrality

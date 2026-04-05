@@ -6,7 +6,7 @@ import { nodesApi } from '../api/nodes';
 import type { NodeDetails } from '../../../services';
 import { useFullscreen } from '../../../common/hooks/useFullscreen';
 import { buildGraph, getNodesWithinHops } from '../graph';
-import type { NodeAttributes, EdgeAttributes } from '../graph';
+import type { NodeAttributes, EdgeAttributes, GraphApiData } from '../graph';
 import GraphControls from './GraphControls';
 import NodeDetailsPanel from './NodeDetailsPanel';
 import DocumentModeView from './NodeDetailsPanel/DocumentModeView';
@@ -291,18 +291,13 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
         };
     }, []);
 
-    // Load graph data
-    useEffect(() => {
-        loadGraphData();
-    }, [refreshTrigger]);
-
     const loadGraphData = useCallback(async () => {
         const graph = graphRef.current;
         const renderer = rendererRef.current;
         if (!graph || !renderer) return;
 
         try {
-            const apiData = await nodesApi.getGraphData();
+            const apiData = await nodesApi.getGraphData() as GraphApiData;
 
             // Stop existing FA2
             if (fa2Ref.current) {
@@ -357,6 +352,11 @@ const GraphVisualization = forwardRef<GraphVisualizationRef, GraphVisualizationP
             console.error('Error loading graph data:', error);
         }
     }, []);
+
+    // Load graph data when refreshTrigger changes
+    useEffect(() => {
+        loadGraphData();
+    }, [refreshTrigger, loadGraphData]);
 
     // Subtle animations (jitter + pulse)
     useEffect(() => {

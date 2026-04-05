@@ -33,7 +33,13 @@ interface LegacyElement {
     position?: { x: number; y: number };
 }
 
-export function buildGraph(apiData: any): Graph<NodeAttributes, EdgeAttributes> {
+export interface GraphApiData {
+    nodes?: ApiNode[];
+    edges?: ApiEdge[];
+    elements?: LegacyElement[];
+}
+
+export function buildGraph(apiData: GraphApiData): Graph<NodeAttributes, EdgeAttributes> {
     const graph = new Graph<NodeAttributes, EdgeAttributes>();
 
     if (apiData.nodes && Array.isArray(apiData.nodes)) {
