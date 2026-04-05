@@ -17,10 +17,13 @@ type IMediator interface {
 	// Send dispatches a command and returns an error
 	// Following CQRS: commands only perform actions, never return data
 	Send(ctx context.Context, command commandbus.Command) error
-	
+
 	// Query dispatches a query and returns the result
 	// Following CQRS: queries only read data, never modify state
 	Query(ctx context.Context, query querybus.Query) (interface{}, error)
+
+	// CheckHealth verifies the mediator and its dependencies are operational
+	CheckHealth(ctx context.Context) error
 }
 
 // Mediator implements the mediator pattern for CQRS
@@ -119,6 +122,17 @@ func (m *Mediator) Query(ctx context.Context, query querybus.Query) (interface{}
 		zap.Duration("duration", time.Since(startTime)))
 	
 	return result, nil
+}
+
+// CheckHealth verifies the mediator's command and query buses are initialized
+func (m *Mediator) CheckHealth(ctx context.Context) error {
+	if m.commandBus == nil {
+		return fmt.Errorf("command bus is not initialized")
+	}
+	if m.queryBus == nil {
+		return fmt.Errorf("query bus is not initialized")
+	}
+	return nil
 }
 
 // AddBehavior adds a behavior to the mediator pipeline

@@ -430,7 +430,7 @@ for component in $components; do
     # Lambda functions: cleanup-handler, connect-node, ws-*
     # Local services: api, worker
 
-    LAMBDA_COMPONENTS="lambda cleanup-handler connect-node ws-connect ws-disconnect ws-send-message"
+    LAMBDA_COMPONENTS="lambda cleanup-handler connect-node embed-node ws-connect ws-disconnect ws-send-message"
     LOCAL_COMPONENTS="api worker"
     
     IS_LAMBDA=false
