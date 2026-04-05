@@ -25,6 +25,7 @@ export class ComputeStack extends Stack {
   public readonly wsConnectLambda: lambda.Function;
   public readonly wsDisconnectLambda: lambda.Function;
   public readonly wsSendMessageLambda: lambda.Function;
+  public readonly embedNodeLambda: lambda.Function;
   public readonly authorizerLambda: lambda.Function;
   public readonly eventBus: events.EventBus;
   public readonly webSocketApi: Brain2WebSocketApi;
@@ -108,6 +109,29 @@ export class ComputeStack extends Stack {
       // DynamoDB's built-in throttling will naturally limit request rate
     });
 
+    // Embedding Generation Lambda (Go) - Generates vector embeddings for nodes
+    this.embedNodeLambda = new lambda.Function(this, 'EmbedNodeLambda', {
+      runtime: lambda.Runtime.PROVIDED_AL2,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend/build/embed-node')),
+      handler: 'bootstrap',
+      memorySize: 256,
+      timeout: Duration.seconds(60),
+      environment: {
+        TABLE_NAME: memoryTable.tableName,
+        DYNAMODB_TABLE: memoryTable.tableName,
+        INDEX_NAME: 'KeywordIndex',
+        GSI2_INDEX_NAME: 'EdgeIndex',
+        EVENT_BUS_NAME: this.eventBus.eventBusName,
+        IS_LAMBDA: 'true',
+        ENVIRONMENT: 'development',
+        EMBEDDING_BASE_URL: process.env.EMBEDDING_BASE_URL || 'https://api.openai.com/v1',
+        EMBEDDING_API_KEY: process.env.EMBEDDING_API_KEY || '',
+        EMBEDDING_MODEL: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
+        EMBEDDING_DIMENSIONS: process.env.EMBEDDING_DIMENSIONS || '1536',
+        EMBEDDING_ENABLED: process.env.EMBEDDING_ENABLED || 'false',
+      },
+    });
+
     // WebSocket Connect Lambda (Go) - Match original b2-stack pattern
     this.wsConnectLambda = new lambda.Function(this, 'wsConnectLambda', {
         runtime: lambda.Runtime.PROVIDED_AL2,
@@ -151,6 +175,7 @@ export class ComputeStack extends Stack {
     memoryTable.grantReadWriteData(this.backendLambda);
     memoryTable.grantReadWriteData(this.connectNodeLambda);
     memoryTable.grantReadWriteData(this.cleanupLambda);  // Cleanup needs table access
+    memoryTable.grantReadWriteData(this.embedNodeLambda);  // Embedding needs to read node, write embedding
     connectionsTable.grantWriteData(this.wsConnectLambda);
     connectionsTable.grantReadWriteData(this.wsDisconnectLambda);
     connectionsTable.grantReadData(this.wsSendMessageLambda);
@@ -179,6 +204,26 @@ export class ComputeStack extends Stack {
             detailType: ['node.created'],  // Updated to match the actual event type from domain events
         },
         targets: [new targets.LambdaFunction(this.connectNodeLambda)],
+    });
+
+    // EventBridge rule for embedding generation on node creation
+    new events.Rule(this, 'NodeCreatedEmbedRule', {
+        eventBus: this.eventBus,
+        eventPattern: {
+            source: ['brain2.backend'],
+            detailType: ['node.created'],
+        },
+        targets: [new targets.LambdaFunction(this.embedNodeLambda)],
+    });
+
+    // EventBridge rule for re-embedding on node content update
+    new events.Rule(this, 'NodeUpdatedEmbedRule', {
+        eventBus: this.eventBus,
+        eventPattern: {
+            source: ['brain2.backend'],
+            detailType: ['node.updated'],
+        },
+        targets: [new targets.LambdaFunction(this.embedNodeLambda)],
     });
 
     // EventBridge rule for EdgesCreated events - Match original b2-stack pattern

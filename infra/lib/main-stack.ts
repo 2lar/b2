@@ -69,6 +69,7 @@ export class MainStack extends Stack {
           this.computeStack.backendLambda,
           this.computeStack.connectNodeLambda,
           this.computeStack.cleanupLambda,
+          this.computeStack.embedNodeLambda,
           this.computeStack.wsConnectLambda,
           this.computeStack.wsDisconnectLambda,
           this.computeStack.wsSendMessageLambda,
