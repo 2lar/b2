@@ -46,7 +46,7 @@ func NewEdgeService(
 	
 	// Create domain services
 	textAnalyzer := services.NewDefaultTextAnalyzer()
-	similarityCalc := services.NewDefaultSimilarityCalculator(nil, textAnalyzer)
+	similarityCalc := services.NewHybridSimilarityCalculator(nil, textAnalyzer)
 	edgeDiscovery := services.NewDefaultEdgeDiscoveryService(edgeConfig, similarityCalc)
 	
 	return &EdgeService{

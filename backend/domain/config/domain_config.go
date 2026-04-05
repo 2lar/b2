@@ -43,6 +43,11 @@ type DomainConfig struct {
 	// Bulk operation settings
 	MaxBulkOperationSize int
 
+	// Embedding settings
+	EmbeddingDimensions    int     // Expected vector dimensions from the embedding model
+	SemanticSimilarityWeight float64 // Weight of semantic vs keyword similarity (0.0 to 1.0)
+	EnableEmbeddings       bool    // Whether to generate embeddings for new nodes
+
 	// Feature flags
 	EnableAutoTagging    bool
 	EnableSemanticSearch bool
@@ -92,6 +97,11 @@ func DefaultDomainConfig() *DomainConfig {
 		// Bulk operation settings
 		MaxBulkOperationSize: 100,
 
+		// Embedding settings
+		EmbeddingDimensions:    1536,
+		SemanticSimilarityWeight: 0.6,
+		EnableEmbeddings:       true,
+
 		// Feature flags
 		EnableAutoTagging:    false,
 		EnableSemanticSearch: false,
@@ -132,6 +142,7 @@ func DevelopmentDomainConfig() *DomainConfig {
 	config.EnableAutoTagging = true
 	config.EnableSemanticSearch = true
 	config.EnableGraphAnalytics = true
+	config.EnableEmbeddings = true
 
 	return config
 }

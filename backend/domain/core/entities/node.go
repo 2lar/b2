@@ -36,6 +36,9 @@ type Node struct {
 	version   int
 	status    NodeStatus
 
+	// Vector embedding for semantic similarity (nullable — computed async)
+	embedding *valueobjects.Embedding
+
 	// Domain events that occurred during this aggregate's lifetime
 	events []events.DomainEvent
 }
@@ -194,6 +197,25 @@ func (n *Node) SetGraphID(graphID string) {
 			break
 		}
 	}
+}
+
+// Embedding returns the node's vector embedding, or a zero Embedding if not yet computed.
+func (n *Node) Embedding() valueobjects.Embedding {
+	if n.embedding == nil {
+		return valueobjects.Embedding{}
+	}
+	return *n.embedding
+}
+
+// HasEmbedding returns true if the node has a computed embedding.
+func (n *Node) HasEmbedding() bool {
+	return n.embedding != nil && !n.embedding.IsZero()
+}
+
+// SetEmbedding sets the node's vector embedding.
+func (n *Node) SetEmbedding(embedding valueobjects.Embedding) {
+	n.embedding = &embedding
+	n.updatedAt = time.Now()
 }
 
 // UpdateContent updates the node's content with validation

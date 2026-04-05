@@ -99,6 +99,11 @@ func (c *NodeEntityConfig) ToItem(entity *NodeEntity) (map[string]types.Attribut
 	item["GSI2PK"] = &types.AttributeValueMemberS{Value: fmt.Sprintf("NODE#%s", node.ID().String())}
 	item["GSI2SK"] = &types.AttributeValueMemberS{Value: fmt.Sprintf("GRAPH#%s", node.GraphID())}
 
+	// Add embedding if present
+	if node.HasEmbedding() {
+		item["Embedding"] = &types.AttributeValueMemberB{Value: node.Embedding().ToBytes()}
+	}
+
 	// Add tags if present
 	tags := node.GetTags()
 	if len(tags) > 0 {
@@ -231,6 +236,14 @@ func (c *NodeEntityConfig) ParseItem(item map[string]types.AttributeValue) (*Nod
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconstruct node: %w", err)
+	}
+
+	// Restore embedding if present
+	if embAttr, ok := item["Embedding"].(*types.AttributeValueMemberB); ok && len(embAttr.Value) > 0 {
+		embedding, err := valueobjects.NewEmbeddingFromBytes(embAttr.Value)
+		if err == nil {
+			node.SetEmbedding(embedding)
+		}
 	}
 
 	// Add tags if present
