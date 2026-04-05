@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { PanelContentProps } from '../../types/nodeDetails';
 import ConnectionsList from './ConnectionsList';
 import { formatDate } from '../../../../utils/dateFormatters';
+import { ImpactBadge, ThoughtChainPanel } from '../../../analysis';
 
 const PanelContent: React.FC<PanelContentProps> = ({
     selectedNode,
@@ -25,15 +26,22 @@ const PanelContent: React.FC<PanelContentProps> = ({
                     </div>
                 )}
                 
+                <ImpactBadge nodeID={selectedNode.id} />
+
                 <div className="connections-section">
                     <h4>Connected Memories ({connectedMemories.length})</h4>
                     <div className="scrollable-connections">
-                        <ConnectionsList 
+                        <ConnectionsList
                             connections={connectedMemories}
                             onConnectionClick={onConnectedMemoryClick}
                         />
                     </div>
                 </div>
+
+                <ThoughtChainPanel
+                    nodeID={selectedNode.id}
+                    onNodeClick={onConnectedMemoryClick}
+                />
             </div>
             
             <div className="panel-footer">

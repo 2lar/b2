@@ -47,6 +47,7 @@ type Container struct {
 	GraphLazyService       *services.GraphLazyService
 	GraphLoader            *services.GraphLoader
 	CommunityService       *services.CommunityDetectionService
+	AnalysisService        *services.AnalysisService
 	AuthMiddleware         func(http.Handler) http.Handler
 }
 
@@ -99,6 +100,7 @@ var SuperSet = wire.NewSet(
     ProvideEdgeService,         // deps: node repo, graph repo, edge repo, cfg.EdgeCreation, logger
     ProvideHybridSearchService,         // deps: node repo, config, logger
     ProvideCommunityDetectionService,   // deps: graph repo, node repo, edge repo, logger
+    ProvideAnalysisService,             // deps: graph repo, node repo, edge repo, logger
 
     // 9) CQRS buses and mediator
     // Command bus wires handlers requiring many deps (UoW, repos, services, events)

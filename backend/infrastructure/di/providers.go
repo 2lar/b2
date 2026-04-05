@@ -308,6 +308,16 @@ func ProvideCommunityDetectionService(
 	return services.NewCommunityDetectionService(graphRepo, nodeRepo, edgeRepo, logger)
 }
 
+// ProvideAnalysisService creates an AnalysisService for thought chains and impact analysis.
+func ProvideAnalysisService(
+	graphRepo ports.GraphRepository,
+	nodeRepo ports.NodeRepository,
+	edgeRepo ports.EdgeRepository,
+	logger *zap.Logger,
+) *services.AnalysisService {
+	return services.NewAnalysisService(graphRepo, nodeRepo, edgeRepo, logger)
+}
+
 // ProvideEdgeService creates an EdgeService instance for edge operations
 func ProvideEdgeService(
 	nodeRepo ports.NodeRepository,

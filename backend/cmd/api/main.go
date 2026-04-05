@@ -61,6 +61,7 @@ func main() {
 		container.AuthMiddleware,
 	)
 	router.SetCommunityService(container.CommunityService)
+	router.SetAnalysisService(container.AnalysisService)
 
 	// Setup routes
 	handler := router.Setup()

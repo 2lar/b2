@@ -465,6 +465,22 @@ class ApiClient {
     }
 
     /**
+     * Get thought chains starting from a node
+     */
+    public async getThoughtChains(nodeID: string, maxDepth = 10, maxBranches = 4): Promise<any> {
+        const params = new URLSearchParams({ maxDepth: maxDepth.toString(), maxBranches: maxBranches.toString() });
+        return this.request<any>('GET', `/api/v1/nodes/${nodeID}/chains?${params.toString()}`);
+    }
+
+    /**
+     * Get impact analysis for a node
+     */
+    public async getImpactAnalysis(nodeID: string, maxDepth = 3): Promise<any> {
+        const params = new URLSearchParams({ maxDepth: maxDepth.toString() });
+        return this.request<any>('GET', `/api/v1/nodes/${nodeID}/impact?${params.toString()}`);
+    }
+
+    /**
      * Test API health endpoint (no authentication required)
      * @returns Promise resolving to health status
      */

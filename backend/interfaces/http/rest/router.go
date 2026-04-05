@@ -22,6 +22,7 @@ type Router struct {
 	errorHandler     *errors.ErrorHandler
 	authMiddleware   func(http.Handler) http.Handler
 	communityService *services.CommunityDetectionService
+	analysisService  *services.AnalysisService
 }
 
 // NewRouter creates a new router instance
@@ -46,6 +47,11 @@ func NewRouter(
 // SetCommunityService sets the optional community detection service.
 func (rt *Router) SetCommunityService(svc *services.CommunityDetectionService) {
 	rt.communityService = svc
+}
+
+// SetAnalysisService sets the optional analysis service.
+func (rt *Router) SetAnalysisService(svc *services.AnalysisService) {
+	rt.analysisService = svc
 }
 
 // Setup configures all routes and middleware
@@ -100,6 +106,13 @@ func (rt *Router) Setup() http.Handler {
 
 			r.Get("/{nodeID}/categories", categoryHandler.GetNodeCategories)
 			r.Post("/{nodeID}/categories", categoryHandler.CategorizeNode)
+
+			// Analysis endpoints (thought chains + impact)
+			if rt.analysisService != nil {
+				analysisHandler := handlers.NewAnalysisHandler(rt.analysisService, rt.logger, rt.errorHandler)
+				r.Get("/{nodeID}/chains", analysisHandler.GetThoughtChains)
+				r.Get("/{nodeID}/impact", analysisHandler.GetImpactAnalysis)
+			}
 		})
 
 		// Graph endpoints
