@@ -36,7 +36,7 @@ export default defineConfig(({ mode }) => {
             // State management and data fetching
             'state-vendor': ['zustand', '@tanstack/react-query'],
             // Visualization libraries (the heaviest)
-            'graph-vendor': ['cytoscape', 'cytoscape-cola'],
+            'graph-vendor': ['sigma', 'graphology', 'graphology-layout-forceatlas2'],
             // Utilities
             'utils-vendor': ['lodash-es'],
             // Authentication
@@ -69,7 +69,7 @@ export default defineConfig(({ mode }) => {
     },
     // Optimize dependencies
     optimizeDeps: {
-      include: ['cytoscape', 'cytoscape-cola', '@tanstack/react-query'],
+      include: ['sigma', 'graphology', 'graphology-layout-forceatlas2', '@tanstack/react-query'],
       exclude: ['@tanstack/react-query-devtools']
     }
   }

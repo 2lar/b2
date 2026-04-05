@@ -37,6 +37,10 @@ interface GraphControlsProps {
     onResetZoom?: () => void;
     /** Optional title for the controls section */
     title?: string;
+    /** Current depth filter level (null = no filter) */
+    depthLevel?: number | null;
+    /** Callback for depth filter changes (only shown when defined) */
+    onDepthFilter?: (hops: number | null) => void;
 }
 
 const GraphControls: React.FC<GraphControlsProps> = ({
@@ -46,7 +50,9 @@ const GraphControls: React.FC<GraphControlsProps> = ({
     onToggleFullscreen,
     onFitToScreen,
     onResetZoom,
-    title = "Memory Graph"
+    title = "Memory Graph",
+    depthLevel,
+    onDepthFilter,
 }) => {
     if (isOverlay) {
         return (
@@ -115,6 +121,20 @@ const GraphControls: React.FC<GraphControlsProps> = ({
                     >
                         Reset
                     </button>
+                )}
+                {onDepthFilter && (
+                    <span className={styles.depthGroup}>
+                        {([1, 2, 3] as const).map(h => (
+                            <button
+                                key={h}
+                                className={`${styles.secondaryButton} ${depthLevel === h ? styles.depthActive : ''}`}
+                                onClick={() => onDepthFilter(depthLevel === h ? null : h)}
+                                title={`${h}-hop filter`}
+                            >
+                                {h}H
+                            </button>
+                        ))}
+                    </span>
                 )}
                 <button
                     className={styles.fullscreenButton}

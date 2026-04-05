@@ -24,9 +24,7 @@
   "license": "ISC",
   "devDependencies": {
     "@tanstack/react-query-devtools": "^5.84.1",
-    "react-test-renderer": "^19.1.0",
     "@types/react-test-renderer": "^19.0.0",
-    "@types/cytoscape": "^3.21.9",
     "@typescript-eslint/eslint-plugin": "^7.3.1",
     "@typescript-eslint/parser": "^7.3.1",
     "@vitest/coverage-v8": "^2.0.5",
@@ -38,6 +36,7 @@
     "jsdom": "^24.0.0",
     "openapi-typescript": "^6.7.6",
     "prettier": "^3.3.3",
+    "react-test-renderer": "^19.1.0",
     "typescript": "^5.8.3",
     "vite": "^5.2.0",
     "vitest": "^2.0.5"
@@ -51,14 +50,16 @@
     "@types/react-dom": "^19.1.6",
     "@types/react-router-dom": "^5.3.3",
     "@vitejs/plugin-react": "^4.7.0",
-    "cytoscape": "^3.32.0",
-    "cytoscape-cola": "^2.5.1",
     "framer-motion": "^12.23.12",
+    "graphology": "^0.26.0",
+    "graphology-layout-forceatlas2": "^0.10.1",
+    "graphology-types": "^0.24.8",
     "lodash-es": "^4.17.21",
     "normalizr": "^3.6.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.7.1",
+    "sigma": "^3.0.2",
     "web-vitals": "^5.1.0",
     "zustand": "^5.0.7"
   }
