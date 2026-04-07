@@ -1,0 +1,189 @@
+# 010 — Brain Report: State of Your Knowledge
+
+## Priority: HIGH
+## Effort: Small-Medium
+## Depends on: 002 (stub methods), 008 (MCP server)
+
+## Goal
+
+Generate a `BRAIN_REPORT.md` — a one-page summary of your knowledge graph
+that any connected agent reads for context. This is how the agent understands
+the SHAPE of your knowledge without loading the entire graph.
+
+Inspired by Graphify's `GRAPH_REPORT.md`, but tailored for personal knowledge.
+
+## What the Report Contains
+
+### Section 1: Overview
+```markdown
+# B2 Brain Report
+Generated: 2026-04-07 | Graph: Default
+
+## Overview
+- **Total memories:** 247
+- **Total connections:** 891
+- **Knowledge clusters:** 12
+- **Orphan memories:** 8 (no connections)
+- **Last memory added:** "Attention Is All You Need notes" (2 hours ago)
+- **Most active week:** Mar 24-30 (34 memories added)
+```
+
+### Section 2: Knowledge Clusters
+```markdown
+## Knowledge Clusters
+
+1. **Machine Learning** (42 memories, cohesion: 0.78)
+   Core ideas: transformers, attention mechanisms, embeddings, fine-tuning
+   Recent: "LoRA adapter patterns" (yesterday)
+
+2. **Distributed Systems** (31 memories, cohesion: 0.82)
+   Core ideas: CAP theorem, consensus, Raft, eventual consistency
+   Recent: "DynamoDB single-table design" (3 days ago)
+
+3. **Personal Productivity** (28 memories, cohesion: 0.65)
+   Core ideas: second brain, Zettelkasten, spaced repetition
+   Recent: "Morning routine optimization" (1 week ago)
+
+[... more clusters ...]
+```
+
+### Section 3: Core Ideas (God Nodes)
+```markdown
+## Core Ideas (Most Connected)
+
+1. "Transformer Architecture" — 18 connections across 4 clusters
+2. "Event-Driven Architecture" — 15 connections across 3 clusters
+3. "Knowledge Graphs" — 14 connections across 3 clusters
+4. "CAP Theorem" — 12 connections, hub of Distributed Systems cluster
+5. "Spaced Repetition" — 11 connections across 2 clusters
+```
+
+### Section 4: Bridges
+```markdown
+## Bridge Ideas (Connect Different Areas)
+
+- "Embeddings" bridges Machine Learning ↔ Knowledge Graphs
+  (connects "transformer embeddings" to "graph node embeddings")
+- "Event Sourcing" bridges Distributed Systems ↔ DDD Architecture
+  (connects "event stores" to "CQRS patterns")
+```
+
+### Section 5: Recent Activity
+```markdown
+## Recent Activity (Last 7 Days)
+
+- Apr 07: "MCP Server patterns" [Agent Architecture]
+- Apr 06: "Graphify design decisions" [Knowledge Graphs]
+- Apr 05: "B2 backend audit findings" [Projects]
+- Apr 04: "Leiden algorithm implementation" [Graph Algorithms]
+[...]
+```
+
+### Section 6: Orphans & Suggestions
+```markdown
+## Orphan Memories (Consider Connecting)
+
+- "Random forest vs gradient boosting" — no connections
+  Suggested: connect to "Machine Learning" cluster
+- "REST vs GraphQL tradeoffs" — 1 weak connection
+  Suggested: connect to "API Design" cluster
+
+## Suggested Explorations
+
+- You have memories about "embeddings" in both ML and Knowledge Graphs
+  but they're not connected — worth exploring?
+- "Consensus algorithms" and "distributed transactions" are in the same
+  cluster but not directly connected.
+```
+
+## Implementation
+
+### Data Sources
+
+Each section maps to existing B2 capabilities:
+
+| Section | Data Source | Plan Dependency |
+|---------|-----------|-----------------|
+| Overview | `GET /api/v1/graphs/{id}/stats` + GetGraphStatistics (Plan 002) | 002 |
+| Clusters | Leiden communities + community keywords | Already works |
+| Core Ideas | GetMostConnected (Plan 002) | 002 |
+| Bridges | Cross-community edge analysis | New logic (small) |
+| Recent | FindRecentlyUpdated (Plan 002) | 002 |
+| Orphans | FindOrphanedNodes (Plan 002) | 002 |
+| Suggestions | High similarity pairs without edges | New logic (medium) |
+
+### Report Generation Logic
+
+**New file:** `backend/cmd/b2cli/report.go` (or `backend/cmd/mcp/report.go`)
+
+```go
+func GenerateBrainReport(client *B2Client, graphID string) (string, error) {
+    // 1. Fetch graph stats
+    stats := client.GetGraphStats(graphID)
+    
+    // 2. Fetch graph data (nodes + edges + communities)
+    graphData := client.GetGraphData(graphID)
+    
+    // 3. Extract communities with keyword labels
+    communities := extractCommunities(graphData)
+    
+    // 4. Find god nodes (most connected)
+    godNodes := client.GetMostConnected(graphID, 10)
+    
+    // 5. Find bridges (cross-community high-weight edges)
+    bridges := findBridges(graphData)
+    
+    // 6. Find recent memories
+    recent := client.GetRecentMemories(20)
+    
+    // 7. Find orphans
+    orphans := client.GetOrphanedNodes(graphID)
+    
+    // 8. Generate suggestions
+    suggestions := generateSuggestions(graphData, communities)
+    
+    // 9. Render markdown
+    return renderReport(stats, communities, godNodes, bridges, recent, orphans, suggestions)
+}
+```
+
+### Where the Report Lives
+
+- `~/.b2/BRAIN_REPORT.md` — always-available global location
+- Regenerated by `b2 report` command
+- Claude reads it via CLAUDE.md instruction:
+  `"Read ~/.b2/BRAIN_REPORT.md at the start of each session"`
+- Could auto-regenerate when significant changes happen (new community,
+  new god node, 10+ new memories since last report)
+
+### Auto-Regeneration (Optional)
+
+The MCP server could check report age on startup:
+```go
+func (s *Server) maybeRegenerateReport() {
+    reportPath := filepath.Join(homeDir, ".b2", "BRAIN_REPORT.md")
+    info, err := os.Stat(reportPath)
+    if err != nil || time.Since(info.ModTime()) > 24*time.Hour {
+        report, _ := GenerateBrainReport(s.client, s.graphID)
+        os.WriteFile(reportPath, []byte(report), 0644)
+    }
+}
+```
+
+## New Files
+
+```
+backend/cmd/b2cli/report.go   # Report generation logic
+```
+
+Or if keeping it in the MCP server:
+```
+backend/cmd/mcp/report.go     # Report generation (called by MCP on startup)
+```
+
+## Testing
+
+- Generate report for empty graph → valid markdown with "0 memories" message
+- Generate report for 50-node graph → all sections populated
+- Generate report for graph with orphans → orphan section appears
+- Report fits in ~2000 tokens (readable by Claude in one pass)
